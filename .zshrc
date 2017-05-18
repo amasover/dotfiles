@@ -1,5 +1,3 @@
-. ~/.local/bin/env
-
 # If you come from bash you might have to change your $PATH.
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
 
@@ -188,6 +186,8 @@ _sshg() {
 }
 # quickly grep ssh hosts from config file
 alias grepssh=_sshg
+## NPM TOKEN SETUP
+export NPM_TOKEN=$NPM_TOKEN
 
 #switch between different AWS accounts
 alias work-mode="switch-aws-creds.sh work"
