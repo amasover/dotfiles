@@ -116,6 +116,7 @@ alias nr="node run.js"
 alias kl="kubectl"
 alias pacman="sudo pacman"
 alias x="chmod +x"
+alias sz="source .zshrc"
 
 alias y="yadm"
 alias ya="yadm add"
@@ -176,6 +177,12 @@ update_golang() {
 update_pacman_mirrorlist() {
     sudo reflector --verbose --protocol https --age 8 --sort rate --save /etc/pacman.d/mirrorlist
 }
+alias yaf="yadm add ~/.yadm/files.gpg"
+
+#switch between different AWS accounts
+alias work-mode="switch-aws-creds.sh work"
+alias other-mode="switch-aws-creds.sh other"
+alias check-mode="aws s3 ls"
 
 # leave this function with the _ prefix and aliased below without
 # the prefix. Without them zsh errors on sourcing because grep
