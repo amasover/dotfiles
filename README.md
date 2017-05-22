@@ -25,7 +25,6 @@ Please see [the wiki](https://github.com/patrick-motard/dotfiles/wiki) for docum
 - Terminal Emulator: `termite` & `oh-my-zsh`
 - Window Manager: `i3-gaps`
 
-
 # Package List (not comprehensive) 
 
 - `yadm` dotfile manager
@@ -265,3 +264,15 @@ Some things I'd like snippets for:
 - rofi based password manager for lastpass
 
 - script for adding and removing packages from ~/.config/dotfiles/arch-packages/pacman
+- `install-pacman-packages.sh` : installs packages for pacman listed from `installed-packages.sh` 
+
+- `switch-aws-creds.sh` 
+switch which AWS credentials are default
+store your configs in `~/.aws/`.
+make each set of credentials it's own file starting with `credentials-`
+e.g. `credentials-my-work-creds`
+e.g. `credentials-my-personal-creds`
+
+Existing aliases:
+`work-mode`: switch to work credentials
+`other-mode`: switch to other credentials
