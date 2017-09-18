@@ -276,3 +276,16 @@ e.g. `credentials-my-personal-creds`
 Existing aliases:
 `work-mode`: switch to work credentials
 `other-mode`: switch to other credentials
+## Helpful file locations:
+
+### Themes
+
+#### GTK
+
+Custom themes are downloaded to `/usr/share/themes/`
+
+Instructions for setting the GTK 2 & 3 themes can be found on the [arch wiki](https://wiki.archlinux.org/index.php/GTK%2B#Themes)
+
+I have set my theme to Arc-Dark by adding the following line to my `.zshenv`:
+
+`export GTK2_RC_FILES=/usr/share/themes/Arc-Dark/gtk-2.0/gtkrc`
