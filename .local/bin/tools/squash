@@ -3,6 +3,8 @@
 Red='\033[0;31m'
 Purple='\033[0;35m'
 Color_Off='\033[0m'
+White='\033[0;37m'
+On_Red='\033[41m' 
 
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 
@@ -16,8 +18,10 @@ git fetch
 echo -e "${Purple}\nMerging in latest changes from master\n${Color_Off}"
 git merge master
 
+
 if [[ $? == 128 || $? == 1 ]]; then
     echo -e "${Red}\nPlease resolve merge conflicts.${Color_Off}"
+    echo -e "${White}${On_Red}Do not re-run this script until resolving conflicts yourself manually."
     exit 1
 fi
 
