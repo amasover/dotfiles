@@ -32,4 +32,3 @@ git reset --soft $(git merge-base master $current_branch)
 
 echo -e "${Purple}Enter the message for this squashed commit:${Color_Off}"
 git commit
-
