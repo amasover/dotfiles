@@ -68,3 +68,6 @@ set shiftwidth=4
 set expandtab
 " highlight search matches
 set hlsearch
+
+nmap <Ctrl-V><Del> x
+imap <Ctrl-V><Del> <Ctrl-V><Esc>lxi

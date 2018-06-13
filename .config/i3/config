@@ -21,9 +21,9 @@ set $navy-blue   #011D32
 
 #Needed for i3-gaps
 hide_edge_borders both
-for_window [class="^.*"] border pixel 4
-gaps inner 30 
-gaps outer 10
+for_window [class="^.*"] border pixel 2
+gaps inner 8 
+gaps outer 2
 
 # [colors]
 # Nord
@@ -197,16 +197,15 @@ smart_borders on
 
 ## assign applications to workspaces:
 ## NOTE: use xprop command to get WM_CLASS (second string value)
-# assign [class="Xfce4-terminal"] $ws2
-assign [class="Google-chrome" instance="crx_nckgahadagoaajjgafhacjanaoiihapd"] $ws4
+#assign [class="Google-chrome" instance="crx_nckgahadagoaajjgafhacjanaoiihapd"] $ws4
 assign [class="Google-chrome"] $ws3
 assign [class="Emacs"] $ws1
 assign [class="Mysql-workbench-bin"] $ws5
 assign [class="Xfce4-terminal"] $ws2
-assign [class="HipChat"] $ws4
 assign [class="Spotify"] $ws6
 assign [class="Firefox"] $ws3
 for_window [class="trust"] floating enable
+assign [class="Pidgin"] $ws6
 
 ## move workspace to screen
 
@@ -267,7 +266,7 @@ set $ws2 "2: "
 set $ws3 "3: /"
 set $ws4 "4: "
 set $ws5 "5: "
-set $ws6 "6: "
+set $ws6 "6: "
 set $ws7 "7:  Windows Server"
 set $ws8 "8:  Windows 10"
 set $ws9 "9: "
@@ -353,14 +352,15 @@ bindsym XF86AudioRaiseVolume exec --no-startup-id pactl set-sink-volume 1 +5% #i
 bindsym XF86AudioLowerVolume exec --no-startup-id pactl set-sink-volume 1 -5% #decrease sound volume
 bindsym XF86AudioMute exec --no-startup-id pactl set-sink-mute 1 toggle # mute sound
 
+#fake-outputs 1920x1080+0-100,1920x2160+1920+0,1920x1080+3840+1080,1920x1080+3840+0
+
 ## start applications on startup
 exec_always --no-startup-id ~/.config/polybar/launch.sh
 exec --no-startup-id ~/.local/bin/polybar-reload
-exec --no-startup-id dropbox
 exec --no-startup-id emacs
-exec --no-startup-id firefox
-exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R
+exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
 exec_always --no-startup-id sh ~/.fehbg
+exec --no-startup-id LD_PRELOAD="" google-chrome-stable
 exec --no-startup-id compton
 exec --no-startup-id sh ~/.local/bin/tools/start-vbox-client
 exec_always --no-startup-id dunst

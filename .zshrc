@@ -1,4 +1,4 @@
-# If you come from bash you might have to change your $PATH.
+# If you come from bash you might have to camasoverge your $PATH.
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
 
 # Path to your oh-my-zsh installation.
@@ -16,13 +16,13 @@ ZSH_THEME="agnoster"
 # CASE_SENSITIVE="true"
 
 # Uncomment the following line to use hyphen-insensitive completion. Case
-# sensitive completion must be off. _ and - will be interchangeable.
+# sensitive completion must be off. _ and - will be intercamasovergeable.
 # HYPHEN_INSENSITIVE="true"
 
 # Uncomment the following line to disable bi-weekly auto-update checks.
 # DISABLE_AUTO_UPDATE="true"
 
-# Uncomment the following line to change how often to auto-update (in days).
+# Uncomment the following line to camasoverge how often to auto-update (in days).
 # export UPDATE_ZSH_DAYS=13
 
 # Uncomment the following line to disable colors in ls.
@@ -42,12 +42,12 @@ ZSH_THEME="agnoster"
 # much, much faster.
 # DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-# Uncomment the following line if you want to change the command execution time
+# Uncomment the following line if you want to camasoverge the command execution time
 # stamp shown in the history command output.
 # The optional three formats: "mm/dd/yyyy"|"dd.mm.yyyy"|"yyyy-mm-dd"
 # HIST_STAMPS="mm/dd/yyyy"
 
-# Would you like to use another custom folder than $ZSH/custom?
+# Would you like to use another custom folder tamasover $ZSH/custom?
 # ZSH_CUSTOM=/path/to/new-custom-folder
 
 # Which plugins would you like to load? (plugins can be found in ~/.oh-my-zsh/plugins/*)
@@ -105,6 +105,13 @@ load-nvmrc
 if [[ -r ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh ]]; then
     source ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh
 fi
+
+# ssh
+# export SSH_KEY_PATH="~/.ssh/rsa_id"
+## add bitbucket and github keys to keychain so that i dont have run ssh-add every time
+## i open shell
+## https://wiki.archlinux.org/index.php/SSH_keys#Keychain
+eval $(keychain --eval --quiet id_rsa id_rsa_gh)
 
 function pe() {
     echo "ERROR: $1" >&2
@@ -256,6 +263,7 @@ export PATH=~/.local/bin/work:$PATH
 export PATH=~/.local/bin:$PATH
 export PATH=~/.local/bin/tools:$PATH
 export PATH=/opt/idea-IC-171.4424.56/bin:$PATH
+export PATH=/usr/share/intellijidea-ce/bin:$PATH
 export PATH=~/.cargo/bin:$PATH
 
 ## NPM TOKEN SETUP
@@ -263,9 +271,12 @@ export NPM_TOKEN=$NPM_TOKEN
 
 export EDITOR=vim
 
+#use vim for manpages
 export MANPAGER="/bin/sh -c \"col -b | vim -c 'set ft=man ts=8 nomod nolist nonu noma' -\""
 
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+export LIBVA_DRIVER_NAME=i965
 
 export PATH=$PATH:/home/$USER/.local/bin
 
@@ -278,3 +289,10 @@ command -v kubectl >/dev/null 2>&1
 if [[ $? == 0 ]]; then
     source <(kubectl completion zsh)
 fi
+
+# Use vim mode
+bindkey -v
+bindkey '^R' history-incremental-pattern-search-backward
+# why are things strange sometimes?
+bindkey "\e[3~" delete-char
+>>>>>>> origin/master
