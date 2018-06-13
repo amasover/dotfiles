@@ -1,5 +1,7 @@
 #!/bin/sh
 
+sink=0
+
 volume_up() {
     sink=$(pacmd list | grep '*' | awk 'NR==1{print $3}')
     pactl set-sink-volume $sink +1%
