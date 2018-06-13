@@ -295,4 +295,3 @@ bindkey -v
 bindkey '^R' history-incremental-pattern-search-backward
 # why are things strange sometimes?
 bindkey "\e[3~" delete-char
->>>>>>> origin/master
