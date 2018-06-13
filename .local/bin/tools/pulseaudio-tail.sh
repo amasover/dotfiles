@@ -1,6 +1,6 @@
 #!/bin/sh
 
-sink=1
+sink=0
 
 volume_up() {
     pactl set-sink-volume $sink +1%

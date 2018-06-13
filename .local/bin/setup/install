@@ -53,6 +53,7 @@ common_pacman_packages="
     nmap
     freerdp
     go-tools
+    cloc
 "
 
 # list of packages no longer used
@@ -132,8 +133,7 @@ git clone https://github.com/VundleVim/Vundle.vim.git /home/$USER/.vim/bundle/Vu
 if [[ ! -f .nvm/nvm.sh ]]; then
   curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.2/install.sh | bash
   . ~/.nvm/nvm.sh ## source nvm
-  node_version=$(<~/.nvmrc)
-  nvm install $node_version
+  nvm install --lts=boron
   npm i -g tern ## tern is used for the javascript layer in emacs
 else
     echo "NVM already installed, skipping..."

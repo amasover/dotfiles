@@ -63,3 +63,6 @@ set number
 set tabstop=4
 set shiftwidth=4
 set expandtab
+
+nmap <Ctrl-V><Del> x
+imap <Ctrl-V><Del> <Ctrl-V><Esc>lxi
