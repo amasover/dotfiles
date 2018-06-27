@@ -12,7 +12,8 @@
 #   strings in the case statement.
 
 # get list of connected monitors, space separated
-active_monitors=$(xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" ORS=" ")
+#active_monitors=$(xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" ORS=" ")
+active_monitors=$(xrandr --listactivemonitors | tail -n +2 | awk '{print $2}' ORS=" " | sed 's/+//g')
 
 # my monitor configurations
 # replace with your own (based on the output above)
@@ -24,6 +25,9 @@ work_two_screens="VGA-1 VGA-2 "
 work_three_screens="VGA-1 VGA-2 VGA-3 "
 home_laptop="VGA-1 VGA-2~1 VGA-2~2 VGA-2~3 "
 home_four_screens="VGA-1 VGA-2 VGA-3 VGA-4 "
+home_4k="DP-0 "
+home_4k_two="DP-2 DP-3 "
+home_4k_three="DP-3~1 DP-3~2 DP-2 "
 
 function export_monitor_vars() {
     export MONITOR_MAIN=$1
@@ -62,6 +66,18 @@ function set_monitor_vars() {
         $home_four_screens )
             export_monitor_vars "VGA-1" "VGA-2" "VGA-4" "VGA-3"
             mode="home four screens"
+            ;;
+        $home_4k )
+            export_monitor_vars "DP-0"
+            mode="home 4k"
+            ;;
+        $home_4k_two )
+            export_monitor_vars "DP-2" "DP-3"
+            mode="home 4k divided by two"
+            ;;
+        $home_4k_three )
+            export_monitor_vars "DP-2" "DP-3~1" "" "DP-3~2"
+            mode="home 4k divided by three"
             ;;
         * )
             notify-send "Polybar" "Monitor configuration not recognized. See ~/.config/polybar/launch.sh for details"

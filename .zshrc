@@ -244,8 +244,6 @@ alias copy-monitors='xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" OR
 ## CUSTOM KEY BINDINGS ##
 ## zsh vi-mode settings
 # remaps ESC to fd
-bindkey -M viins 'fd' vi-cmd-mode
-bindkey 'lk' autosuggest-accept
 
 #use vim for manpages
 export MANPAGER="/bin/sh -c \"col -b | vim -c 'set ft=man ts=8 nomod nolist nonu noma' -\""
