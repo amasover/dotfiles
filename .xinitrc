@@ -3,7 +3,7 @@
 #/usr/bin/VBoxClient-all
 
 # hack for improving vbox rendering
-export LD_PRELOAD=/usr/lib64/VBoxOGL.so
+#export LD_PRELOAD=/usr/lib64/VBoxOGL.so
 
 userresources=$HOME/.Xresources
 usermodmap=$HOME/.Xmodmap
@@ -28,6 +28,10 @@ if [ -f "$usermodmap" ]; then
     xmodmap "$usermodmap"
 fi
 
+# setup virtual xrandr monitors
+xrandr --setmonitor 'DP-3~1' 1920/600x1080/170+1920+0 DP-3
+xrandr --setmonitor 'DP-3~2' 1920/600x1080/170+1920+1080 none
+
 # start some nice programs
 
 if [ -d /etc/X11/xinit/xinitrc.d ] ; then
@@ -37,4 +41,5 @@ if [ -d /etc/X11/xinit/xinitrc.d ] ; then
  unset f
 fi
 
+#DISPLAY=:0.1 i3 &
 exec i3

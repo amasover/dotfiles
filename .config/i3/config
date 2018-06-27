@@ -175,6 +175,10 @@ mode $mode_modes {
 bindsym $mod+c move workspace to output left
 ## move monitor right 
 bindsym $mod+u move workspace to output right
+## move monitor up
+bindsym $mod+i move workspace to output up
+## move monitor down
+bindsym $mod+b move workspace to output down
 
 
 # screen capture
@@ -198,6 +202,7 @@ smart_borders on
 ## assign applications to workspaces:
 ## NOTE: use xprop command to get WM_CLASS (second string value)
 #assign [class="Google-chrome" instance="crx_nckgahadagoaajjgafhacjanaoiihapd"] $ws4
+assign [class="teams-for-linux"] $ws4
 assign [class="Google-chrome"] $ws3
 assign [class="Emacs"] $ws1
 assign [class="Mysql-workbench-bin"] $ws5
@@ -352,15 +357,15 @@ bindsym XF86AudioRaiseVolume exec --no-startup-id pactl set-sink-volume 1 +5% #i
 bindsym XF86AudioLowerVolume exec --no-startup-id pactl set-sink-volume 1 -5% #decrease sound volume
 bindsym XF86AudioMute exec --no-startup-id pactl set-sink-mute 1 toggle # mute sound
 
-#fake-outputs 1920x1080+0-100,1920x2160+1920+0,1920x1080+3840+1080,1920x1080+3840+0
 
 ## start applications on startup
 exec_always --no-startup-id ~/.config/polybar/launch.sh
 exec --no-startup-id ~/.local/bin/polybar-reload
+exec --no-startup-id dropbox
 exec --no-startup-id emacs
 exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
 exec_always --no-startup-id sh ~/.fehbg
-exec --no-startup-id LD_PRELOAD="" google-chrome-stable
-exec --no-startup-id compton
-exec --no-startup-id sh ~/.local/bin/tools/start-vbox-client
+exec --no-startup-id google-chrome-stable
+#exec --no-startup-id compton
+exec --no-startup-id teams-for-linux
 exec_always --no-startup-id dunst

@@ -105,6 +105,7 @@ common_pacman_packages="
     groovy
     pacman-contrib
     cloc
+    xorg-xrandr
 "
 #pacman-contrib:
 #  used for 'checkupdates' command in polybar module that shows how many updates pacman has
@@ -173,12 +174,11 @@ core_aur_packages="
     awesome-terminal-fonts
 "
 for aur_package in $core_aur_packages; do
-    trizen -S --needed $aur_package --noconfirm --noedit
+    trizen -Sa --needed $aur_package --noconfirm --noedit
 done
 if [[ $core != true ]]; then
     ## install aur packages
     aur_packages="
-        hipchat
         spotify
         dropbox
         rtv
@@ -189,9 +189,11 @@ if [[ $core != true ]]; then
         cli-visualizer
         slack-desktop
         teams-for-linux
+        glxinfo
+        vault
 "
     for aur_package in $aur_packages; do
-        trizen -S --needed $aur_package --noconfirm --noedit
+        trizen -Sa --needed $aur_package --noconfirm --noedit
     done
 fi
 

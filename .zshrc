@@ -236,8 +236,8 @@ alias check-mode="aws s3 ls"
 ## CUSTOM KEY BINDINGS ##
 ## zsh vi-mode settings
 # remaps ESC to fd
-bindkey -M viins 'fd' vi-cmd-mode
-bindkey 'll' autosuggest-accept
+#bindkey -M viins 'fd' vi-cmd-mode
+#bindkey 'll' autosuggest-accept
 
 
 ## Robo3t -mongo-client-
@@ -276,7 +276,7 @@ export MANPAGER="/bin/sh -c \"col -b | vim -c 'set ft=man ts=8 nomod nolist nonu
 
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
-export LIBVA_DRIVER_NAME=i965
+#export LIBVA_DRIVER_NAME=i965
 
 export PATH=$PATH:/home/$USER/.local/bin
 
