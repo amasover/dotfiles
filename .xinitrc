@@ -3,7 +3,7 @@
 #/usr/bin/VBoxClient-all
 
 # hack for improving vbox rendering
-export LD_PRELOAD=/usr/lib64/VBoxOGL.so
+#export LD_PRELOAD=/usr/lib64/VBoxOGL.so
 
 userresources=$HOME/.Xresources
 usermodmap=$HOME/.Xmodmap
@@ -36,6 +36,9 @@ xautolock -time 5 -locker '/home/$USER/.local/bin/tools/lock' &
 
 # lock screen after 5min
 # xautolock -time 5 -locker '/home/$USER/.local/bin/tools/lock' &
+# setup virtual xrandr monitors
+xrandr --setmonitor 'DP-3~1' 1920/600x1080/170+1920+0 DP-3
+xrandr --setmonitor 'DP-3~2' 1920/600x1080/170+1920+1080 none
 
 # start some nice programs
 
@@ -51,4 +54,5 @@ fi
 # speakers whenever headphones are plugged in.
 /usr/bin/amixer -c 0 sset "Auto-Mute Mode" Disabled
 
+#DISPLAY=:0.1 i3 &
 exec i3

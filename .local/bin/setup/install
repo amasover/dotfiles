@@ -128,15 +128,27 @@ core_aur_packages="
     awesome-terminal-fonts
     flashfocus-git
 "
-function install_aur_packages() {
-    ## RUST
-    # some aur packages require compiling rust code
-    # so this intializes rust
-    rustup install stable
-    rustup default stable
-    ## END RUST
-    for aur_package in $core_aur_packages; do
-        trizen -S --needed $aur_package --noconfirm --noedit
+for aur_package in $core_aur_packages; do
+    trizen -Sa --needed $aur_package --noconfirm --noedit
+done
+if [[ $core != true ]]; then
+    ## install aur packages
+    aur_packages="
+        spotify
+        dropbox
+        rtv
+        siji-git
+        xorg-xset
+        remmina-plugin-rdesktop
+        pgadmin4
+        cli-visualizer
+        slack-desktop
+        teams-for-linux
+        glxinfo
+        vault
+"
+    for aur_package in $aur_packages; do
+        trizen -Sa --needed $aur_package --noconfirm --noedit
     done
 
     if [[ $_quick != true ]]; then

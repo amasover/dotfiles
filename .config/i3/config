@@ -164,6 +164,10 @@ bindsym $mod+n [instance="dropdown"] scratchpad show
 bindsym $mod+c move workspace to output left
 ## move monitor right 
 bindsym $mod+u move workspace to output right
+## move monitor up
+bindsym $mod+i move workspace to output up
+## move monitor down
+bindsym $mod+b move workspace to output down
 
 # screen capture
 # bindsym Print exec --no-startup-id scrot "%Y-%m-%d_%H:%M:%S_$wx$h.png" -e 'mv $f ~/Dropbox/Screenshots/2017/$f'
@@ -186,6 +190,7 @@ smart_borders on
 ## assign applications to workspaces:
 ## NOTE: use xprop command to get WM_CLASS (second string value)
 #assign [class="Google-chrome" instance="crx_nckgahadagoaajjgafhacjanaoiihapd"] $ws4
+assign [class="teams-for-linux"] $ws4
 assign [class="Google-chrome"] $ws3
 assign [class="Emacs"] $ws1
 assign [class="Mysql-workbench-bin"] $ws5
@@ -343,14 +348,17 @@ bindsym $mod+Shift+f exec --no-startup-id "firefox --private-window duckduckgo.c
 # END FIREFOX
 
 
-#fake-outputs 1920x1080+0-100,1920x2160+1920+0,1920x1080+3840+1080,1920x1080+3840+0
 
 ## start applications on startup
 exec_always --no-startup-id ~/.config/polybar/launch.sh
 exec --no-startup-id emacs
 exec --no-startup-id LD_PRELOAD="" google-chrome-stable
 exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
-exec --no-startup-id compton
-exec --no-startup-id spotify
 exec --no-startup-id sh ~/.local/bin/tools/start-vbox-client
+exec --no-startup-id dropbox
+exec --no-startup-id emacs
+exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
+exec --no-startup-id google-chrome-stable
+exec --no-startup-id teams-for-linux
 exec_always --no-startup-id dunst
+            
