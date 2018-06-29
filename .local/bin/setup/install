@@ -106,6 +106,7 @@ common_pacman_packages="
     pacman-contrib
     cloc
     xorg-xrandr
+    xautolock
 "
 #pacman-contrib:
 #  used for 'checkupdates' command in polybar module that shows how many updates pacman has
