@@ -159,6 +159,8 @@ rustup install stable
 rustup default stable
 ## END RUST
 
+trizen -Sa --needed yay --noconfirm --noedit
+
 core_aur_packages="
     i3-gaps-next-git
     polybar-git
@@ -169,13 +171,13 @@ core_aur_packages="
     xorg-xprop
     dunstify
     bashmount
-    trizen
+    yay
     mirage
     arc-gtk-theme
     awesome-terminal-fonts
 "
 for aur_package in $core_aur_packages; do
-    trizen -Sa --needed $aur_package --noconfirm --noedit
+    yay -Sy --aur $aur_package --answerupgrade none --answerdiff none --answeredit none --answerclean none
 done
 if [[ $core != true ]]; then
     ## install aur packages
@@ -197,7 +199,7 @@ if [[ $core != true ]]; then
         xprintidle
 "
     for aur_package in $aur_packages; do
-        trizen -Sa --needed $aur_package --noconfirm --noedit
+        yay -Sy --aur $aur_package --answerupgrade none --answerdiff none --answeredit none --answerclean none
     done
 fi
 
