@@ -98,6 +98,8 @@ function uninstall_deprecated_packages() {
 
 trizen -Sa --needed yay --noconfirm --noedit
 
+trizen -Sa --needed yay --noconfirm --noedit
+
 core_aur_packages="
     i3-gaps-next-git
     polybar-git
