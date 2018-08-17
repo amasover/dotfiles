@@ -52,16 +52,16 @@ function check_required_params() {
 }
 
 function update_pacman() {
-    sudo pacman -Syu --noconfirm --quiet
+    sudo pacman -Syu --noconfirm
     sudo pacman-optimize && sync
 }
 
-# function install_pacman_packages() {
-#     common_pacman_packages=$(cat ~/.config/dotfiles/arch-packages/pacman)
-#     for package_name in $common_pacman_packages; do
-#         sudo pacman -S $package_name --needed --noconfirm --quiet
-#     done
-# }
+function install_pacman_packages() {
+    common_pacman_packages=$(cat ~/.config/dotfiles/arch-packages/pacman)
+    for package_name in $common_pacman_packages; do
+        sudo pacman -S $package_name --needed --noconfirm --quiet
+    done
+}
 
 #pacman-contrib:
 #  used for 'checkupdates' command in polybar module that shows how many updates pacman has
@@ -115,6 +115,12 @@ slow_aur_packages="
     paper-icon-theme-git
 "
 
+function uninstall_deprecated_packages() {
+    echo 'removing packages that are no longer needed'
+    for package_name in $remove_packages; do
+        sudo pacman -R --noconfirm
+    done
+}
 core_aur_packages="
     i3-gaps-next-git
     exa
@@ -128,30 +134,15 @@ core_aur_packages="
     awesome-terminal-fonts
     flashfocus-git
 "
-for aur_package in $core_aur_packages; do
-    trizen -Sa --needed $aur_package --noconfirm --noedit
-done
-if [[ $core != true ]]; then
-    ## install aur packages
-    aur_packages="
-        spotify
-        dropbox
-        rtv
-        siji-git
-        xorg-xset
-        remmina-plugin-rdesktop
-        pgadmin4
-        cli-visualizer
-        slack-desktop
-        teams-for-linux
-        glxinfo
-        vault
-        google-chrome
-        google-chrome-beta
-        xprintidle
-"
-    for aur_package in $aur_packages; do
-        trizen -Sa --needed $aur_package --noconfirm --noedit
+function install_aur_packages() {
+    ## RUST
+    # some aur packages require compiling rust code
+    # so this intializes rust
+    rustup install stable
+    rustup default stable
+    ## END RUST
+    for aur_package in $core_aur_packages; do
+        trizen -S --needed $aur_package --noconfirm --noedit
     done
 
     if [[ $_quick != true ]]; then
@@ -167,6 +158,8 @@ if [[ $core != true ]]; then
 ## Packages that take forever to install:
 # - paper-icon-theme-git 
 # - polybar (needs to compile c++)
+}
+
 function install_extra_aur_packages() {
     if [[ $full = true ]]; then
         ## install aur packages
@@ -207,8 +200,7 @@ function install_docker() {
     fi
 }
 
-function install_oh_my_zsh_and_plugins() {
-    pacman -S zsh --no-confirm
+function install_oh-my-zsh_and_plugins() {
     ## Install oh-my-zsh
     sh /home/$USER/.local/bin/tools/install_oh_my_zsh
     yadm reset --hard origin/master
@@ -237,6 +229,7 @@ function install_node_packages() {
 function install_python_packages() {
     ## Python package installs
     pip install --upgrade --user pip
+    pip install --upgrade --user wakatime
     pip install --upgrade --user awscli
     pip install --upgrade --user polybar-reload
 }
@@ -364,6 +357,17 @@ function main() {
     # install_node_packages
     if [[ $_new == true ]]; then
         # echo hello
+    check_required_params
+    update_pacman
+    install_pacman_packages
+    install_aur_packages
+    install_extra_aur_packages
+    install_docker
+    install_node_packages
+    install_python_packages
+
+    if [[ _new == true ]]; then
+        install_oh-my-zsh_and_plugins
         reboot
     fi
 }

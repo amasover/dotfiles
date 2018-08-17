@@ -82,8 +82,7 @@ source $ZSH/oh-my-zsh.sh
 if [[ -n $SSH_CONNECTION ]]; then
   export EDITOR='vim'
 else
-  export EDITOR='nvim'
-fi
+export ARCHFLAGS="-arch x86_64"
 
 # Compilation flags
 export ARCHFLAGS="-arch x86_64"
@@ -106,6 +105,17 @@ function edit-config {
 function grep_i3_keybinds {
     cat "${HOME}"/.config/i3/config | awk '/^bindsym/ { print }' | grep "\$mod+$1 "
 }
+## RUST
+export PATH=~/.cargo/bin:$PATH
+RUST_SRC_PATH=~/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/src
+## end RUST
+
+## GOLANG
+export GOPATH=~/code/go
+# add go bin folder to path so that compiled bin files can be
+# executed from anywhere using terminal
+export PATH="$GOPATH/bin:$PATH"
+## END GOLANG
 
 # Set personal aliases, overriding those provided by oh-my-zsh libs,
 # plugins, and themes. Aliases can be placed here, though oh-my-zsh
@@ -215,6 +225,16 @@ update_pacman_mirrorlist() {
 }
 alias yaf="yadm add ~/.yadm/files.gpg"
 
+# leave this function with the _ prefix and aliased below without
+# the prefix. Without them zsh errors on sourcing because grep
+# is referencing an alias in this function. ( my grep is grep plus some
+# formatting flags)
+_sshg() {
+    cat ~/.ssh/config | grep "Host $1"
+}
+# quickly grep ssh hosts from config file
+alias grepssh=_sshg
+
 #switch between different AWS accounts
 alias work-mode="switch-aws-creds.sh work"
 alias other-mode="switch-aws-creds.sh other"
@@ -229,6 +249,28 @@ _sshg() {
 }
 # quickly grep ssh hosts from config file
 alias grepssh=_sshg
+
+## CUSTOM KEY BINDINGS ##
+## zsh vi-mode settings
+# remaps ESC to fd
+#bindkey -M viins 'fd' vi-cmd-mode
+#bindkey 'll' autosuggest-accept
+
+
+## Robo3t -mongo-client-
+export PATH=/usr/bin/robo3t/bin:$PATH
+
+## vimgolf
+export PATH="$PATH:/home/$USER/.gem/ruby/2.5.0/gems/vimgolf-0.4.8/bin"
+## end vimgolf
+
+export PATH=~/.local/bin/work:$PATH
+export PATH=~/.local/bin:$PATH
+export PATH=~/.local/bin/tools:$PATH
+export PATH=/opt/idea-IC-171.4424.56/bin:$PATH
+export PATH=/usr/share/intellijidea-ce/bin:$PATH
+export PATH=~/.cargo/bin:$PATH
+
 ## NPM TOKEN SETUP
 export NPM_TOKEN=$NPM_TOKEN
 
@@ -272,3 +314,13 @@ bindkey -v
 bindkey '^R' history-incremental-pattern-search-backward
 # why are things strange sometimes?
 bindkey "\e[3~" delete-char
+
+## Azure
+if [[ -f /home/$USER/.local/bin/azure-cli/az.completion ]]; then
+    source /home/$USER/.local/bin/azure-cli/az.completion
+fi
+
+## VIM POWERLINE
+if [[ -r ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh ]]; then
+    source ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh
+fi
