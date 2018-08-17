@@ -124,7 +124,7 @@ core_aur_packages="
     bashmount
     trizen
     mirage
-    arc-gtk-theme-git
+    arc-gtk-theme
     awesome-terminal-fonts
     flashfocus-git
 "
@@ -146,6 +146,9 @@ if [[ $core != true ]]; then
         teams-for-linux
         glxinfo
         vault
+        google-chrome
+        google-chrome-beta
+        xprintidle
 "
     for aur_package in $aur_packages; do
         trizen -Sa --needed $aur_package --noconfirm --noedit
@@ -297,6 +300,7 @@ function install_golang_packages() {
 # go get -u -v golang.org/x/tools/cmd/gorename
 # go get -u -v golang.org/x/tools/cmd/goimports
 
+xdg-settings set default-web-browser google-chrome.desktop
 
 function main() {
     source $HOME/.profile

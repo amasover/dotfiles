@@ -7,5 +7,15 @@ install_pacman_packages
 sudo pacman -Syu --noconfirm
 # resync, upgrade, and downgrade if newer than repo
 # upgrades aur and pacman packages
-trizen -Syua --noconfirm
 
+yay -Syu --devel --timeupdate --answerupgrade none --answerdiff none --answeredit none --answerclean all
+
+# upgrade all pip system packages
+sudo pip install --upgrade $(sudo pip list --outdated | awk '{print $1}' | tail -n+3) || true
+# upgrade all pip user packages
+pip install --user --upgrade $(pip list --outdated | awk '{print $1}' | tail -n+3) || true
+vim -i NONE -c VundleUpdate -c quitall
+#sudo pacman -Syu --noconfirm
+# resync, upgrade, and downgrade if newer than repo
+# upgrades aur and pacman packages
+#trizen -Syua --noconfirm
