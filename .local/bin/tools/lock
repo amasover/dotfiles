@@ -4,12 +4,16 @@ scrot /tmp/screen.png
 convert /tmp/screen.png -scale 10% -scale 1000% /tmp/screen.png
 [[ -f $1 ]] && convert /tmp/screen.png $1 -gravity center -composite -matte /tmp/screen.png
 dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Stop
-(i3lock -n -i /tmp/screen.png) &
 
 # DPMS (monitor standby) stuff.
 # Some stuff like maybe playing music interferes with dpms,
 # so we can't do the "normal" way of sleeping a monitor,
 # which is `xset dpms 0 0 1200` (set a timeout of 1200 seconds)
+(i3lock -n -i /tmp/screen.png) &
+
+# DPMS (monitor standby) stuff.
+# Sigh....I guess some stuff like maybe playing music interferes
+# with dpms in linux, so `xset dpms 0 0 1200` doesn't work.
 # I'm doing it manually here.
 (while :
 do

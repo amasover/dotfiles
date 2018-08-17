@@ -5,6 +5,10 @@
 # hack for improving vbox rendering
 #export LD_PRELOAD=/usr/lib64/VBoxOGL.so
 
+# Workaround virtualbox bug
+# See: https://www.virtualbox.org/ticket/13653?cversion=0&cnum_hist=40
+CR_RENDER_FORCE_PRESENT_MAIN_THREAD=0
+
 userresources=$HOME/.Xresources
 usermodmap=$HOME/.Xmodmap
 sysresources=/etc/X11/xinit/.Xresources
@@ -44,7 +48,7 @@ xrandr --setmonitor 'DP-3~2' 1920/600x1080/170+1920+1080 none
 xset dpms 0 0 1200
 
 # lock screen after 5min
-xautolock -time 1 -locker '/home/$USER/.local/bin/tools/lock' &
+xautolock -time 5 -locker '/home/$USER/.local/bin/tools/lock' &
 
 # start some nice programs
 

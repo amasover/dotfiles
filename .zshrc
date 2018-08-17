@@ -1,5 +1,5 @@
 # If you come from bash you might have to camasoverge your $PATH.
-# export PATH=$HOME/bin:/usr/local/bin:$PATH
+ export PATH=$HOME/bin:/usr/local/bin:$PATH
 
 # Path to your oh-my-zsh installation.
 export ZSH=$HOME/.oh-my-zsh
@@ -186,6 +186,7 @@ alias cat="ccat"
 alias ls="exa"
 alias ll="exa -la"
 alias gimme="sudo pacman -S"
+alias remorph='sudo pacman -Rsn $(pacman -Qdtq)'
 alias bgf="~/.fehbg"
 alias bgn="update_background"
 
