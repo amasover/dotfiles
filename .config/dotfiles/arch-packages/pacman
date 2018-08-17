@@ -1,7 +1,7 @@
 xorg-server
 jq
 xorg-xinit
-vim
+gvim
 zsh
 keychain
 xclip
@@ -56,6 +56,8 @@ ncurses
 fftw
 groovy
 pacman-contrib
+cloc
+xorg-xrandr
 xautolock
 w3m
 reflector

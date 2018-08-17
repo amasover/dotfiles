@@ -121,6 +121,9 @@ function uninstall_deprecated_packages() {
         sudo pacman -R --noconfirm
     done
 }
+
+trizen -Sa --needed yay --noconfirm --noedit
+
 core_aur_packages="
     i3-gaps-next-git
     exa
@@ -128,7 +131,7 @@ core_aur_packages="
     xorg-xprop
     dunstify
     bashmount
-    trizen
+    yay
     mirage
     arc-gtk-theme
     awesome-terminal-fonts
@@ -142,7 +145,7 @@ function install_aur_packages() {
     rustup default stable
     ## END RUST
     for aur_package in $core_aur_packages; do
-        trizen -S --needed $aur_package --noconfirm --noedit
+    yay -Sy --aur $aur_package --answerupgrade none --answerdiff none --answeredit none --answerclean none
     done
 
     if [[ $_quick != true ]]; then
@@ -176,7 +179,7 @@ function install_extra_aur_packages() {
             teams-for-linux
     "
         for aur_package in $aur_packages; do
-            trizen -S --needed $aur_package --noconfirm --noedit
+        yay -Sy --aur $aur_package --answerupgrade none --answerdiff none --answeredit none --answerclean none
         done
     fi
 }
