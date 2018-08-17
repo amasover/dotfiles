@@ -4,12 +4,14 @@
 # Path to your oh-my-zsh installation.
 export ZSH=$HOME/.oh-my-zsh
 
+# auto load .nvmrc and apply when cd into a directory that has an .nvmrc
+# this must be loaded before the zsh-nvm plugin
+export NVM_AUTO_USE=true
+
 
 # Set name of the theme to load. Optionally, if you set this to "random"
 # it'll load a random theme each time that oh-my-zsh is loaded.
 # See https://github.com/robbyrussell/oh-my-zsh/wiki/Themes
-#ZSH_THEME="robbyrussell"
-#ZSH_THEME="gnzh"
 ZSH_THEME="agnoster"
 # ZSH_THEME="lambda-mod"
 # Uncomment the following line to use case-sensitive completion.
@@ -54,57 +56,37 @@ ZSH_THEME="agnoster"
 # Custom plugins may be added to ~/.oh-my-zsh/custom/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(git docker vi-mode archlinux zsh-autosuggestions)
+plugins=(
+    git
+    docker
+    vi-mode
+    archlinux
+    zsh-autosuggestions
+    # custom plugins #
+    # https://github.com/lukechilds/zsh-nvm
+    zsh-nvm)
 
 source $ZSH/oh-my-zsh.sh
 
-# User configuration
+#############################
+#     USER CONFIGURATION    #
+#############################
 
-# export MANPATH="/usr/local/man:$MANPATH"
-
-# You may need to manually set your language environment
-# export LANG=en_US.UTF-8
+# Export these user specific environment variables in your ~/.zshenv
+# in order for these aliases to work:
+    # export GITHUB_ACCOUNT=
+    # export BITBUCKET_ACCOUNT=
+    # export NPM_TOKEN=
 
 # Preferred editor for local and remote sessions
-# if [[ -n $SSH_CONNECTION ]]; then
-#   export EDITOR='vim'
-# else
-#   export EDITOR='mvim'
-# fi
+if [[ -n $SSH_CONNECTION ]]; then
+  export EDITOR='vim'
+else
+  export EDITOR='mvim'
+fi
 
 # Compilation flags
-# export ARCHFLAGS="-arch x86_64"
-
-## NVM STUFF
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-
-autoload -U add-zsh-hook
-load-nvmrc() {
-    local node_version="$(nvm version)"
-    local nvmrc_path="$(nvm_find_nvmrc)"
-
-    if [ -n "$nvmrc_path" ]; then
-        local nvmrc_node_version=$(nvm version "$(cat "${nvmrc_path}")")
-
-        if [ "$nvmrc_node_version" = "N/A" ]; then
-            nvm install
-        elif [ "$nvmrc_node_version" != "$node_version" ]; then
-            nvm use
-        fi
-    elif [ "$node_version" != "$(nvm version default)" ]; then
-        echo "Reverting to nvm default version"
-        nvm use default
-    fi
-}
-add-zsh-hook chpwd load-nvmrc
-load-nvmrc
-## END NVM STUFF
-
-## VIM POWERLINE
-if [[ -r ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh ]]; then
-    source ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh
-fi
+export ARCHFLAGS="-arch x86_64"
 
 # ssh
 # export SSH_KEY_PATH="~/.ssh/rsa_id"
@@ -128,35 +110,18 @@ function edit-config {
     fi
 }
 
+## RUST
+export PATH=~/.cargo/bin:$PATH
+RUST_SRC_PATH=~/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/src
+## end RUST
 
-# set the following in your ~/.zshenv
-# export BB_ACCOUNT_NAME=""
-# export GH_ACCOUNT_NAME=""
-# export CODE_DIR="~/code"
-# to your values
-# usage example: clone gh dotfiles
-function clone() {
-    dir="${CODE_DIR:-${PWD}}"
-    echo $dir
-    if [[ -z $1 ]]; then
-        pe "Must provide 'gh' or 'bb'"
-    elif [[ -z $2 ]]; then
-        pe "Must provide a repository name"
-    fi
+## GOLANG
+export GOPATH=~/code/go
+# add go bin folder to path so that compiled bin files can be
+# executed from anywhere using terminal
+export PATH="$GOPATH/bin:$PATH"
+## END GOLANG
 
-    case $1 in
-        "bb")
-            repo="git@bitbucket.org:${BB_ACCOUNT_NAME}/${2}.git"
-            echo $repo
-            git clone $repo $dir
-            ;;
-        "gh")
-            repo="git@github.com:${GH_ACCOUNT_NAME}/${2}.git"
-            echo $repo
-            git clone $repo $dir
-            ;;
-    esac
-}
 
 
 # Set personal aliases, overriding those provided by oh-my-zsh libs,
@@ -170,8 +135,10 @@ alias ez="vim ~/.zshrc"
 alias vz="vim ~/.zshrc"
 alias sz="source ~/.zshrc"
 alias gs="git status"
-alias gau"git add -u"
+alias gau="git add -u" # git add unstaged only
+alias gaa="git add -A" # git add all
 alias gcm="git commit -m"
+alias gca="git commit --amend"
 alias gb="git branch"
 alias gd="git diff"
 alias gds="git diff --staged"
@@ -179,10 +146,16 @@ alias gcb="git checkout -b"
 alias gc="git commit --verbose"
 alias gbl="git branch -l"
 alias gp="git push"
+alias gpf="git push --force-with-lease"
 alias gpp="quick-git-check-in"
 alias glv="git log | vim -"
 alias gl="git log"
-alias clone=clone
+# git push and set upstream to current branch
+function push_upstream () {
+    git push -u origin $(git branch | grep "*" | awk -F " " '{print $NF}')
+}
+alias gpu=push_upstream
+alias sctl="sudo systemctl"
 alias pbcopy="xclip -selection clipboard"
 alias pbpaste="xclip -selection clipboard -o"
 alias restart="shutdown -r now"
@@ -191,9 +164,11 @@ alias xrl="xrdb ~/.Xresources"
 alias nr="node run.js"
 alias kl="kubectl"
 alias pacman="sudo pacman"
+alias x="chmod +x"
 
 alias y="yadm"
 alias ya="yadm add"
+alias yaa="yadm add -u" # add only unstaged files
 alias yau="yadm add -u" # add only unstaged files
 alias yc="yadm commit --verbose"
 alias yca="yadm commit --amend"
@@ -207,7 +182,6 @@ alias yds="yadm diff --staged"
 alias yaf="yadm add ~/.yadm/files.gpg"
 alias yafp="yadm add ~/.yadm/files.gpg ~/.yadm/encrypt && yadm commit -m 'encrypt' && yadm push"
 alias token=~/.ssh/token
-alias decrypt="yadm decrypt && rsync -a ~/home/$USER/ ~/ && rm -rf ~/home/$USER"
 
 alias setup-run="bash ~/.local/bin/setup/install"
 alias setup-edit="vim ~/.local/bin/setup/install"
@@ -226,7 +200,20 @@ alias bgf="~/.fehbg"
 alias bgn="update_background"
 
 alias c="cd ~/code && ll"
-alias cgw="cd ~/code/go/src/bitbucket.org/wtsdevops && ll"
+alias cgbb="cd ~/code/go/src/bitbucket.org/wtsdevops && ll"
+alias cggh="cd $GOPATH/src/github.com/$GITHUB_ACCOUNT && ll"
+alias vssh="vim ~/.ssh/config"
+alias lssh="ls ~/.ssh"
+
+# leave this function with the _ prefix and aliased below without
+# the prefix. Without them zsh errors on sourcing because grep
+# is referencing an alias in this function. ( my grep is grep plus some
+# formatting flags)
+_sshg() {
+    cat ~/.ssh/config | grep "Host $1"
+}
+# quickly grep ssh hosts from config file
+alias grepssh=_sshg
 
 #switch between different AWS accounts
 alias work-mode="switch-aws-creds.sh work"
@@ -243,18 +230,6 @@ alias check-mode="aws s3 ls"
 
 ## Robo3t -mongo-client-
 export PATH=/usr/bin/robo3t/bin:$PATH
-
-## RUST
-export PATH=~/.cargo/bin:$PATH
-RUST_SRC_PATH=~/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/src
-## end RUST
-
-## GOLANG
-export GOPATH=~/code/go
-# add go bin folder to path so that compiled bin files can be
-# executed from anywhere using terminal
-export PATH="$PATH:$GOPATH/bin"
-## END GOLANG
 
 ## vimgolf
 export PATH="$PATH:/home/$USER/.gem/ruby/2.5.0/gems/vimgolf-0.4.8/bin"
@@ -281,10 +256,6 @@ export MANPAGER="/bin/sh -c \"col -b | vim -c 'set ft=man ts=8 nomod nolist nonu
 
 export PATH=$PATH:/home/$USER/.local/bin
 
-if [[ -f /home/$USER/.local/bin/azure-cli/az.completion ]]; then
-    source /home/$USER/.local/bin/azure-cli/az.completion
-fi
-
 ## Kubernetes
 command -v kubectl >/dev/null 2>&1
 if [[ $? == 0 ]]; then
@@ -296,3 +267,13 @@ bindkey -v
 bindkey '^R' history-incremental-pattern-search-backward
 # why are things strange sometimes?
 bindkey "\e[3~" delete-char
+
+## Azure
+if [[ -f /home/$USER/.local/bin/azure-cli/az.completion ]]; then
+    source /home/$USER/.local/bin/azure-cli/az.completion
+fi
+
+## VIM POWERLINE
+if [[ -r ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh ]]; then
+    source ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh
+fi
