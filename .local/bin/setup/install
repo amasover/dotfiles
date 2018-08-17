@@ -54,7 +54,7 @@ common_pacman_packages="
     xorg-server
     jq
     xorg-xinit
-    vim
+    gvim
     zsh
     keychain
     xclip
@@ -171,7 +171,7 @@ core_aur_packages="
     bashmount
     trizen
     mirage
-    arc-gtk-theme-git
+    arc-gtk-theme
     awesome-terminal-fonts
 "
 for aur_package in $core_aur_packages; do
@@ -192,6 +192,9 @@ if [[ $core != true ]]; then
         teams-for-linux
         glxinfo
         vault
+        google-chrome
+        google-chrome-beta
+        xprintidle
 "
     for aur_package in $aur_packages; do
         trizen -Sa --needed $aur_package --noconfirm --noedit
@@ -239,6 +242,7 @@ if [[ ! -f .nvm/nvm.sh ]]; then
   . ~/.nvm/nvm.sh ## source nvm
   nvm install --lts=boron
   npm i -g tern ## tern is used for the javascript layer in emacs
+  npm i vmd ## used for markdown in emacs
 else
     echo "NVM already installed, skipping..."
 fi
@@ -282,6 +286,7 @@ fi
 # go get -u -v golang.org/x/tools/cmd/gorename
 # go get -u -v golang.org/x/tools/cmd/goimports
 
+xdg-settings set default-web-browser google-chrome.desktop
 
 yadm reset --hard origin/master
 
