@@ -17,11 +17,11 @@ dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPl
 # I'm doing it manually here.
 (while :
 do
-    # Turn the screen off every 10 minutes (do it forever
+    # Turn the screen off every 30 minutes (do it forever
     # so that the screen will turn back off if we have a case
     # where the user wakes the screen up, but then gets distracted
     # and doesn't enter their password).
-    sleep 1200
+    sleep 3600
     # Only turn the screen off if we've been idle for more than
     # a minute (to avoid turning it off right as the user is
     # entering their password).
