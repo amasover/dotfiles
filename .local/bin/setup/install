@@ -142,6 +142,7 @@ function install_extra_aur_packages() {
             cli-visualizer
             slack-desktop
             teams-for-linux
+            antibody-bin
     "
         for aur_package in $aur_packages; do
         yay -Sy --aur $aur_package --answerupgrade none --answerdiff none --answeredit none --answerclean none
@@ -200,6 +201,7 @@ function install_python_packages() {
     pip install --upgrade --user wakatime
     pip install --upgrade --user awscli
     pip install --upgrade --user polybar-reload
+    pip install --upgrade --user pip-review
 }
 
 

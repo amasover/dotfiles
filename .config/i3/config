@@ -113,8 +113,8 @@ set $locker ~/.local/bin/tools/lock
 mode $mode_system {
     bindsym l exec --no-startup-id $locker, mode "default"
     bindsym o exec --no-startup-id i3-msg exit, mode "default"  
-    bindsym s exec --no-startup-id $locker && systemctl suspend, mode "default"
-    bindsym h exec --no-startup-id $locker && systemctl hibernate, mode "default"
+    bindsym s exec --no-startup-id systemctl suspend && $locker, mode "default"
+    bindsym h exec --no-startup-id systemctl hibernate && $locker, mode "default"
     bindsym r exec --no-startup-id systemctl reboot, mode "default"
     bindsym Shift+s exec --no-startup-id systemctl poweroff -i, mode "default"
     ## back to normal: Enter or Escape
@@ -160,11 +160,11 @@ bindsym $mod+b move workspace to output down
 # screen capture
 # bindsym Print exec --no-startup-id scrot "%Y-%m-%d_%H:%M:%S_$wx$h.png" -e 'mv $f ~/Dropbox/Screenshots/2017/$f'
 # bindsym Print exec --no-startup-id screenshot 
-set $mode_print "Print Mode: Press `print` again to capture all monitors, `f`: focused window, `b`: focused window + window border"
+set $mode_print "Print Mode: Press `p` again to capture all monitors, `f`: focused window, `b`: focused window + window border"
 bindsym $mod+Shift+p mode $mode_print
 mode $mode_print {
     bindsym s exec --no-startup-id "~/.local/bin/tools/screenshot -s", mode default
-    bindsym Print exec --no-startup-id ~/.local/bin/tools/screenshot, mode default
+    bindsym p exec --no-startup-id ~/.local/bin/tools/screenshot, mode default
     bindsym f exec --no-startup-id ~/.local/bin/tools/screenshot -f, mode default
     bindsym b exec --no-startup-id ~/.local/bin/tools/screenshot -b, mode default
     bindsym Return mode "default"
@@ -253,6 +253,22 @@ set $ws8 "8:  Windows 10"
 set $ws9 "9: "
 set $ws0 "0: "
 
+# monitor stuff
+
+set $mon0 "DP-3~1"
+set $mon1 "DP-3~2"
+set $mon2 "DP-2"
+
+workspace $ws1 output $mon2
+workspace $ws2 output $mon1
+workspace $ws3 output $mon0
+workspace $ws4 output $mon0
+workspace $ws5 output $mon0
+workspace $ws6 output $mon1
+workspace $ws7 output $mon1
+workspace $ws8 output $mon1
+workspace $ws9 output $mon2
+
 # switch to workspace
 bindsym $mod+1 workspace $ws1
 bindsym $mod+2 workspace $ws2
@@ -323,7 +339,7 @@ exec --no-startup-id dropbox
 exec --no-startup-id emacs
 exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
 exec_always --no-startup-id sh ~/.fehbg
-exec --no-startup-id google-chrome-beta
+exec --no-startup-id google-chrome
 #exec --no-startup-id compton
 exec --no-startup-id teams-for-linux
 exec_always --no-startup-id sh ~/.fehbg

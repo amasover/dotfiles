@@ -67,6 +67,7 @@ plugins=(
     zsh-nvm)
 
 source $ZSH/oh-my-zsh.sh
+source ~/.zsh_plugins.sh
 
 #############################
 #     USER CONFIGURATION    #
@@ -185,7 +186,7 @@ alias token=~/.ssh/token
 
 alias setup-run="bash ~/.local/bin/setup/install"
 alias setup-edit="vim ~/.local/bin/setup/install"
-alias update="bash ~/.local/bin/setup/update"
+alias update="zsh ~/.local/bin/setup/update"
 alias tools="cd ~/.local/bin/tools/ && ll"
 
 alias npmis="npm install --save"
@@ -267,6 +268,7 @@ bindkey -v
 bindkey '^R' history-incremental-pattern-search-backward
 # why are things strange sometimes?
 bindkey "\e[3~" delete-char
+bindkey '^J' self-insert-unmeta
 
 ## Azure
 if [[ -f /home/$USER/.local/bin/azure-cli/az.completion ]]; then

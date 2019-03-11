@@ -1,13 +1,77 @@
-#!/usr/bin/env bash
+#!/usr/bin/env zsh
+source ~/.zsh_plugins.sh
 
-yay -Syu --devel --timeupdate --answerupgrade none --answerdiff none --answeredit none --answerclean all
+vared -p $'\nUpdate Spacemacs? (will kill any running emacs) (y/n): ' -c update_emacs
 
-# upgrade all pip system packages
-sudo pip install --upgrade $(sudo pip list --outdated | awk '{print $1}' | tail -n+3) || true
-# upgrade all pip user packages
-pip install --user --upgrade $(pip list --outdated | awk '{print $1}' | tail -n+3) || true
+if [[ "${update_emacs}" == "y" ]]; then
+    echo $'\nStarting Spacemacs upgrade. Be sure to update your dotfile (SPC f e D)'
+    echo $'\nKilling emacs...'
+    i3-msg '[class="Emacs"] kill' >> /dev/null
+    echo $'\nUpdating Spacemacs from Github repo...'
+    cd /home/$USER/.emacs.d
+    git stash
+    git pull
+    git stash pop
+    echo $'\nUpdating installed emacs packages...\n'
+    echo 'Please follow prompts and restart emacs (SPC q r)
+if new packages were installed.' | tr '\n' ' '
+    i3-msg "exec --no-startup-id emacs --eval '(configuration-layer/update-packages)'" \
+        >> /dev/null
+else
+    echo $'\nSkipping emacs update.'
+fi
+
+echo "Updating all system and AUR packages..."
+yay -Syu --devel --noconfirm --timeupdate --answerupgrade none --answerdiff none --answeredit none --answerclean all --useask
+
+echo $'\n\nUpdating oh-my-zsh...'
+cd /home/$USER/.oh-my-zsh
+git stash
+git pull
+git stash pop
+
+echo $'\n\nUpdating all custom zsh packages...'
+antibody update
+
+nvm_ver=$(<"${HOME}"/.nvmrc)
+echo $'\n\nUpdating nvm to latest version on branch' "${nvm_ver}"
+nvm install "${nvm_ver}" --reinstall-packages-from="${nvm_ver}"
+
+echo $'\n\nUpdating all global npm packages...'
+npm update -g
+
+echo $'\n\nUpdating all pip user packages...'
+echo "Note: do not be surprised if this command breaks. See update script for details."
+# Note: please do not manually install any pip packages with sudo
+# leave the sudo packages to the Arch package manager. Trust me,
+# doing things this way makes more sense.
+# Note: This command will break often due to unsatisfied dependencies.
+# This is because pip *sucks* as a package manager. Pip doesn't really
+# do any dependency management. It just installs stuff. The pip folks
+# have been arguing about how they should do dependency resolution for
+# *years* [0] and never reached a decision. I mean really, why even call
+# it a package manager if it can't manage dependencies?
+# Note: This command uses pip-review [1] instead of pip itself because
+# pip does not have a built-in way to upgrade all installed packages.
+# Same story here - the pip folks have been arguing about the best syntax
+# of the upgrade command since the beginning of time [2]. The result is...
+# we still don't have an upgrade command.
+
+# The way pip-review is currently configured is: it will upgrade
+# all packages to latest and ignore pinned dependencies. So far
+# this seems to work fine (e.g., aws-cli tends to pin dependencies,
+# but latest versions work okay).
+#
+# Note: pip-review doesn't pass the --user flag to `pip install` [3],
+# so you need to edit ~/.config/pip/pip.conf if you want --user
+# behavior (recommended).
+
+# [0] https://github.com/pypa/pip/issues/988
+# [1] https://github.com/jgonggrijp/pip-review
+# [2] https://github.com/pypa/pip/issues/59
+# [3] https://github.com/jgonggrijp/pip-review/issues/62
+pip-review --user --auto
+# NOTE: Yes, the above command will break. Just accept it. It's pip.
+
+echo $'\n\nUpdating all Vundle packages for Vim...'
 vim -i NONE -c VundleUpdate -c quitall
-#sudo pacman -Syu --noconfirm
-# resync, upgrade, and downgrade if newer than repo
-# upgrades aur and pacman packages
-#trizen -Syua --noconfirm

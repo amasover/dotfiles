@@ -37,10 +37,10 @@ xrandr --setmonitor 'DP-3~1' 1920/600x1080/170+1920+0 DP-3
 xrandr --setmonitor 'DP-3~2' 1920/600x1080/170+1920+1080 none
 
 # set display timeout to 10min
-xset dpms 0 0 1200
+# xset dpms 0 0 1200
 
 # lock screen after 5min
-xautolock -time 5 -locker '/home/$USER/.local/bin/tools/lock' &
+xautolock -time 15 -locker '/home/$USER/.local/bin/tools/lock' &
 
 # start some nice programs
 
