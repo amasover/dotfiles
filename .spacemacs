@@ -216,44 +216,31 @@ It should only modify the values of Spacemacs settings."
    ;; List of themes, the first of the list is loaded when spacemacs starts.
    ;; Press `SPC T n' to cycle to the next theme in the list (works great
    ;; with 2 themes variants, one dark and one light)
-   dotspacemacs-themes '(nord
+   dotspacemacs-themes '(
+                         nord
                          dracula
-                         solarized-dark
                          darktooth
+                         jazz
+                         molokai
+                         solarized-dark
                          ujelly
                          spacemacs-dark
                          spacemacs-light
+                         seti
+                         planet
                          flatui
-                         flatland
-                         solarized-dark
-                         solarized-light
+                         spacegray
                          monokai
                          apropospriate-light
-                         heroku
-                         jazz
                          lush
-                         molokai
                          naquadah
                          obsidian
                          omtose-phellack
-                         planet
                          reverse
-                         seti
                          smyx
                          soothe
-                         spacegray)
-
-   ;; Set the theme for the Spaceline. Supported themes are `spacemacs',
-   ;; `all-the-icons', `custom', `doom', `vim-powerline' and `vanilla'. The
-   ;; first three are spaceline themes. `doom' is the doom-emacs mode-line.
-   ;; `vanilla' is default Emacs mode-line. `custom' is a user defined themes,
-   ;; refer to the DOCUMENTATION.org for more info on how to create your own
-   ;; spaceline theme. Value can be a symbol or list with additional properties.
-   ;; (default '(spacemacs :separator wave :separator-scale 1.5))
-   dotspacemacs-mode-line-theme '(spacemacs :separator wave :separator-scale 1.5)
-
-   ;; If non-nil the cursor color matches the state color in GUI Emacs.
-   ;; (default t)
+                         )
+   ;; If non nil the cursor color matches the state color in GUI Emacs.
    dotspacemacs-colorize-cursor-according-to-state t
 
    ;; Default font, or prioritized list of fonts. `powerline-scale' allows to
@@ -402,6 +389,7 @@ It should only modify the values of Spacemacs settings."
    ;;                       text-mode
    ;;   :size-limit-kb 1000)
    ;; (default nil)
+   dotspacemacs-mode-line-theme 'spacemacs
    dotspacemacs-line-numbers t
 
    ;; Code folding method. Possible values are `evil' and `origami'.
@@ -538,6 +526,11 @@ If SPLIT-ONEWINDOW is non-`nil' window is split in persistent action."
   ;; https://github.com/syl20bnr/spacemacs/issues/10938
   (setq frame-title-format nil)
 
+  (add-hook 'json-mode-hook
+            (lambda ()
+              (make-local-variable 'js-indent-level)
+              (setq js-indent-level 2)))
+
   ;; groovy
   (use-package groovy-mode
     :defer t
@@ -569,7 +562,7 @@ If SPLIT-ONEWINDOW is non-`nil' window is split in persistent action."
   (setq fci-rule-column 100)
   (setq-default fci-rule-column 100)
   (add-hook 'prog-mode-hook 'spacemacs/toggle-fill-column-indicator-on)
-  )
+)
 
 ;; Do not write anything past this comment. This is where Emacs will
 ;; auto-generate custom variable definitions.

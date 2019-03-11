@@ -27,7 +27,10 @@ tree
 facter
 xf86-video-vesa
 nvidia
+nvidia-utils
+lib32-nvidia-utils
 scrot
+imagemagick
 i3lock
 ranger
 fcron
@@ -43,6 +46,7 @@ perl-anyevent-i3
 rustup
 nmap
 freerdp
+go
 go-tools
 ntp
 networkmanager-dispatcher-ntpd
@@ -55,3 +59,6 @@ cloc
 xorg-xrandr
 xautolock
 w3m
+reflector
+entr
+the_silver_searcher

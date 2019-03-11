@@ -22,6 +22,9 @@ else
 fi
 
 echo "Updating all system and AUR packages..."
+source $HOME/.local/bin/setup/lib.sh
+
+install_pacman_packages
 yay -Syu --devel --noconfirm --timeupdate --answerupgrade none --answerdiff none --answeredit none --answerclean all --useask
 
 echo $'\n\nUpdating oh-my-zsh...'

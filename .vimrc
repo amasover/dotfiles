@@ -7,6 +7,21 @@ inoremap fd <Esc>
 nnoremap <expr> dd (v:register ==# '"' ? '"+' : '') . 'dd'
 set laststatus=2
 set clipboard^=unnamedplus
+" set laststatus=2
+" set clipboard=unnamedplus
+" let mapleader=" "
+" " " Copy to clipboard
+
+" vnoremap  <leader>y  "+y
+" nnoremap  <leader>Y  "+yg_
+" nnoremap  <leader>y  "+y
+" nnoremap  <leader>yy  "+yy
+
+" " " Paste from clipboard
+" nnoremap <leader>p "+p
+" nnoremap <leader>P "+P
+" vnoremap <leader>p "+p
+" vnoremap <leader>P "+P
 " uncomment the line below if powerline installed with python3
 " let g:powerline_pycmd = 'py3'
 
@@ -32,6 +47,8 @@ Plugin 'arcticicestudio/nord-vim'
 Plugin 'airblade/vim-gitgutter'
 Plugin 'tpope/vim-repeat'
 Plugin 'svermeulen/vim-easyclip'
+Plugin 'fatih/vim-go'
+Plugin 'hashivim/vim-terraform'
 
 " The following are examples of different formats supported.
 " Keep Plugin commands between vundle#begin/end.

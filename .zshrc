@@ -24,7 +24,7 @@ ZSH_THEME="agnoster"
 # Uncomment the following line to disable bi-weekly auto-update checks.
 # DISABLE_AUTO_UPDATE="true"
 
-# Uncomment the following line to camasoverge how often to auto-update (in days).
+# Uncomment the following line to change how often to auto-update (in days).
 # export UPDATE_ZSH_DAYS=13
 
 # Uncomment the following line to disable colors in ls.
@@ -44,7 +44,7 @@ ZSH_THEME="agnoster"
 # much, much faster.
 # DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-# Uncomment the following line if you want to camasoverge the command execution time
+# Uncomment the following line if you want to change the command execution time
 # stamp shown in the history command output.
 # The optional three formats: "mm/dd/yyyy"|"dd.mm.yyyy"|"yyyy-mm-dd"
 # HIST_STAMPS="mm/dd/yyyy"
@@ -83,18 +83,11 @@ source ~/.zsh_plugins.sh
 if [[ -n $SSH_CONNECTION ]]; then
   export EDITOR='vim'
 else
-  export EDITOR='mvim'
+  export EDITOR='vim'
 fi
 
 # Compilation flags
 export ARCHFLAGS="-arch x86_64"
-
-# ssh
-# export SSH_KEY_PATH="~/.ssh/rsa_id"
-## add bitbucket and github keys to keychain so that i dont have run ssh-add every time
-## i open shell
-## https://wiki.archlinux.org/index.php/SSH_keys#Keychain
-eval $(keychain --eval --quiet id_rsa id_rsa_gh)
 
 function pe() {
     echo "ERROR: $1" >&2
@@ -111,24 +104,15 @@ function edit-config {
     fi
 }
 
-## RUST
-export PATH=~/.cargo/bin:$PATH
-RUST_SRC_PATH=~/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/src
-## end RUST
-
-## GOLANG
-export GOPATH=~/code/go
-# add go bin folder to path so that compiled bin files can be
-# executed from anywhere using terminal
-export PATH="$GOPATH/bin:$PATH"
-## END GOLANG
-
-
+function grep_i3_keybinds {
+    cat "${HOME}"/.config/i3/config | awk '/^bindsym/ { print }' | grep "\$mod+$1 "
+}
 
 # Set personal aliases, overriding those provided by oh-my-zsh libs,
 # plugins, and themes. Aliases can be placed here, though oh-my-zsh
 # users are encouraged to define aliases within the ZSH_CUSTOM folder.
 # For a full list of active aliases, run `alias`.
+alias gi3=grep_i3_keybinds
 alias h="cd ~"
 alias ec="edit-config"
 alias ecp="ec polybar"
@@ -166,11 +150,14 @@ alias nr="node run.js"
 alias kl="kubectl"
 alias pacman="sudo pacman"
 alias x="chmod +x"
-
 alias y="yadm"
 alias ya="yadm add"
 alias yaa="yadm add -u" # add only unstaged files
 alias yau="yadm add -u" # add only unstaged files
+function yadm_add_tool () {
+   yadm add ~/.local/bin/tools/$1
+}
+alias yat=yadm_add_tool
 alias yc="yadm commit --verbose"
 alias yca="yadm commit --amend"
 alias ycm="yadm commit -m"
@@ -186,7 +173,7 @@ alias token=~/.ssh/token
 
 alias setup-run="bash ~/.local/bin/setup/install"
 alias setup-edit="vim ~/.local/bin/setup/install"
-alias update="zsh ~/.local/bin/setup/update"
+alias update="bash ~/.local/bin/setup/update"
 alias tools="cd ~/.local/bin/tools/ && ll"
 
 alias npmis="npm install --save"
@@ -196,7 +183,6 @@ alias cat="ccat"
 alias ls="exa"
 alias ll="exa -la"
 alias gimme="sudo pacman -S"
-alias remorph='sudo pacman -Rsn $(pacman -Qdtq)'
 alias bgf="~/.fehbg"
 alias bgn="update_background"
 
@@ -205,6 +191,24 @@ alias cgbb="cd ~/code/go/src/bitbucket.org/wtsdevops && ll"
 alias cggh="cd $GOPATH/src/github.com/$GITHUB_ACCOUNT && ll"
 alias vssh="vim ~/.ssh/config"
 alias lssh="ls ~/.ssh"
+alias rmrf="rm -rfi"
+alias update-emacs="cd $HOME/.emacs.d && git pull --rebase && cd $HOME"
+alias ns="new_script --path . --name"
+alias nt="new_script --name"
+alias ranger='ranger --choosedir=$HOME/.rangerdir; LASTDIR=`cat $HOME/.rangerdir`; cd "$LASTDIR"'
+alias v='vim'
+
+update_golang() {
+    # update golang pacman package
+    echo "\nUpdating golang...\n"
+    sudo pacman -Sy --needed go
+    echo "\nUpdating golang packages...\n"
+    go get -u all
+}
+
+update_pacman_mirrorlist() {
+    sudo reflector --verbose --protocol https --age 8 --sort rate --save /etc/pacman.d/mirrorlist
+}
 
 # leave this function with the _ prefix and aliased below without
 # the prefix. Without them zsh errors on sourcing because grep
@@ -221,27 +225,23 @@ alias work-mode="switch-aws-creds.sh work"
 alias other-mode="switch-aws-creds.sh other"
 alias check-mode="aws s3 ls"
 
+alias dotfiles="cd ~/.config/dotfiles/"
+alias dot-src="cd $GOPATH/src/github.com/patrick-motard/dot"
+alias copy-monitors='xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" ORS=" " | pbcopy'
+
+
 
 ## CUSTOM KEY BINDINGS ##
 ## zsh vi-mode settings
 # remaps ESC to fd
-#bindkey -M viins 'fd' vi-cmd-mode
-#bindkey 'll' autosuggest-accept
-
-
-## Robo3t -mongo-client-
-export PATH=/usr/bin/robo3t/bin:$PATH
-
-## vimgolf
-export PATH="$PATH:/home/$USER/.gem/ruby/2.5.0/gems/vimgolf-0.4.8/bin"
-## end vimgolf
+bindkey -M viins 'fd' vi-cmd-mode
+bindkey 'lk' autosuggest-accept
 
 export PATH=~/.local/bin/work:$PATH
 export PATH=~/.local/bin:$PATH
 export PATH=~/.local/bin/tools:$PATH
 export PATH=/opt/idea-IC-171.4424.56/bin:$PATH
 export PATH=/usr/share/intellijidea-ce/bin:$PATH
-export PATH=~/.cargo/bin:$PATH
 
 ## NPM TOKEN SETUP
 export NPM_TOKEN=$NPM_TOKEN
@@ -257,12 +257,6 @@ export MANPAGER="/bin/sh -c \"col -b | vim -c 'set ft=man ts=8 nomod nolist nonu
 
 export PATH=$PATH:/home/$USER/.local/bin
 
-## Kubernetes
-command -v kubectl >/dev/null 2>&1
-if [[ $? == 0 ]]; then
-    source <(kubectl completion zsh)
-fi
-
 # Use vim mode
 bindkey -v
 bindkey '^R' history-incremental-pattern-search-backward
@@ -270,8 +264,15 @@ bindkey '^R' history-incremental-pattern-search-backward
 bindkey "\e[3~" delete-char
 bindkey '^J' self-insert-unmeta
 
+## Kubernetes
+command -v kubectl >/dev/null 2>&1
+if [[ $? == 0 ]]; then
+    source <(kubectl completion zsh)
+fi
+
 ## Azure
 if [[ -f /home/$USER/.local/bin/azure-cli/az.completion ]]; then
+    autoload bashcompinit && bashcompinit
     source /home/$USER/.local/bin/azure-cli/az.completion
 fi
 

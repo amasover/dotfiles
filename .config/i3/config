@@ -80,18 +80,6 @@ bindsym $mod+Shift+y	resize shrink width 10 px or 10ppt
 bindsym $mod+Shift+u	resize shrink height 10 px or 10 ppt
 bindsym $mod+Shift+o	resize grow width 10 px or 10 ppt
 
-set $mode_randr " 1 |  2 (1080L-1440R) |  3 (1440L-1080R) |  4 (1440L-1440R) | 5 Home"
-bindsym  $mod+Shift+a mode $mode_randr
-mode $mode_randr {
-    bindsym 1 exec --no-startup-id ~/.screenlayout/1440.sh && sh ~/.fehbg && sh ~/.config/polybar/launch.sh, mode "default"
-    bindsym 2 exec --no-startup-id ~/.screenlayout/1080L-1440R.sh && sh ~/.fehbg && sh ~/.config/polybar/launch.sh, mode "default"
-    bindsym 3 exec --no-startup-id ~/.screenlayout/1440L-1080R.sh && sh ~/.fehbg && sh ~/.config/polybar/launch.sh, mode "default"
-    bindsym 4 exec --no-startup-id ~/.screenlayout/1440-HDMI0-L-1440-DP4-R && sh ~/.fehbg && sh ~/.config/polybar/launch.sh, mode "default"
-    ## back to normal: Enter or Escape
-    bindsym Return mode "default"
-    bindsym Escape mode "default"
-}
-
 # good example on how to work with modes:
 # http://christopherdecoster.com/posts/i3-wm/
 set $mode_gaps "[(g)aps] | Outer (O+/o-), Inner (I+/i-)"
@@ -121,6 +109,24 @@ mode $mode_system {
     bindsym Return mode "default"
     bindsym Escape mode "default"
 }
+
+#set $mode_system "[syst(E)m] | (l)ock, l(o)gout, (s)uspend, (h)ibernate, (r)eboot, (S)hutdown"
+# set $mode_system " l |  o |  s |   h |   r |  S"
+
+bindsym $mod+Shift+e exec sh ~/.config/rofi/on
+#bindsym $mod+Shift+e mode $mode_system
+#set $locker ~/.local/bin/tools/lock
+#mode $mode_system {
+#    bindsym l exec --no-startup-id $locker, mode "default"
+#    bindsym o exec --no-startup-id i3-msg exit, mode "default"  
+#    bindsym s exec --no-startup-id $locker && systemctl suspend, mode "default"
+#    bindsym h exec --no-startup-id $locker && systemctl hibernate, mode "default"
+#    bindsym r exec --no-startup-id systemctl reboot, mode "default"
+#    bindsym Shift+s exec --no-startup-id systemctl poweroff -i, mode "default"
+#    ## back to normal: Enter or Escape
+#    bindsym Return mode "default"
+#    bindsym Escape mode "default"
+#}
 
 set $mode_modes "[(m)odes] | (g)aps, (r)esize, syst(E)m, (Print)"
 bindsym $mod+m mode $mode_modes
@@ -152,19 +158,15 @@ bindsym $mod+n [instance="dropdown"] scratchpad show
 bindsym $mod+c move workspace to output left
 ## move monitor right 
 bindsym $mod+u move workspace to output right
-## move monitor up
-bindsym $mod+i move workspace to output up
-## move monitor down
-bindsym $mod+b move workspace to output down
 
 # screen capture
 # bindsym Print exec --no-startup-id scrot "%Y-%m-%d_%H:%M:%S_$wx$h.png" -e 'mv $f ~/Dropbox/Screenshots/2017/$f'
 # bindsym Print exec --no-startup-id screenshot 
-set $mode_print "Print Mode: Press `p` again to capture all monitors, `f`: focused window, `b`: focused window + window border"
-bindsym $mod+Shift+p mode $mode_print
+set $mode_print "Print Mode: Press `print` again to capture all monitors, `f`: focused window, `b`: focused window + window border"
+bindsym Print mode $mode_print
 mode $mode_print {
-    bindsym s exec --no-startup-id "~/.local/bin/tools/screenshot -s", mode default
-    bindsym p exec --no-startup-id ~/.local/bin/tools/screenshot, mode default
+    # bindsym s exec --no-startup-id "~/.local/bin/tools/screenshot -s", mode default
+    bindsym Print exec --no-startup-id ~/.local/bin/tools/screenshot, mode default
     bindsym f exec --no-startup-id ~/.local/bin/tools/screenshot -f, mode default
     bindsym b exec --no-startup-id ~/.local/bin/tools/screenshot -b, mode default
     bindsym Return mode "default"
@@ -173,24 +175,7 @@ mode $mode_print {
 
 ## smart borders: draw borders around a container only if it 
 ## is not the only container in this workspace
-smart_borders on
-
-## assign applications to workspaces:
-## NOTE: use xprop command to get WM_CLASS (second string value)
-#assign [class="Google-chrome" instance="crx_nckgahadagoaajjgafhacjanaoiihapd"] $ws4
-assign [class="teams-for-linux"] $ws4
-assign [class="Google-chrome"] $ws3
-assign [class="Emacs"] $ws1
-assign [class="Mysql-workbench-bin"] $ws5
-assign [class="Xfce4-terminal"] $ws2
-assign [class="Spotify"] $ws6
-assign [class="Firefox"] $ws3
-for_window [class="trust"] floating enable
-assign [class="Pidgin"] $ws6
-
-## move workspace to screen
-
-##--- |||||||| END MY CONFIG ||||||| ---##
+# smart_borders on
 
 # change focus
 bindsym $mod+j focus left
@@ -327,24 +312,38 @@ bar {
 
 for_window [title="i3-helm"] floating enable
 
-bindsym XF86AudioRaiseVolume exec --no-startup-id pactl set-sink-volume 1 +5% #increase sound volume
-bindsym XF86AudioLowerVolume exec --no-startup-id pactl set-sink-volume 1 -5% #decrease sound volume
-bindsym XF86AudioMute exec --no-startup-id pactl set-sink-mute 1 toggle # mute sound
+# uses golang github.com/itchyny/volume-go
+bindsym XF86AudioRaiseVolume exec --no-startup-id volume up 3 && sh -c "volnoti-show $(volume get)" #increase sound volume
+bindsym XF86AudioLowerVolume exec --no-startup-id volume down 3 && sh -c "volnoti-show $(volume get)" #decrease sound volume
+bindsym XF86AudioMute exec --no-startup-id sh -c "mute_toggle" # mute sound (uses tools/mute_toggle script)
+# play/next/previous using tools/sp (control spotify via dbus)
+bindsym XF86AudioPlay exec --no-startup-id sp play # play acts as a toggle
+bindsym XF86AudioNext exec --no-startup-id sp next
+bindsym XF86AudioPrev exec --no-startup-id sp prev
+bindsym XF86AudioStop exec --no-startup-id sp pause
+
+
+## move workspace to screen
+for_window [class="trust"] floating enable
+
 
 ## startup applications
-#exec_always --no-startup-id sh -c "~/code/go/bin/dot screen select"
+#exec_always --no-startup-id sh -c "~/code/go/bin/dot displays run"
 exec_always --no-startup-id ~/.config/polybar/launch.sh
 exec --no-startup-id ~/.local/bin/polybar-reload
 exec --no-startup-id dropbox
 exec --no-startup-id emacs
-exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
-exec_always --no-startup-id sh ~/.fehbg
 exec --no-startup-id google-chrome
-#exec --no-startup-id compton
 exec --no-startup-id teams-for-linux
-exec_always --no-startup-id sh ~/.fehbg
-exec --no-startup-id sh ~/.local/bin/tools/start-vbox-client
 exec_always --no-startup-id dunst
 exec_always --no-startup-id xset dpms 0 0 1200
 exec --no-startup-id VBoxManage startvm "Windows 10"
 exec --no-startup-id VBoxManage controlvm "Windows 10" webcam attach .1
+exec_always --no-startup-id flashfocus
+
+## assign applications to workspaces:
+## NOTE: use xprop command to get WM_CLASS (second string value)
+assign [class="Google-chrome"] $ws3
+assign [class="Emacs"] $ws1
+assign [class="Xfce4-terminal"] $ws2
+assign [class="teams-for-linux"] $ws4
