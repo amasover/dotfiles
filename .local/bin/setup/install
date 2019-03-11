@@ -52,16 +52,16 @@ function check_required_params() {
 }
 
 function update_pacman() {
-    sudo pacman -Syu --noconfirm
+    sudo pacman -Syu --noconfirm --quiet
     sudo pacman-optimize && sync
 }
 
-function install_pacman_packages() {
-    common_pacman_packages=$(cat ~/.config/dotfiles/arch-packages/pacman)
-    for package_name in $common_pacman_packages; do
-        sudo pacman -S $package_name --needed --noconfirm --quiet
-    done
-}
+# function install_pacman_packages() {
+#     common_pacman_packages=$(cat ~/.config/dotfiles/arch-packages/pacman)
+#     for package_name in $common_pacman_packages; do
+#         sudo pacman -S $package_name --needed --noconfirm --quiet
+#     done
+# }
 
 #pacman-contrib:
 #  used for 'checkupdates' command in polybar module that shows how many updates pacman has
@@ -122,9 +122,10 @@ function uninstall_deprecated_packages() {
     done
 }
 
-trizen -Sa --needed yay --noconfirm --noedit
-
-trizen -Sa --needed yay --noconfirm --noedit
+slow_aur_packages="
+    polybar-git
+    paper-icon-theme-git
+"
 
 core_aur_packages="
     i3-gaps-next-git
@@ -140,6 +141,7 @@ core_aur_packages="
     flashfocus-git
 "
 function install_aur_packages() {
+    trizen -Sa --needed yay --noconfirm --noedit
     ## RUST
     # some aur packages require compiling rust code
     # so this intializes rust
@@ -153,18 +155,14 @@ function install_aur_packages() {
     if [[ $_quick != true ]]; then
         # if polybar is installed before i3 it doesn't install compatibility with i3
         for pkg in $slow_aur_packages; do
-            trizen -S --needed $pkg --noconfirm --noedit
+            yay -Sy --aur $aur_package --answerupgrade none --answerdiff none --answeredit none --answerclean none
         done
     fi
-
 }
-
 
 ## Packages that take forever to install:
 # - paper-icon-theme-git 
 # - polybar (needs to compile c++)
-}
-
 function install_extra_aur_packages() {
     if [[ $full = true ]]; then
         ## install aur packages
@@ -206,7 +204,8 @@ function install_docker() {
     fi
 }
 
-function install_oh-my-zsh_and_plugins() {
+function install_oh_my_zsh_and_plugins() {
+    pacman -S zsh --no-confirm
     ## Install oh-my-zsh
     sh /home/$USER/.local/bin/tools/install_oh_my_zsh
     yadm reset --hard origin/master
@@ -364,17 +363,6 @@ function main() {
     # install_node_packages
     if [[ $_new == true ]]; then
         # echo hello
-    check_required_params
-    update_pacman
-    install_pacman_packages
-    install_aur_packages
-    install_extra_aur_packages
-    install_docker
-    install_node_packages
-    install_python_packages
-
-    if [[ _new == true ]]; then
-        install_oh-my-zsh_and_plugins
         reboot
     fi
 }

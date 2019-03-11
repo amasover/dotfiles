@@ -24,7 +24,7 @@ ZSH_THEME="agnoster"
 # Uncomment the following line to disable bi-weekly auto-update checks.
 # DISABLE_AUTO_UPDATE="true"
 
-# Uncomment the following line to camasoverge how often to auto-update (in days).
+# Uncomment the following line to change how often to auto-update (in days).
 # export UPDATE_ZSH_DAYS=13
 
 # Uncomment the following line to disable colors in ls.
@@ -44,7 +44,7 @@ ZSH_THEME="agnoster"
 # much, much faster.
 # DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-# Uncomment the following line if you want to camasoverge the command execution time
+# Uncomment the following line if you want to change the command execution time
 # stamp shown in the history command output.
 # The optional three formats: "mm/dd/yyyy"|"dd.mm.yyyy"|"yyyy-mm-dd"
 # HIST_STAMPS="mm/dd/yyyy"
@@ -83,7 +83,9 @@ source ~/.zsh_plugins.sh
 if [[ -n $SSH_CONNECTION ]]; then
   export EDITOR='vim'
 else
-export ARCHFLAGS="-arch x86_64"
+  export ARCHFLAGS="-arch x86_64"
+  export EDITOR='vim'
+fi
 
 # Compilation flags
 export ARCHFLAGS="-arch x86_64"
@@ -106,24 +108,11 @@ function edit-config {
 function grep_i3_keybinds {
     cat "${HOME}"/.config/i3/config | awk '/^bindsym/ { print }' | grep "\$mod+$1 "
 }
-## RUST
-export PATH=~/.cargo/bin:$PATH
-RUST_SRC_PATH=~/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/src
-## end RUST
-
-## GOLANG
-export GOPATH=~/code/go
-# add go bin folder to path so that compiled bin files can be
-# executed from anywhere using terminal
-export PATH="$GOPATH/bin:$PATH"
-## END GOLANG
 
 # Set personal aliases, overriding those provided by oh-my-zsh libs,
 # plugins, and themes. Aliases can be placed here, though oh-my-zsh
 # users are encouraged to define aliases within the ZSH_CUSTOM folder.
 # For a full list of active aliases, run `alias`.
-#
-alias vim="nvim"
 alias gi3=grep_i3_keybinds
 alias h="cd ~"
 alias ec="edit-config"
@@ -187,7 +176,7 @@ alias token=~/.ssh/token
 
 alias setup-run="bash ~/.local/bin/setup/install"
 alias setup-edit="vim ~/.local/bin/setup/install"
-alias update="zsh ~/.local/bin/setup/update"
+alias update="bash ~/.local/bin/setup/update"
 alias tools="cd ~/.local/bin/tools/ && ll"
 
 alias npmis="npm install --save"
@@ -197,7 +186,6 @@ alias cat="ccat"
 alias ls="exa"
 alias ll="exa -la"
 alias gimme="sudo pacman -S"
-alias remorph='sudo pacman -Rsn $(pacman -Qdtq)'
 alias bgf="~/.fehbg"
 alias bgn="update_background"
 
@@ -250,27 +238,22 @@ _sshg() {
 }
 # quickly grep ssh hosts from config file
 alias grepssh=_sshg
+alias dotfiles="cd ~/.config/dotfiles/"
+alias dot-src="cd $GOPATH/src/github.com/patrick-motard/dot"
+alias copy-monitors='xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" ORS=" " | pbcopy'
+
 
 ## CUSTOM KEY BINDINGS ##
 ## zsh vi-mode settings
 # remaps ESC to fd
-#bindkey -M viins 'fd' vi-cmd-mode
-#bindkey 'll' autosuggest-accept
-
-
-## Robo3t -mongo-client-
-export PATH=/usr/bin/robo3t/bin:$PATH
-
-## vimgolf
-export PATH="$PATH:/home/$USER/.gem/ruby/2.5.0/gems/vimgolf-0.4.8/bin"
-## end vimgolf
+bindkey -M viins 'fd' vi-cmd-mode
+bindkey 'lk' autosuggest-accept
 
 export PATH=~/.local/bin/work:$PATH
 export PATH=~/.local/bin:$PATH
 export PATH=~/.local/bin/tools:$PATH
 export PATH=/opt/idea-IC-171.4424.56/bin:$PATH
 export PATH=/usr/share/intellijidea-ce/bin:$PATH
-export PATH=~/.cargo/bin:$PATH
 
 ## NPM TOKEN SETUP
 export NPM_TOKEN=$NPM_TOKEN
@@ -292,6 +275,13 @@ alias copy-monitors='xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" OR
 #use vim for manpages
 export MANPAGER="/bin/sh -c \"col -b | vim -c 'set ft=man ts=8 nomod nolist nonu noma' -\""
 
+# Use vim mode
+bindkey -v
+bindkey '^R' history-incremental-pattern-search-backward
+# why are things strange sometimes?
+bindkey "\e[3~" delete-char
+bindkey '^J' self-insert-unmeta
+
 ## Kubernetes
 command -v kubectl >/dev/null 2>&1
 if [[ $? == 0 ]]; then
@@ -301,24 +291,6 @@ fi
 ## Azure
 if [[ -f /home/$USER/.local/bin/azure-cli/az.completion ]]; then
     autoload bashcompinit && bashcompinit
-    source /home/$USER/.local/bin/azure-cli/az.completion
-fi
-
-export LIBVA_DRIVER_NAME=i965
-
-export PATH=$PATH:/home/amasover/.local/bin
-
-source '/home/amasover/.local/bin/azure-cli/az.completion'
-
-# Use vim mode
-bindkey -v
-bindkey '^R' history-incremental-pattern-search-backward
-# why are things strange sometimes?
-bindkey "\e[3~" delete-char
-bindkey '^J' self-insert-unmeta
-
-## Azure
-if [[ -f /home/$USER/.local/bin/azure-cli/az.completion ]]; then
     source /home/$USER/.local/bin/azure-cli/az.completion
 fi
 

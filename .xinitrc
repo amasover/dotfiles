@@ -1,7 +1,6 @@
 #!/bin/sh
 # start virtualbox client scripts
 #/usr/bin/VBoxClient-all
-
 # hack for improving vbox rendering
 #export LD_PRELOAD=/usr/lib64/VBoxOGL.so
 

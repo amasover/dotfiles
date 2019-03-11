@@ -11,7 +11,7 @@
 [options]
 scrollback_lines = -1
 font = Hack 12
-browser = google-chrome-beta
+browser = google-chrome
 
 [colors]
 foreground = #D8DEE9
