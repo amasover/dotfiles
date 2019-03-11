@@ -35,11 +35,11 @@ volume_print() {
 }
 
 listen() {
-    volume_print
-    pactl subscribe | while read -r event; do
-        if echo "$event" | grep -q "#$sink"; then
-            volume_print
-        fi
+    while true
+    do
+        volume get
+        sleep 0.1 &
+        wait
     done
 }
 
