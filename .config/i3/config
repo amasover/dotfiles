@@ -132,6 +132,14 @@ mode $mode_modes {
     bindsym Return mode "default"
     bindsym Escape mode "default"
 }
+## assign applications to workspaces:
+## NOTE: use xprop command to get WM_CLASS (second string value)
+# assign [class="Xfce4-terminal"] $ws2
+assign [class="Google-chrome" instance="crx_nckgahadagoaajjgafhacjanaoiihapd"] $ws4
+assign [class="Google-chrome"] $ws3
+assign [class="Emacs"] $ws1
+assign [class="Mysql-workbench-bin"] $ws5
+assign [class="Xfce4-terminal"] $ws2
 
 #####################################################
 ##            Dropdown/Scratchpad Windows          ##
