@@ -27,10 +27,10 @@ xbindkeys
 tree
 facter
 xf86-video-vesa
-nvidia
-nvidia-utils
-nvidia-settings
-lib32-nvidia-utils
+nvidia-390xx
+nvidia-390xx-utils
+nvidia-390xx-settings
+lib32-nvidia-390xx-utils
 scrot
 imagemagick
 scrot
