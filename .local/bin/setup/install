@@ -52,7 +52,7 @@ function check_required_params() {
 }
 
 function update_pacman() {
-    sudo pacman -Syu --noconfirm --quiet
+    sudo pacman -Syu pacman --noconfirm --quiet
     sudo pacman-optimize && sync
 }
 
