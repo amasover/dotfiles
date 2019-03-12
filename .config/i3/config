@@ -357,6 +357,7 @@ exec --no-startup-id LD_PRELOAD="" google-chrome-stable
 exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
 exec --no-startup-id sh ~/.local/bin/tools/start-vbox-client
 exec --no-startup-id dropbox
+exec --no-startup-id parcellite
 exec --no-startup-id emacs
 exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
 exec --no-startup-id google-chrome-stable
