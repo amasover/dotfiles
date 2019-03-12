@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env zsh
 
 # lib.sh is shared functionality between setup and install scripts.
 
@@ -10,8 +10,11 @@
 # for the dotfiles repo (arch packages, not AUR). This function
 # installs all of the packages from that list.
 function install_pacman_packages() {
-    common_pacman_packages=$(cat ~/.config/dotfiles/arch-packages/pacman)
+    IFS=$'\n' common_pacman_packages=($(cat ~/.config/dotfiles/arch-packages/pacman))
     for package_name in $common_pacman_packages; do
-        yay -S $package_name --noconfirm --needed --quiet
+        output=$(yay -S $package_name --noconfirm --needed --quiet)
+        if [ "$output" != " there is nothing to do" ]; then
+            echo "$output"
+        fi
     done
 }
