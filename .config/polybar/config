@@ -28,42 +28,14 @@ foreground-alt = ${colors.nord4}
 secondary = ${colors.nord0}
 alert = ${colors.nord14}
 
+
 ;;=========================================================;;
 ;;                                                         ;;
-;;                           BARS                          ;; 
+;;                           BARS                          ;;
 ;;                                                         ;;
 ;;=========================================================;;
+
 [bar/base]
-font-0 = Powerline Extra Symbols:size=19;4
-font-2 = fontawesome:size=12;3
-font-1 = Hack:pixelsize=12;3
-font-3 = Hack:fontformat=truetype:size=14:antialias=true;10
-
-enable-ipc = true
-background = ${colors.background}
-foreground = ${colors.foreground}
-width = 100%
-height = 26
-; module-margin-left = 1.5
-; module-margin-right = 1.5
-cursor-click = pointer
-cursor-scroll = ns-resize
-
-
-[bar/left.bottom]
-inherit = bar/base
-monitor = ${env:MONITOR_LEFT}
-modules-right = -dropbox dropbox-watcher -time3 time
-bottom=true
-
-
-[bar/main.bottom]
-inherit = bar/base
-monitor = ${env:MONITOR_MAIN}
-bottom = true
-modules-left = yadm-checker.sh
-modules-right = nord.arrow.0-10 updates-arch nord.arrow.10-2 dropbox-watcher
-modules-center = 
 font-0 = Powerline Extra Symbols:size=19;4
 font-2 = fontawesome:size=12;3
 font-1 = Hack:pixelsize=12;3
@@ -377,16 +349,6 @@ label-unfocused-foreground = ${colors.nord4}
 label-unfocused-background = ${colors.nord1}
 label-unfocused-padding-left = 1
 label-unfocused-padding-right = 1
-; Available tokens:
-;   %name%
-;   %icon%
-;   %index%
-;   %output%
-; Default: %icon%  %name%
-label-urgent-foreground = ${colors.nord4}
-label-urgent-background = ${colors.nord11}
-label-urgent-padding = 1
-
 ; Available tokens:
 ;   %name%
 ;   %icon%
