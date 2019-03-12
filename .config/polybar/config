@@ -332,7 +332,7 @@ tail = true
 
 [module/dropbox-watcher]
 type = custom/script
-exec = isrunning_dropbox.sh
+exec = ~/.local/bin/tools/isrunning_dropbox.sh
 interval = 5
 click-left = dropbox-isrunning.sh --toggle
 format-background = ${colors.nord2}
