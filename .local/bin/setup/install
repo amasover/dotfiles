@@ -276,7 +276,7 @@ function install_golang_packages() {
 
     # needed for dotfiles
     go get -u -v github.com/patrick-motard/dot
-    go get -u -v github.com/itchyny/volume-go
+    go get -u -v github.com/itchyny/volume-go/cmd/volume
 }
 # gopath isn't set, so this trys to make a dir in /src which
 # gives permission denied. subsequent calls to the script succeed beacuse .zshrc is sourced and gopath is set there.
