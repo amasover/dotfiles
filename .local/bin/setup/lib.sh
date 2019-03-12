@@ -12,6 +12,6 @@
 function install_pacman_packages() {
     common_pacman_packages=$(cat ~/.config/dotfiles/arch-packages/pacman)
     for package_name in $common_pacman_packages; do
-        sudo yay -S $package_name --noconfirm --needed
+        sudo yay -S $package_name --noconfirm --needed --quiet
     done
 }
