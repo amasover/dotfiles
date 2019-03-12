@@ -1,12 +1,7 @@
 #!/usr/bin/env zsh
 source ~/.zsh_plugins.sh
 
-source $HOME/.local/bin/setup/lib.sh
-
-install_pacman_packages
-
 vared -p $'\nUpdate Spacemacs? (will kill any running emacs) (y/n): ' -c update_emacs
->>>>>>> Updates since a few months ago
 
 if [[ "${update_emacs}" == "y" ]]; then
     echo $'\nStarting Spacemacs upgrade. Be sure to update your dotfile (SPC f e D)'
