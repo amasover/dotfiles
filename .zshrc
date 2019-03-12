@@ -173,7 +173,7 @@ alias token=~/.ssh/token
 
 alias setup-run="bash ~/.local/bin/setup/install"
 alias setup-edit="vim ~/.local/bin/setup/install"
-alias update="bash ~/.local/bin/setup/update"
+alias update="zsh ~/.local/bin/setup/update"
 alias tools="cd ~/.local/bin/tools/ && ll"
 
 alias npmis="npm install --save"
