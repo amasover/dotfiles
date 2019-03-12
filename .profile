@@ -35,7 +35,7 @@ export MANPAGER="/bin/sh -c \"col -b | vim -c 'set ft=man ts=8 nomod nolist nonu
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
 export PATH=$PATH:/home/$USER/.local/bin
-export BROWSER=/usr/bin/firefox
+export BROWSER=/usr/bin/google-chrome-stable
 
 export TOOLS="$HOME/.local/bin/tools"
 # used by tools/wifi
