@@ -1,12 +1,6 @@
-<<<<<<< HEAD
 .aws/**
 .ssh/**
 .zshenv
 .mysql/workbench/connections.xml
 .cobra.yaml
 .pypirc
-=======
-~/.aws/**
-~/.ssh/**
-.zshenv
->>>>>>> added pem to encrypt
