@@ -103,7 +103,7 @@ switch() {
         pacmd set-sink-port $sink_id $headphones > /dev/null 2>&1
         dot sound port $headphones
         volume set $vol
-        amixer sset Front 0 1&2>/dev/null
+        #amixer sset Front 0 1&2>/dev/null
         # set front channel to 0 volume, because muting it mutes headphones as well...
         # annoying bug with alsa..
     elif [[ $current_port == $headphones ]]; then
@@ -118,8 +118,6 @@ switch() {
 
     exit 0
 }
-headphones="analog-output"
-speakers="analog-output"
 sink_id=0
 t=0
 
