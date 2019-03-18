@@ -243,7 +243,7 @@ bindsym $mod+a focus parent
 ## NOTE: use xprop command to get WM_CLASS (second string value)
 assign [class="Google-chrome"] $ws3
 assign [class="Emacs"] $ws1
-assign [class="Xfce4-terminal"] $ws2
+assign [class="Termite"] $ws2
 assign [class="teams-for-linux"] $ws4
 
 # focus the chld container
@@ -364,7 +364,11 @@ exec --no-startup-id google-chrome-stable
 exec --no-startup-id teams-for-linux
 exec_always --no-startup-id dunst
             
-exec_always --no-startup-id xset dpms 0 0 1200
-exec --no-startup-id VBoxManage startvm "Windows 10"
-exec --no-startup-id VBoxManage controlvm "Windows 10" webcam attach .1
+#exec_always --no-startup-id xset dpms 0 0 1200
+#exec --no-startup-id VBoxManage startvm "Windows 10"
+#exec --no-startup-id VBoxManage controlvm "Windows 10" webcam attach .1
+
+#move mail and calendar to ws5. need to sleep in script due to delay in window getting title
+exec --no-startup-id sh ~/.local/bin/tools/move-mail.sh
+
 exec_always --no-startup-id flashfocus
