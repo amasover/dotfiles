@@ -86,7 +86,7 @@ module-margin-right= 0
 
 modules-left =
 modules-center =
-modules-right =  i3 
+modules-left = i3 
 
 ;;=========================================================;;
 ;;                                                         ;;
