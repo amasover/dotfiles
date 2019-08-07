@@ -57,3 +57,4 @@ fi
 
 #DISPLAY=:0.1 i3 &
 exec i3
+/usr/bin/dropbox &
