@@ -151,7 +151,6 @@ alias nr="node run.js"
 alias kl="kubectl"
 alias pacman="sudo pacman"
 alias x="chmod +x"
-alias sz="source .zshrc"
 
 alias y="yadm"
 alias ya="yadm add"
@@ -247,16 +246,20 @@ alias copy-monitors='xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" OR
 ## zsh vi-mode settings
 # remaps ESC to fd
 bindkey -M viins 'fd' vi-cmd-mode
-bindkey 'lk' autosuggest-accept
+#bindkey 'lk' autosuggest-accept
 
 export PATH=~/.local/bin/work:$PATH
 export PATH=~/.local/bin:$PATH
 export PATH=~/.local/bin/tools:$PATH
+export PATH=~/.local/bin/wts-encryption:$PATH
 export PATH=/opt/idea-IC-171.4424.56/bin:$PATH
 export PATH=/usr/share/intellijidea-ce/bin:$PATH
 
 ## NPM TOKEN SETUP
 export NPM_TOKEN=$NPM_TOKEN
+
+# ansible playbooks
+export ANSIBLE_PLAYBOOKS_DIR=~/code/ansible-playbooks
 
 #switch between different AWS accounts
 alias work-mode="switch-aws-creds.sh work"
@@ -289,12 +292,14 @@ if [[ $? == 0 ]]; then
 fi
 
 ## Azure
-if [[ -f /home/$USER/.local/bin/azure-cli/az.completion ]]; then
+if [[ -f /home/$USER/lib/azure-cli/az.completion ]]; then
     autoload bashcompinit && bashcompinit
-    source /home/$USER/.local/bin/azure-cli/az.completion
+    source /home/$USER/lib/azure-cli/az.completion
 fi
 
 ## VIM POWERLINE
 if [[ -r ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh ]]; then
     source ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh
 fi
+
+export DOTNET_ROOT="/opt/dotnet"

@@ -76,5 +76,21 @@ echo "Note: do not be surprised if this command breaks. See update script for de
 pip-review --user --auto
 # NOTE: Yes, the above command will break. Just accept it. It's pip.
 
+echo $'\n\nUpdating Azure CLI' #must be installed first
+export PIP_USER=false
+pip_bin="/home/$USER/lib/azure-cli/bin/pip"
+cli_out="$("$pip_bin" install --upgrade azure-cli)"
+cli_first="$(echo "$cli_out" | head -n1)"
+if [[ "$cli_first" == 'Requirement already up-to-date: azure-cli'* ]] ; then
+    echo "$cli_first"
+else
+    echo "$cli_out"
+fi
+nspkg_out="$("$pip_bin" install --upgrade --force-reinstall azure-nspkg azure-mgmt-nspkg)"
+nspkg_last="$(echo "$nspkg_out" | tail -n1)"
+if [[ "$nspkg_last" != 'Successfully installed'* ]] ; then
+    echo "$nspkg_out"
+fi
+
 echo $'\n\nUpdating all Vundle packages for Vim...'
 vim -i NONE -c VundleUpdate -c quitall
