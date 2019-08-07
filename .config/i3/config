@@ -174,6 +174,10 @@ bindsym $mod+c move workspace to output left
 ## move monitor right 
 bindsym $mod+u move workspace to output right
 
+bindsym $mod+Shift+t move workspace to output down
+bindsym $mod+Shift+g move workspace to output up
+
+
 # screen capture
 # bindsym Print exec --no-startup-id scrot "%Y-%m-%d_%H:%M:%S_$wx$h.png" -e 'mv $f ~/Dropbox/Screenshots/2017/$f'
 # bindsym Print exec --no-startup-id screenshot 
@@ -363,6 +367,7 @@ exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
 exec --no-startup-id google-chrome-stable
 exec --no-startup-id teams-for-linux
 exec_always --no-startup-id dunst
+exec --no-startup-id sudo openfortigui
             
 #exec_always --no-startup-id xset dpms 0 0 1200
 #exec --no-startup-id VBoxManage startvm "Windows 10"
