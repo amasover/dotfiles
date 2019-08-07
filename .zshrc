@@ -1,13 +1,9 @@
-# If you come from bash you might have to camasoverge your $PATH.
- export PATH=$HOME/bin:/usr/local/bin:$PATH
-
 # Path to your oh-my-zsh installation.
 export ZSH=$HOME/.oh-my-zsh
 
 # auto load .nvmrc and apply when cd into a directory that has an .nvmrc
 # this must be loaded before the zsh-nvm plugin
 export NVM_AUTO_USE=true
-
 
 # Set name of the theme to load. Optionally, if you set this to "random"
 # it'll load a random theme each time that oh-my-zsh is loaded.
@@ -175,7 +171,8 @@ alias token=~/.ssh/token
 
 alias setup-run="bash ~/.local/bin/setup/install"
 alias setup-edit="vim ~/.local/bin/setup/install"
-alias update="zsh ~/.local/bin/setup/update"
+#alias update="zsh ~/.local/bin/setup/update"
+alias update="ansible-playbook ~/code/dot-ansible/main.yml --ask-become-pass"
 alias tools="cd ~/.local/bin/tools/ && ll"
 
 alias npmis="npm install --save"
@@ -241,6 +238,15 @@ alias dotfiles="cd ~/.config/dotfiles/"
 alias dot-src="cd $GOPATH/src/github.com/patrick-motard/dot"
 alias copy-monitors='xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" ORS=" " | pbcopy'
 
+alias homelab-up="docker stack deploy -c ~/code/homelab/docker-compose.yml homelab"
+alias homelab-down="docker stack rm homelab"
+alias homelab-status="docker service ls | grep homelab"
+function generate_password() {
+    password=$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c 32; echo;)
+    echo $password | pbcopy
+    echo "New password copied to clipboard."
+}
+alias passgen=generate_password
 
 ## CUSTOM KEY BINDINGS ##
 ## zsh vi-mode settings
@@ -301,5 +307,8 @@ fi
 if [[ -r ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh ]]; then
     source ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh
 fi
+export ANSIBLE_PLAYBOOKS_DIR=~/code/ansible-playbooks
+
+export PATH=$PATH:/home/han/.local/bin
 
 export DOTNET_ROOT="/opt/dotnet"

@@ -17,9 +17,11 @@ active_monitors=$(xrandr --listactivemonitors | tail -n +2 | awk '{print $2}' OR
 
 # my monitor configurations
 # replace with your own (based on the output above)
-work_desktop="DVI-D-0 "
+
+work_desktop="DVI-I-1 "
 # work_desktop="DVI-I-1 DP-1 DVI-D-0 "
 work_laptop="VGA-1 "
+<<<<<<< HEAD
 home_desktop="HDMI-0 DP-0 "
 work_two_screens="VGA-1 VGA-2 "
 work_three_screens="VGA-1 VGA-2 VGA-3 "
@@ -34,13 +36,23 @@ function export_monitor_vars() {
     export MONITOR_RIGHT=$2
     export MONITOR_LEFT=$3
     export MONITOR_EXTRA=$4
+=======
+home_desktop="DVI-D-0 HDMI-0 DP-4 "
+# home_desktop="DVI-D-0 DP-4 "
+
+function export_monitor_vars() {
+    export MONITOR_LEFT=$1
+    export MONITOR_MAIN=$2
+    export MONITOR_RIGHT=$3
+    notify-send $MONITOR_MAIN
+>>>>>>> upstream/master
 }
 
 function set_monitor_vars() {
     case "${active_monitors}" in
         $work_desktop )
             # export_monitor_vars "DVI-I-1" "DVI-D-0" "DP-1" #"DVI-I-1" ""  "" #"DVI-D-0"
-            export_monitor_vars "" "DVI-D-0" "" #"DVI-I-1" ""  "" #"DVI-D-0"
+            export_monitor_vars "" "DVI-I-1" "" #""  "" #"DVI-D-0"
             mode="work"
             ;;
         $work_laptop )
@@ -56,7 +68,8 @@ function set_monitor_vars() {
             mode="work three screens"
             ;;
         $home_desktop )
-            export_monitor_vars "HDMI-0" "DP-4" "DVI-D-0"
+            export_monitor_vars "DP-4" "DVI-D-0" "HDMI-0"
+            # export_monitor_vars "" "DP-4" "DVI-D-0"
             mode="home desktop"
             ;;
         $home_laptop )
@@ -91,11 +104,26 @@ notify-send "Polybar" "Bars initialized on ${mode} monitors."
 killall -q polybar
 
 while pgrep -u $UID -x polybar >/dev/null; do sleep 1; done
+# TODO set this theme somewhere else, probably via dot?
+if [[ -z $polybar_theme ]]; then
+
+    i3-msg gaps top all set 10
+    export polybar_theme=$HOME/.config/polybar/themes/nord-arrow/config
+fi
 
 polybar -r main &
 polybar -r right &
 polybar -r left &
+<<<<<<< HEAD
 polybar -r extra &
+=======
+polybar -r main.top.left &
+polybar -r main.top.middle &
+polybar -r main.top.right &
+polybar -r main.bottom.middle &
+polybar -r left.top.middle &
+polybar -r right.top.middle &
+>>>>>>> upstream/master
 polybar -r main.bottom &
 polybar -r left.bottom &
 
