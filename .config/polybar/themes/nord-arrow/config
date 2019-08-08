@@ -20,6 +20,8 @@ alert = ${colors.nord14}
 inherit = bar/base
 monitor = ${env:MONITOR_MAIN}
 fixed-center = true
+width = 99%
+height = 30
 padding-left = 0
 padding-right = 0
 module-margin-left = 0
@@ -40,6 +42,7 @@ bottom=true
 inherit = bar/base
 monitor = ${env:MONITOR_MAIN}
 bottom = true
+height = 30
 modules-left = yadm-checker.sh
 modules-right = nord.arrow.0-10 updates-arch nord.arrow.10-2 dropbox-watcher
 modules-center = 
@@ -62,13 +65,10 @@ cursor-scroll = ns-resize
 inherit = bar/base
 monitor = ${env:MONITOR_LEFT}
 height = 30
-
 padding-left = 0
 padding-right = 0
-
 module-margin-left = 0
 module-margin-right = 0
-
 modules-left = 
 modules-center = 
 modules-right =  i3 
@@ -76,17 +76,14 @@ modules-right =  i3
 [bar/extra]
 inherit = bar/base
 monitor = ${env:MONITOR_EXTRA}
-height=30
-
+bottom = false
+fixed-center = true
 padding-left = 0
 padding-right = 0
-
 module-margin-left = 0
 module-margin-right= 0
-
-modules-left =
+modules-left = i3
 modules-center =
-modules-left = i3 
 
 ;;=========================================================;;
 ;;                                                         ;;

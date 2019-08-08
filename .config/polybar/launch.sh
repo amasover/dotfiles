@@ -21,7 +21,6 @@ active_monitors=$(xrandr --listactivemonitors | tail -n +2 | awk '{print $2}' OR
 work_desktop="DVI-I-1 "
 # work_desktop="DVI-I-1 DP-1 DVI-D-0 "
 work_laptop="VGA-1 "
-<<<<<<< HEAD
 home_desktop="HDMI-0 DP-0 "
 work_two_screens="VGA-1 VGA-2 "
 work_three_screens="VGA-1 VGA-2 VGA-3 "
@@ -36,16 +35,6 @@ function export_monitor_vars() {
     export MONITOR_RIGHT=$2
     export MONITOR_LEFT=$3
     export MONITOR_EXTRA=$4
-=======
-home_desktop="DVI-D-0 HDMI-0 DP-4 "
-# home_desktop="DVI-D-0 DP-4 "
-
-function export_monitor_vars() {
-    export MONITOR_LEFT=$1
-    export MONITOR_MAIN=$2
-    export MONITOR_RIGHT=$3
-    notify-send $MONITOR_MAIN
->>>>>>> upstream/master
 }
 
 function set_monitor_vars() {
@@ -114,16 +103,7 @@ fi
 polybar -r main &
 polybar -r right &
 polybar -r left &
-<<<<<<< HEAD
 polybar -r extra &
-=======
-polybar -r main.top.left &
-polybar -r main.top.middle &
-polybar -r main.top.right &
-polybar -r main.bottom.middle &
-polybar -r left.top.middle &
-polybar -r right.top.middle &
->>>>>>> upstream/master
 polybar -r main.bottom &
 polybar -r left.bottom &
 

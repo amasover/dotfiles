@@ -363,13 +363,14 @@ bindsym XF86AudioStop exec --no-startup-id sp pause
 for_window [class="trust"] floating enable
 
 ## startup applications
-exec_always --no-startup-id sh -c "~/code/go/bin/dot displays run"
-exec_always --no-startup-id dot polybar
+#exec_always --no-startup-id sh -c "~/code/go/bin/dot displays run"
+#exec_always --no-startup-id dot polybar
+exec_always --no-startup-id sh -c "~/.config/polybar/launch.sh"
 exec --no-startup-id ~/.local/bin/polybar-reload
 exec --no-startup-id dropbox
 exec --no-startup-id emacs
 #exec --no-startup-id LD_PRELOAD="" google-chrome-stable
-exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
+#exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
 exec --no-startup-id sh ~/.local/bin/tools/start-vbox-client
 exec --no-startup-id dropbox
 exec --no-startup-id parcellite
