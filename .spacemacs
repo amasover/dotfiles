@@ -42,7 +42,6 @@ This function should only modify configuration layer settings."
      csv
      nginx
      html
-     neotree
      yaml
      csharp
      rust
@@ -62,8 +61,6 @@ This function should only modify configuration layer settings."
      better-defaults
      emacs-lisp
      git
-     ;; (treemacs :variables
-               ;; treemacs-git-mode 'extended)
      (markdown :variables
                markdown-live-preview-engine 'vmd)
      multiple-cursors
