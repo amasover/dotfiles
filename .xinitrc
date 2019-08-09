@@ -32,8 +32,8 @@ if [ -f "$usermodmap" ]; then
 fi
 
 # setup virtual xrandr monitors
-xrandr --setmonitor 'DP-3~1' 1920/600x1080/170+1920+0 DP-3
-xrandr --setmonitor 'DP-3~2' 1920/600x1080/170+1920+1080 none
+#xrandr --setmonitor 'DP-3~1' 1920/600x1080/170+1920+0 DP-3
+#xrandr --setmonitor 'DP-3~2' 1920/600x1080/170+1920+1080 none
 
 # set display timeout to 10min
 # xset dpms 0 0 1200

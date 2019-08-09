@@ -21,6 +21,7 @@ active_monitors=$(xrandr --listactivemonitors | tail -n +2 | awk '{print $2}' OR
 work_desktop="DVI-I-1 "
 # work_desktop="DVI-I-1 DP-1 DVI-D-0 "
 work_laptop="VGA-1 "
+nav_work_laptop="*eDP-1 "
 home_desktop="HDMI-0 DP-0 "
 work_two_screens="VGA-1 VGA-2 "
 work_three_screens="VGA-1 VGA-2 VGA-3 "
@@ -43,6 +44,10 @@ function set_monitor_vars() {
             # export_monitor_vars "DVI-I-1" "DVI-D-0" "DP-1" #"DVI-I-1" ""  "" #"DVI-D-0"
             export_monitor_vars "" "DVI-I-1" "" #""  "" #"DVI-D-0"
             mode="work"
+            ;;
+        $nav_work_laptop )
+            export_monitor_vars "eDP-1" "" ""
+            mode="nav work laptop"
             ;;
         $work_laptop )
             export_monitor_vars "" "VGA-1" ""
@@ -83,6 +88,7 @@ function set_monitor_vars() {
             ;;
         * )
             notify-send "Polybar" "Monitor configuration not recognized. See ~/.config/polybar/launch.sh for details"
+            notify-send "Polybar" "$(xrandr --listactivemonitors)"
             ;;
     esac
 }

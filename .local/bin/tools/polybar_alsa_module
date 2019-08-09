@@ -82,7 +82,7 @@
 # what I'm missing. <motard19@gmail.com>
 
 headphones="analog-output-headphones"
-speakers="analog-output-lineout"
+speakers="analog-output-speakers"
 
 listen() {
     while true; do

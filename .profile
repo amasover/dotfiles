@@ -3,7 +3,7 @@
 ## This file is sourced in .zprofile so th at zsh gets these variables as well
 
 ## GOLANG
-export GOPATH=~/code/go
+export GOPATH=~/go
 # add go bin folder to path so that compiled bin files can be
 # executed from anywhere using terminal
 export PATH="$GOPATH/bin:$PATH"
