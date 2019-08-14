@@ -24,7 +24,7 @@ fi
 echo "Updating all system and AUR packages..."
 source $HOME/.local/bin/setup/lib.sh
 
-install_pacman_packages
+#install_pacman_packages
 yay -Syu --devel --noconfirm --timeupdate --answerupgrade none --answerdiff none --answeredit none --answerclean all --useask
 
 echo $'\n\nUpdating oh-my-zsh...'
@@ -78,7 +78,7 @@ pip-review --user --auto
 
 echo $'\n\nUpdating Azure CLI' #must be installed first
 export PIP_USER=false
-pip_bin="/home/$USER/lib/azure-cli/bin/pip"
+pip_bin="/home/$USER/.local/lib/azure-cli/bin/pip"
 cli_out="$("$pip_bin" install --upgrade azure-cli)"
 cli_first="$(echo "$cli_out" | head -n1)"
 if [[ "$cli_first" == 'Requirement already up-to-date: azure-cli'* ]] ; then
