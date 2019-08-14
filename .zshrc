@@ -171,8 +171,8 @@ alias token=~/.ssh/token
 
 alias setup-run="bash ~/.local/bin/setup/install"
 alias setup-edit="vim ~/.local/bin/setup/install"
-#alias update="zsh ~/.local/bin/setup/update"
-alias update="ansible-playbook ~/code/dot-ansible/main.yml --ask-become-pass"
+alias update="zsh ~/.local/bin/setup/update"
+#alias update="ansible-playbook ~/code/dot-ansible/main.yml --ask-become-pass"
 alias tools="cd ~/.local/bin/tools/ && ll"
 
 alias npmis="npm install --save"
@@ -298,9 +298,9 @@ if [[ $? == 0 ]]; then
 fi
 
 ## Azure
-if [[ -f /home/$USER/lib/azure-cli/az.completion ]]; then
+if [[ -f /home/$USER/.local/lib/azure-cli/az.completion ]]; then
     autoload bashcompinit && bashcompinit
-    source /home/$USER/lib/azure-cli/az.completion
+    source /home/$USER/.local/lib/azure-cli/az.completion
 fi
 
 ## VIM POWERLINE

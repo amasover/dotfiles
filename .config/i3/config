@@ -182,8 +182,8 @@ bindsym $mod+c move workspace to output left
 ## move monitor right 
 bindsym $mod+u move workspace to output right
 
-bindsym $mod+Shift+t move workspace to output down
-bindsym $mod+Shift+g move workspace to output up
+bindsym $mod+$sup+c move workspace to output down
+bindsym $mod+$sup+u move workspace to output up
 
 
 # screen capture
@@ -255,6 +255,7 @@ bindsym $mod+a focus parent
 ## NOTE: use xprop command to get WM_CLASS (second string value)
 assign [class="Google-chrome"] $ws3
 assign [class="Emacs"] $ws1
+assign [class="virt-viewer"] $ws8
 assign [class="Termite"] $ws2
 assign [class="teams-for-linux"] $ws4
 
@@ -274,15 +275,15 @@ set $ws0 "0: "
 
 # monitor stuff
 
-set $mon0 "DP-3~1"
-set $mon1 "DP-3~2"
+set $mon0 "DP-1"
+set $mon1 "eDP-1"
 set $mon2 "DP-2"
 
-workspace $ws1 output $mon2
+workspace $ws1 output $mon0
 workspace $ws2 output $mon1
-workspace $ws3 output $mon0
-workspace $ws4 output $mon0
-workspace $ws5 output $mon0
+workspace $ws3 output $mon2
+workspace $ws4 output $mon2
+workspace $ws5 output $mon2
 workspace $ws6 output $mon1
 workspace $ws7 output $mon1
 workspace $ws8 output $mon1
@@ -380,7 +381,8 @@ exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
 exec --no-startup-id google-chrome-stable
 exec --no-startup-id teams-for-linux
 exec_always --no-startup-id dunst
-exec --no-startup-id sudo openfortigui
+exec --no-startup-id lxqt-policykit-agent
+exec --no-startup-id virt-viewer -c qemu:///system win10 -a
             
 #exec_always --no-startup-id xset dpms 0 0 1200
 #exec --no-startup-id VBoxManage startvm "Windows 10"

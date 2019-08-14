@@ -24,7 +24,7 @@ work_laptop="VGA-1 "
 nav_work_laptop="*eDP-1 "
 home_desktop="HDMI-0 DP-0 "
 work_two_screens="VGA-1 VGA-2 "
-work_three_screens="VGA-1 VGA-2 VGA-3 "
+work_three_screens="*eDP-1 DP-1 DP-2 "
 home_laptop="VGA-1 VGA-2~1 VGA-2~2 VGA-2~3 "
 home_four_screens="VGA-1 VGA-2 VGA-3 VGA-4 "
 home_4k="DP-0 "
@@ -58,7 +58,7 @@ function set_monitor_vars() {
             mode="work two screens"
             ;;
         $work_three_screens )
-            export_monitor_vars "VGA-1" "VGA-2" "" "VGA-3"
+            export_monitor_vars "DP-2" "" "DP-1" "eDP-1"
             mode="work three screens"
             ;;
         $home_desktop )

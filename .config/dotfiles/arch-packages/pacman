@@ -92,6 +92,7 @@ libtool
 licenses
 lightdm-webkit-theme-litarvan
 linux
+linux-headers
 logrotate
 lvm2
 m4
@@ -201,3 +202,4 @@ xorg-xrandr
 xz
 zip
 zsh
+sbsigntools
