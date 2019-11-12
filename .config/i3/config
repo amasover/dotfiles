@@ -256,6 +256,7 @@ bindsym $mod+a focus parent
 assign [class="Google-chrome"] $ws3
 assign [class="Emacs"] $ws1
 assign [class="virt-viewer"] $ws8
+assign [class="Virt-viewer"] $ws8
 assign [class="Termite"] $ws2
 assign [class="teams-for-linux"] $ws4
 
@@ -383,6 +384,7 @@ exec --no-startup-id teams-for-linux
 exec_always --no-startup-id dunst
 exec --no-startup-id lxqt-policykit-agent
 exec --no-startup-id virt-viewer -c qemu:///system win10 -a
+exec --no-startup-id ibus-daemon -dr
             
 #exec_always --no-startup-id xset dpms 0 0 1200
 #exec --no-startup-id VBoxManage startvm "Windows 10"

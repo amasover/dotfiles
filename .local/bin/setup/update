@@ -1,6 +1,10 @@
 #!/usr/bin/env zsh
 source ~/.zsh_plugins.sh
 
+# prevent sudo timeout
+sudo -v
+while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+
 vared -p $'\nUpdate Spacemacs? (will kill any running emacs) (y/n): ' -c update_emacs
 
 if [[ "${update_emacs}" == "y" ]]; then
@@ -79,6 +83,7 @@ pip-review --user --auto
 echo $'\n\nUpdating Azure CLI' #must be installed first
 export PIP_USER=false
 pip_bin="/home/$USER/.local/lib/azure-cli/bin/pip"
+"$pip_bin" install --upgrade pip
 cli_out="$("$pip_bin" install --upgrade azure-cli)"
 cli_first="$(echo "$cli_out" | head -n1)"
 if [[ "$cli_first" == 'Requirement already up-to-date: azure-cli'* ]] ; then
