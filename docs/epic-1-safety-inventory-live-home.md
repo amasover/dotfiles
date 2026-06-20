@@ -11,7 +11,7 @@
 
 ## Objective
 
-Create a safe, evidence-based inventory of the dotfiles repo and reconcile it against the live home directory at `/home/aaron` before making broad cleanup commits.
+Create a safe, evidence-based inventory of the dotfiles repo and reconcile it against the live home directory at `$HOME` before making broad cleanup commits.
 
 ## Why This Matters
 
@@ -25,7 +25,7 @@ The repo has been idle for years while the live workstation continued to change.
 - `.zshrc` contains duplicated aliases and machine-specific assumptions.
 - `.local/bin/setup/install` contains old install logic and package-manager assumptions.
 - `.config/dotfiles/arch-packages/` contains historical package lists.
-- The repo includes desktop, editor, shell, and helper-script surfaces that may or may not still match `/home/aaron`.
+- The repo includes desktop, editor, shell, and helper-script surfaces that may or may not still match `$HOME`.
 
 ## Problem Statement
 
@@ -47,7 +47,7 @@ Without this, cleanup risks leaking secrets, deleting useful local behavior, or 
 
 - Capture read-only YADM status and diff summaries
 - Identify tracked files with matching live-home paths
-- Compare high-impact files against `/home/aaron`
+- Compare high-impact files against `$HOME`
 - Identify likely secret hotspots
 - Review `.yadm/encrypt` coverage
 - Upgrade YADM v3 legacy data paths after explicit approval
@@ -85,12 +85,12 @@ So that I can understand unsynced work before staging anything.
 ### Story 1.2: Build the live-home reconciliation list
 
 As the repo owner,
-I want tracked files mapped to `/home/aaron`,
+I want tracked files mapped to `$HOME`,
 So that cleanup decisions reflect the actual workstation.
 
 **Acceptance criteria:**
 
-- Given a tracked file maps to `/home/aaron/<path>`, when the file exists live, then repo and live versions are compared or marked for comparison
+- Given a tracked file maps to `$HOME/<path>`, when the file exists live, then repo and live versions are compared or marked for comparison
 - Given a tracked file has no live equivalent, when reviewed, then it is classified as archive-candidate, bootstrap-only, or unknown
 - Given a live file differs from the repo version, when a decision is made, then the chosen source of truth is documented
 
@@ -182,7 +182,7 @@ So that future reconciliation can use normal YADM commands and the repo has reco
 | Dependency | Owner | Due Date | Status | Blocked Story | Mitigation if Late |
 | --- | --- | --- | --- | --- | --- |
 | Local YADM status available | Aaron | Phase 1 | Open | 1.1, 1.5 | Request terminal output |
-| Live home directory accessible at `/home/aaron` | Aaron | Phase 1 | Open | 1.2 | Mark live comparisons blocked |
+| Live home directory accessible at `$HOME` | Aaron | Phase 1 | Open | 1.2 | Mark live comparisons blocked |
 | Approval to mutate YADM data paths | Aaron | Phase 1 | Open | 1.6 | Continue using explicit legacy YADM flags |
 | Secret scan tool selected | Aaron | Phase 1 | Open | 1.4 | Use manual hotspot review |
 | Decision on encrypted-file updates | Aaron | Phase 1 | Open | 1.3, 1.5 | Defer `.yadm/files.gpg` changes |
@@ -201,7 +201,7 @@ So that future reconciliation can use normal YADM commands and the repo has reco
 
 **Likelihood:** Medium
 **Impact:** High
-**Mitigation:** Compare repo files to `/home/aaron` before changing high-impact config.
+**Mitigation:** Compare repo files to `$HOME` before changing high-impact config.
 
 ### Risk: Inventory becomes too broad
 

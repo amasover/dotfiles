@@ -7,7 +7,7 @@
 **Last Updated:** 2026-06-20
 **Audience:** Aaron, future maintainers, AI coding agents
 
-> **Scope boundary:** This PRD covers the `dotfiles` repository and its relationship to the live home directory at `/home/aaron`. It does not require immediate replacement of the operating system, desktop environment, editor stack, or package manager.
+> **Scope boundary:** This PRD covers the `dotfiles` repository and its relationship to the live home directory at `$HOME`. It does not require immediate replacement of the operating system, desktop environment, editor stack, or package manager.
 
 ---
 
@@ -41,7 +41,7 @@ The repo appears to have started as an Arch Linux + i3 workstation setup managed
 - `.config/i3/`, `.config/polybar/`, `.config/rofi/`, `.config/dunst/` — desktop environment configuration surfaces
 - `.spacemacs`, `.vimrc`, `.config/nvim/`, `.config/Code/` — editor configuration surfaces
 
-The repo has not been actively maintained for several years, while the live machine has continued to evolve. Therefore, the live home directory at `/home/aaron` is a required source of current-state truth.
+The repo has not been actively maintained for several years, while the live machine has continued to evolve. Therefore, the live home directory at `$HOME` is a required source of current-state truth.
 
 ---
 
@@ -51,7 +51,7 @@ The repo has not been actively maintained for several years, while the live mach
 
 The current state has several risks:
 
-- The repo may not match the actual workstation at `/home/aaron`
+- The repo may not match the actual workstation at `$HOME`
 - Local changes may be unsynced, unstaged, or uncommitted
 - Some tracked configuration may be obsolete or broken
 - Some scripts may mutate the system unsafely if run today
@@ -76,7 +76,7 @@ If the repo remains untidy, the owner keeps paying these costs:
 
 The desired state is a dotfiles repo where:
 
-- The repo is safely reconciled with `/home/aaron`
+- The repo is safely reconciled with `$HOME`
 - Sensitive files are encrypted or excluded intentionally
 - The default workflow is inspect, compare, document, then change
 - Bootstrap scripts are idempotent or clearly marked legacy
@@ -106,7 +106,7 @@ In practical terms, the repo should help Aaron:
 
 ### Primary Goals
 
-1. Reconcile tracked dotfiles with the live home directory at `/home/aaron`
+1. Reconcile tracked dotfiles with the live home directory at `$HOME`
 2. Establish secret-safe YADM workflows for encrypted files
 3. Create current product documentation and cleanup epics
 4. Modernize bootstrap/install guidance around safe dry runs and staged setup
@@ -143,7 +143,7 @@ In practical terms, the repo should help Aaron:
 
 | FR | Capability | Notes |
 | --- | --- | --- |
-| FR-1 | Repo and Live-Home Inventory | Compare key tracked files to `/home/aaron` |
+| FR-1 | Repo and Live-Home Inventory | Compare key tracked files to `$HOME` |
 | FR-2 | Secret Safety and YADM Encryption | Review `.yadm/encrypt`, encrypted payload handling, and secret hotspots |
 | FR-3 | Copilot Instructions | Codify AI agent rules for safe dotfiles work |
 | FR-4 | Product Documentation | Create PRD, epics, and validation workflow docs |
@@ -249,7 +249,7 @@ The target future state is a repo where:
 
 **Acceptance Criteria:**
 
-- Given a tracked dotfile exists in the repo, when it maps to a live path under `/home/aaron`, then the cleanup process checks whether the live file differs before editing
+- Given a tracked dotfile exists in the repo, when it maps to a live path under `$HOME`, then the cleanup process checks whether the live file differs before editing
 - Given repo and live-home versions differ, when a change is proposed, then the decision states whether the repo version, live version, or a merged version should win
 - Given a file is machine-specific, when it is retained, then its machine-specific nature is documented or isolated
 
@@ -381,7 +381,7 @@ The target future state is a repo where:
 
 | Metric | Baseline | Target | Window | Data Source |
 | --- | --- | --- | --- | --- |
-| High-impact files reconciled against `/home/aaron` | TBD | 100% for Release 1 list | Release 1 | Inventory notes |
+| High-impact files reconciled against `$HOME` | TBD | 100% for Release 1 list | Release 1 | Inventory notes |
 | Secret hotspots reviewed before commit | TBD | 100% | Every cleanup batch | Secret scan + checklist |
 | Docs created for product direction and cleanup | 0 | PRD + initial epics + validation runbook | Release 1 | `docs/` |
 | Bootstrap scripts marked safe, unsafe, or legacy | TBD | 100% of setup scripts | Phase 2 | Script inventory |
@@ -497,7 +497,7 @@ Aaron is both product owner and primary user.
 
 **Likelihood:** Medium
 **Impact:** High
-**Mitigation:** Compare against `/home/aaron`, use small commits, avoid destructive commands.
+**Mitigation:** Compare against `$HOME`, use small commits, avoid destructive commands.
 **Contingency:** Revert commit or restore from live-home backup.
 
 ### Risk 3: Old Bootstrap Scripts Are Unsafe Today
@@ -527,7 +527,7 @@ Aaron is both product owner and primary user.
 
 | Dependency | Owner | Due Date | Status | Blocked Item | Mitigation if Late |
 | --- | --- | --- | --- | --- | --- |
-| Live home directory accessible at `/home/aaron` | Aaron | Release 1 | Open | FR-1 | Use repo-only inventory and mark live comparison blocked |
+| Live home directory accessible at `$HOME` | Aaron | Release 1 | Open | FR-1 | Use repo-only inventory and mark live comparison blocked |
 | YADM status available | Aaron | Release 1 | Open | FR-5 | Request command output from local terminal |
 | Secret scan tool available or selected | Aaron | Release 1 | Open | FR-2 | Use manual hotspot review until tool is chosen |
 | Decision on whether YADM remains long-term | Aaron | Phase 2 | Open | Bootstrap modernization | Continue with YADM for Release 1 |
@@ -539,7 +539,7 @@ Aaron is both product owner and primary user.
 
 | # | Question | Owner | Decision Deadline | Blocked Item |
 | --- | --- | --- | --- | --- |
-| OQ-1 | Which files in `/home/aaron` differ from tracked repo versions and should be adopted? | Aaron | Phase 2 start | FR-1 |
+| OQ-1 | Which files in `$HOME` differ from tracked repo versions and should be adopted? | Aaron | Phase 2 start | FR-1 |
 | OQ-2 | Is Arch still the target fresh-machine OS, or should bootstrap become distro-aware? | Aaron | Phase 2 | Bootstrap modernization |
 | OQ-3 | Which desktop environment assets are still active? | Aaron | Phase 3 | Desktop cleanup |
 | OQ-4 | Should Spacemacs remain supported, be archived, or be replaced by newer editor config? | Aaron | Phase 3 | Editor cleanup |
