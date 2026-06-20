@@ -10,7 +10,10 @@
 ## YADM state
 
 - YADM 3.5.0 was observed reporting legacy-path detection before upgrade.
-- Until upgraded, read-only YADM inspection can use:
+- The legacy YADM paths were upgraded on 2026-06-20.
+- Normal `yadm status`, `yadm diff --stat`, and `yadm list -a` now work without explicit legacy flags.
+- The encrypted YADM archive moved from `.config/yadm/files.gpg` to `.local/share/yadm/archive` and was committed in the YADM repo as `7fc6fb6`.
+- If legacy-path inspection is needed for historical comparison, the old command shape was:
 
 ```bash
 yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg status --short --branch
