@@ -4,7 +4,7 @@
 
 This document is the Story 1.2 evidence artifact for [Epic 1: Safety Inventory and Live-Home Reconciliation](./epic-1-safety-inventory-live-home.md).
 
-Goal: map YADM-tracked paths to their live-home equivalents under `/home/aaron`, classify the current state, and define the order for detailed reconciliation.
+Goal: map YADM-tracked paths to their live-home equivalents under `$HOME`, classify the current state, and define the order for detailed reconciliation.
 
 No files were staged, committed, checked out, encrypted, decrypted, installed, removed, or pushed while producing this inventory.
 
@@ -17,15 +17,15 @@ Normal YADM commands currently fail because YADM 3.5.0 detects legacy paths but 
 For read-only inspection, use explicit legacy paths:
 
 ```bash
-yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg status --short --branch
-yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg diff --stat
-yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg list -a
+yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg status --short --branch
+yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg diff --stat
+yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg list -a
 ```
 
 Notes:
 
-- `--yadm-data /home/aaron/.config/yadm` points YADM at the legacy repo data directory.
-- `--yadm-archive /home/aaron/.config/yadm/files.gpg` points YADM at the legacy encrypted archive.
+- `--yadm-data $HOME/.config/yadm` points YADM at the legacy repo data directory.
+- `--yadm-archive $HOME/.config/yadm/files.gpg` points YADM at the legacy encrypted archive.
 - `list -a` returns tracked files including alternates; plain `list` returned no output in this environment.
 - Do not run `yadm upgrade`, `yadm checkout`, `yadm reset`, `yadm encrypt`, or `yadm decrypt` without explicit approval.
 
@@ -36,8 +36,8 @@ Notes:
 | Item | Finding |
 | --- | --- |
 | Tracked files from `yadm list -a` | 421 |
-| Branch | `test-laptop` |
-| Remote tracking | `origin/test-laptop` |
+| Branch | `<working-branch>` |
+| Remote tracking | `origin/<working-branch>` |
 | Ahead/behind | Ahead by 1 commit |
 | Staged changes | None observed |
 | Modified tracked files in live home | 31 |
@@ -50,38 +50,38 @@ Notes:
 
 | Status | Tracked path | Live path | Checkout path | Live exists | Checkout exists | Initial classification |
 | --- | --- | --- | --- | --- | --- | --- |
-| `M` | `.bash_profile` | `/home/aaron/.bash_profile` | `/home/aaron/code/dotfiles/.bash_profile` | yes | yes | shell startup; review first |
-| `M` | `.bashrc` | `/home/aaron/.bashrc` | `/home/aaron/code/dotfiles/.bashrc` | yes | yes | shell startup; review first |
-| `M` | `.config/Code/User/settings.json` | `/home/aaron/.config/Code/User/settings.json` | `/home/aaron/code/dotfiles/.config/Code/User/settings.json` | yes | yes | editor config; review after shell/polybar |
-| `M` | `.config/gtk-3.0/settings.ini` | `/home/aaron/.config/gtk-3.0/settings.ini` | `/home/aaron/code/dotfiles/.config/gtk-3.0/settings.ini` | yes | yes | desktop/theme config |
-| `M` | `.config/i3/config` | `/home/aaron/.config/i3/config` | `/home/aaron/code/dotfiles/.config/i3/config` | yes | yes | desktop/session config |
-| `D` | `.config/polybar/config` | `/home/aaron/.config/polybar/config` | `/home/aaron/code/dotfiles/.config/polybar/config` | no | yes | deleted live; polybar priority |
-| `M` | `.config/polybar/launch.sh` | `/home/aaron/.config/polybar/launch.sh` | `/home/aaron/code/dotfiles/.config/polybar/launch.sh` | yes | yes | polybar priority |
-| `M` | `.config/polybar/themes/global/modules` | `/home/aaron/.config/polybar/themes/global/modules` | `/home/aaron/code/dotfiles/.config/polybar/themes/global/modules` | yes | yes | polybar priority |
-| `D` | `.config/polybar/themes/nord-arrow/config` | `/home/aaron/.config/polybar/themes/nord-arrow/config` | `/home/aaron/code/dotfiles/.config/polybar/themes/nord-arrow/config` | no | yes | deleted live; polybar priority; conflicts with checkout status |
-| `M` | `.config/polybar/themes/nord/config` | `/home/aaron/.config/polybar/themes/nord/config` | `/home/aaron/code/dotfiles/.config/polybar/themes/nord/config` | yes | yes | polybar priority |
-| `M` | `.config/rofi/config.rasi` | `/home/aaron/.config/rofi/config.rasi` | `/home/aaron/code/dotfiles/.config/rofi/config.rasi` | yes | yes | desktop launcher config |
-| `M` | `.gitconfig` | `/home/aaron/.gitconfig` | `/home/aaron/code/dotfiles/.gitconfig` | yes | yes | git identity/workflow; possible sensitive review |
-| `M` | `.gitignore` | `/home/aaron/.gitignore` | `/home/aaron/code/dotfiles/.gitignore` | yes | yes | global ignore behavior |
-| `M` | `.gtkrc-2.0` | `/home/aaron/.gtkrc-2.0` | `/home/aaron/code/dotfiles/.gtkrc-2.0` | yes | yes | desktop/theme config |
-| `M` | `.local/bin/setup/update` | `/home/aaron/.local/bin/setup/update` | `/home/aaron/code/dotfiles/.local/bin/setup/update` | yes | yes | bootstrap script; inspect only |
-| `M` | `.local/bin/tools/check_for_arch_updates` | `/home/aaron/.local/bin/tools/check_for_arch_updates` | `/home/aaron/code/dotfiles/.local/bin/tools/check_for_arch_updates` | yes | yes | helper script; package-related |
-| `M` | `.local/bin/tools/lock` | `/home/aaron/.local/bin/tools/lock` | `/home/aaron/code/dotfiles/.local/bin/tools/lock` | yes | yes | desktop/session helper |
-| `M` | `.local/bin/tools/polybar_alsa_module` | `/home/aaron/.local/bin/tools/polybar_alsa_module` | `/home/aaron/code/dotfiles/.local/bin/tools/polybar_alsa_module` | yes | yes | polybar helper |
-| `M` | `.local/bin/tools/pulseaudio-tail.sh` | `/home/aaron/.local/bin/tools/pulseaudio-tail.sh` | `/home/aaron/code/dotfiles/.local/bin/tools/pulseaudio-tail.sh` | yes | yes | audio/polybar helper |
-| `M` | `.local/bin/tools/screenshot` | `/home/aaron/.local/bin/tools/screenshot` | `/home/aaron/code/dotfiles/.local/bin/tools/screenshot` | yes | yes | desktop helper |
-| `M` | `.local/bin/tools/squash` | `/home/aaron/.local/bin/tools/squash` | `/home/aaron/code/dotfiles/.local/bin/tools/squash` | yes | yes | git helper script |
-| `M` | `.nvmrc` | `/home/aaron/.nvmrc` | `/home/aaron/code/dotfiles/.nvmrc` | yes | yes | runtime version |
-| `M` | `.profile` | `/home/aaron/.profile` | `/home/aaron/code/dotfiles/.profile` | yes | yes | login shell/env; review first |
-| `M` | `.spacemacs` | `/home/aaron/.spacemacs` | `/home/aaron/code/dotfiles/.spacemacs` | yes | yes | editor config; large diff |
-| `M` | `.vimrc` | `/home/aaron/.vimrc` | `/home/aaron/code/dotfiles/.vimrc` | yes | yes | editor config; small diff |
-| `M` | `.xinitrc` | `/home/aaron/.xinitrc` | `/home/aaron/code/dotfiles/.xinitrc` | yes | yes | desktop/session startup |
-| `M` | `.zsh_plugins.sh` | `/home/aaron/.zsh_plugins.sh` | `/home/aaron/code/dotfiles/.zsh_plugins.sh` | yes | no | shell plugin state; tracked in YADM but absent from checkout |
-| `M` | `.zsh_plugins.txt` | `/home/aaron/.zsh_plugins.txt` | `/home/aaron/code/dotfiles/.zsh_plugins.txt` | yes | no | shell plugin input; tracked in YADM but absent from checkout |
-| `M` | `.zshrc` | `/home/aaron/.zshrc` | `/home/aaron/code/dotfiles/.zshrc` | yes | yes | shell startup; review first |
-| `M` | `LICENSE` | `/home/aaron/LICENSE` | `/home/aaron/code/dotfiles/LICENSE` | yes | yes | repo metadata; odd live-home location |
-| `M` | `README.md` | `/home/aaron/README.md` | `/home/aaron/code/dotfiles/README.md` | yes | yes | docs; likely historical drift |
-| `M` | `TODO.org` | `/home/aaron/TODO.org` | `/home/aaron/code/dotfiles/TODO.org` | yes | yes | personal task/history doc |
+| `M` | `.bash_profile` | `$HOME/.bash_profile` | `$DOTFILES_CHECKOUT/.bash_profile` | yes | yes | shell startup; review first |
+| `M` | `.bashrc` | `$HOME/.bashrc` | `$DOTFILES_CHECKOUT/.bashrc` | yes | yes | shell startup; review first |
+| `M` | `.config/Code/User/settings.json` | `$HOME/.config/Code/User/settings.json` | `$DOTFILES_CHECKOUT/.config/Code/User/settings.json` | yes | yes | editor config; review after shell/polybar |
+| `M` | `.config/gtk-3.0/settings.ini` | `$HOME/.config/gtk-3.0/settings.ini` | `$DOTFILES_CHECKOUT/.config/gtk-3.0/settings.ini` | yes | yes | desktop/theme config |
+| `M` | `.config/i3/config` | `$HOME/.config/i3/config` | `$DOTFILES_CHECKOUT/.config/i3/config` | yes | yes | desktop/session config |
+| `D` | `.config/polybar/config` | `$HOME/.config/polybar/config` | `$DOTFILES_CHECKOUT/.config/polybar/config` | no | yes | deleted live; polybar priority |
+| `M` | `.config/polybar/launch.sh` | `$HOME/.config/polybar/launch.sh` | `$DOTFILES_CHECKOUT/.config/polybar/launch.sh` | yes | yes | polybar priority |
+| `M` | `.config/polybar/themes/global/modules` | `$HOME/.config/polybar/themes/global/modules` | `$DOTFILES_CHECKOUT/.config/polybar/themes/global/modules` | yes | yes | polybar priority |
+| `D` | `.config/polybar/themes/nord-arrow/config` | `$HOME/.config/polybar/themes/nord-arrow/config` | `$DOTFILES_CHECKOUT/.config/polybar/themes/nord-arrow/config` | no | yes | deleted live; polybar priority; conflicts with checkout status |
+| `M` | `.config/polybar/themes/nord/config` | `$HOME/.config/polybar/themes/nord/config` | `$DOTFILES_CHECKOUT/.config/polybar/themes/nord/config` | yes | yes | polybar priority |
+| `M` | `.config/rofi/config.rasi` | `$HOME/.config/rofi/config.rasi` | `$DOTFILES_CHECKOUT/.config/rofi/config.rasi` | yes | yes | desktop launcher config |
+| `M` | `.gitconfig` | `$HOME/.gitconfig` | `$DOTFILES_CHECKOUT/.gitconfig` | yes | yes | git identity/workflow; possible sensitive review |
+| `M` | `.gitignore` | `$HOME/.gitignore` | `$DOTFILES_CHECKOUT/.gitignore` | yes | yes | global ignore behavior |
+| `M` | `.gtkrc-2.0` | `$HOME/.gtkrc-2.0` | `$DOTFILES_CHECKOUT/.gtkrc-2.0` | yes | yes | desktop/theme config |
+| `M` | `.local/bin/setup/update` | `$HOME/.local/bin/setup/update` | `$DOTFILES_CHECKOUT/.local/bin/setup/update` | yes | yes | bootstrap script; inspect only |
+| `M` | `.local/bin/tools/check_for_arch_updates` | `$HOME/.local/bin/tools/check_for_arch_updates` | `$DOTFILES_CHECKOUT/.local/bin/tools/check_for_arch_updates` | yes | yes | helper script; package-related |
+| `M` | `.local/bin/tools/lock` | `$HOME/.local/bin/tools/lock` | `$DOTFILES_CHECKOUT/.local/bin/tools/lock` | yes | yes | desktop/session helper |
+| `M` | `.local/bin/tools/polybar_alsa_module` | `$HOME/.local/bin/tools/polybar_alsa_module` | `$DOTFILES_CHECKOUT/.local/bin/tools/polybar_alsa_module` | yes | yes | polybar helper |
+| `M` | `.local/bin/tools/pulseaudio-tail.sh` | `$HOME/.local/bin/tools/pulseaudio-tail.sh` | `$DOTFILES_CHECKOUT/.local/bin/tools/pulseaudio-tail.sh` | yes | yes | audio/polybar helper |
+| `M` | `.local/bin/tools/screenshot` | `$HOME/.local/bin/tools/screenshot` | `$DOTFILES_CHECKOUT/.local/bin/tools/screenshot` | yes | yes | desktop helper |
+| `M` | `.local/bin/tools/squash` | `$HOME/.local/bin/tools/squash` | `$DOTFILES_CHECKOUT/.local/bin/tools/squash` | yes | yes | git helper script |
+| `M` | `.nvmrc` | `$HOME/.nvmrc` | `$DOTFILES_CHECKOUT/.nvmrc` | yes | yes | runtime version |
+| `M` | `.profile` | `$HOME/.profile` | `$DOTFILES_CHECKOUT/.profile` | yes | yes | login shell/env; review first |
+| `M` | `.spacemacs` | `$HOME/.spacemacs` | `$DOTFILES_CHECKOUT/.spacemacs` | yes | yes | editor config; large diff |
+| `M` | `.vimrc` | `$HOME/.vimrc` | `$DOTFILES_CHECKOUT/.vimrc` | yes | yes | editor config; small diff |
+| `M` | `.xinitrc` | `$HOME/.xinitrc` | `$DOTFILES_CHECKOUT/.xinitrc` | yes | yes | desktop/session startup |
+| `M` | `.zsh_plugins.sh` | `$HOME/.zsh_plugins.sh` | `$DOTFILES_CHECKOUT/.zsh_plugins.sh` | yes | no | shell plugin state; tracked in YADM but absent from checkout |
+| `M` | `.zsh_plugins.txt` | `$HOME/.zsh_plugins.txt` | `$DOTFILES_CHECKOUT/.zsh_plugins.txt` | yes | no | shell plugin input; tracked in YADM but absent from checkout |
+| `M` | `.zshrc` | `$HOME/.zshrc` | `$DOTFILES_CHECKOUT/.zshrc` | yes | yes | shell startup; review first |
+| `M` | `LICENSE` | `$HOME/LICENSE` | `$DOTFILES_CHECKOUT/LICENSE` | yes | yes | repo metadata; odd live-home location |
+| `M` | `README.md` | `$HOME/README.md` | `$DOTFILES_CHECKOUT/README.md` | yes | yes | docs; likely historical drift |
+| `M` | `TODO.org` | `$HOME/TODO.org` | `$DOTFILES_CHECKOUT/TODO.org` | yes | yes | personal task/history doc |
 
 ---
 
@@ -114,6 +114,6 @@ Notes:
 
 ## Story 1.2 conclusion
 
-Story 1.2 has produced the initial live-home reconciliation list for the changed high-impact files. The list shows where each changed tracked path maps in `/home/aaron`, whether it exists live, whether it exists in the normal checkout, and how it should be prioritized.
+Story 1.2 has produced the initial live-home reconciliation list for the changed high-impact files. The list shows where each changed tracked path maps in `$HOME`, whether it exists live, whether it exists in the normal checkout, and how it should be prioritized.
 
 The next implementation step is file-by-file reconciliation. Start with shell startup files, because they affect daily terminal behavior and include files tracked by legacy YADM but missing from the normal checkout.

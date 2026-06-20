@@ -47,7 +47,7 @@ The repo needs to distinguish active workstation behavior from historical config
 
 ### In Scope
 
-- Compare shell/editor/desktop files against `/home/aaron`
+- Compare shell/editor/desktop files against `$HOME`
 - Reduce duplication in `.zshrc`
 - Separate portable shell config from local/secret config
 - Review editor configs and classify active versus legacy
@@ -75,7 +75,7 @@ So that startup behavior and aliases are easy to maintain.
 
 **Acceptance criteria:**
 
-- Given `.zshrc` differs from `/home/aaron/.zshrc`, when cleanup is proposed, then the live difference is reviewed first
+- Given `.zshrc` differs from `$HOME/.zshrc`, when cleanup is proposed, then the live difference is reviewed first
 - Given duplicated aliases or functions exist, when cleanup is performed, then duplicate definitions are removed or consolidated
 - Given environment variables are secret or machine-local, when shell config is updated, then they are moved to encrypted/local handling rather than plaintext shared config
 - Given PATH entries are stale, when updated, then the rationale is documented or the entry is removed
