@@ -4,7 +4,7 @@
 
 This runbook covers the next Phase 1 cleanup step after the initial live-home reconciliation inventory: upgrade YADM's legacy data paths, keep local work committed in small checkpoints, and resume file-by-file reconciliation from a clearer baseline.
 
-It is intentionally local-first. A GitHub PR workflow can come later; this step is about making the current machine recoverable and reviewable.
+It is intentionally local-first, but story branches should be PR-ready. GitHub boards and issues are not required for this repo right now.
 
 ## Current evidence
 
@@ -28,6 +28,8 @@ yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yad
 - Do not mix docs commits with live-home config reconciliation.
 - Do not include the existing polybar drift in docs or runbook commits.
 - Keep every commit small enough to revert independently.
+- Use a dedicated branch for each story before editing.
+- Do not push, open a PR, merge to `main`, or run YADM remote operations unless Aaron explicitly asks for that step.
 
 ## Pre-upgrade checklist
 
@@ -80,12 +82,13 @@ Expected result:
 
 ## Local commit sequence
 
-Use local Git checkpoints before remote workflow setup exists:
+Use local Git checkpoints on the active story branch:
 
-1. Commit safety instructions and planning docs.
-2. Commit the YADM upgrade metadata only if the upgrade changes tracked metadata and the change is understood.
-3. Commit reconciliation decisions by risk area: shell startup, polybar, Git/runtime basics, desktop, editor, helper scripts, package docs.
-4. Keep encrypted payload updates isolated.
+1. Create or switch to a branch named for the story, for example `story/1.6-yadm-legacy-upgrade-workflow`.
+2. Commit safety instructions and planning docs.
+3. Commit the YADM upgrade metadata only if the upgrade changes tracked metadata and the change is understood.
+4. Commit reconciliation decisions by risk area: shell startup, polybar, Git/runtime basics, desktop, editor, helper scripts, package docs.
+5. Keep encrypted payload updates isolated.
 
 For the first docs commit from the normal checkout:
 
@@ -99,20 +102,34 @@ git commit -m "Add dotfiles safety planning docs"
 
 This intentionally excludes `.config/polybar/themes/nord-arrow/config` until polybar reconciliation reaches it.
 
+## Push and PR path
+
+When Aaron asks to publish the story branch, push it and create a PR against `main`:
+
+```bash
+cd /home/aaron/code/dotfiles
+git status --short --branch
+git log --oneline --decorate --graph --max-count=12 --all
+git push -u origin story/1.6-yadm-legacy-upgrade-workflow
+gh pr create --base main --head story/1.6-yadm-legacy-upgrade-workflow
+```
+
+The PR should include the story title, summary, validation, secret-safety notes, YADM impact, live-home comparison notes, and known follow-up work.
+
 ## Local merge to main
 
-After the docs commit exists on `test-laptop`, a local merge to `main` is reasonable if `main` exists and the branch relationship is understood:
+After the story PR is reviewed or Aaron explicitly asks for a local merge, merging to `main` is reasonable if `main` exists and the branch relationship is understood:
 
 ```bash
 cd /home/aaron/code/dotfiles
 git branch --list
 git log --oneline --decorate --graph --max-count=12 --all
 git switch main
-git merge --no-ff test-laptop
+git merge --no-ff story/1.6-yadm-legacy-upgrade-workflow
 git status --short --branch
 ```
 
-Do not push as part of this runbook unless explicitly requested after the local merge is reviewed.
+Do not push `main` as part of this runbook unless explicitly requested after the local merge is reviewed.
 
 ## Reconciliation order after upgrade
 
