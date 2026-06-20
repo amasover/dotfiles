@@ -24,7 +24,7 @@ The repo is managed with YADM, so many tracked paths map directly into the live 
 | Desktop config | `.xinitrc`, `.Xresources`, `.config/i3/`, `.config/polybar/`, `.config/rofi/`, `.config/dunst/`, `.screenlayout/` | Linux desktop/session behavior |
 | Bootstrap scripts | `.local/bin/setup/`, `.local/bin/tools/`, `install.md` | Install, update, helper, and migration scripts |
 | Package lists | `.config/dotfiles/arch-packages/` | Historical Arch package manifests and future curated install inputs |
-| Local package inventory | live package manager output from `/home/aaron`'s machine | Evidence for deciding which packages are still needed, optional, stale, or missing from bootstrap |
+| Local package inventory | live package manager output from `$HOME`'s machine | Evidence for deciding which packages are still needed, optional, stale, or missing from bootstrap |
 | YADM metadata | `.yadm/encrypt`, `.yadm/files.gpg` | Encryption manifest and encrypted secret payload |
 | Product docs | `README.md`, `docs/` | Product framing, PRD, epics, runbooks, and cleanup decisions |
 | Agent knowledge | `knowledge/`, `.github/skills/` | Durable repo-specific guidance, reusable workflows, and task skills for future AI-assisted maintenance |
@@ -35,13 +35,13 @@ The repo is managed with YADM, so many tracked paths map directly into the live 
 
 ### 1. Check repo state against the live home directory
 
-Before changing any tracked dotfile, script, package list, or desktop/editor config, compare the repo version with the live file under `/home/aaron` when the live file exists.
+Before changing any tracked dotfile, script, package list, or desktop/editor config, compare the repo version with the live file under `$HOME` when the live file exists.
 
 Examples:
 
-- Repo `.zshrc` maps to `/home/aaron/.zshrc`
-- Repo `.config/i3/config` maps to `/home/aaron/.config/i3/config`
-- Repo `.local/bin/tools/foo` maps to `/home/aaron/.local/bin/tools/foo`
+- Repo `.zshrc` maps to `$HOME/.zshrc`
+- Repo `.config/i3/config` maps to `$HOME/.config/i3/config`
+- Repo `.local/bin/tools/foo` maps to `$HOME/.local/bin/tools/foo`
 
 Use the live home directory as current-state evidence, not as automatic truth. If repo and live home differ, state the difference and decide deliberately whether to adopt, ignore, archive, or document the live change.
 
@@ -54,7 +54,7 @@ YADM can encrypt files. This repo already uses that model.
 - Treat `.yadm/encrypt` as the source of truth for encrypted paths.
 - Treat `.yadm/files.gpg` as an encrypted artifact, not as inspectable content.
 - Never print decrypted secret file contents into chat, docs, logs, or generated files.
-- Never copy secrets from `/home/aaron` into plaintext tracked files.
+- Never copy secrets from `$HOME` into plaintext tracked files.
 - Never add raw contents from paths covered by `.yadm/encrypt` into normal repo files.
 - If a new sensitive file is needed, add the path pattern to `.yadm/encrypt` and regenerate the encrypted payload with YADM instead of committing plaintext.
 
@@ -137,6 +137,7 @@ Cleanup work should be story-scoped, branch-based, and PR-ready.
 - Commit as work progresses, but keep commits scoped by risk area: docs, YADM metadata, shell config, desktop config, package inventory, bootstrap scripts, or encrypted payload updates.
 - Push the story branch to Aaron's GitHub repo when the local scope is ready for review.
 - Prepare one GitHub pull request per story. The PR description should include the story, summary, validation performed, secret-safety notes, live-home comparison notes, and follow-up work.
+- Before pushing or opening a PR, run a privacy/sensitivity pass for secrets, personal details, company/internal details, private hostnames, local IPs, and other machine-specific data. Keep sensitive files local, encrypted through YADM, or ignored; do not publish them as plaintext.
 - This repo does not currently use GitHub boards or issues for story tracking. Do not invent issue numbers or board updates.
 - Do not merge to `main` or push to a remote unless Aaron explicitly asks for that step in the current task.
 
@@ -147,7 +148,7 @@ Cleanup work should be story-scoped, branch-based, and PR-ready.
 Before proposing or making changes, inspect in this order:
 
 1. The relevant repo file under `../dotfiles`.
-2. The matching live-home file under `/home/aaron`, if it exists.
+2. The matching live-home file under `$HOME`, if it exists.
 3. YADM state with read-only commands such as `yadm status` and `yadm diff --stat`, when approved or provided by the user.
 4. Related docs such as `README.md`, `install.md`, `TODO.org`, and files under `docs/`.
 5. Relevant repo knowledge under `knowledge/` and task skills under `.github/skills/`.
@@ -167,7 +168,7 @@ Use a staged cleanup model.
 
 - Capture YADM status and unsynced changes.
 - Identify untracked, modified, deleted, and stale files.
-- Compare high-impact repo files against `/home/aaron`.
+- Compare high-impact repo files against `$HOME`.
 - Inventory locally installed packages with read-only commands when available.
 - Run or request a secret scan before staging commits.
 - Confirm encrypted paths in `.yadm/encrypt` still cover sensitive local files.
@@ -254,7 +255,7 @@ For package/bootstrap changes:
 - Do not commit plaintext secrets.
 - Do not expose decrypted YADM content.
 - Do not assume old Arch/i3 install docs are still accurate.
-- Do not assume the repo matches `/home/aaron` without checking.
+- Do not assume the repo matches `$HOME` without checking.
 - Do not run bootstrap scripts as tests.
 - Do not rewrite large config files when a small targeted cleanup is safer.
 - Do not delete legacy assets solely because they look old.
@@ -270,8 +271,8 @@ Only run commands after considering whether the user has approved command execut
 yadm status
 yadm diff --stat
 yadm ls-files
-find /home/aaron -maxdepth 2 -name '.zshrc' -o -name '.bashrc' -o -name '.profile'
-bash -n /home/aaron/.local/bin/setup/install
+find $HOME -maxdepth 2 -name '.zshrc' -o -name '.bashrc' -o -name '.profile'
+bash -n $HOME/.local/bin/setup/install
 pacman -Qqe
 pacman -Qqm
 ```

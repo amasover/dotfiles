@@ -15,10 +15,10 @@ No files were staged or committed as part of this inventory.
 
 ## Git repo status
 
-Read-only `git status --short --branch` from `/home/aaron/code/dotfiles` showed:
+Read-only `git status --short --branch` from `$DOTFILES_CHECKOUT` showed:
 
 ```text
-## test-laptop...origin/test-laptop
+## <working-branch>...origin/<working-branch>
  M .config/polybar/themes/nord-arrow/config
 ?? .github/
 ?? docs/
@@ -26,7 +26,7 @@ Read-only `git status --short --branch` from `/home/aaron/code/dotfiles` showed:
 
 Interpretation:
 
-- The normal Git checkout is on branch `test-laptop` tracking `origin/test-laptop`.
+- The normal Git checkout is on branch `<working-branch>` tracking `origin/<working-branch>`.
 - The new planning artifacts are untracked under `.github/` and `docs/`.
 - There is one pre-existing modified file: `.config/polybar/themes/nord-arrow/config`.
 - That modified polybar file should be reviewed against the live home directory before any cleanup commit.
@@ -53,8 +53,8 @@ With version 3.0.0, yadm uses the XDG Base Directory Specification.
 Detected legacy paths:
 
 ```text
-/home/aaron/.config/yadm/repo.git
-/home/aaron/.config/yadm/files.gpg
+$HOME/.config/yadm/repo.git
+$HOME/.config/yadm/files.gpg
 ```
 
 Observed error:
@@ -66,46 +66,46 @@ ERROR: Git repo does not exist. did you forget to run 'init' or 'clone'?
 Read-only filesystem check confirmed these paths exist:
 
 ```text
-/home/aaron/.config/yadm
-/home/aaron/.config/yadm/repo.git
-/home/aaron/.config/yadm/files.gpg
-/home/aaron/.local/share/yadm
+$HOME/.config/yadm
+$HOME/.config/yadm/repo.git
+$HOME/.config/yadm/files.gpg
+$HOME/.local/share/yadm
 ```
 
 Interpretation:
 
-- YADM v3 is looking for data under XDG paths, but this machine still has legacy YADM data under `/home/aaron/.config/yadm`.
+- YADM v3 is looking for data under XDG paths, but this machine still has legacy YADM data under `$HOME/.config/yadm`.
 - Do not run `yadm upgrade` automatically; it is a mutating operation and needs explicit approval.
 - Until YADM is upgraded or configured, read-only inspection can use Git directly against the legacy YADM repo.
 
 Read-only legacy YADM status command used:
 
 ```bash
-git --git-dir=/home/aaron/.config/yadm/repo.git --work-tree=/home/aaron status --short --branch
+git --git-dir=$HOME/.config/yadm/repo.git --work-tree=$HOME status --short --branch
 ```
 
 Legacy YADM repo status showed:
 
 ```text
-## test-laptop...origin/test-laptop [ahead 1]
+## <working-branch>...origin/<working-branch> [ahead 1]
 ```
 
 Interpretation:
 
-- The legacy YADM repo has one local commit not pushed to `origin/test-laptop`.
+- The legacy YADM repo has one local commit not pushed to `origin/<working-branch>`.
 - There are many modified live-home files relative to the YADM repo.
 - This reinforces that live-home reconciliation must happen before broad cleanup.
 
 Legacy YADM remote:
 
 ```text
-origin git@github.com:amasover/dotfiles.git
+origin git@github.com:<owner>/dotfiles.git
 ```
 
 Normal Git checkout remote:
 
 ```text
-origin https://github.com/amasover/dotfiles.git
+origin https://github.com/<owner>/dotfiles.git
 ```
 
 Interpretation:
@@ -307,10 +307,10 @@ Likely triage notes:
 Sample:
 
 ```text
-1password
-amadeubuntu-ca-certificates
-amadeubuntu-globalprintservice
-amadeubuntu-vpn-bin
+password-manager-package
+work-ca-certificates
+work-globalprintservice
+work-vpn-bin
 anki-bin
 antibody
 arc-gtk-theme
@@ -351,10 +351,10 @@ extundelete
 
 Likely triage groups:
 
-- Work/vendor: `amadeubuntu-*`, `globalprintservice`, VPN-related packages
+- Work/vendor: work CA certificates, print service, and VPN-related packages
 - Cloud/dev: `aztfexport-bin`, `azure-functions-core-tools-bin`, `databricks-cli-bin`, `dotnet-*`, `astro-cli`
 - Desktop/hardware: `displaylink`, `evdi-dkms`, `clight*`
-- Personal apps: `1password`, `anki-bin`
+- Personal apps: password manager, `anki-bin`
 - Unknown/legacy: `dotnet-runtime-2.1`, `dotnet-runtime-2.2`, `bitlbee`
 
 ### Repo AUR packages not installed locally
@@ -391,12 +391,12 @@ Likely triage notes:
 
 Ask by group first:
 
-1. Should work/vendor packages such as `amadeubuntu-*`, VPN, printing, DisplayLink, and GlobalProtect be part of bootstrap, or machine-local only?
+1. Should work/vendor packages such as CA certificates, VPN, printing, DisplayLink, and GlobalProtect be part of bootstrap, or machine-local only?
 2. Should Azure/.NET/data tooling such as `azure-cli`, `azcopy`, `aztfexport-bin`, `azure-functions-core-tools-bin`, `databricks-cli-bin`, and `dotnet-*` be part of standard dev bootstrap?
 3. Is `alacritty` the current terminal, and should old `termite` config/packages be archived?
 4. Is `eza` the replacement for `exa`?
 5. Are i3/polybar/rofi still active desktop surfaces or legacy-supported only?
-6. Should personal GUI apps such as `1password`, `anki-bin`, `spotify`, `discord`, and `gimp` be in bootstrap or documented as optional?
+6. Should personal GUI apps such as password manager, `anki-bin`, `spotify`, `discord`, and `gimp` be in bootstrap or documented as optional?
 7. Are old Antergos and NVIDIA 390xx packages safe to classify as legacy/stale?
 
 ---
@@ -419,23 +419,23 @@ Both failed with the YADM v3 legacy-path warning and repo detection error docume
 Legacy YADM Git commands were then used for read-only inspection:
 
 ```bash
-git --git-dir=/home/aaron/.config/yadm/repo.git --work-tree=/home/aaron status --short --branch
-git --git-dir=/home/aaron/.config/yadm/repo.git --work-tree=/home/aaron diff --stat
-git --git-dir=/home/aaron/.config/yadm/repo.git --work-tree=/home/aaron diff --cached --stat
-git --git-dir=/home/aaron/.config/yadm/repo.git --work-tree=/home/aaron ls-files --others --exclude-standard
+git --git-dir=$HOME/.config/yadm/repo.git --work-tree=$HOME status --short --branch
+git --git-dir=$HOME/.config/yadm/repo.git --work-tree=$HOME diff --stat
+git --git-dir=$HOME/.config/yadm/repo.git --work-tree=$HOME diff --cached --stat
+git --git-dir=$HOME/.config/yadm/repo.git --work-tree=$HOME ls-files --others --exclude-standard
 ```
 
 ### Summary
 
 | Category | Finding |
 | --- | --- |
-| Branch | `test-laptop` |
-| Remote tracking | `origin/test-laptop` |
+| Branch | `<working-branch>` |
+| Remote tracking | `origin/<working-branch>` |
 | Ahead/behind | Ahead by 1 commit |
 | Staged changes | None reported by `diff --cached --stat` |
 | Modified tracked files | 31 modified files |
 | Deleted tracked files | 2 deleted files |
-| Untracked output | Reported `./`, requiring follow-up because the work tree is `/home/aaron` |
+| Untracked output | Reported `./`, requiring follow-up because the work tree is `$HOME` |
 | Diff size | 33 files changed, 1567 insertions, 1582 deletions |
 
 ### Modified tracked files
@@ -498,7 +498,7 @@ Story 1.1 is complete enough to proceed to Story 1.2. The current state is known
 
 ## Story 1.2 evidence: Live-home reconciliation list
 
-Story 1.2 asked for tracked files to be mapped to `/home/aaron` so cleanup decisions can reflect the actual workstation.
+Story 1.2 asked for tracked files to be mapped to `$HOME` so cleanup decisions can reflect the actual workstation.
 
 Detailed artifact:
 
@@ -509,9 +509,9 @@ Detailed artifact:
 Because normal YADM commands currently fail under YADM 3.5.0 legacy-path detection, Story 1.2 used explicit legacy YADM paths instead of raw Git where possible:
 
 ```bash
-yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg status --short --branch
-yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg diff --stat
-yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg list -a
+yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg status --short --branch
+yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg diff --stat
+yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg list -a
 ```
 
 This is the preferred read-only workaround until `yadm upgrade` is explicitly approved.
