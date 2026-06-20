@@ -9,8 +9,8 @@ It is intentionally local-first, but story branches should be PR-ready. GitHub b
 ## Current evidence
 
 - YADM version is `3.5.0`.
-- Normal `yadm status` and `yadm diff --stat` currently fail with legacy-path detection.
-- Read-only inspection works with explicit legacy flags:
+- Normal `yadm status` and `yadm diff --stat` previously failed with legacy-path detection.
+- Before upgrade, read-only inspection worked with explicit legacy flags:
 
 ```bash
 yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg status --short --branch
@@ -20,6 +20,26 @@ yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yad
 - The legacy YADM repo is on `test-laptop`, tracking `origin/test-laptop`, and is ahead by one commit.
 - The normal checkout at `/home/aaron/code/dotfiles` is also on `test-laptop` and has untracked `.github/` and `docs/` plus an unrelated polybar modification.
 - The normal checkout remote uses HTTPS; the legacy YADM remote uses SSH.
+
+## Upgrade result
+
+YADM legacy paths were upgraded on 2026-06-20.
+
+Observed moves:
+
+```text
+/home/aaron/.config/yadm/repo.git -> /home/aaron/.local/share/yadm/repo.git
+/home/aaron/.config/yadm/files.gpg -> /home/aaron/.local/share/yadm/archive
+```
+
+Post-upgrade verification:
+
+- Normal `yadm status --short --branch` works without explicit legacy flags.
+- Normal `yadm diff --stat` works without explicit legacy flags.
+- `yadm list -a` returned 421 tracked files before and after the upgrade.
+- The tracked-file list changed only by replacing `.config/yadm/files.gpg` with `.local/share/yadm/archive`.
+- The YADM repo committed the archive rename as `7fc6fb6` with message `Upgrade YADM data paths`.
+- Remaining YADM drift is the previously inventoried live-home reconciliation set.
 
 ## Safety rules
 
@@ -54,7 +74,7 @@ Expected result:
 
 ## Upgrade step
 
-Run only after explicit approval:
+This was run only after explicit approval:
 
 ```bash
 yadm upgrade
@@ -75,10 +95,10 @@ diff -u /tmp/dotfiles-yadm-list-before-upgrade.txt /tmp/dotfiles-yadm-list-after
 
 Expected result:
 
-- Normal YADM commands no longer require explicit legacy flags.
-- The tracked-file list is unchanged or any difference is understood.
-- The same live-home drift remains available for reconciliation.
-- No encrypted content is decrypted or printed.
+- Normal YADM commands no longer require explicit legacy flags. Completed.
+- The tracked-file list is unchanged except for the expected encrypted archive path move. Completed.
+- The same live-home drift remains available for reconciliation. Completed.
+- No encrypted content is decrypted or printed. Completed.
 
 ## Local commit sequence
 
