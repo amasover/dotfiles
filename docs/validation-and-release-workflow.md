@@ -4,14 +4,14 @@
 
 This runbook defines the safe path for changing and syncing the `dotfiles` repo.
 
-The workflow is intentionally conservative because this repo maps directly into `/home/aaron` through YADM and may include encrypted local secrets.
+The workflow is intentionally conservative because this repo maps directly into `$HOME` through YADM and may include encrypted local secrets.
 
 ---
 
 ## Safety principles
 
 1. Inspect before editing.
-2. Compare repo files against `/home/aaron` before changing active config.
+2. Compare repo files against `$HOME` before changing active config.
 3. Review YADM status before staging.
 4. Use `yadm diff --stat` before detailed diffs.
 5. Never print decrypted secrets.
@@ -45,24 +45,24 @@ Expected outcome:
 
 ---
 
-### 2. Compare high-impact files against `/home/aaron`
+### 2. Compare high-impact files against `$HOME`
 
 For any file being changed, compare the repo path and live path.
 
 Examples:
 
 ```bash
-diff -u /home/aaron/code/dotfiles/.zshrc /home/aaron/.zshrc
-diff -u /home/aaron/code/dotfiles/.bashrc /home/aaron/.bashrc
-diff -u /home/aaron/code/dotfiles/.profile /home/aaron/.profile
-diff -u /home/aaron/code/dotfiles/.vimrc /home/aaron/.vimrc
+diff -u $DOTFILES_CHECKOUT/.zshrc $HOME/.zshrc
+diff -u $DOTFILES_CHECKOUT/.bashrc $HOME/.bashrc
+diff -u $DOTFILES_CHECKOUT/.profile $HOME/.profile
+diff -u $DOTFILES_CHECKOUT/.vimrc $HOME/.vimrc
 ```
 
 For directories, start with file lists before content diffs:
 
 ```bash
-find /home/aaron/code/dotfiles/.config/i3 -type f | sort
-find /home/aaron/.config/i3 -type f | sort
+find $DOTFILES_CHECKOUT/.config/i3 -type f | sort
+find $HOME/.config/i3 -type f | sort
 ```
 
 Expected outcome:
@@ -77,7 +77,7 @@ Expected outcome:
 Review the encryption manifest:
 
 ```bash
-cat /home/aaron/code/dotfiles/.yadm/encrypt
+cat $DOTFILES_CHECKOUT/.yadm/encrypt
 ```
 
 Known encrypted path patterns:
@@ -120,7 +120,7 @@ For docs-only changes:
 Useful check:
 
 ```bash
-find /home/aaron/code/dotfiles/docs -type f -name '*.md' -print | sort
+find $DOTFILES_CHECKOUT/docs -type f -name '*.md' -print | sort
 ```
 
 ---
@@ -132,15 +132,15 @@ For shell config and scripts, prefer syntax checks over execution.
 Examples:
 
 ```bash
-bash -n /home/aaron/code/dotfiles/.local/bin/setup/install
-bash -n /home/aaron/code/dotfiles/.local/bin/setup/update
-find /home/aaron/code/dotfiles/.local/bin/tools -type f -maxdepth 1 -print
+bash -n $DOTFILES_CHECKOUT/.local/bin/setup/install
+bash -n $DOTFILES_CHECKOUT/.local/bin/setup/update
+find $DOTFILES_CHECKOUT/.local/bin/tools -type f -maxdepth 1 -print
 ```
 
 If `shellcheck` is available:
 
 ```bash
-shellcheck /home/aaron/code/dotfiles/.local/bin/setup/install
+shellcheck $DOTFILES_CHECKOUT/.local/bin/setup/install
 ```
 
 Do not execute setup scripts as tests unless explicitly approved.
@@ -162,10 +162,10 @@ comm -23 <(sort /tmp/dotfiles-pacman-explicit.txt) <(sort /tmp/dotfiles-pacman-f
 Then compare the inventory to repo manifests:
 
 ```bash
-comm -23 <(sort /tmp/dotfiles-pacman-native-explicit.txt) <(sort /home/aaron/code/dotfiles/.config/dotfiles/arch-packages/pacman) > /tmp/dotfiles-installed-not-in-repo.txt
-comm -13 <(sort /tmp/dotfiles-pacman-native-explicit.txt) <(sort /home/aaron/code/dotfiles/.config/dotfiles/arch-packages/pacman) > /tmp/dotfiles-repo-not-installed.txt
-comm -23 <(sort /tmp/dotfiles-pacman-foreign.txt) <(sort /home/aaron/code/dotfiles/.config/dotfiles/arch-packages/aur) > /tmp/dotfiles-foreign-not-in-repo.txt
-comm -13 <(sort /tmp/dotfiles-pacman-foreign.txt) <(sort /home/aaron/code/dotfiles/.config/dotfiles/arch-packages/aur) > /tmp/dotfiles-aur-repo-not-installed.txt
+comm -23 <(sort /tmp/dotfiles-pacman-native-explicit.txt) <(sort $DOTFILES_CHECKOUT/.config/dotfiles/arch-packages/pacman) > /tmp/dotfiles-installed-not-in-repo.txt
+comm -13 <(sort /tmp/dotfiles-pacman-native-explicit.txt) <(sort $DOTFILES_CHECKOUT/.config/dotfiles/arch-packages/pacman) > /tmp/dotfiles-repo-not-installed.txt
+comm -23 <(sort /tmp/dotfiles-pacman-foreign.txt) <(sort $DOTFILES_CHECKOUT/.config/dotfiles/arch-packages/aur) > /tmp/dotfiles-foreign-not-in-repo.txt
+comm -13 <(sort /tmp/dotfiles-pacman-foreign.txt) <(sort $DOTFILES_CHECKOUT/.config/dotfiles/arch-packages/aur) > /tmp/dotfiles-aur-repo-not-installed.txt
 ```
 
 Classify packages into:
@@ -210,7 +210,7 @@ Until that exists, bootstrap validation is documentation and syntax-only.
 Use a story branch before making story-scoped edits:
 
 ```bash
-cd /home/aaron/code/dotfiles
+cd $DOTFILES_CHECKOUT
 git status --short --branch
 git switch -c story/<story-id>-<short-summary>
 ```
@@ -275,7 +275,7 @@ Before any commit:
 - [ ] Current branch matches the active story or approved cleanup slice
 - [ ] `yadm status` reviewed
 - [ ] `yadm diff --stat` reviewed
-- [ ] High-impact files compared against `/home/aaron`
+- [ ] High-impact files compared against `$HOME`
 - [ ] Secret hotspots reviewed
 - [ ] `.yadm/encrypt` impact checked
 - [ ] No decrypted secret content included in docs, chat, logs, or commits
@@ -284,6 +284,20 @@ Before any commit:
 - [ ] Ambiguous package removals reviewed with Aaron
 - [ ] Bootstrap scripts not executed unless explicitly approved
 - [ ] Commit scope is small and reversible
+
+---
+
+## Pre-PR privacy checklist
+
+Before pushing a story branch or opening a PR:
+
+- [ ] Confirm Git author and committer use Aaron's personal email for new commits
+- [ ] Run a secret scan with redacted output, for example `gitleaks protect --staged --redact --no-banner` before commit and `gitleaks dir . --redact --no-banner` before PR
+- [ ] Search for plaintext credentials, tokens, private keys, internal hostnames, local IPs, private URLs, and company-specific internal details
+- [ ] Review docs and knowledge files for unnecessary personal, employer, client, or workstation-identifying details
+- [ ] Move sensitive local-only material to ignored paths or YADM-encrypted paths instead of publishing it as plaintext
+- [ ] Confirm `.gitignore` and `.yadm/encrypt` cover any newly identified local-only sensitive surfaces
+- [ ] Include privacy and secret-safety results in the PR description
 
 ---
 

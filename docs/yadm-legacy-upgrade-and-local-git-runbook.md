@@ -13,12 +13,12 @@ It is intentionally local-first, but story branches should be PR-ready. GitHub b
 - Before upgrade, read-only inspection worked with explicit legacy flags:
 
 ```bash
-yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg status --short --branch
-yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg diff --stat
+yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg status --short --branch
+yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg diff --stat
 ```
 
-- The legacy YADM repo is on `test-laptop`, tracking `origin/test-laptop`, and is ahead by one commit.
-- The normal checkout at `/home/aaron/code/dotfiles` is also on `test-laptop` and has untracked `.github/` and `docs/` plus an unrelated polybar modification.
+- The legacy YADM repo is on `<working-branch>`, tracking `origin/<working-branch>`, and is ahead by one commit.
+- The normal checkout at `$DOTFILES_CHECKOUT` is also on `<working-branch>` and has untracked `.github/` and `docs/` plus an unrelated polybar modification.
 - The normal checkout remote uses HTTPS; the legacy YADM remote uses SSH.
 
 ## Upgrade result
@@ -28,8 +28,8 @@ YADM legacy paths were upgraded on 2026-06-20.
 Observed moves:
 
 ```text
-/home/aaron/.config/yadm/repo.git -> /home/aaron/.local/share/yadm/repo.git
-/home/aaron/.config/yadm/files.gpg -> /home/aaron/.local/share/yadm/archive
+$HOME/.config/yadm/repo.git -> $HOME/.local/share/yadm/repo.git
+$HOME/.config/yadm/files.gpg -> $HOME/.local/share/yadm/archive
 ```
 
 Post-upgrade verification:
@@ -38,7 +38,7 @@ Post-upgrade verification:
 - Normal `yadm diff --stat` works without explicit legacy flags.
 - `yadm list -a` returned 421 tracked files before and after the upgrade.
 - The tracked-file list changed only by replacing `.config/yadm/files.gpg` with `.local/share/yadm/archive`.
-- The YADM repo committed the archive rename as `7fc6fb6` with message `Upgrade YADM data paths`.
+- The YADM repo committed the archive rename as `9d93210` with message `Upgrade YADM data paths`.
 - Remaining YADM drift is the previously inventoried live-home reconciliation set.
 
 ## Safety rules
@@ -56,14 +56,14 @@ Post-upgrade verification:
 Run these before approving or executing the upgrade:
 
 ```bash
-cd /home/aaron/code/dotfiles
+cd $DOTFILES_CHECKOUT
 git status --short --branch
 git branch --show-current
 git remote -v
 
-yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg status --short --branch
-yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg diff --stat
-yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yadm/files.gpg list -a > /tmp/dotfiles-yadm-list-before-upgrade.txt
+yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg status --short --branch
+yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg diff --stat
+yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg list -a > /tmp/dotfiles-yadm-list-before-upgrade.txt
 ```
 
 Expected result:
@@ -113,7 +113,7 @@ Use local Git checkpoints on the active story branch:
 For the first docs commit from the normal checkout:
 
 ```bash
-cd /home/aaron/code/dotfiles
+cd $DOTFILES_CHECKOUT
 git add .github docs
 git diff --cached --check
 git status --short --branch
@@ -127,7 +127,7 @@ This intentionally excludes `.config/polybar/themes/nord-arrow/config` until pol
 When Aaron asks to publish the story branch, push it and create a PR against `main`:
 
 ```bash
-cd /home/aaron/code/dotfiles
+cd $DOTFILES_CHECKOUT
 git status --short --branch
 git log --oneline --decorate --graph --max-count=12 --all
 git push -u origin story/1.6-yadm-legacy-upgrade-workflow
@@ -141,7 +141,7 @@ The PR should include the story title, summary, validation, secret-safety notes,
 After the story PR is reviewed or Aaron explicitly asks for a local merge, merging to `main` is reasonable if `main` exists and the branch relationship is understood:
 
 ```bash
-cd /home/aaron/code/dotfiles
+cd $DOTFILES_CHECKOUT
 git branch --list
 git log --oneline --decorate --graph --max-count=12 --all
 git switch main
