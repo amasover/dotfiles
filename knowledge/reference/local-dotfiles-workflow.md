@@ -21,10 +21,12 @@ yadm --yadm-data /home/aaron/.config/yadm --yadm-archive /home/aaron/.config/yad
 
 ## Local commits
 
+- Start each story on a dedicated branch, for example `story/1.6-yadm-legacy-upgrade-workflow`.
+- Use one GitHub PR per story when Aaron is ready to push the branch; GitHub boards and issues are not part of the current workflow.
 - Commit as work progresses to keep recoverable checkpoints.
 - Stage docs and repo knowledge explicitly; do not rely on broad `git add .` while live-home reconciliation is in progress.
 - Leave unrelated drift, such as the current polybar change, unstaged until its reconciliation story reaches it.
-- Local merge to `main` is acceptable after reviewing branch history and merge scope; remote push/PR workflow is deferred.
+- Do not push, create a PR, or merge to `main` unless Aaron asks for that step.
 
 ## Secret scanning
 

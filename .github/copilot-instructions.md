@@ -128,6 +128,18 @@ Use `knowledge/` and `.github/skills/` when a cleanup lesson should survive the 
 
 Keep knowledge entries concise, evidence-based, and linked to the relevant docs or files when possible. Prefer updating an existing knowledge note over duplicating the same guidance in multiple places.
 
+### 8. Use one branch and PR per story
+
+Cleanup work should be story-scoped, branch-based, and PR-ready.
+
+- When starting a new story, create or switch to a dedicated branch before editing. Use names like `story/1.6-yadm-legacy-upgrade-workflow` or `story/2.1-classify-setup-scripts`.
+- Keep each branch focused on one story or one explicitly approved slice of a story.
+- Commit as work progresses, but keep commits scoped by risk area: docs, YADM metadata, shell config, desktop config, package inventory, bootstrap scripts, or encrypted payload updates.
+- Push the story branch to Aaron's GitHub repo when the local scope is ready for review.
+- Prepare one GitHub pull request per story. The PR description should include the story, summary, validation performed, secret-safety notes, live-home comparison notes, and follow-up work.
+- This repo does not currently use GitHub boards or issues for story tracking. Do not invent issue numbers or board updates.
+- Do not merge to `main` or push to a remote unless Aaron explicitly asks for that step in the current task.
+
 ---
 
 ## Default investigation order
@@ -141,6 +153,7 @@ Before proposing or making changes, inspect in this order:
 5. Relevant repo knowledge under `knowledge/` and task skills under `.github/skills/`.
 6. Nearby scripts, package lists, or config directories.
 7. Secret/encryption coverage in `.yadm/encrypt` if the area may contain sensitive data.
+8. Current branch and PR scope when the task maps to a story.
 
 Do not infer the active workstation setup from old README content alone.
 

@@ -21,6 +21,7 @@ The workflow is intentionally conservative because this repo maps directly into 
 9. Inventory local packages before changing package manifests or install scripts.
 10. Ask targeted package questions instead of guessing what should stay or go.
 11. Prefer small commits by risk area.
+12. Use one branch and one pull request per story.
 
 ---
 
@@ -204,7 +205,50 @@ Until that exists, bootstrap validation is documentation and syntax-only.
 
 ---
 
-### 8. Commit sequencing
+### 8. Story branch and PR workflow
+
+Use a story branch before making story-scoped edits:
+
+```bash
+cd /home/aaron/code/dotfiles
+git status --short --branch
+git switch -c story/<story-id>-<short-summary>
+```
+
+Branch naming examples:
+
+- `story/1.6-yadm-legacy-upgrade-workflow`
+- `story/2.1-classify-setup-scripts`
+- `story/3.1-shell-config-cleanup`
+
+Expected outcome:
+
+- The branch contains one story or one explicitly approved slice of a story.
+- Unrelated live-home drift remains unstaged unless that story is reconciling it.
+- Commit messages and PR descriptions can explain the story scope without relying on GitHub issue IDs.
+
+When the branch is ready for remote review, push and create a PR only after Aaron asks for it or confirms that the local branch is ready:
+
+```bash
+git push -u origin story/<story-id>-<short-summary>
+gh pr create --base main --head story/<story-id>-<short-summary>
+```
+
+PR description checklist:
+
+- Story ID and title
+- Summary of changes
+- Validation performed
+- Secret-safety review result
+- Live-home comparison notes for active dotfiles
+- YADM/encrypted payload impact, if any
+- Known follow-up work
+
+This repo does not currently use GitHub boards or issues for story tracking. Do not invent issue numbers, close issues, or update project boards.
+
+---
+
+### 9. Commit sequencing
 
 Use small commits in this order:
 
@@ -228,6 +272,7 @@ Avoid mixing `.yadm/files.gpg` changes with unrelated cleanup.
 
 Before any commit:
 
+- [ ] Current branch matches the active story or approved cleanup slice
 - [ ] `yadm status` reviewed
 - [ ] `yadm diff --stat` reviewed
 - [ ] High-impact files compared against `/home/aaron`
@@ -255,6 +300,7 @@ Stop before:
 - Deleting legacy directories
 - Rewriting `.zshrc`, editor config, or desktop config wholesale
 - Touching files under encrypted path patterns
+- Pushing a branch, opening a PR, or merging to `main` unless Aaron has asked for that step
 
 ---
 
