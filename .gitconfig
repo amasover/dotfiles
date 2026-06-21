@@ -1,12 +1,21 @@
-[includeIf "gitdir:~/code/github/"]
-    path = ~/code/github/.gitconfig
 [url "git@github.com:"]
 	insteadOf = gh:
-[url "git@bitbucket.org:"]
-	insteadOf = https://bitbucket.org
+#[core]
+#    sshCommand = ssh -i ~/.ssh/p-account-id_rsa
+#[core]
+#    sshCommand = ssh -v
+#[user]
+#    name = Aaron Masover
+#    email = p.amasover@[employer-2].net
 [user]
 	name = Aaron Masover
-    email = aaron.masover@[work-ref].com
+    email = aaron.masover@[work-domain]
+[includeIf "gitdir:~/code/github/"]
+    path = ~/code/github/.gitconfig
+[includeIf "gitdir:~/code/production-*/"]
+    path = ~/.gitconfig-production
+[includeIf "onbranch:production/"]
+    path = ~/.gitconfig-production
 [core]
 	editor = vim
 [alias]
@@ -47,3 +56,15 @@
     changes=diff --name-status -r
 [pager]
 	branch = false
+[credential]
+	helper = store
+[url "https://user@hostname"]
+	insteadOf = ssh://git@hostname
+[pull]
+	rebase = false
+[push]
+	default = upstream
+[init]
+	defaultBranch = main
+[url "git@ssh.dev.azure.com:v3/[employer-2]"]
+	insteadOf = https://dev.azure.com
