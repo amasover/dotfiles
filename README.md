@@ -1,120 +1,154 @@
-```
-              ▄▄                         ▄▄▄▄      ██     ▄▄▄▄                         
-              ██              ██        ██▀▀▀      ▀▀     ▀▀██                         
-         ▄███▄██   ▄████▄   ███████   ███████    ████       ██       ▄████▄   ▄▄█████▄ 
-        ██▀  ▀██  ██▀  ▀██    ██        ██         ██       ██      ██▄▄▄▄██  ██▄▄▄▄ ▀ 
-        ██    ██  ██    ██    ██        ██         ██       ██      ██▀▀▀▀▀▀   ▀▀▀▀██▄ 
-        ▀██▄▄███  ▀██▄▄██▀    ██▄▄▄     ██      ▄▄▄██▄▄▄    ██▄▄▄   ▀██▄▄▄▄█  █▄▄▄▄▄██ 
-          ▀▀▀ ▀▀    ▀▀▀▀       ▀▀▀▀     ▀▀      ▀▀▀▀▀▀▀▀     ▀▀▀▀     ▀▀▀▀▀    ▀▀▀▀▀▀  
-```
-![desktop-screenshot3](https://i.imgur.com/muFsylw.png)
-![desktop-screenshot2](https://i.imgur.com/VyHzgFz.png)
-![desktop-screenshot](https://i.imgur.com/mTvqTcQ.png)
+# Terraform LSP
 
-Please see [the wiki](https://github.com/patrick-motard/dotfiles/wiki) for documentation on specific features. 
+[![Gitter](https://badges.gitter.im/terraform-lsp/community.svg)](https://gitter.im/terraform-lsp/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+![terraform version](https://img.shields.io/badge/terraform-0.12.2-blue.svg)
+[![Nix Build](https://img.shields.io/travis/com/juliosueiras/terraform-lsp.svg?logo=travis&label=Nix%20Build)](https://travis-ci.com/juliosueiras/terraform-lsp)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fjuliosueiras%2Fterraform-lsp.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fjuliosueiras%2Fterraform-lsp?ref=badge_shield)
 
-# Description
+This is LSP(Language Server Protocol) for Terraform
 
-A keyboard based desktop environment that features:
+**NOTE:** This is first stage of the plugin, so is experimental
 
-- Automatic installation & setup.
-- A full featured i3wm desktop environment.
+- [Terraform LSP](#terraform-lsp)
+  * [Building](#building)
+    + [Native](#native)
+    + [Nixpkgs](#nixpkgs)
+  * [Currently Supported](#currently-supported)
+  * [Todo-List (Main)](#todo-list--main-)
+  * [Todo-List (Terraform)](#todo-list--terraform-)
+  * [Todo-List (LSP)](#todo-list--lsp-)
+  * [Editors Specific](#editors-specific)
+    + [VS Code](#vs-code)
+      - [Issues](#issues)
+    + [Atom](#atom)
+      - [Issues](#issues-1)
+    + [Intellij](#intellij)
+    + [Vim](#vim)
+    + [Emacs](#emacs)
+    + [Others](#others)
+  * [Bugs](#bugs)
 
-# Installation
+[![asciicast](https://asciinema.org/a/245075.svg)](https://asciinema.org/a/245075)
 
-This project uses [YADM](https://thelocehiliosan.github.io/yadm/), a dotfile manager that employs git. With YADM you can start with a new repo, or clone an existing repo. Both approachs are explained in depth on the YADM website's [getting started](https://thelocehiliosan.github.io/yadm/docs/getting_started) section. 
+## Building
 
-**NOTICE:** Antergos was previously recommended as the easiest base install of Arch linux for this project. Antergos is no longer being maintained. For now, installing Arch from scratch is recommend. It's not that bad. :)
+### Native
 
-1. Fork this repo (or clone this repo directly and change it's upstream to your fork after install is done)
-2. Install Arch linux ([here's a good tutorial video](https://www.youtube.com/watch?v=iF7Y8IH5A3M&list=PL5IqGaS7KgO1XKpQhoValBSmRbO4s16rI&index=5&t=0s) that gives you a working system in < 20 min. Stop following along before he installs KDE. You don't need a desktop environment.)
-4. Follow the instructions outlined in the [Installation Page](https://github.com/patrick-motard/dotfiles/wiki/Installation) in the wiki.
-5. report any bugs or manual steps as issues to this repo so that the install process can be improved.
+- download go modules `GO111MODULE=on go mod download`
+- run make or `go build`
 
-# Inspiration & Information Sources
+### Nixpkgs
 
-### desktop backgrounds
- - [unsplash](https://unsplash.com/)
- - [wallhaven](https://alpha.wallhaven.cc/)
+- install nixpkgs
+- `nix-build`
 
-### color schemes
- - [terminal sexy](http://terminal.sexy/)
+## Currently Supported
 
-### dotfile repositories
- - [unixporn](https://www.reddit.com/r/unixporn)
- - [dotshareit](http://dotshare.it/)
- 
-### other people's dotfiles
- - [demure](https://notabug.org/demure/dotfiles/src/master/i3/config)
- - [noctuid](https://github.com/noctuid/dotfiles) Includes a more thorough explanation to all of this than I provide.
+- Variables complex completion(infinite nesting type)
+- Provider Config completion
+- Resource(with infinite block, looking at you kubernetes provider ;) ) completion
+- Data source completion
+- Dynamic Error Checking(Terraform and HCL checks)
+- Communication using provider binary(so it will support any provider as long as is built with terraform 0.12 sdk)
+- Module nesting(inifinte as well) variable completion
 
-### dotfile galleries
- - [calou's](https://imgur.com/gallery/uFVFq)
+## Todo-List (Main)
 
-### Blogs
- - [Howard Abrams](http://www.howardabrams.com/)
- - [Jeff Lindsay](http://progrium.com/blog/page2/)
- - [Ilya Grigorik - vimgolf creator](https://www.igvita.com/)
- - [Charles Leifer - Suffering for fashion: a glimpse into my Linux theming toolchain](http://charlesleifer.com/blog/suffering-for-fashion-a-glimpse-into-my-linux-theming-toolchain/)
+- A lot of code clean up(right now is mostly getting the feature done)
+- CI/CD(Travis)
+- Tests
+- Getting Started Guide
+- Add Gifs & Asciinema for Demo
+- Cross Compile for Windows Binary
 
-# Future Ideas
+## Todo-List (Terraform)
 
-1. rust lib for creating rules for windows and workspaces in i3
-    * when opening a terminal, make it open with a fixed or relative height and width 
-    * configure and restore workspace layouts, beyond the functionality of i3 
+- [X] Add Provider Listing(static list)
+- [X] Provider Configs
+- [X] Resources
+  - [X] Provider attribute scope completion(ex. google vs google-beta)
+- [X] Data Sources
+- [ ] Backends (current focus)
+- [ ] Provisioner (current focus)
+- [ ] Interpolations
+  - Complex nesting interpolations
+- [ ] Modules
+- [ ] Locals
+- [ ] Outputs
 
-2. a polybar extension or stand alone application like rofi that provides a gui with functionality like emacs helm (spacemacs variety), to make common tasks, scripts, and functions discoverable and callable using symantic keybinds. (would love to use rust for the engine and maybe a language like lua, lisp, or python for scripting it)
+- [ ] Variables
+  - [ ] Map Interpolation with Object inside
+  - [ ] Index Interpolation
+  - [ ] List Interpolation with Object inside
+  - [ ] Object Interpolation
+  - [ ] Functions
 
-3. short of the system variety of helm, a cheatsheet overlay that behaves like rofi and can hook into my config files and scripts to generate and display a cheatsheet would be amazing.
+- [X] Dynamic Block 
+  - [X] For Each Block
+    - [ ] Check for complex scenario
 
-4. look into using taskwarrior for task management
+## Todo-List (LSP)
 
-5. look into using oh-my-zsh custom plugins for better management of .zshrc [oh-my-zsh wiki "Customization" section](https://github.com/robbyrussell/oh-my-zsh/wiki/Customization)
+- [X] `initialize`
+- [X] `textDocument/completion`
+- [X] `textDocument/didChange`
+- [X] `textDocument/didOpen`
+- [X] `textDocument/publishDiagnostics`
+- Current Plan: Implement all possible LSP features
 
-6. +1 script to create issues in github repo for dotfiles from commandline using vim buffer (or maybe emacs plugin if i'm feeling ambitious.) 
+## Editors Specific
 
-7. rofi menu for selecting screen layout. Or maybe something other than rofi. My current i3 method is starting to reach it's limits.
+### VS Code
 
-8. refactor install script to be written in another language
-probably python. move dependencies to list files. have core packages and non core packages. have commands to add and remove packages from both list files and os.
+- There is a seperate [vscode-languageclient-terraform](https://github.com/juliosueiras/vscode-languageclient-terraform)
 
-# TODO
+#### Issues
 
-- [ ] conky + i3gaps (left/right/bottom/etc)
-- [ ] better titles for rofi modes
-- [ ] better/other rofi nord themes
-- [ ] different zsh themes
-- [ ] dynamicly load/set width of nord polybar i3 bar
-- [ ] custom firefox home page
-- [ ] album of screenshots/gifs showing features/workflows/appearance of desktop and applications
-- [ ] load polybar theme via dot cli
+- Need syntax and highlight etc (possible collab with vscode-terraform?)
+
+### Atom
+
+- There is a seperate [atom-terraform](https://github.com/juliosueiras/atom-terraform)
+
+#### Issues
+
+- Need configuration for linter API
+
+### Intellij
+
+- Work with intellij-lsp plugin(also work with intellij-hcl together)
+
+### Vim
+
+- Should work with all lsp plugin on vim
+
+### Emacs
+
+- Work with [emacs-lsp/lsp-mode](https://github.com/emacs-lsp/lsp-mode) while still a little buggy
+   ```lisp
+   (add-to-list 'lsp-language-id-configuration '(terraform-mode . "terraform"))
+
+   (lsp-register-client
+    (make-lsp-client :new-connection (lsp-stdio-connection '("/path/to/terraform-lsp/terraform-lsp" "-enable-log-file"))
+                     :major-modes '(terraform-mode)
+                     :server-id 'terraform-ls))
+
+   (add-hook 'terraform-mode-hook #'lsp)
+   ```
+
+### Others
+
+- It should work with any lsp client in theory
+
+## Bugs
+- Order of completion items
+- Issue with block 
+
+## Credits
+- LSP structure using [Sourcegraph's go-lsp](https://github.com/sourcegraph/go-lsp)
+- JSONRPC2 using [JRPC2](https://bitbucket.org/creachadair/jrpc2)
+- [provider communication](./tfstructs/provider.go) is mostly adapted from [tfschema](https://github.com/minamijoyo/tfschema)
 
 
-# Unanswered Questions
-
-Things I want to know but didn't have time to look into when I thought of it.
-
-- i3wm: How to move a window below the window to the right or left of it without moving it below
-the entire tree
-
-- how to do snippets in emacs (per mode would be really nice)
-
- - cli for browsing remote repos on account, as well as cloning and such
-
-- cli based wiki for commands (manpage for dotfiles/dot)
-
-- rofi based login/shutdown/restart menu
-
-- custom homepage for firefox
-
-- framework for rofi menus
-
-- rofi based password manager for lastpass
-
-- script for adding and removing packages from ~/.config/dotfiles/arch-packages/pacman
- 
-Some things I'd like snippets for:
-
-  - Javascript console logs (figured this out once then promptly forgot how i did it)
-  - argument parsing template for bash scripts (i always end up copy pasting from other scripts)
-  - documentation templates for bash scripts (they're inconsistent between my scripts right now)
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fjuliosueiras%2Fterraform-lsp.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fjuliosueiras%2Fterraform-lsp?ref=badge_large)

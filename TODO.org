@@ -1,8 +1,507 @@
-* Tasks
-** TODO learn Org Mode basics
-** TODO configure polybar
-** TODO setup weechat to auto-join server/channels
-** TODO checkout py-wal
-** TODO make website
-** TODO learn qutebrowser
-** TODO learn ranger
+#+title: Todo
+#+description: My todo list
+
+* Uncatagorized
+
+** Tasks
+
+*** Get terraform running in a pipeline
+
+* 2/10/2020
+** Tasks
+** End of day notes
+   - Need to figure out what's happening with dataflow refactor
+   - Orgmode is cool!
+   - Probably meeting with Microsoft guys on Monday about NESS (the application itself).
+   - Tried out Brave browser today, was pretty cool
+
+* 2/11/2020
+
+** Tasks
+
+*** DONE Set Brave to be default browser
+    CLOSED: [2020-02-11 Tue 11:09]
+
+
+** End of day notes
+   - Still trying to figure out azure-piplines lsp mode
+   - Still working on the merge with Chris's code
+   - Had to set up a hack to run both yaml-language-server and azure-pipelines-langauge-server
+   - Need to get pipeline build running
+   
+* 2/12/2020
+
+** Tasks
+*** DONE Merge my branch with Chris's 
+    CLOSED: [2020-02-12 Wed 11:50]
+*** DONE Open issue on azure-pipelines-language-server github
+    CLOSED: [2020-02-12 Wed 10:46]
+
+** End of day notes
+   - Still working on breaking out console build, trying to get date/hash to work
+   
+* 2/13/2020
+
+** Tasks
+*** DONE Get list of who needs to be added to NESS production environment (talk to randall)
+    CLOSED: [2020-02-13 Thu 17:50]
+
+** End of day notes
+   - Console and activities are building..just need to finish up and make a PR for them
+   - Also still need to pull in the console/activities in the main deploy job
+   - After that, need to revamp the deploy job to do all steps, and target aarontest environment
+   - Talked with Tom/Randall about production accounts. We want read-only for those. Need to work
+with tom a bit more on conventions, permissions, etc etc.
+   - We're maybe gonna name the console `ns`
+
+* 2/14/2020
+
+** Tasks
+*** TODO Finish up tool build for console app
+*** TODO Pull in tool in main build
+*** TODO Submit PR for tool build
+*** TODO Move Atlantis back to the prod Terraform deployment, rather than aarontest
+** End of day notes
+
+* 2/18/2020
+
+** Tasks
+** End of day notes
+   - Sprint review today
+   - Very close on getting the tool/activities changes done
+   - Struggling with getting app services to start
+   - Can't pull images? wrong credentials?
+
+* 2/19/2020
+
+** Tasks
+
+** End of day notes
+
+* 2/21/2020
+
+** Tasks
+*** DONE Finish up tool build for console app
+    CLOSED: [2020-02-24 Mon 16:53]
+*** DONE Pull in tool in main build
+    CLOSED: [2020-02-24 Mon 16:53]
+*** DONE Submit PR for tool build
+    CLOSED: [2020-02-24 Mon 16:53]
+** End of day notes
+
+* 2/24/2020
+
+** Tasks
+
+** End of day notes
+   - Atlantis is going to be used for production. Should we keep it in the production subscription?
+   - Our top priority now is getting anything that we need for production. We need a real
+     customer testing things out
+   - Need to finish the pipeline PR and then deploy stuff to the new production environment
+
+* 2/27/2020
+
+** Tasks
+*** DONE Change PR based on Chris/Justin comments
+    CLOSED: [2020-02-27 Thu 10:35]
+
+
+*** DONE Upgrade to v2 of terraform provider
+    CLOSED: [2020-02-27 Thu 18:03]
+
+
+** End of day notes
+   - I borked pre-prod by deleting state. Will need to re-create environment
+   - confusion w/ Tom over production environment. Need to chat with him. want to
+make prod as close to test environments as possible.
+
+* 3/04/2020
+
+** Tasks
+
+
+** End of day notes
+   - Pretty close on Adams service principal reset. Might get it tomorrow.
+
+ 
+
+* 3/08/2020
+
+** Tasks
+*** DONE Move Atlantis back to the prod Terraform deployment, rather than aarontest
+    CLOSED: [2020-03-09 Mon 16:35]
+*** DONE Create PR for v2 of terraform provider
+    CLOSED: [2020-03-09 Mon 16:35]
+*** DONE Update Atlantis version for production
+    CLOSED: [2020-03-09 Mon 16:35]
+*** DONE Re-deploy pre-prod environment
+    CLOSED: [2020-03-09 Mon 16:35]
+
+** End of day notes
+* 3/12/2020
+
+** Tasks
+
+** End of day notes
+   - Helped Adam with SP refresh. His PR looks good, getting Atlantis to run on it.
+   - Adam started working on getting app insights hooked up to the APIs
+   - I started creating the docker-terraform-terragrunt image
+   - I think highest priority right now is getting activities deploy now so we can test prod deploy
+
+* 3/18/2020
+
+** Tasks
+
+** End of day notes
+   - We can't really auto-init in terragrunt.hcl....may try a different approach later
+   - Trying to get Atlantis to build terraform-live, probably top priority right now
+   - We could do auto-generated changelogs? Store the .md in the wiki?
+   - https://willys-cave.ghost.io/auto-generating-release-notes-in-azure-devops-pipelines/
+
+* 4/17/2020
+
+** Tasks
+*** DONE Chat with Chris about security/prod deploy
+    CLOSED: [2020-04-20 Mon 13:21]
+
+** End of day notes
+* 4/28/2020
+
+** Tasks
+*** DONE RDP into nvlcmap100 in NS4xnavtech RG
+    CLOSED: [2020-04-29 Wed 12:46]
+*** DONE Set up basic pipeline for fullstack NSK
+    CLOSED: [2020-04-29 Wed 12:46]
+** End of day notes
+   - Got a basic pipeline set up for fullstack NSKs
+   - Still need the right packages moved over from navpm
+   - Need to set up infrastructure for fullstack NSKs
+
+* 4/29/2020
+
+** Tasks
+*** DONE Create a PR for fullstack NSKs pipeline
+    CLOSED: [2020-04-30 Thu 10:02]
+
+** End of day notes
+   - Got PR submitted for fullstack NSK
+* 05/05/2020
+
+** Tasks 
+*** DONE Get access to SonarQube environment
+    CLOSED: [2020-05-04 Mon 15:11]
+*** DONE Fix client tests in client pipeline
+    CLOSED: [2020-05-04 Mon 15:11]
+*** DONE Change the auth for version bump in NESS pipeline, remove PAT
+    CLOSED: [2020-05-04 Mon 15:12]
+
+** End of day notes
+   - Confused on how to achieve layered security for atlantis / sonarqube
+   - Atlantis is PCI, so will need firewall. Use cloud VPN? Pritunl?
+   - What tool to use for auth proxy?
+   - Software defined perimeter?
+
+
+* 05/06/2020
+
+** Tasks 
+
+** End of day notes
+   - Maybe try Azure Application Gateway + Azure AD proxy?
+   - If we want to keep using Caddy, maybe try fail2ban + mod_security
+   - I want to set up state storage for caddy & atlantis as first step.
+   - Next step will be set up waf + azure proxy, see how they work
+
+
+* 05/07/2020
+
+** Tasks 
+*** DONE Atlantis needs persistant storage
+    CLOSED: [2020-09-22 Tue 12:22]
+*** DONE Create stories based on Atlantis security review
+    CLOSED: [2020-09-22 Tue 12:22]
+*** DONE Upgrade Caddy to V2 final
+    CLOSED: [2020-09-22 Tue 12:22]
+
+** End of day notes
+   - Thinking of Azure Application Gateway + Azure AD for public-facing stuff
+   - For stuff that needs to be behind a firewall/PCI, try bastion server. Unfortunately,
+Azure Bastion doesn't support ssh port forwarding / SSH Zero Truest stuff. I'm thinking
+of using Pritunl Zero as a bastion, maybe in a container.
+   - Want to reach out to Rich Mains about Azure Bastion
+   - Tomorrow, still want to set up state storage for atlantis, but maybe instead of
+storing certs for Caddy, switch to Azure Application Gateway and see how it works.
+   - For Production we can maybe enable conditional access, just for prod accounts
+instead of needing it for all [employer-2] ($100k/yr).
+
+* 09/30/2020
+
+** Tasks 
+*** TODO Figure out what needs to be done for roles/permissions story
+
+** End of day notes
+    
+* sometime in 2020
+
+** Tasks 
+*** TODO Switch AKS to managed identity auth
+*** TODO Research SSH zero-trust pritunl?
+*** TODO Change terraform-live to have environment specific hcl (see terragrunt-live example repo on github)
+*** TODO Activities deploy should also deploy to environments (does this still need to be done?)
+*** TODO Update the container instance PR based on feedback
+
+** End of day notes
+   - Step 1: diagram just roles and permissions as they exist today
+   - Step 2: diagram roles/permissions designed to lock things down so users don't have access
+   - Step 3: diagram all the stuff we want to do in the future with Bastion, IdentityServer, etc
+
+* sometime in 2020
+
+** Tasks 
+*** TODO Switch AKS to managed identity auth
+*** TODO Research SSH zero-trust pritunl?
+*** TODO Change terraform-live to have environment specific hcl (see terragrunt-live example repo on github)
+*** TODO Activities deploy should also deploy to environments (does this still need to be done?)
+*** TODO Update the container instance PR based on feedback
+*** TODO Create PBIs...
+**** allow Atlantis traffic to access storage account
+**** allow some sort of manual way to run Terraform in prod that can access this storage account
+**** Azure AD SSH login to bastion
+**** Basic ssh flood protection for bastion (fail2ban, iptables rule)
+
+** End of day notes
+   - Worked a bit with Chris on identity stuff still some confusion there
+   - Reviewed Adams PR..should maybe follow up tomorrow
+   - Tried to look at Azure terraform provider PR, didn't get very far
+   - Still need to look at roles/permissions
+
+* sometime in 2020
+
+** Tasks 
+
+** End of day notes
+   
+* Sometime in September
+
+** Tasks 
+*** TODO Create PBI
+**** Basic ssh flood protection for bastion (fail2ban, iptables rule)
+*** TODO Track down owners/users of container registries
+**** acrThaddeus identityserver -> thaddeus -> Digital Retail
+**** b7b6af9c80224456b613e15ec164d6ce azureml/azureml_19112d03fce8ad7f2904256c40001896 -> APO / Jason Coverston -> Roland Seubert (Adam Sanders)
+**** [employer-2] (in RG [employer-2]Main-Migrated)
+***** aspnetapp (last updated 11/18/2019)
+***** grafana/grafana (last updated 11/10/2020)
+***** influxdb (last updated 9/5/2019)
+***** jmeter (last updated 9/3/2019)
+***** kubernautslab/jmeter-master (9/4/2019)
+***** microsoft.iis (last updated 10/16/2018)
+***** mssql/server (last updated 11/10/2020)
+***** [employer-2].newskies.dotrez (last updated 10/16/2018)
+***** ncp/grafana (last updated 11/10/2020)
+***** ncp/* (last updated november 2020)
+***** ncp/ncp-accenture (9/16/2021)
+***** ncp/ncp-[employer-2] (9/12/2021)
+***** ncp/grafana-ncp-plugins (9/13/2021)
+***** splunk/splunk (last updated 11/10/2020)
+      microsoft/dotnet/aspnet:5.0
+      [employer-2]/newskies/servicehost:x.x.x
+      testing/amasover/newskies/servicehost:x.x.x
+      [employer-2]/shared/servicehost:x.x.x
+
+      [employer-2]/ness/deployment-api:x.x.x
+
+      docker tag? semver or hash?
+
+      sandbox -> built images to dev -> (certified) prod
+
+{
+    "base": "nsk/base",
+    "Fares.MonitorService.FareBatchMonitor": "nsk/monitor-farebatch",
+    "IconReplicator": "nsk/iconreplicator",
+    "JobScheduler.Execution.Monitor": "nsk/monitor-jobscheduler-execution",
+    "JobScheduler.Scheduler.Monitor": "nsk/monitor-jobscheduler-scheduler",
+    "MonitorServices.AvailabilityStatusMonitor": "nsk/monitor-availabilitystatus",
+    "MonitorServices.BookingQueueMonitor": "nsk/monitor-bookingqueue",
+    "MonitorServices.DistributedCacheMonitorService": "nsk/monitor-distributedcache",
+    "MonitorServices.FareImplementor": "nsk/monitor-fareimplementor",
+    "MonitorServices.FileJobSchedulerMonitor": "nsk/monitor-filejobscheduler",
+    "MonitorServices.FileSystemMonitor": "nsk/monitor-filesystem",
+    "MonitorServices.FlightQueueMonitor": "nsk/monitor-flightqueue",
+    "MonitorServices.FlightTimeEventMonitor": "nsk/monitor-flighttimeevent",
+    "MonitorServices.PDSMonitor": "nsk/monitor-pds",
+    "MonitorServices.ProcessBookingMonitor": "nsk/monitor-processbooking",
+    "MonitorServices.QueueMonitor": "nsk/monitor-queue",
+    "MonitorServices.TimeEventServiceMonitor": "nsk/monitor-timeeventservice",
+    "NotificationServices.EAI.MonitorHost": "nsk/monitor-notification-eai",
+    "NotificationServices.MonitorHost": "nsk/monitor-notification",
+    "NotificationServices.PurgeMonitorHost": "nsk/monitor-notification-purge",
+    "NotificationServices.SSM.MonitorHost": "nsk/monitor-notification-ssm",
+    "RemotingServices.ServiceHost": "nsk/servicehost",
+    "SocketServices.CommandSocketService": "nsk/socketservice-command",
+    "SocketServices.NativeSocketService": "nsk/socketservice-native"
+}
+
+cauchy-0.9.0-3  gptfdisk-1.0.8-1  gsl-2.7-1  kactivities-5.86.0-1
+              kbookmarks-5.86.0-1  kcmutils-5.86.0-1  kcompletion-5.86.0-1
+              kcontacts-1:5.86.0-1  kdeclarative-5.86.0-1  kded-5.86.0-1
+              kdelibs4support-5.86.0-1  kdiagram-2.8.0-1  kemoticons-5.86.0-1
+              kglobalaccel-5.86.0-1  khtml-5.86.0-1  kinit-5.86.0-1  kio-5.86.0-1
+              kitemmodels-5.86.0-1  kjobwidgets-5.86.0-1  kjs-5.86.0-1
+              knotifyconfig-5.86.0-1  kpackage-5.86.0-1  kparts-5.86.0-1  kross-5.86.0-1
+              ktextwidgets-5.86.0-1  kunitconversion-5.86.0-1  kxmlgui-5.86.0-1
+              libatasmart-0.19-5  libblockdev-2.26-1  libbytesize-2.6-1
+              libimobiledevice-1.3.0-3  libplist-2.2.0-3  libspnav-0.2.3-3
+              libusbmuxd-2.0.2-1  media-player-info-24-2  phonon-qt5-4.11.1-2
+              phonon-qt5-gstreamer-4.10.0-2  poppler-qt5-21.09.0-1  qca-qt5-2.3.4-1
+              qt5-script-5.15.6-1  solid-5.86.0-1  sonnet-5.86.0-1  udisks2-2.9.3-1
+              upower-0.99.13-1  usbmuxd-1.1.1-1  volume_key-0.3.12-5  calligra-3.2.1-21
+
+example that ignores vendor
+example that only includes [employer-2]/
+
+      don't use latest
+
+      testing registry?
+
+      - By wednesday have a design done
+      - By friday, meet with at least ness / newskies
+** End of day notes
+
+* 10/07/2021
+
+** Tasks 
+*** DONE App services private endpoint
+    CLOSED: [2021-10-07 Thu 15:38]
+*** DONE Change private endpoint resource group to [employer-2]-network (make resource group configurable)
+    CLOSED: [2021-10-07 Thu 16:33]
+
+** End of day notes
+   - Met with Vadim & discussed schema, TF stuff
+   - Might need to move resource group, private dns zone info to app services in schema
+   - How do we have multiple app services/functions depend on the same RG for private endp? Need to figure out lookups & dependencies.
+   
+* 10/08/2021
+
+** Tasks 
+
+
+** End of day notes
+   - Made the private endpoint RG more configurable
+   - Modified the schema
+   - pushed changes
+   - Still need to add slot support & private dns (monday)
+   
+* 10/12/2021
+
+** Tasks 
+*** DONE Add app slot support to private endpoint
+    CLOSED: [2021-10-12 Tue 14:09]
+
+** End of day notes
+   
+* 10/13/2021
+
+** Tasks 
+
+** End of day notes
+   - Started working on private DNS zone
+   - Sent an email to Steve about nested for loop performance
+   - Can optimize RG lookup by looping on the local values in private_endpoint.tf
+   - Jobelle Bagunas asking about H1 RG necessity/costs
+ 
+* 10/25/2021
+
+** Tasks 
+*** DONE Add Private DNS zone support to private endpoint (privatelink.azurewebsites.net)
+    CLOSED: [2021-10-22 Fri 18:49]
+*** DONE Integrate Steve's RG stuff
+    CLOSED: [2021-10-22 Fri 18:49]
+*** DONE Make RG name optional in private_endpoint...default to the default rg
+    CLOSED: [2021-10-22 Fri 18:49]
+    
+* 12/01/2023
+
+** Tasks 
+
+*** DONE Submit PR for c# project
+CLOSED: [2023-12-05 Tue 10:17]
+
+*** DONE Submit PR for terraform
+CLOSED: [2023-12-05 Tue 10:16]
+
+*** DONE Review Graham's terraform
+CLOSED: [2023-12-05 Tue 10:16]
+
+*** TODO Set up permissions that Bryan asked for
+
+*** DONE Submit CCL notes
+CLOSED: [2023-12-01 Fri 15:32]
+
+** End of day notes
+ 
+
+* 12/05/2023
+
+** Tasks 
+
+*** TODO Set up permissions that Bryan asked for
+
+*** TODO Move Hive metastore into its own module
+
+** End of day notes
+
+*** Need to look at Graham's list of issues and start breaking it down
+
+*** Keep on creating databricks metastore module
+
+*** Folder structure? Answer from Chris
+
+* 12/07/2023
+
+** Tasks 
+
+*** TODO Set up permissions that Bryan asked for
+
+*** TODO Move Hive metastore into its own module
+
+*** TODO Test deploying metastore + a deployment alongside QA
+
+*** TODO Folder structure -- let's create and ODP folder in terraform-modules and move everything in there
+
+*** TODO Give all service principals "can use tokens" permission in Databricks
+
+*** TODO Access_connector for databricks needs to be added as a service principal to accounts.azuredatabricks.net
+
+*** TODO Change name of access connector so that it is not super generic
+
+*** TODO Create script that creates and rotates databricks tokens
+
+** End of day notes
+
+*** In meetings most of the day (cpr + afternoon meetings) so did not make a lot of progress
+
+*** Will continue working on hive
+
+*** Also looking at moving odp over to terraform-modules
+
+* Today
+
+** Tasks 
+
+*** TODO Move Hive metastore into its own module
+
+*** TODO Test deploying metastore + a deployment alongside QA
+
+*** TODO Folder structure -- let's create and ODP folder in terraform-modules and move everything in there
+
+*** TODO Give all service principals "can use tokens" permission in Databricks
+
+*** TODO Access_connector for databricks needs to be added as a service principal to accounts.azuredatabricks.net
+
+*** TODO Change name of access connector so that it is not super generic
+
+*** TODO Create script that creates and rotates databricks tokens
+
+** End of day notes
+

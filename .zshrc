@@ -1,5 +1,30 @@
 # Path to your oh-my-zsh installation.
 export ZSH=$HOME/.oh-my-zsh
+ocep() {
+    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules//odp-customer-env-populate"
+}
+ocei() {
+    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules//odp-customer-env-init"
+}
+tenant() {
+    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules//odp-per-tenant"
+}
+deployment() {
+    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules//deployment"
+}
+browser_auth() {
+    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules/odp-init//browser-authentication"
+}
+metastore() {
+    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules/odp-init//databricks-metastore"
+}
+pager() {
+    vim -R -M -c "setl filetype=yaml" -
+}
+orion() {
+    uv run python "/home/$USER/code/gitops-packages/scripts/orion-cli/src/orion-cli/main.py" "$@"
+}
+export TG_LOG_FORMAT="bare"
 
 # auto load .nvmrc and apply when cd into a directory that has an .nvmrc
 # this must be loaded before the zsh-nvm plugin
@@ -58,6 +83,7 @@ plugins=(
     vi-mode
     archlinux
     zsh-autosuggestions
+    #sudo
     # custom plugins #
     # https://github.com/lukechilds/zsh-nvm
     zsh-nvm)
@@ -109,6 +135,7 @@ function grep_i3_keybinds {
 # plugins, and themes. Aliases can be placed here, though oh-my-zsh
 # users are encouraged to define aliases within the ZSH_CUSTOM folder.
 # For a full list of active aliases, run `alias`.
+alias sl="/usr/bin/sl -edw"
 alias gi3=grep_i3_keybinds
 alias h="cd ~"
 alias ec="edit-config"
@@ -144,7 +171,6 @@ alias restart="shutdown -r now"
 ## reload xresources
 alias xrl="xrdb ~/.Xresources"
 alias nr="node run.js"
-alias kl="kubectl"
 alias pacman="sudo pacman"
 alias x="chmod +x"
 
@@ -192,10 +218,27 @@ alias vssh="vim ~/.ssh/config"
 alias lssh="ls ~/.ssh"
 alias rmrf="rm -rfi"
 alias update-emacs="cd $HOME/.emacs.d && git pull --rebase && cd $HOME"
-alias ns="new_script --path . --name"
-alias nt="new_script --name"
+alias news="new_script --path . --name"
+alias newt="new_script --name"
 alias ranger='ranger --choosedir=$HOME/.rangerdir; LASTDIR=`cat $HOME/.rangerdir`; cd "$LASTDIR"'
 alias v='vim'
+alias k='kubectl'
+
+# Terraform
+alias ti="terraform init"
+alias ta="terraform apply"
+alias td="terraform destroy"
+
+# Terragrunt
+alias tam="terragrunt apply --terragrunt-source ~/Documents/repos/terraform-modules//odp"
+alias tdm="terragrunt destroy --terragrunt-source ~/Documents/repos/terraform-modules//odp"
+alias trm="terragrunt refresh --terragrunt-source ~/Documents/repos/terraform-modules//odp"
+
+alias tai="terragrunt apply --terragrunt-source ~/Documents/repos/terraform-modules/odp-init"
+alias tdi="terragrunt destroy --terragrunt-source ~/Documents/repos/terraform-modules/odp-init"
+alias tri="terragrunt refresh --terragrunt-source ~/Documents/repos/terraform-modules/odp-init"
+
+export GO111MODULE=on
 
 update_golang() {
     # update golang pacman package
@@ -251,15 +294,23 @@ alias passgen=generate_password
 ## CUSTOM KEY BINDINGS ##
 ## zsh vi-mode settings
 # remaps ESC to fd
-bindkey -M viins 'fd' vi-cmd-mode
+#bindkey -M viins 'fd' vi-cmd-mode
 #bindkey 'lk' autosuggest-accept
 
+#export PATH=~/.local/lib/azure-cli/bin/:$PATH
 export PATH=~/.local/bin/work:$PATH
 export PATH=~/.local/bin:$PATH
+export PATH=~/.bin:$PATH
 export PATH=~/.local/bin/tools:$PATH
-export PATH=~/.local/bin/[work-ref]encryption:$PATH
+export PATH=~/.nuget/plugins:$PATH
 export PATH=/opt/idea-IC-171.4424.56/bin:$PATH
+export PATH=/opt/teams-for-linux:$PATH
 export PATH=/usr/share/intellijidea-ce/bin:$PATH
+export PATH=/home/linuxbrew/.linuxbrew/bin:$PATH
+export PATH=~/.yarn/bin:$PATH
+export PATH=~/.krew/bin:$PATH
+export PATH=/usr/local/bin:$PATH
+export PATH=/opt/brew/bin:$PATH
 
 ## NPM TOKEN SETUP
 export NPM_TOKEN=$NPM_TOKEN
@@ -282,7 +333,8 @@ alias copy-monitors='xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" OR
 # remaps ESC to fd
 
 #use vim for manpages
-export MANPAGER="/bin/sh -c \"col -b | vim -c 'set ft=man ts=8 nomod nolist nonu noma' -\""
+#export MANPAGER="/bin/sh -c \"col -b | vim -c 'set ft=man ts=8 nomod nolist nonu noma' -\""
+export MANPAGER='vim -R -M +MANPAGER -'
 
 # Use vim mode
 bindkey -v
@@ -298,9 +350,9 @@ if [[ $? == 0 ]]; then
 fi
 
 ## Azure
-if [[ -f /home/$USER/lib/azure-cli/az.completion ]]; then
+if [[ -f /usr/share/bash-completion/completions/az ]]; then
     autoload bashcompinit && bashcompinit
-    source /home/$USER/lib/azure-cli/az.completion
+    source /usr/share/bash-completion/completions/az
 fi
 
 ## VIM POWERLINE
@@ -311,4 +363,14 @@ export ANSIBLE_PLAYBOOKS_DIR=~/code/ansible-playbooks
 
 export PATH=$PATH:/home/han/.local/bin
 
-export DOTNET_ROOT="/opt/dotnet"
+export DOTNET_ROOT="/usr/share/dotnet"
+
+source /home/aaron/.config/broot/launcher/bash/br
+
+autoload -U +X bashcompinit && bashcompinit
+source $HOME/.tenv.completion.zsh
+
+tf_version=$(tenv tf detect -q | cut -d ' ' -f2)
+tg_version=$(tenv tg detect -q | cut -d ' ' -f2)
+complete -o nospace -C /home/aaron/.tenv/Terraform/${tf_version}/terraform terraform
+complete -o nospace -C /home/aaron/.tenv/Terragrunt/${tg_version}/terragrunt terragrunt

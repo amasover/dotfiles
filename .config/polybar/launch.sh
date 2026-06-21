@@ -14,77 +14,62 @@
 # get list of connected monitors, space separated
 #active_monitors=$(xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" ORS=" ")
 active_monitors=$(xrandr --listactivemonitors | tail -n +2 | awk '{print $2}' ORS=" " | sed 's/+//g')
+test=echo $(echo $active_monitors | sed 's/*//g')
+echo "$test"
 
 # my monitor configurations
 # replace with your own (based on the output above)
 
-work_desktop="DVI-I-1 "
-# work_desktop="DVI-I-1 DP-1 DVI-D-0 "
-work_laptop="VGA-1 "
-nav_work_laptop="*eDP-1 "
-home_desktop="HDMI-0 DP-0 "
-work_two_screens="VGA-1 VGA-2 "
-work_three_screens="VGA-1 VGA-2 VGA-3 "
-home_laptop="VGA-1 VGA-2~1 VGA-2~2 VGA-2~3 "
-home_four_screens="VGA-1 VGA-2 VGA-3 VGA-4 "
-home_4k="DP-0 "
-home_4k_two="DP-2 DP-3 "
-home_4k_three="DP-3~1 DP-3~2 DP-2 "
+laptop="eDP1 "
+laptop_star="*eDP1 "
+laptop_4k="*DP1-1 DP1-2~1 DP1-2~2 eDP1 "
+three="eDP1 DP1-1 DP1-3 "
+displaylink="*DP1-1 eDP1 DP1-3 "
+dragon="eDP1 DP1 "
+home="*eDP1 DP1-1~1 DP1-1~2 DP1-2 "
+
+echo "active monitors is $active_monitors"
+echo "laptop 4k is $laptop_4k"
 
 function export_monitor_vars() {
     export MONITOR_MAIN=$1
-    export MONITOR_RIGHT=$2
-    export MONITOR_LEFT=$3
-    export MONITOR_EXTRA=$4
+    export MONITOR_SPLIT_TOP=$2 #one
+    export MONITOR_SPLIT_BOTTOM=$3 #two
+    export MONITOR_LEFT=$4
+    export MONITOR_EXTRA=$5
+    echo "monitor split top $MONITOR_SPLIT_TOP"
+    echo "monitor split bottom $MONITOR_SPLIT_BOTTOM"
 }
 
 function set_monitor_vars() {
     case "${active_monitors}" in
-        $work_desktop )
-            # export_monitor_vars "DVI-I-1" "DVI-D-0" "DP-1" #"DVI-I-1" ""  "" #"DVI-D-0"
-            export_monitor_vars "" "DVI-I-1" "" #""  "" #"DVI-D-0"
-            mode="work"
+        "$laptop" )
+            export_monitor_vars "eDP1" "" "" ""
+            mode="just laptop screen"
             ;;
-        $nav_work_laptop )
-            export_monitor_vars "eDP-1" "" ""
-            mode="nav work laptop"
+        "$laptop_star" )
+            export_monitor_vars "eDP1" "" "" ""
+            mode="just laptop screen(star)"
             ;;
-        $work_laptop )
-            export_monitor_vars "" "VGA-1" ""
-            mode="work laptop"
+        "$laptop_4k" )
+            export_monitor_vars "DP1-1" "DP1-2~1" "DP1-2~2" "eDP1" ""
+            mode="4k split with laptop monitor"
             ;;
-        $work_two_screens )
-            export_monitor_vars "VGA-1" "VGA-2" ""
-            mode="work two screens"
+        "$home" )
+            export_monitor_vars "DP1-2" "DP1-1~1" "DP1-1~2" "eDP1" ""
+            mode="4k split with laptop monitor (home)"
             ;;
-        $work_three_screens )
-            export_monitor_vars "VGA-1" "VGA-2" "" "VGA-3"
-            mode="work three screens"
+        "$three" )
+            export_monitor_vars "eDP1" "DP1-1" "DP1-3" "" ""
+            mode="three"
             ;;
-        $home_desktop )
-            export_monitor_vars "DP-4" "DVI-D-0" "HDMI-0"
-            # export_monitor_vars "" "DP-4" "DVI-D-0"
-            mode="home desktop"
+        "$displaylink" )
+            export_monitor_vars "eDP1" "DVI-I-1-1" "" "" ""
+            mode="displaylink"
             ;;
-        $home_laptop )
-            export_monitor_vars "VGA-2~1" "VGA-2~2" "VGA-1" "VGA-2~3"
-            mode="home laptop"
-            ;;
-        $home_four_screens )
-            export_monitor_vars "VGA-1" "VGA-2" "VGA-4" "VGA-3"
-            mode="home four screens"
-            ;;
-        $home_4k )
-            export_monitor_vars "DP-0"
-            mode="home 4k"
-            ;;
-        $home_4k_two )
-            export_monitor_vars "DP-2" "DP-3"
-            mode="home 4k divided by two"
-            ;;
-        $home_4k_three )
-            export_monitor_vars "DP-2" "DP-3~1" "" "DP-3~2"
-            mode="home 4k divided by three"
+        "$dragon" )
+            export_monitor_vars "eDP1" "DP1" "" "" ""
+            mode="dragon"
             ;;
         * )
             notify-send "Polybar" "Monitor configuration not recognized. See ~/.config/polybar/launch.sh for details"
@@ -98,19 +83,25 @@ notify-send "Polybar" "Bars initialized on ${mode} monitors."
 
 killall -q polybar
 
+echo killed old polybar
+
 while pgrep -u $UID -x polybar >/dev/null; do sleep 1; done
+
+echo done
 # TODO set this theme somewhere else, probably via dot?
 if [[ -z $polybar_theme ]]; then
 
     i3-msg gaps top all set 10
-    export polybar_theme=$HOME/.config/polybar/themes/nord-arrow/config
+    export polybar_theme=$HOME/.config/polybar/themes/nord-arrow/config.ini
 fi
 
 polybar -r main &
-polybar -r right &
+#polybar -r right &
 polybar -r left &
 polybar -r extra &
-polybar -r main.bottom &
-polybar -r left.bottom &
+polybar -r main-bottom &
+polybar -r split-one &
+polybar -r split-two &
+#polybar -r left-bottom &
 
 echo "Bars launched..."
