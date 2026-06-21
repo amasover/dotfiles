@@ -16,7 +16,7 @@ git fetch
 
 
 echo -e "${Purple}\nMerging in latest changes from master\n${Color_Off}"
-git merge master
+git merge upstreammaster
 
 
 if [[ $? == 128 || $? == 1 ]]; then
@@ -27,7 +27,7 @@ fi
 
 
 echo -e "${Purple}\nResetting to common ancestor...\n${Color_Off}"
-git reset --soft $(git merge-base master $current_branch)
+git reset --soft $(git merge-base upstreammaster $current_branch)
 
 
 echo -e "${Purple}Enter the message for this squashed commit:${Color_Off}"

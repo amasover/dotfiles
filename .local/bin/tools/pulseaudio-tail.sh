@@ -3,18 +3,21 @@
 sink=0
 
 volume_up() {
-    sink=$(pacmd list | grep '*' | awk 'NR==1{print $3}')
-    pactl set-sink-volume $sink +1%
+    #sink=$(pacmd list | grep '*' | awk 'NR==1{print $3}')
+    #pactl set-sink-volume $sink +1%
+    wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1%+
 }
 
 volume_down() {
-    sink=$(pacmd list | grep '*' | awk 'NR==1{print $3}')
-    pactl set-sink-volume $sink -1%
+    #sink=$(pacmd list | grep '*' | awk 'NR==1{print $3}')
+    #pactl set-sink-volume $sink -1%
+    wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1%-
 }
 
 volume_mute() {
-    sink=$(pacmd list | grep '*' | awk 'NR==1{print $3}')
-    pactl set-sink-mute $sink toggle
+    #sink=$(pacmd list | grep '*' | awk 'NR==1{print $3}')
+    #pactl set-sink-mute $sink toggle
+    wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
 }
 
 
@@ -22,7 +25,9 @@ listen() {
     while true
     do
         # the extra space on the right acts like a 'pad-right: 1'
-        echo "$(volume get)$padright"
+        #vol=$(wpctl get-volume @DEFAULT_AUDIO_SINK@)
+        #echo "${vol#*.}$padright"
+        echo "$(pamixer --get-volume)$padright"
         sleep 0.1 &
         wait
     done
