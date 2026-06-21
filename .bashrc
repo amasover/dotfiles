@@ -36,3 +36,5 @@ colors() {
 [ -r /usr/share/bash-completion/bash_completion   ] && . /usr/share/bash-completion/bash_completion
 
 export PATH=$PATH:/home/$USER/.local/bin
+
+source '/home/aaron/.local/lib/azure-cli/az.completion'

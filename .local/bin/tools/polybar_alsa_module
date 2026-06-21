@@ -81,7 +81,7 @@
 # If you know a fix to this, PLEASE email me. I'd love to know
 # what I'm missing. <motard19@gmail.com>
 
-headphones="analog-output-headphones"
+headphones="analog-output"
 speakers="analog-output-speakers"
 
 listen() {

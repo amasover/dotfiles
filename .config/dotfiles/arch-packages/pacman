@@ -92,6 +92,7 @@ libtool
 licenses
 lightdm-webkit-theme-litarvan
 linux
+linux-headers
 logrotate
 lvm2
 m4
@@ -142,6 +143,7 @@ redshift
 reflector
 reiserfsprogs
 remmina
+reflector-timer
 rofi
 rsync
 rustup
@@ -177,7 +179,6 @@ usbutils
 util-linux
 uudeview
 vi
-vim
 virtualbox
 vlc
 w3m
@@ -201,3 +202,4 @@ xorg-xrandr
 xz
 zip
 zsh
+sbsigntools
