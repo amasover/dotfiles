@@ -256,15 +256,10 @@ bindsym $mod+a focus parent
 assign [class="Google-chrome"] $ws3
 assign [class="firefox"] $ws3
 assign [class="Emacs"] $ws1
-<<<<<<< Updated upstream
-assign [class="Termite"] $ws2
 assign [class="teams-for-linux"] $ws4
-=======
 assign [class="virt-viewer"] $ws8
 assign [class="Virt-viewer"] $ws8
 assign [class="Alacritty"] $ws2
-assign [class="teams"] $ws4
->>>>>>> Stashed changes
 
 # focus the chld container
 #bindsym $mod+d focus child
@@ -282,21 +277,6 @@ set $ws0 "0:  "
 
 # monitor stuff
 
-<<<<<<< Updated upstream
-set $mon0 "DP-3~1"
-set $mon1 "DP-3~2"
-set $mon2 "DP-2"
-
-workspace $ws1 output $mon2
-workspace $ws2 output $mon1
-workspace $ws3 output $mon0
-workspace $ws4 output $mon0
-workspace $ws5 output $mon0
-workspace $ws6 output $mon1
-workspace $ws7 output $mon1
-workspace $ws8 output $mon1
-workspace $ws9 output $mon2
-=======
 #set $mon0 "DP-1"
 #set $mon1 "eDP-1"
 #set $mon2 "DP-2"
@@ -310,7 +290,6 @@ workspace $ws9 output $mon2
 #workspace $ws7 output $mon1
 #workspace $ws8 output $mon1
 #workspace $ws9 output $mon2
->>>>>>> Stashed changes
 
 # switch to workspace
 bindsym $mod+1 workspace $ws1
