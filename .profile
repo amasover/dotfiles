@@ -44,8 +44,6 @@ export MESA_LOADER_DRIVER_OVERRIDE=i965
 
 export TOOLS="$HOME/.local/bin/tools"
 # used by tools/wifi
-#export WIFI_DEVICE="wlp4s0"
-#export WIFI_PROFILE="bluewifi"
 # BEGIN managed by dot-ansible in ~/code/dot-ansible
 source ~/code/dot-ansible/shell-imports.sh
 # END managed by dot-ansible in ~/code/dot-ansible
