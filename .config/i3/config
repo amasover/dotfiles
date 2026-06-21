@@ -393,7 +393,7 @@ exec --no-startup-id teams-for-linux
 
 exec_always --no-startup-id dunst
 exec --no-startup-id lxqt-policykit-agent
-exec --no-startup-id virt-viewer -c qemu:///system win10 -a
+#exec --no-startup-id virt-viewer -c qemu:///system win10 -a
 exec --no-startup-id ibus-daemon -dr
 exec --no-startup-id nm-applet --indicator
 exec --no-startup-id autorandr --change --force
