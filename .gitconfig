@@ -1,12 +1,5 @@
 [url "git@github.com:"]
 	insteadOf = gh:
-#[core]
-#    sshCommand = ssh -i ~/.ssh/p-account-id_rsa
-#[core]
-#    sshCommand = ssh -v
-#[user]
-#    name = Aaron Masover
-#    email = p.amasover@navitaire.net
 [user]
 	name = Aaron Masover
     email = aaron.masover@amadeus.com
