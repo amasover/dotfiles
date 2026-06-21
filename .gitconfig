@@ -61,3 +61,9 @@
 	defaultBranch = main
 [url "git@ssh.dev.azure.com:v3/[employer-2]"]
 	insteadOf = https://dev.azure.com
+[credential "https://github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
