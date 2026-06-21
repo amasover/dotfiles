@@ -1,0 +1,3 @@
+.ssh/**
+.zshenv
+.config/Code/User/settings.json

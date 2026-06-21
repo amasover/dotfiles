@@ -1,4 +1,4 @@
-[bar/main.top.middle]
+[bar/main-top-middle]
 ; require monitor to be connected to load bar
 monitor-strict = true
 inherit = bar/base
@@ -19,7 +19,7 @@ border-size = 4
 border-color = ${colors.nord2}
 wm-name=chicken
 
-[bar/main.top.right]
+[bar/main-top-right]
 ; require monitor to be connected to load bar
 monitor-strict = true
 inherit = bar/base
@@ -40,7 +40,7 @@ offset-y = 20
 border-size = 4
 border-color = ${colors.nord2}
 
-[bar/main.top.left]
+[bar/main-top-left]
 ; require monitor to be connected to load bar
 monitor-strict = true
 inherit = bar/base
@@ -62,7 +62,7 @@ border-size = 4
 border-color = ${colors.nord2}
 
 
-[bar/left.top.middle]
+[bar/left-top-middle]
 ; require monitor to be connected to load bar
 monitor-strict = true
 inherit = bar/base
@@ -83,7 +83,7 @@ offset-y = 20
 border-size = 4
 border-color = ${colors.nord2}
 
-[bar/right.top.middle]
+[bar/right-top-middle]
 ; require monitor to be connected to load bar
 monitor-strict = true
 inherit = bar/base
