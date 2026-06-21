@@ -86,9 +86,10 @@ speakers="analog-output-speakers"
 
 listen() {
     while true; do
-        muted=$(volume status | awk '/^muted/ {print $2}')
+        #muted=$(volume status | awk '/^muted/ {print $2}')
         [[ $(dot sound port) == $speakers ]] && icon="" || icon=""
-        [[ $(volume status | awk '/^muted/ {print $2}') == true ]] && colors="%{ F#$mute_fg B#$mute_bg }" || colors="%{ F#$fg B#$bg }"
+        #[[ $(volume status | awk '/^muted/ {print $2}') == true ]] && colors="%{ F#$mute_fg B#$mute_bg }" || colors="%{ F#$fg B#$bg }"
+        [[ $(pamixer --get-mute) == true ]] && colors="%{ F#$mute_fg B#$mute_bg }" || colors="%{ F#$fg B#$bg }"
         # the expra space on the left acts as a pad-left: 1
         echo "$padleft$colors $icon"
         sleep 0.5 &
@@ -100,18 +101,18 @@ switch() {
     sink_id=$(pacmd list | grep '*' | awk 'NR==1{print $3}')
     current_port=$(dot sound port)
     if [[ $current_port == $speakers ]]; then
-        vol=$(volume get)
+        vol=$(pamixer --get-volume)
         pacmd set-sink-port $sink_id $headphones > /dev/null 2>&1
         dot sound port $headphones
-        volume set $vol
+        pamixer --set-volume $vol
         #amixer sset Front 0 1&2>/dev/null
         # set front channel to 0 volume, because muting it mutes headphones as well...
         # annoying bug with alsa..
     elif [[ $current_port == $headphones ]]; then
-        vol=$(volume get)
+        vol=$(pamixer --get-volume)
         pacmd set-sink-port $sink_id $speakers > /dev/null 2>&1
         dot sound port $speakers
-        volume set $vol
+        pamixer --set-volume $vol
     else
        echo 'ERROR: $current_port is '$current_port" expected either $headphones or $speakers"
        exit 1

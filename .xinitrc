@@ -34,12 +34,14 @@ fi
 # setup virtual xrandr monitors
 #xrandr --setmonitor 'DP-3~1' 1920/600x1080/170+1920+0 DP-3
 #xrandr --setmonitor 'DP-3~2' 1920/600x1080/170+1920+1080 none
+#xrandr --output eDP-1 --primary --mode 1920x1080 --pos 1080x1080 --rotate normal --output DP-1 --mode 1920x1080 --pos 0x0 --rotate left --output HDMI-1 --off --output DP-2 --mode 1920x1080 --pos 1080x0 --rotate normal --output HDMI-2 --off --output DP-3 --off --output HDMI-3 --off
+xrandr --output eDP-1 --primary --mode 1920x1080 --pos 1080x1080 --rotate normal --output DP-1 --off --output HDMI-1 --off --output DP-2 --off --output HDMI-2 --off --output DP-3 --off --output HDMI-3 --off
 
 # set display timeout to 10min
 # xset dpms 0 0 1200
 
 # lock screen after 5min
-xautolock -time 15 -locker '/home/$USER/.local/bin/tools/lock' &
+#xautolock -time 15 -locker '/home/$USER/.local/bin/tools/lock' &
 
 # start some nice programs
 
@@ -56,5 +58,6 @@ fi
 /usr/bin/amixer -c 0 sset "Auto-Mute Mode" Disabled
 
 #DISPLAY=:0.1 i3 &
+#exec i3 -V -d all &>> "$HOME/i3.log"
 exec i3
 /usr/bin/dropbox &
