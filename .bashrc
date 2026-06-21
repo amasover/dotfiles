@@ -36,3 +36,11 @@ colors() {
 [ -r /usr/share/bash-completion/bash_completion   ] && . /usr/share/bash-completion/bash_completion
 
 export PATH=$PATH:/home/$USER/.local/bin
+
+source '/home/aaron/.local/lib/azure-cli/az.completion'
+
+source /home/aaron/.config/broot/launcher/bash/br
+
+complete -C /home/aaron/.tenv/Terraform/1.11.2/terraform terraform
+
+complete -C /home/aaron/.tenv/Terragrunt/0.75.6/terragrunt terragrunt

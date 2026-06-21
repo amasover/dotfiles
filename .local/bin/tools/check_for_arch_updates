@@ -2,7 +2,8 @@
 
 pac_updates=$(checkupdates | wc -l)
 
-aur_updates=$(trizen -Su --aur --quiet | wc -l)
+#aur_updates=$(trizen -Su --aur --quiet | wc -l)
+aur_updates=$(yay -Qua | wc -l)
 
 # This script is meant to be used in Polybar.
 # Polybar doesn't support min width for modules.

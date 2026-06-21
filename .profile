@@ -3,7 +3,7 @@
 ## This file is sourced in .zprofile so th at zsh gets these variables as well
 
 ## GOLANG
-export GOPATH=~/go
+export GOPATH=~/code/go
 # add go bin folder to path so that compiled bin files can be
 # executed from anywhere using terminal
 export PATH="$GOPATH/bin:$PATH"
@@ -24,6 +24,10 @@ export PATH=~/.local/bin:$PATH
 export PATH=~/.local/bin/tools:$PATH
 export PATH=/opt/idea-IC-171.4424.56/bin:$PATH
 export PATH=~/.cargo/bin:$PATH
+export PATH=~/.dotnet/tools:$PATH
+export PATH=~/.yarn/bin:$PATH
+
+export DOTNET_ROOT="/usr/share/dotnet"
 
 ## NPM TOKEN SETUP
 export NPM_TOKEN=$NPM_TOKEN
@@ -35,12 +39,15 @@ export MANPAGER="/bin/sh -c \"col -b | vim -c 'set ft=man ts=8 nomod nolist nonu
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
 export PATH=$PATH:/home/$USER/.local/bin
-export BROWSER=/usr/bin/google-chrome-stable
+
+export MESA_LOADER_DRIVER_OVERRIDE=i965
 
 export TOOLS="$HOME/.local/bin/tools"
 # used by tools/wifi
-export WIFI_DEVICE="wlp4s0"
-export WIFI_PROFILE="[work-ref]wifi"
 # BEGIN managed by dot-ansible in ~/code/dot-ansible
 source ~/code/dot-ansible/shell-imports.sh
 # END managed by dot-ansible in ~/code/dot-ansible
+
+export GTK_IM_MODULE=ibus
+export XMODIFIERS=@im=ibus
+export QT_IM_MODULE=ibus

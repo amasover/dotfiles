@@ -3,7 +3,7 @@
 
 set $ws1 "1: "
 set $ws2 "2: "
-set $ws3 "3: /"
+set $ws3 "3: "
 set $ws4 "4: "
 set $ws5 "5: "
 set $ws6 "6: "
@@ -79,7 +79,7 @@ font pango:Hack, Siji, Awesome 11
 floating_modifier $mod
 
 # start a terminal
-bindsym $mod+Return exec termite
+bindsym $mod+Return exec alacritty
 
 # kill focused window
 bindsym $mod+Shift+q kill
@@ -88,7 +88,7 @@ bindsym $mod+Shift+q kill
 bindsym $mod+d exec rofi -show drun
 bindsym $mod+p exec rofi -modi lpass:rofi-lpass -show lpass
 # bindcode --release 133 exec rofi -show drun
-bindsym $sup+c exec conky
+# bindsym $sup+c exec conky
 
 
 # bindsym $mod+c exec zsh -c "rofi -show fb -modi fb:~/code/go/bin/dot"
@@ -120,12 +120,12 @@ mode $mode_gaps {
 set $mode_system " l |  o |  s |   h |   r |  S"
 
 bindsym $mod+Shift+e mode $mode_system
-set $locker ~/.local/bin/tools/lock
+set $hibernatelocker ~/.local/bin/tools/lock
 mode $mode_system {
     bindsym l exec --no-startup-id $locker, mode "default"
     bindsym o exec --no-startup-id i3-msg exit, mode "default"  
-    bindsym s exec --no-startup-id systemctl suspend && $locker, mode "default"
-    bindsym h exec --no-startup-id systemctl hibernate && $locker, mode "default"
+    bindsym s exec --no-startup-id systemctl suspend, mode "default"
+    bindsym h exec --no-startup-id $hibernatelocker && systemctl hibernate, mode "default"
     bindsym r exec --no-startup-id systemctl reboot, mode "default"
     bindsym Shift+s exec --no-startup-id systemctl poweroff -i, mode "default"
     ## back to normal: Enter or Escape
@@ -182,20 +182,20 @@ bindsym $mod+c move workspace to output left
 ## move monitor right 
 bindsym $mod+u move workspace to output right
 
-bindsym $mod+Shift+t move workspace to output down
-bindsym $mod+Shift+g move workspace to output up
-
+bindsym $mod+Shift+Control+$sup+c move workspace to output down
+bindsym $mod+Shift+Control+$sup+u move workspace to output up
 
 # screen capture
 # bindsym Print exec --no-startup-id scrot "%Y-%m-%d_%H:%M:%S_$wx$h.png" -e 'mv $f ~/Dropbox/Screenshots/2017/$f'
 # bindsym Print exec --no-startup-id screenshot 
 set $mode_print "Print Mode: Press `print` again to capture all monitors, `f`: focused window, `b`: focused window + window border"
-bindsym Print mode $mode_print
+bindsym $mod+Shift+Control+p mode $mode_print
 mode $mode_print {
     # bindsym s exec --no-startup-id "~/.local/bin/tools/screenshot -s", mode default
-    bindsym Print exec --no-startup-id ~/.local/bin/tools/screenshot, mode default
+    bindsym p exec --no-startup-id ~/.local/bin/tools/screenshot, mode default
     bindsym f exec --no-startup-id ~/.local/bin/tools/screenshot -f, mode default
     bindsym b exec --no-startup-id ~/.local/bin/tools/screenshot -b, mode default
+    bindsym s exec ~/.local/bin/tools/screenshot -s
     bindsym Return mode "default"
     bindsym Escape mode "default"
 }
@@ -205,10 +205,10 @@ mode $mode_print {
 smart_borders on
 
 # change focus
-bindsym $mod+j focus left
-bindsym $mod+k focus down
-bindsym $mod+l focus up
-bindsym $mod+semicolon focus right
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
 
 # alternatively, you can use the cursor keys:
 bindsym $mod+Left focus left
@@ -217,10 +217,10 @@ bindsym $mod+Up focus up
 bindsym $mod+Right focus right
 
 # move focused window
-bindsym $mod+Shift+j move left
-bindsym $mod+Shift+k move down
-bindsym $mod+Shift+l move up
-bindsym $mod+Shift+semicolon move right
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
 
 # alternatively, you can use the cursor keys:
 bindsym $mod+Shift+Left move left
@@ -229,10 +229,10 @@ bindsym $mod+Shift+Up move up
 bindsym $mod+Shift+Right move right
 
 # split in horizontal orientation
-bindsym $mod+h split h
+bindsym $mod+Shift++Control+h split h
 
 # split in vertical orientation
-bindsym $mod+v split v
+bindsym $mod+Shift++Control+v split v
 
 # enter fullscreen mode for the focused container
 bindsym $mod+f fullscreen toggle
@@ -243,10 +243,10 @@ bindsym $mod+w layout tabbed
 bindsym $mod+e layout toggle split
 
 # toggle tiling / floating
-bindsym $mod+Shift+space floating toggle
+bindsym $mod+Shift+$sup+Control+f floating toggle
 
 # change focus between tiling / floating windows
-bindsym $mod+space focus mode_toggle
+bindsym $mod+Shift+$sup+Control+space focus mode_toggle
 
 # focus the parent container
 bindsym $mod+a focus parent
@@ -254,39 +254,42 @@ bindsym $mod+a focus parent
 ## assign applications to workspaces:
 ## NOTE: use xprop command to get WM_CLASS (second string value)
 assign [class="Google-chrome"] $ws3
+assign [class="firefox"] $ws3
 assign [class="Emacs"] $ws1
-assign [class="Termite"] $ws2
 assign [class="teams-for-linux"] $ws4
+assign [class="virt-viewer"] $ws8
+assign [class="Virt-viewer"] $ws8
+assign [class="Alacritty"] $ws2
 
 # focus the chld container
 #bindsym $mod+d focus child
 
 set $ws1 "1: "
 set $ws2 "2: "
-set $ws3 "3: /"
+set $ws3 "3: "
 set $ws4 "4: "
 set $ws5 "5: "
-set $ws6 "6: "
+set $ws6 "6: "
 set $ws7 "7:  Windows Server"
-set $ws8 "8:  Windows 10"
+set $ws8 "8:  Windows VM"
 set $ws9 "9: "
-set $ws0 "0: "
+set $ws0 "0:  "
 
 # monitor stuff
 
-set $mon0 "DP-3~1"
-set $mon1 "DP-3~2"
-set $mon2 "DP-2"
+#set $mon0 "DP-1"
+#set $mon1 "eDP-1"
+#set $mon2 "DP-2"
 
-workspace $ws1 output $mon2
-workspace $ws2 output $mon1
-workspace $ws3 output $mon0
-workspace $ws4 output $mon0
-workspace $ws5 output $mon0
-workspace $ws6 output $mon1
-workspace $ws7 output $mon1
-workspace $ws8 output $mon1
-workspace $ws9 output $mon2
+#workspace $ws1 output $mon0
+#workspace $ws2 output $mon1
+#workspace $ws3 output $mon2
+#workspace $ws4 output $mon2
+#workspace $ws5 output $mon2
+#workspace $ws6 output $mon1
+#workspace $ws7 output $mon1
+#workspace $ws8 output $mon1
+#workspace $ws9 output $mon2
 
 # switch to workspace
 bindsym $mod+1 workspace $ws1
@@ -351,12 +354,17 @@ for_window [title="i3-helm"] floating enable
 # uses golang github.com/itchyny/volume-go
 bindsym XF86AudioRaiseVolume exec --no-startup-id volume up 3 && sh -c "volnoti-show $(volume get)" #increase sound volume
 bindsym XF86AudioLowerVolume exec --no-startup-id volume down 3 && sh -c "volnoti-show $(volume get)" #decrease sound volume
-bindsym XF86AudioMute exec --no-startup-id sh -c "mute_toggle" # mute sound (uses tools/mute_toggle script)
+
+bindsym XF86AudioMute exec --no-startup-id wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+#bindsym XF86AudioMute exec --no-startup-id sh -c "mute_toggle" # mute sound (uses tools/mute_toggle script)
 # play/next/previous using tools/sp (control spotify via dbus)
-bindsym XF86AudioPlay exec --no-startup-id sp play # play acts as a toggle
-bindsym XF86AudioNext exec --no-startup-id sp next
-bindsym XF86AudioPrev exec --no-startup-id sp prev
-bindsym XF86AudioStop exec --no-startup-id sp pause
+bindsym XF86AudioPlay exec --no-startup-id playerctl play-pause
+bindsym Pause exec --no-startup-id playerctl play-pause
+#bindsym XF86AudioNext exec --no-startup-id sp next
+#bindsym XF86AudioPrev exec --no-startup-id sp prev
+#bindsym XF86AudioStop exec --no-startup-id sp pause
+bindsym XF86MonBrightnessUp exec --no-startup-id busctl call org.clightd.clightd /org/clightd/clightd/Backlight org.clightd.clightd.Backlight RaiseAll "d(bdu)s" 0.1 0 0 0 ""
+bindsym XF86MonBrightnessDown exec --no-startup-id busctl call org.clightd.clightd /org/clightd/clightd/Backlight org.clightd.clightd.Backlight LowerAll "d(bdu)s" 0.1 0 0 0 ""
 
 
 ## move workspace to screen
@@ -367,20 +375,28 @@ for_window [class="trust"] floating enable
 #exec_always --no-startup-id dot polybar
 exec_always --no-startup-id sh -c "~/.config/polybar/launch.sh"
 exec --no-startup-id ~/.local/bin/polybar-reload
-exec --no-startup-id dropbox
+#exec --no-startup-id dropbox
 exec --no-startup-id emacs
 #exec --no-startup-id LD_PRELOAD="" google-chrome-stable
 #exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
 exec --no-startup-id sh ~/.local/bin/tools/start-vbox-client
-exec --no-startup-id dropbox
 exec --no-startup-id parcellite
-exec --no-startup-id termite
-exec --no-startup-id termite
+exec --no-startup-id alacritty
+exec --no-startup-id alacritty
 exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
-exec --no-startup-id google-chrome-stable
+#exec --no-startup-id google-chrome-stable
+
+#teams
 exec --no-startup-id teams-for-linux
+#for_window [title="Microsoft Teams Notification" class="microsoft teams - preview"] floating enable
+#for_window [title="Microsoft Teams Notification" class="Microsoft Teams - Preview"] floating enable
+
 exec_always --no-startup-id dunst
-exec --no-startup-id sudo openfortigui
+exec --no-startup-id lxqt-policykit-agent
+exec --no-startup-id virt-viewer -c qemu:///system win10 -a
+exec --no-startup-id ibus-daemon -dr
+exec --no-startup-id nm-applet --indicator
+exec --no-startup-id autorandr --change --force
             
 #exec_always --no-startup-id xset dpms 0 0 1200
 #exec --no-startup-id VBoxManage startvm "Windows 10"
@@ -389,4 +405,9 @@ exec --no-startup-id sudo openfortigui
 #move mail and calendar to ws5. need to sleep in script due to delay in window getting title
 exec --no-startup-id sh ~/.local/bin/tools/move-mail.sh
 
+#suspend stuff
+set $hibernate /home/aaron/.local/bin/tools/hibernate
+set $locker "/home/aaron/.local/bin/tools/lock -n"
+#exec_always --no-startup-id xautolock -detectsleep -time 10 -locker \\"$locker\\" -killtime 15 -killer $hibernate &
+exec_always --no-startup-id xidlehook --not-when-fullscreen --not-when-audio --timer 900 ~/.local/bin/tools/lock pgrep -f ~/.local/bin/tools/hibernate | xargs kill --timer 900 ~/.local/bin/tools/hibernate pgrep -f ~/.local/bin/tools/hibernate | xargs kill
 exec_always --no-startup-id flashfocus
