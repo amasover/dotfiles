@@ -7,6 +7,8 @@
     path = ~/code/github/.gitconfig
 [includeIf "gitdir:~/code/production-*/"]
     path = ~/.gitconfig-production
+[includeIf "hasconfig:remote.*.url:https://github.com/amasover/**"]
+    path = ~/.gitconfig-personal
 [includeIf "onbranch:production/"]
     path = ~/.gitconfig-production
 [core]
