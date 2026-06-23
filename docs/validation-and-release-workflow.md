@@ -77,7 +77,7 @@ Expected outcome:
 Review the encryption manifest:
 
 ```bash
-cat $DOTFILES_CHECKOUT/.yadm/encrypt
+cat $DOTFILES_CHECKOUT/.config/yadm/encrypt
 ```
 
 Known encrypted path patterns:
@@ -92,19 +92,22 @@ Known encrypted path patterns:
 Before staging commits:
 
 - Check whether changed files may contain tokens, private keys, credentials, private hostnames, or account identifiers.
-- Use a secret scanning tool if available.
-- If no scanner is available, manually review likely hotspots.
+- Run the secret scan per the [secret scan recipe](../knowledge/recipes/secret-scan.md).
+- If no scanner is available, manually review likely hotspots per the recipe's fallback.
 - Do not print decrypted files.
 - Do not run `yadm decrypt` unless explicitly approved.
 - Do not run `yadm encrypt` unless an intentional encrypted-file change is ready.
 
-Suggested scanner options to evaluate later:
+The standard scanner is `gitleaks` (resolving OQ-5). Run before staging and
+before PR:
 
-- `gitleaks`
-- `trufflehog`
-- `detect-secrets`
+```bash
+gitleaks protect --staged --redact --no-banner   # staged changes
+gitleaks dir . --redact --no-banner              # working tree, before PR
+gitleaks git . --redact --no-banner              # full history, periodically
+```
 
-Do not install a scanner automatically as part of validation.
+Do not install a scanner automatically as part of validation; ask Aaron first.
 
 ---
 
