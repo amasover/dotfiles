@@ -126,7 +126,9 @@ So that historical cleanup does not accidentally publish sensitive material.
 - Given no scanner is installed, when Release 1 finishes, then a recommended scanner and manual fallback process are documented
 - Given a finding is likely a false positive, when it is dismissed, then the reason is documented
 
-**Evidence artifact:** Secret scan output or documented manual review
+**Status:** Done (2026-06-23). `gitleaks` selected as the standard scanner (resolves OQ-5). Working-tree and full-history (1002 commits) scans reported no leaks. Manual fallback and false-positive handling documented.
+
+**Evidence artifact:** [Secret scan recipe](../knowledge/recipes/secret-scan.md) (includes scan evidence and manual fallback)
 
 ---
 
@@ -184,7 +186,7 @@ So that future reconciliation can use normal YADM commands and the repo has reco
 | Local YADM status available | Aaron | Phase 1 | Open | 1.1, 1.5 | Request terminal output |
 | Live home directory accessible at `$HOME` | Aaron | Phase 1 | Open | 1.2 | Mark live comparisons blocked |
 | Approval to mutate YADM data paths | Aaron | Phase 1 | Open | 1.6 | Continue using explicit legacy YADM flags |
-| Secret scan tool selected | Aaron | Phase 1 | Open | 1.4 | Use manual hotspot review |
+| Secret scan tool selected | Aaron | Phase 1 | Done (gitleaks) | 1.4 | Use manual hotspot review |
 | Decision on encrypted-file updates | Aaron | Phase 1 | Open | 1.3, 1.5 | Defer `.yadm/files.gpg` changes |
 
 ---
