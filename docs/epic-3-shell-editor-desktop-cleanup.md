@@ -49,6 +49,8 @@ As the repo owner,
 I want shell config to be readable and intentional,
 So that startup behavior and aliases are easy to maintain.
 
+Issue: [#28](https://github.com/amasover/dotfiles/issues/28)
+
 **Acceptance criteria:**
 
 - Given `.zshrc` differs from `$HOME/.zshrc`, when cleanup is proposed, then the live difference is reviewed first
@@ -66,6 +68,8 @@ As the repo owner,
 I want editor configs marked current or legacy,
 So that active editors are supported and old configs do not cause confusion.
 
+Issue: [#29](https://github.com/amasover/dotfiles/issues/29)
+
 **Acceptance criteria:**
 
 - Given `.spacemacs`, `.vimrc`, `.config/nvim/`, and `.config/Code/` exist, when reviewed, then each is classified as current, legacy-supported, archive-candidate, or unknown
@@ -81,6 +85,8 @@ So that active editors are supported and old configs do not cause confusion.
 As the repo owner,
 I want desktop environment config classified by currentness,
 So that old i3/polybar/rofi assets are preserved or cleaned up intentionally.
+
+Issue: [#30](https://github.com/amasover/dotfiles/issues/30)
 
 **Acceptance criteria:**
 
@@ -98,13 +104,15 @@ As the repo owner,
 I want personal helper scripts categorized,
 So that useful tools are discoverable and risky scripts are labeled.
 
+Issue: [#31](https://github.com/amasover/dotfiles/issues/31)
+
 **Acceptance criteria:**
 
 - Given scripts exist under `.local/bin/tools/`, when reviewed, then each is categorized by purpose and safety level
 - Given a script touches credentials, SSH, cloud accounts, packages, or system services, when documented, then it is marked high-risk
 - Given a script is obsolete, when cleanup is proposed, then it is archived or deleted with rationale
 
-**Evidence artifact:** Tool script inventory
+**Evidence artifact:** [bootstrap-inventory.md](./bootstrap-inventory.md) (§ Story 3.4 — tool triage executed)
 
 ---
 
@@ -113,6 +121,8 @@ So that useful tools are discoverable and risky scripts are labeled.
 As future Aaron,
 I want the repo to document supported daily workflows,
 So that important aliases and scripts are not just tribal memory.
+
+Issue: [#32](https://github.com/amasover/dotfiles/issues/32)
 
 **Acceptance criteria:**
 
@@ -156,6 +166,24 @@ So that idle-lock / screen-off works without starting it by hand.
 - Given xidlehook replaces the old bespoke lock/DPMS logic, when configured, then its behavior is documented and the retired logic is confirmed gone
 
 **Evidence artifact:** xidlehook autostart config + notes
+
+---
+
+### Story 3.8: Support switching from zsh to fish
+
+As the repo owner,
+I want the option to migrate my interactive shell from zsh to fish,
+So that I can move to fish in the future without an all-or-nothing rewrite.
+
+Issue: [#37](https://github.com/amasover/dotfiles/issues/37)
+
+**Acceptance criteria:**
+
+- Given the current zsh setup (oh-my-zsh, `.zsh_plugins.sh`, vi-mode, plugins), when migration is scoped, then portable vs zsh-specific config is identified
+- Given fish is chosen, when a migration path is defined, then it does not break the working zsh setup until cutover (parallel config is acceptable)
+- Given bootstrap installs the shell (Story 2.3), when fish is supported, then shell choice is reflected there and in Story 3.1 cleanup
+
+**Evidence artifact:** Shell migration notes or parallel fish config under `docs/`
 
 ---
 
