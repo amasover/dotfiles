@@ -81,7 +81,7 @@ function set_monitor_vars() {
 set_monitor_vars
 notify-send "Polybar" "Bars initialized on ${mode} monitors."
 
-killall -q polybar
+killall -q -w polybar
 
 echo killed old polybar
 
@@ -95,13 +95,20 @@ if [[ -z $polybar_theme ]]; then
     export polybar_theme=$HOME/.config/polybar/themes/nord-arrow/config.ini
 fi
 
-polybar -r main &
+# Polybar logs, rotated (keep the last 5 launches), in ~/.cache/polybar/.
+log_dir="${XDG_CACHE_HOME:-$HOME/.cache}/polybar"
+mkdir -p "$log_dir"
+log="$log_dir/polybar.log"
+[[ -f $log ]] && mv "$log" "$log.$(date +%Y%m%d-%H%M%S)"
+ls -1t "$log_dir"/polybar.log.* 2>/dev/null | tail -n +6 | xargs -r rm -f
+
+polybar -r -l warning main        >>"$log" 2>&1 &
 #polybar -r right &
-polybar -r left &
-polybar -r extra &
-polybar -r main-bottom &
-polybar -r split-one &
-polybar -r split-two &
+polybar -r -l warning left        >>"$log" 2>&1 &
+polybar -r -l warning extra       >>"$log" 2>&1 &
+polybar -r -l warning main-bottom >>"$log" 2>&1 &
+polybar -r -l warning split-one   >>"$log" 2>&1 &
+polybar -r -l warning split-two   >>"$log" 2>&1 &
 #polybar -r left-bottom &
 
 echo "Bars launched..."
