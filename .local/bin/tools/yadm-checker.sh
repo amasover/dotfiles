@@ -59,8 +59,8 @@ yadm fetch > /dev/null 2>&1
 
 staged=$(yadm diff --cached --numstat | wc -l)
 modified=$(yadm ls-files -m | wc -l)
-# shows how many commits ahead and behind local master is from origin
-ahead_behind_count=$(yadm rev-list --left-right --count master...origin/master)
+# shows how many commits ahead and behind local main is from origin
+ahead_behind_count=$(yadm rev-list --left-right --count main...origin/main)
 ahead=$(echo $ahead_behind_count | cut -d ' ' -f1)
 behind=$(echo $ahead_behind_count | cut -d ' ' -f2)
 

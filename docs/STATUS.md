@@ -19,6 +19,7 @@ Avoid re-reading `prd.md` end-to-end unless changing product direction.
 
 | Story | Issue | PR | Status |
 | --- | --- | --- | --- |
+| 2.1 Classify setup scripts | [#16](https://github.com/amasover/dotfiles/issues/16) | [#18](https://github.com/amasover/dotfiles/pull/18) | In review |
 | 3.6 Triage stale test-laptop drift | [#10](https://github.com/amasover/dotfiles/issues/10) | — | In progress |
 
 Recently merged: 1.4 secret scan (#6), Epic 4 workflow adoption (#9). `main` was undiverged from the test-laptop lineage (preserved as `archive/stale-test-laptop-main`).
