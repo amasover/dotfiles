@@ -209,6 +209,27 @@ switch (corp Wi-Fi) that left iwd enabled. See [package-inventory.md](./package-
 
 ---
 
+### Story 3.10: Consolidate screen recorders (evaluate kooha)
+
+As the repo owner,
+I want one or two screen-capture tools instead of five,
+So that screen recording is reliable and not a pile of overlapping legacy apps.
+
+Issue: [#42](https://github.com/amasover/dotfiles/issues/42)
+
+Deferred from Story 2.2: `peek` + `byzanz` + `kazam` + `simplescreenrecorder` + `guvcview`
+all installed. Aaron wants to evaluate **kooha**. Recording libs reportedly broken until a
+reboot — verify post-reboot first. See [package-inventory.md](./package-inventory.md) (D7).
+
+**Acceptance criteria:**
+
+- Given the recorders are evaluated (incl. kooha) after the pending reboot, when one/two keepers are chosen, then the rest are marked remove-candidates and fed into the Story 2.2 media group
+- Given Wayland/X11 + PipeWire, when the keeper is chosen, then capture is confirmed working
+
+**Evidence artifact:** Screen-recorder decision notes + manifest update
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely
