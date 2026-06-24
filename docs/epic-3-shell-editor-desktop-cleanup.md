@@ -124,6 +124,24 @@ So that important aliases and scripts are not just tribal memory.
 
 ---
 
+### Story 3.6: Triage stale test-laptop drift for salvage
+
+**Issue:** [#10](https://github.com/amasover/dotfiles/issues/10)
+
+As the repo owner,
+I want the archived test-laptop drift triaged file-by-file,
+So that intentional changes are salvaged and genuinely stale config is dropped without guessing.
+
+**Acceptance criteria:**
+
+- Given local `main` was undiverged from the test-laptop lineage, when triage runs, then the stale lineage is preserved (`archive/stale-test-laptop-main` + tag) and each differing file is classified salvage/drop/decision
+- Given a diff cannot distinguish stale from deliberate, when a removal is classified drop, then it is confirmed with Aaron before acting
+- Given a salvage item contains a secret (e.g. an API key), when salvaged, then it is encrypted via `.config/yadm/encrypt`, never tracked as plaintext
+
+**Evidence artifact:** [Stale drift triage (2026-06-23)](./stale-drift-triage-2026-06-23.md)
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely
