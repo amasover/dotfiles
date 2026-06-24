@@ -187,6 +187,28 @@ Issue: [#37](https://github.com/amasover/dotfiles/issues/37)
 
 ---
 
+### Story 3.9: Reconcile iwd vs wpa_supplicant NetworkManager backend
+
+As the repo owner,
+I want exactly one Wi-Fi backend enabled and the choice documented,
+So that NetworkManager isn't running a redundant `iwd.service` it doesn't use.
+
+Issue: [#41](https://github.com/amasover/dotfiles/issues/41)
+
+Found during Story 2.2 inventory: NM is provided by `networkmanager-iwd` but its
+backend is set to `wpa_supplicant` (`/etc/NetworkManager/conf.d/wifi_backend.conf`),
+while `iwd.service` is still enabled + active and unused. Likely an iwd→wpa_supplicant
+switch (corp Wi-Fi) that left iwd enabled. See [package-inventory.md](./package-inventory.md) § Networking (N1).
+
+**Acceptance criteria:**
+
+- Given the active backend is confirmed, when reconciled, then only one Wi-Fi backend is enabled (disable `iwd.service`, or switch NM to iwd) — not both
+- Given the choice is made, when documented, then the resulting package set (`networkmanager-iwd` vs `networkmanager` + `wpa_supplicant`) is fed back into the Story 2.2 network-vpn group
+
+**Evidence artifact:** Service/config reconciliation notes + manifest update
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely
