@@ -155,6 +155,8 @@ the source of truth for status.
 
 ## Default investigation order
 
+Start every session by reading [docs/STATUS.md](../docs/STATUS.md) — it names the trunk branch, the tracking board, and what work is in flight, so you can orient without re-reading `prd.md` and every epic. Read only the relevant epic's **Stories** section, not the whole epic.
+
 Before proposing or making changes, inspect in this order:
 
 1. The relevant repo file under `../dotfiles`.
