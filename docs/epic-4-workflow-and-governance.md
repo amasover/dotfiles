@@ -91,6 +91,8 @@ As the repo owner,
 I want a single, unambiguous trunk branch,
 So that PRs and syncs cannot target the wrong base.
 
+Issue: [#33](https://github.com/amasover/dotfiles/issues/33)
+
 **Acceptance criteria:**
 
 - Given GitHub already defaults to `main`, when this story runs, then local `origin/HEAD` is repointed to `main` (`git remote set-head origin main`).
@@ -108,6 +110,8 @@ As the repo owner,
 I want planning docs to reference the post-1.6 YADM paths,
 So that the docs and copilot-instructions match the real YADM layout.
 
+Issue: [#34](https://github.com/amasover/dotfiles/issues/34)
+
 **Acceptance criteria:**
 
 - Given the 1.6 upgrade moved `.yadm/encrypt` to `.config/yadm/encrypt`, when docs are reconciled, then references are updated across `prd.md`, `epic-1`, and the runbooks.
@@ -123,6 +127,8 @@ So that the docs and copilot-instructions match the real YADM layout.
 As the repo owner,
 I want the Story 1.4 secret scan to run automatically before each commit,
 So that secret hygiene does not depend on anyone remembering to run it.
+
+Issue: [#35](https://github.com/amasover/dotfiles/issues/35)
 
 **Acceptance criteria:**
 
@@ -140,6 +146,8 @@ So that secret hygiene does not depend on anyone remembering to run it.
 As the repo owner,
 I want shell scripts linted and formatted with standard tools,
 So that Epic 2/3 script cleanup has an objective validation signal.
+
+Issue: [#36](https://github.com/amasover/dotfiles/issues/36)
 
 **Acceptance criteria:**
 

@@ -50,6 +50,8 @@ As the repo owner,
 I want a read-only summary of YADM status and diffs,
 So that I can understand unsynced work before staging anything.
 
+Issue: [#19](https://github.com/amasover/dotfiles/issues/19)
+
 **Acceptance criteria:**
 
 - Given the repo is managed by YADM, when `yadm status` is reviewed, then modified, deleted, untracked, and staged files are summarized
@@ -66,6 +68,8 @@ As the repo owner,
 I want tracked files mapped to `$HOME`,
 So that cleanup decisions reflect the actual workstation.
 
+Issue: [#20](https://github.com/amasover/dotfiles/issues/20)
+
 **Acceptance criteria:**
 
 - Given a tracked file maps to `$HOME/<path>`, when the file exists live, then repo and live versions are compared or marked for comparison
@@ -81,6 +85,8 @@ So that cleanup decisions reflect the actual workstation.
 As the repo owner,
 I want sensitive paths covered by YADM encryption,
 So that local secrets can be backed up without plaintext exposure.
+
+Issue: [#21](https://github.com/amasover/dotfiles/issues/21)
 
 **Acceptance criteria:**
 
@@ -116,6 +122,8 @@ As the repo owner,
 I want cleanup commits ordered by risk,
 So that syncing changes is reviewable and reversible.
 
+Issue: [#22](https://github.com/amasover/dotfiles/issues/22)
+
 **Acceptance criteria:**
 
 - Given docs-only safety changes exist, when commits are planned, then they are separated from shell/script/secret changes
@@ -131,6 +139,8 @@ So that syncing changes is reviewable and reversible.
 As the repo owner,
 I want YADM's legacy data paths upgraded and cleanup work committed locally in small steps,
 So that future reconciliation can use normal YADM commands and the repo has recoverable checkpoints before any remote workflow is formalized.
+
+Issue: [#23](https://github.com/amasover/dotfiles/issues/23)
 
 **Acceptance criteria:**
 
