@@ -50,6 +50,8 @@ As the repo owner,
 I want every setup script classified by safety and currentness,
 So that I know what can be inspected, tested, rewritten, or archived.
 
+Issue: [#16](https://github.com/amasover/dotfiles/issues/16) · Artifact: [bootstrap-inventory.md](./bootstrap-inventory.md)
+
 **Acceptance criteria:**
 
 - Given a script exists under `.local/bin/setup/`, when reviewed, then it is classified as current, legacy, unsafe, or unknown
@@ -84,6 +86,8 @@ So that a fresh-machine setup can install only what is needed.
 As future Aaron on a new machine,
 I want a minimal setup path,
 So that I can become productive before restoring every desktop customization.
+
+Design input: [bootstrap-architecture-notes.md](./bootstrap-architecture-notes.md) — Bash vs Ansible vs Go, idempotency, "not NixOS."
 
 **Acceptance criteria:**
 
