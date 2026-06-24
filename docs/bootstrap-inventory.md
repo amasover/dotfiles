@@ -161,13 +161,52 @@ the bash `setup/update` (edited 2026-06-23) is the real daily driver. **Fixed in
 story** ([.zshrc:200](../.zshrc#L200)): the bash alias is active again and the Ansible
 line is kept commented as a dormant pointer. `~/code/dot-ansible` is
 `patrick-motard/dot-ansible` (the upstream author's repo, 2019-era, never forked) — it
-remains real prior art for the Story 2.3/2.5 architecture decision, not an active path.
+remains real prior art for the Story 2.3/2.5 architecture decision.
 
-## Suggested follow-up stories
+**Update (Story 3.4):** `.profile` had one live hook into dot-ansible — it sourced
+`~/code/dot-ansible/shell-imports.sh`, which only set `LPASS_AGENT_TIMEOUT=0` for
+lastpass-cli. Aaron no longer uses lastpass, so the import was **removed** in this story,
+fully decoupling dot-ansible: it now has *no* live hook and survives only as a commented
+`update`-alias pointer + reference prior-art for the 2.5 decision. (Knock-on: the i3
+`$mod+p` rofi-lpass binding is now dead too — logged for Epic 3 desktop cleanup.)
 
-- **Story 2.x — Triage `tools/` for action:** once the questions above are answered,
-  archive/delete dead scripts (`update_background`, `start-vbox-client`, `termite_terminfo`,
-  `wifi` or its `dot-log` dep) and fix small bugs.
-- **Fix `yadm-checker.sh` master→main** (folds into Story 4.2 master retirement).
+## Story 3.4 — tool triage executed (2026-06-24)
+
+Walked every tool with Aaron and acted. Removed files are recoverable from git history
+(chosen over an `archive/` dir). Issue [#31](https://github.com/amasover/dotfiles/issues/31).
+
+**Kept (12 + setup/update):** `update`, `dot-color`, `dot-update`, `polybar_alsa_module`,
+`yadm-checker.sh` (master→main fixed in 2.1), `squash`, `new_script`, `quick-git-check-in`,
+`pulseaudio-tail.sh`, `lock`, `screenshot`, `check_for_arch_updates`, `vendor_repos`.
+
+**Deleted (17 scripts + `.fehbg`):** `git_extras`, `zsh_history_fix`, `switch-aws-creds.sh`,
+`mute_toggle`, `installed_packages.sh`, `bb-clone`, `docker-stack-redeploy`,
+`publish-python-package`, `sp`, `vault-ssh-files`, `hashicorp-download`, `termite_terminfo`,
+`start-vbox-client`, `update_background`, `isrunning_dropbox.sh`, `wifi`, `install_oh_my_zsh`,
+plus the broken `.fehbg`.
+
+**Cascading config edits made:**
+- `.zshrc`: removed `work-mode`/`other-mode` (both dup pairs), `bgf`, `bgn` aliases.
+- `.config/i3/config`: removed the commented `mute_toggle` mute binding (active mute already
+  uses `wpctl`) and the dead commented `sp` media bindings (active uses `playerctl`).
+- `.config/polybar/themes/nord-arrow/config.ini`: removed the `dropbox-watcher` + arrow
+  modules and their commented `modules-right` reference.
+- `.profile`: removed the orphaned `# used by tools/wifi` comment.
+
+**`setup/` deferred to Story 2.3:** `install` (rewrite), `lib.sh` (fold/replace).
+
+## Remaining follow-ups
+
+- **Fix `polybar_alsa_module` switch**: `pacmd` (PulseAudio) → `wpctl`/`pamixer` (PipeWire);
+  the `dot sound port` read works, the click-to-switch likely doesn't.
+- **Retire `volume-go`** (`~/code/go/bin/volume`, 2019) in favor of `wpctl`/`pamixer`
+  (Epic 3); it still backs i3 volume up/down keys.
 - **Rename `pulseaudio-tail.sh`** to reflect PipeWire (cosmetic; Epic 3).
-- **Modernize `installed_packages.sh`** as input to Story 2.2 (drop `yaourt`).
+- **Dead desktop config** (Epic 3 / Story 3.3): termite dropdown binding in i3
+  ([config:166](../.config/i3/config#L166)); dead `$mod+p` rofi-lpass binding (off lastpass);
+  stale polybar themes (`*.bak`, non-active themes).
+- **`.zshrc` dedupe** (Story 3.1): duplicate `dot-src` and other repeated alias blocks.
+- **Privacy** (existing follow-up): `cgbb` alias still names a work `wtsdevops` Bitbucket path.
+- **Story 2.2:** rebuild package inventory properly; evaluate **aconfmgr**. Issue [#24](https://github.com/amasover/dotfiles/issues/24).
+- **Story 2.3:** install oh-my-zsh via the official installer (replaces the deleted vendored one).
+- **Fish shell:** Aaron wants to be able to switch zsh→fish later — tracked as a new Epic 3 story.
