@@ -197,8 +197,10 @@ alias token=~/.ssh/token
 
 alias setup-run="bash ~/.local/bin/setup/install"
 alias setup-edit="vim ~/.local/bin/setup/install"
-#alias update="zsh ~/.local/bin/setup/update"
-alias update="ansible-playbook ~/code/dot-ansible/main.yml --ask-become-pass"
+alias update="zsh ~/.local/bin/setup/update"
+# Dormant: friend's Ansible playbook (patrick-motard/dot-ansible). Not the active
+# update path; left as a pointer for the Story 2.3/2.5 architecture decision.
+#alias update="ansible-playbook ~/code/dot-ansible/main.yml --ask-become-pass"
 alias tools="cd ~/.local/bin/tools/ && ll"
 
 alias npmis="npm install --save"
