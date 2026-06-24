@@ -129,19 +129,27 @@ Before starting work, consult existing entries under `knowledge/` and reuse the 
 
 Keep knowledge entries concise, evidence-based, and linked to the relevant docs or files when possible. Prefer updating an existing knowledge note over duplicating the same guidance in multiple places.
 
-### 8. Use one branch and PR per story
+### 8. Use one issue, branch, and PR per story
 
-Cleanup work should be story-scoped, branch-based, and PR-ready.
+Cleanup work is story-scoped and tracked on the GitHub Projects board, which is
+the source of truth for status.
 
-- When starting a new story, create or switch to a dedicated branch before editing. Use names like `story/1.6-yadm-legacy-upgrade-workflow` or `story/2.1-classify-setup-scripts`.
+**Tracking model — one fact, one home:**
+
+- Story **status** (todo / in-progress / done), dates, and discussion live on the [GitHub Projects board](https://github.com/users/amasover/projects/1/views/1) and its issues — not in the `.md` files.
+- Story **spec** (objective, acceptance criteria, scope) lives in the epic `.md` under `docs/`.
+- The issue and the epic `.md` **link** to each other; they do not duplicate each other. Do not add status text or status checkboxes to the `.md` once an issue exists.
+
+**Workflow:**
+
+- When starting a story, open a GitHub issue, add it to the board, and link it from the matching epic `.md` story with a one-line `Issue: #N` pointer.
+- Create or switch to a dedicated branch before editing. Use names like `story/4.2-consolidate-trunk` or `story/2.1-classify-setup-scripts`.
 - Keep each branch focused on one story or one explicitly approved slice of a story.
 - Commit as work progresses, but keep commits scoped by risk area: docs, YADM metadata, shell config, desktop config, package inventory, bootstrap scripts, or encrypted payload updates.
 - Do not add `Co-Authored-By` trailers or other AI-attribution lines to commit messages.
-- Push the story branch to Aaron's GitHub repo when the local scope is ready for review.
-- Prepare one GitHub pull request per story. The PR description should include the story, summary, validation performed, secret-safety notes, live-home comparison notes, and follow-up work.
+- Push the story branch and open one GitHub pull request per story, referencing its issue. The PR description should include the story, summary, validation performed, secret-safety notes, live-home comparison notes, and follow-up work.
 - Before pushing or opening a PR, run a privacy/sensitivity pass for secrets, personal details, company/internal details, private hostnames, local IPs, and other machine-specific data. Keep sensitive files local, encrypted through YADM, or ignored; do not publish them as plaintext.
-- This repo does not currently use GitHub boards or issues for story tracking. Do not invent issue numbers or board updates.
-- Do not merge to `main` or push to a remote unless Aaron explicitly asks for that step in the current task.
+- `main` is the trunk. Do not merge to `main` or push to a remote unless Aaron explicitly asks for that step in the current task.
 
 ---
 
