@@ -60,6 +60,28 @@ install packages (native + AUR), set up the AUR helper, enable a few services, a
 restore secrets via YADM. That's a fairly small surface — which argues against anything
 heavy unless idempotency/maintainability clearly wins.
 
+## Claude's recommendation (for Aaron to accept/reject in 2.3)
+
+**Default: bash now → Ansible if it grows. YADM stays. Do not build a Go CLI as the
+management engine.**
+
+- **YADM** keeps owning dotfile placement + secrets. Unchanged.
+- **Bootstrap (2.3):** a thin, idempotent **bash** script whose only jobs are: install
+  `yay`, `pacman -S --needed` from the curated manifest (Story 2.2), enable a few
+  services (guarded by `systemctl is-enabled`), and `yadm clone`. Bash is genuinely
+  adequate for "install these, enable these, clone that" — the surface is small.
+- **Graduate to Ansible** (Story 2.5) only when the bootstrap grows real conditionals
+  (laptop vs desktop, optional desktop stack, ordering). The friend's `dot-ansible` +
+  its `Vagrantfile` are a ready starting point and a VM to test in. Ansible's
+  `pacman`/AUR modules give idempotency for free.
+- **Reject a bespoke Go CLI** for system management: it re-invents the most-solved
+  problem in config management (idempotency/change-detection/ordering) and you'd own all
+  of it. "An LLM can write it" actually argues *against* it — LLMs produce far more
+  reliable Ansible/bash than a custom Go DSL the ecosystem has never seen.
+- If a personal CLI is still wanted, scope it to **imperative quality-of-life** commands
+  (the old `dot sound port` audio switch is ~15 lines of `wpctl` bash, no Go needed) —
+  not as the bootstrap/idempotency layer.
+
 ## Decision
 
 To be recorded as `docs/decision-bootstrap-architecture.md` when Story 2.3/2.5 lands.
