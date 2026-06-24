@@ -529,7 +529,7 @@ Aaron is both product owner and primary user.
 | --- | --- | --- | --- | --- | --- |
 | Live home directory accessible at `$HOME` | Aaron | Release 1 | Open | FR-1 | Use repo-only inventory and mark live comparison blocked |
 | YADM status available | Aaron | Release 1 | Open | FR-5 | Request command output from local terminal |
-| Secret scan tool available or selected | Aaron | Release 1 | Open | FR-2 | Use manual hotspot review until tool is chosen |
+| Secret scan tool available or selected | Aaron | Release 1 | Done (gitleaks) | FR-2 | Use manual hotspot review until tool is chosen |
 | Decision on whether YADM remains long-term | Aaron | Phase 2 | Open | Bootstrap modernization | Continue with YADM for Release 1 |
 | Current workstation target OS/package manager confirmed | Aaron | Phase 2 | Open | Package modernization | Keep old package manifests classified as historical until confirmed |
 
@@ -543,7 +543,7 @@ Aaron is both product owner and primary user.
 | OQ-2 | Is Arch still the target fresh-machine OS, or should bootstrap become distro-aware? | Aaron | Phase 2 | Bootstrap modernization |
 | OQ-3 | Which desktop environment assets are still active? | Aaron | Phase 3 | Desktop cleanup |
 | OQ-4 | Should Spacemacs remain supported, be archived, or be replaced by newer editor config? | Aaron | Phase 3 | Editor cleanup |
-| OQ-5 | Which secret scan tool should be standard for this repo? | Aaron | Release 1 | FR-2 |
+| OQ-5 | ~~Which secret scan tool should be standard for this repo?~~ Resolved 2026-06-23: `gitleaks` (see [secret scan recipe](../knowledge/recipes/secret-scan.md)) | Aaron | Release 1 | FR-2 |
 | OQ-6 | Should YADM remain the long-term dotfile manager? | Aaron | Phase 2 | Future architecture |
 | OQ-7 | What is the minimum viable fresh-machine bootstrap? | Aaron | Phase 2 | Fresh-machine runbook |
 
