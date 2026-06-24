@@ -1,7 +1,7 @@
 # Epic 1: Safety Inventory and Live-Home Reconciliation
 
 **Priority:** Critical
-**Status:** Draft
+**Status:** Done (2026-06-23) — all stories 1.1–1.6 have landed evidence artifacts
 **Phase:** Phase 1 — safety, instructions, and planning
 **PRD Reference:** [prd.md](./prd.md)
 **FR Alignment:** FR-1 (Repo and Live-Home Inventory), FR-2 (Secret Safety and YADM Encryption), FR-5 (Safe Commit and Sync Workflow)
