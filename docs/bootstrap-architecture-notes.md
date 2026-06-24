@@ -9,7 +9,7 @@
 
 - A way to **idempotently bootstrap a fresh Arch install** from this repo — not just
   daily-use config, but "new machine → useful workstation."
-- **Not** going full NixOS. Wants scripts, not a declarative OS rebuild.
+- **Not** going full NixOS just yet. Maybe in the future. For now wants scripts, not a declarative OS rebuild.
 - Open question on language/tool: **plain Bash vs Ansible vs Go vs something else.**
 - Context: the original author of this repo (the fork's source) eventually moved to
   **Ansible** on his fork. Aaron never adopted that and is undecided.
