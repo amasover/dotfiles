@@ -145,6 +145,28 @@ So that future reconciliation can use normal YADM commands and the repo has reco
 
 ---
 
+### Story 1.7: Audit live home for untracked configs worth adopting
+
+As the repo owner,
+I want a sweep of config files that exist on the live machine but are not tracked by YADM,
+So that useful real-workstation configuration is deliberately adopted instead of silently lost on a rebuild.
+
+This is the inverse of Story 1.2 (which maps tracked files → live). Here the direction is
+live → tracked: find untracked config under `$HOME` and decide adopt / encrypt / ignore.
+
+Issue: [#17](https://github.com/amasover/dotfiles/issues/17)
+
+**Acceptance criteria:**
+
+- Given config files exist under `$HOME` (e.g. `.config/`, dotfiles, `.local/`) that YADM does not track, when the sweep runs, then untracked candidates are listed with their purpose
+- Given an untracked file is found, when reviewed, then it is classified as adopt-to-yadm, encrypt-then-adopt, machine-local-only, or ignore
+- Given a candidate contains secrets or machine-specific/private data, when adoption is considered, then it routes through `.yadm/encrypt` or is excluded — never committed as plaintext
+- Given a file is selected for adoption, when the decision is recorded, then the rationale and target (tracked vs encrypted) is documented; actual `yadm add` happens only with explicit approval
+
+**Evidence artifact:** Untracked-config adoption inventory under `docs/`
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - `yadm status` and `yadm diff --stat` have been reviewed or requested from the local terminal
