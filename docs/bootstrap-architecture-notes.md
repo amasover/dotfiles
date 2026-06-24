@@ -28,9 +28,9 @@ being clear which is actually live:
 1. **Bash (ACTIVE)** — `setup/install` (2019, unsafe/broken, do-not-run) + `setup/update`
    (edited 2026-06-23, actively maintained). This is Aaron's real daily driver.
 2. **Ansible (DORMANT)** — `~/code/dot-ansible` (`patrick-motard/dot-ansible`, 2019,
-   never forked). A stray `update` alias briefly pointed here, but that was accidental
-   (git/yadm branch shuffling) and has been reverted to the bash script. Real prior art
-   to evaluate, not a currently-active path.
+   never forked). A stray `update` alias briefly pointed here (accidental, reverted), and
+   `.profile` sourced its `shell-imports.sh` — both removed in Story 3.4, so it now has no
+   live hook. Real prior art to evaluate, not a currently-active path.
 3. **Go CLI (IN USE, narrowly)** — `patrick-motard/dot` (`~/code/go/bin/dot`, 2019 binary).
    Confirmed live: the polybar audio switcher calls `dot sound port` (Aaron verified it
    works). Only that one consumer, but it's a real dependency today.

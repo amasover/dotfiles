@@ -43,10 +43,6 @@ export PATH=$PATH:/home/$USER/.local/bin
 export MESA_LOADER_DRIVER_OVERRIDE=i965
 
 export TOOLS="$HOME/.local/bin/tools"
-# used by tools/wifi
-# BEGIN managed by dot-ansible in ~/code/dot-ansible
-source ~/code/dot-ansible/shell-imports.sh
-# END managed by dot-ansible in ~/code/dot-ansible
 
 export GTK_IM_MODULE=ibus
 export XMODIFIERS=@im=ibus

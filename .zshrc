@@ -210,8 +210,6 @@ alias cat="ccat"
 alias ls="exa"
 alias ll="exa -la"
 alias gimme="sudo pacman -S"
-alias bgf="~/.fehbg"
-alias bgn="update_background"
 
 alias c="cd ~/code && ll"
 alias cgbb="cd ~/code/go/src/bitbucket.org/[work-org] && ll"
@@ -265,11 +263,6 @@ _sshg() {
 # quickly grep ssh hosts from config file
 alias grepssh=_sshg
 
-#switch between different AWS accounts
-alias work-mode="switch-aws-creds.sh work"
-alias other-mode="switch-aws-creds.sh other"
-alias check-mode="aws s3 ls"
-
 # leave this function with the _ prefix and aliased below without
 # the prefix. Without them zsh errors on sourcing because grep
 # is referencing an alias in this function. ( my grep is grep plus some
@@ -321,8 +314,6 @@ export NPM_TOKEN=$NPM_TOKEN
 export ANSIBLE_PLAYBOOKS_DIR=~/code/ansible-playbooks
 
 #switch between different AWS accounts
-alias work-mode="switch-aws-creds.sh work"
-alias other-mode="switch-aws-creds.sh other"
 alias check-mode="aws s3 ls"
 
 alias dotfiles="cd ~/.config/dotfiles/"
