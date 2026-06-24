@@ -139,6 +139,32 @@ Issue: [#27](https://github.com/amasover/dotfiles/issues/27)
 
 ---
 
+### Story 2.6: Quarantine AUR updates by a default delay
+
+As the repo owner,
+I want AUR package upgrades held back by a default delay (~2 weeks),
+So that a freshly compromised AUR package (cf. the June 2026 AUR malware incident) is less likely to land on my machine immediately.
+
+Issue: [#40](https://github.com/amasover/dotfiles/issues/40) · Implementation anchor: existing TODO at `.local/bin/setup/update:32` (line 33 runs `yay -Syu --devel --noconfirm ...`).
+
+**Acceptance criteria:**
+
+- Given `setup/update` upgrades AUR packages, when an AUR package's latest version is newer than a configurable threshold (default ~14 days), then it is skipped this run
+- Given an AUR update is older than the threshold, when update runs, then it is upgraded normally
+- Given native pacman/repo packages (signed Arch repos), when update runs, then they are NOT subject to the AUR delay
+- Given I want to upgrade a held package (or everything) now, when I pass an override flag/env, then the delay is bypassed
+- Given `-git`/`--devel` packages always build latest upstream, when the design is settled, then their handling under quarantine is decided and documented (the time-based delay means less for them)
+- Given the mechanism ships, when documented, then the rationale (June 2026 AUR malware) and the override are recorded
+
+**Notes / approach:**
+
+- Likely approach: read `yay -Qua`, look up each AUR package's Last-Modified date via the AUR RPC, and skip updates newer than the threshold.
+- Complementary control: consider running a scanner such as [`aur-malware-check`](https://github.com/lenucksi/aur-malware-check) over to-be-upgraded PKGBUILDs as a second layer, independent of the time delay.
+
+**Evidence artifact:** Changes to `.local/bin/setup/update` (or a helper) + notes; resolves the `setup/update:32` TODO.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
