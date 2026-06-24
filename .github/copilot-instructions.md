@@ -159,7 +159,7 @@ the source of truth for status.
 - Create or switch to a dedicated branch before editing. Use names like `story/4.2-consolidate-trunk` or `story/2.1-classify-setup-scripts`.
 - Keep each branch focused on one story or one explicitly approved slice of a story.
 - Commit as work progresses, but keep commits scoped by risk area: docs, YADM metadata, shell config, desktop config, package inventory, bootstrap scripts, or encrypted payload updates.
-- Do not add `Co-Authored-By` trailers or other AI-attribution lines to commit messages.
+- Do not add `Co-Authored-By` trailers or other AI-attribution lines to commit messages **or PR descriptions** (e.g. no "Generated with Claude Code" footer).
 - Push the story branch and open one GitHub pull request per story, referencing its issue. The PR description should include the story, summary, validation performed, secret-safety notes, live-home comparison notes, and follow-up work.
 - **Always open PRs against `main`. Never create stacked/dependent PRs** (a PR based on another story branch). A stacked PR previously merged into its dead base branch instead of `main`, so the work never reached `main`. If new work seems to depend on an unmerged branch, either wait for that branch to merge to `main` first, or keep the new work self-contained so it can branch off `main` cleanly.
 - Before pushing or opening a PR, run a privacy/sensitivity pass for secrets, personal details, company/internal details, private hostnames, local IPs, and other machine-specific data. Keep sensitive files local, encrypted through YADM, or ignored; do not publish them as plaintext.

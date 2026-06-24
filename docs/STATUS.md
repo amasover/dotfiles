@@ -17,11 +17,9 @@ Avoid re-reading `prd.md` end-to-end unless changing product direction.
 
 ## In flight
 
-| Story | Issue | PR | Status |
-| --- | --- | --- | --- |
-| 3.4 Inventory helper scripts (tool triage) | [#31](https://github.com/amasover/dotfiles/issues/31) | _opening_ | In review |
+Nothing in flight. Next up: **Story 2.2** (package-manifest triage, [#24](https://github.com/amasover/dotfiles/issues/24)) → then **2.3** bootstrap rewrite.
 
-Recently merged: **2.1 classify setup scripts (#18)**, 1.4 secret scan (#6), Epic 4 workflow adoption (#9), 3.6 stale-drift triage (#10). `main` was undiverged from the test-laptop lineage (preserved as `archive/stale-test-laptop-main`).
+Recently merged: **3.4 helper-script triage (#38)**, **2.1 classify setup scripts (#18)**, 1.4 secret scan (#6), Epic 4 workflow adoption (#9), 3.6 stale-drift triage (#10). `main` was undiverged from the test-laptop lineage (preserved as `archive/stale-test-laptop-main`).
 
 **Board now fully populated:** every story across epics 1–4 has a GitHub issue (#5–#37) on the [board](https://github.com/users/amasover/projects/1/views/1); each epic `.md` back-links its issue.
 
