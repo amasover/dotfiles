@@ -1,6 +1,10 @@
 #!/usr/bin/env zsh
 source ~/.zsh_plugins.sh
 
+# prevent sudo timeout
+sudo -v
+while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+
 vared -p $'\nUpdate Spacemacs? (will kill any running emacs) (y/n): ' -c update_emacs
 
 if [[ "${update_emacs}" == "y" ]]; then
