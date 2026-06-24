@@ -31,17 +31,18 @@ The split point (merge-base) is `19a7a7e` (2026-06-20), so this is days of drift
 | `.config/yadm/encrypt` dropped `.aws/**`, `.mysql/workbench/connections.xml`, `.cobra.yaml`, `.pypirc` | Deliberate — no longer needed. **Decision:** should `main`'s manifest also drop these? It's a secret-handling change — confirm the underlying files don't need encrypted backup before editing `main`. |
 | `.config/Code/User/settings.json` encrypted | Deliberate — it **contained an API key**. Must **never** be tracked as plaintext. To salvage onto this machine: add to `.config/yadm/encrypt` + `yadm encrypt`, and rotate/scrub the key. |
 
-### Salvage candidates (archive has, `main` lacks)
+### Outcomes (line-by-line review with Aaron, 2026-06-23)
 
-| File | What to salvage | Verdict |
-| --- | --- | --- |
-| `.local/bin/setup/update` | **sudo-keepalive block** (`sudo -v` + background refresh loop); `main` lacks it | Salvage the keepalive. Rest is older (main has aider/terraform/az-extensions). |
-| `.local/bin/setup/update` + `.config/pip/pip.conf` | `pip-review --user` philosophy + `user = true` | Salvage if you still want user-site pip installs (well-documented intent). |
-| `.config/dotfiles/arch-packages/` | adds `antibody`, `linux-headers`, `sbsigntools`, `reflector-timer`; removes `vim` | Reconcile into `main`'s manifest if those belong on this machine. |
-| `.gitignore` | `*.~undo-tree~*`, `**.cecli` patterns (main only has `*.swp`) | Salvage — cheap, useful. |
-| `.config/Code/User/settings.json` | vim keybinds (`fd`→Esc), Nord theme | **Encrypt-only — contains a secret** (see above). |
-| `.local/bin/tools/lock` | richer: pauses Spotify via dbus, idle `dpms` off | Optional — compare against current lock behavior. |
-| `.config/i3/config`, `.profile` | i3 vim-style focus keys (j/k/l/;); `BROWSER=google-chrome-stable` | Optional — pure preference. |
+| File | Decision |
+| --- | --- |
+| `.local/bin/setup/update` sudo-keepalive | **Salvaged** into `main`. |
+| `.local/bin/setup/update` pip-review + `.config/pip/pip.conf user=true` | **Dropped** — Aaron uninstalled `pip-review`; recoverable from the archive later. |
+| `.local/bin/tools/lock` (Spotify-stop + DPMS idle-off) | **Dropped** — Aaron switched to `xidlehook`. Spun off [Story 3.7](https://github.com/amasover/dotfiles/issues/14) for the xidlehook-on-boot issue. |
+| `.gitignore` | **No action** — `main` is already the superset (`*.~undo-tree~*`, `**.cecli`, `TODO.org`). The archive's is the *smaller* one. (Earlier triage note had this backwards.) |
+| `.config/dotfiles/arch-packages/` (`antibody`, `linux-headers`, `sbsigntools`, `reflector-timer`; drop `vim`) | **Deferred to Epic 2** package triage (hard rule 5: live-install check + targeted Qs). |
+| `.config/Code/User/settings.json` | **Pending** — encrypt-only (contains an API key); rotate key, then `yadm encrypt`. |
+| `.config/yadm/encrypt` removals (`.aws/.mysql/.cobra/.pypirc`) | **Pending Aaron's confirm** before changing `main`'s manifest. |
+| i3 vim-style focus keys, `.profile` `BROWSER` | Optional preference — not pursued. |
 
 ### Drop (`main` newer / this-machine-correct / superseded)
 

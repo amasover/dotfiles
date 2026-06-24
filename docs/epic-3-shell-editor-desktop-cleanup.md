@@ -142,6 +142,23 @@ So that intentional changes are salvaged and genuinely stale config is dropped w
 
 ---
 
+### Story 3.7: Fix xidlehook not starting on boot
+
+**Issue:** [#14](https://github.com/amasover/dotfiles/issues/14)
+
+As the repo owner,
+I want xidlehook to start automatically at boot,
+So that idle-lock / screen-off works without starting it by hand.
+
+**Acceptance criteria:**
+
+- Given the machine boots, when the desktop session starts, then xidlehook starts automatically (i3 `exec`, systemd `--user` service, or `.xprofile`)
+- Given xidlehook replaces the old bespoke lock/DPMS logic, when configured, then its behavior is documented and the retired logic is confirmed gone
+
+**Evidence artifact:** xidlehook autostart config + notes
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely
