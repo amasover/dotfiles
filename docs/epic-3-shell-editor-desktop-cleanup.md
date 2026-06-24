@@ -13,33 +13,9 @@
 
 Make the active shell, editor, tool, and desktop configuration understandable, current, and safe to change while preserving useful legacy context.
 
-## Why This Matters
+## Context
 
-These files shape the actual daily workstation experience. They also carry the highest risk of accidental breakage because they affect shell startup, PATH, aliases, editor startup, desktop sessions, keybindings, and helper scripts.
-
-Cleanup should improve daily use without erasing old knowledge prematurely.
-
----
-
-## Current Repo Evidence
-
-- `.zshrc` is the main interactive shell file and contains duplicated aliases/functions.
-- `.bashrc`, `.profile`, and `.zprofile` may still influence login or non-zsh contexts.
-- `.spacemacs`, `.vimrc`, `.config/nvim/`, and `.config/Code/` define editor behavior.
-- `.config/i3/`, `.config/polybar/`, `.config/rofi/`, `.config/dunst/`, `.Xresources`, `.xinitrc`, and `.screenlayout/` define desktop/session behavior.
-- `.local/bin/tools/` contains many personal helper scripts of unknown currentness.
-
----
-
-## Problem Statement
-
-The repo needs to distinguish active workstation behavior from historical configuration. Without that distinction:
-
-- Shell startup may remain slow, duplicated, or machine-specific
-- PATH and environment variables may point to stale locations
-- Editor configs may install or expect obsolete plugins
-- Desktop configs may reflect old monitor/layout assumptions
-- Helper scripts may remain undiscoverable or unsafe
+Shell (`.zshrc`, `.bashrc`, `.profile`, `.zprofile`), editor (`.spacemacs`, `.vimrc`, `.config/nvim/`, `.config/Code/`), desktop (`.config/{i3,polybar,rofi,dunst}/`, `.Xresources`, `.xinitrc`, `.screenlayout/`), and helper scripts (`.local/bin/tools/`) shape the daily workstation and carry the highest breakage risk. This epic distinguishes active behavior from historical config — reducing `.zshrc` duplication, fixing stale PATH/env, and classifying editor/desktop/helper surfaces — without erasing old knowledge prematurely. Background: [prd.md](./prd.md) §2–3. Depends on the Phase 1 live-home comparison before editing high-impact configs.
 
 ---
 
@@ -160,11 +136,7 @@ So that important aliases and scripts are not just tribal memory.
 
 ## Dependencies
 
-| Dependency | Owner | Due Date | Status | Blocked Story | Mitigation if Late |
-| --- | --- | --- | --- | --- | --- |
-| Phase 1 live-home inventory | Aaron | Phase 3 start | Open | All | Do not edit high-impact configs before comparison |
-| Primary shell/editor/desktop choices confirmed | Aaron | Phase 3 | Open | 3.1, 3.2, 3.3 | Mark unknown rather than delete |
-| Secret handling reviewed | Aaron | Phase 3 | Open | 3.1, 3.4, 3.5 | Avoid touching sensitive scripts/config |
+Per-story blockers live on the linked GitHub issues. Cross-cutting dependencies: see [prd.md](./prd.md) §17. Key gate: Phase 1 live-home inventory before editing high-impact configs.
 
 ---
 
