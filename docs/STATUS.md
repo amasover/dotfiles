@@ -17,7 +17,9 @@ Avoid re-reading `prd.md` end-to-end unless changing product direction.
 
 ## In flight
 
-Nothing in flight. Next up: **Story 2.2** (package-manifest triage, [#24](https://github.com/amasover/dotfiles/issues/24)) → then **2.3** bootstrap rewrite.
+**Story 2.2** (package-manifest triage, [#24](https://github.com/amasover/dotfiles/issues/24)) is **in progress** on branch `story/2.2-package-manifest-triage`: live inventory + triage done in [docs/package-inventory.md](./package-inventory.md); blocked on Aaron answering the Open Questions (AUR helper, work-profile split, VPN sprawl, etc.) before manifests are split. Tooling: `expac` + `metapac` (pacdef successor) installed. Then **2.3** bootstrap rewrite.
+
+New backlog from 2.2 discovery: **Story 3.9** ([#41](https://github.com/amasover/dotfiles/issues/41)) — iwd vs wpa_supplicant NetworkManager backend reconciliation.
 
 Recently merged: **3.4 helper-script triage (#38)**, **2.1 classify setup scripts (#18)**, 1.4 secret scan (#6), Epic 4 workflow adoption (#9), 3.6 stale-drift triage (#10). `main` was undiverged from the test-laptop lineage (preserved as `archive/stale-test-laptop-main`).
 
