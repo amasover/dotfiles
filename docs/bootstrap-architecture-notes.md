@@ -110,8 +110,18 @@ Options beyond bash, roughly lightest → heaviest:
 - **`ansible-pull`** — run the playbook *from* the target pulling its own repo; nice for
   "one command on a fresh box." Same Ansible, different invocation.
 - **Heavier (Salt/Chef/Puppet):** overkill for one workstation. Skip.
-- **Nix package manager / home-manager (without full NixOS):** possible, but Aaron ruled
-  out the Nix direction and it's a steep model shift. Skip unless he changes his mind.
+- **Nix / home-manager:** Aaron is *not* fully ruling this out anymore. Two distinct levels:
+  - **home-manager on Arch (no NixOS):** install the Nix package manager + home-manager on
+    top of the existing Arch system to declaratively manage `$HOME`/user packages, while Arch
+    + pacman still own the base OS. This is the realistic middle path — declarative dotfiles
+    without abandoning Arch as daily driver. It would *overlap/compete with YADM*, so adopting
+    it is really a "what owns `$HOME`" decision, not just a bootstrap tool choice.
+  - **Full NixOS:** the whole-OS declarative rebuild. Biggest payoff for reproducibility,
+    biggest model shift; deferred while Arch is the daily driver, but explicitly left on the
+    table as a possible future direction (Aaron: "maybe I'll even fully switch to Nix").
+  - Note: Nix/home-manager and aconfmgr/Ansible are *different philosophies* — Nix is
+    pure/declarative/reproducible-by-construction; the others are imperative-converging-on-a-
+    target. Worth a deliberate pick rather than drifting.
 
 **Suggested shortlist for the 2.3/2.5 decision:** (a) curated bash now, then (b) choose
 between **aconfmgr** (Arch-native declarative system state) and **a fresh Ansible repo**
