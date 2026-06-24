@@ -151,6 +151,24 @@ So that Epic 2/3 script cleanup has an objective validation signal.
 
 ---
 
+### Story 4.6: Codify always-PR-to-main rule and add CLAUDE.md
+
+**Issue:** [#12](https://github.com/amasover/dotfiles/issues/12)
+
+As the repo owner,
+I want the PR-to-main rule codified and the instructions auto-loaded,
+So that the stacked-PR mistake cannot recur and an agent always reads the rules.
+
+**Acceptance criteria:**
+
+- Given stacked PRs caused work to merge into a dead branch, when §8 is updated, then it requires PRs to always target `main` and forbids stacked PRs
+- Given Claude Code auto-loads `CLAUDE.md`, when the repo is set up, then `CLAUDE.md` symlinks to `.github/copilot-instructions.md` (single source)
+- Given the pre-PR privacy pass should be enforced, when §8 is reviewed, then the privacy/sensitivity pass remains codified
+
+**Evidence artifact:** copilot-instructions §8 diff, `CLAUDE.md` symlink
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - The GitHub board is the status source of truth, with issues linked from epic `.md` files.
