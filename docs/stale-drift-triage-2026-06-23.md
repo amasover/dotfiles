@@ -22,14 +22,22 @@ The split point (merge-base) is `19a7a7e` (2026-06-20), so this is days of drift
 
 `main` wins for almost everything — it is the actively-maintained, *this-machine* state (it even intentionally commented out test-laptop's `WIFI_DEVICE`). The archive is older **but contains a few deliberate decisions and a short list of genuinely useful bits worth salvaging.**
 
-> ⚠️ **Diff alone cannot distinguish "stale" from "deliberately removed."** Every **Drop** item that is a *removal* needs Aaron's confirmation. Two confirmed-intentional examples are called out below.
+> ⚠️ **Diff alone cannot distinguish "stale" from "deliberately removed."** Every **Drop** item that is a *removal* needs Aaron's confirmation.
 
-### Confirmed intentional on the archive (per Aaron)
+### Already correct on `main` (intentional decisions, no action)
 
-| Item | Note |
+`main`'s `.config/yadm/encrypt` is already Aaron's intended state — verified with `git show main:.config/yadm/encrypt`:
+
+```
+.ssh/**
+.zshenv
+.config/Code/User/settings.json
+```
+
+| Item | Status |
 | --- | --- |
-| `.config/yadm/encrypt` dropped `.aws/**`, `.mysql/workbench/connections.xml`, `.cobra.yaml`, `.pypirc` | Deliberate — no longer needed. **Decision:** should `main`'s manifest also drop these? It's a secret-handling change — confirm the underlying files don't need encrypted backup before editing `main`. |
-| `.config/Code/User/settings.json` encrypted | Deliberate — it **contained an API key**. Must **never** be tracked as plaintext. To salvage onto this machine: add to `.config/yadm/encrypt` + `yadm encrypt`, and rotate/scrub the key. |
+| `.aws/**`, `.mysql/workbench/connections.xml`, `.cobra.yaml`, `.pypirc` removed from the manifest | **Already done on `main`** — deliberate (no longer needed); the underlying files are also absent in live `$HOME`. The *archive* is the old version that still listed them. |
+| `.config/Code/User/settings.json` encrypted (it held an API key) | **Already done on `main`** — listed in the manifest, not tracked as plaintext. The *archive* is the old insecure version that tracked it as plaintext. Nothing to salvage; if anything, ensure it's included in the encrypted archive via `yadm encrypt`. |
 
 ### Outcomes (line-by-line review with Aaron, 2026-06-23)
 
@@ -40,8 +48,8 @@ The split point (merge-base) is `19a7a7e` (2026-06-20), so this is days of drift
 | `.local/bin/tools/lock` (Spotify-stop + DPMS idle-off) | **Dropped** — Aaron switched to `xidlehook`. Spun off [Story 3.7](https://github.com/amasover/dotfiles/issues/14) for the xidlehook-on-boot issue. |
 | `.gitignore` | **No action** — `main` is already the superset (`*.~undo-tree~*`, `**.cecli`, `TODO.org`). The archive's is the *smaller* one. (Earlier triage note had this backwards.) |
 | `.config/dotfiles/arch-packages/` (`antibody`, `linux-headers`, `sbsigntools`, `reflector-timer`; drop `vim`) | **Deferred to Epic 2** package triage (hard rule 5: live-install check + targeted Qs). |
-| `.config/Code/User/settings.json` | **Pending** — encrypt-only (contains an API key); rotate key, then `yadm encrypt`. |
-| `.config/yadm/encrypt` removals (`.aws/.mysql/.cobra/.pypirc`) | **Pending Aaron's confirm** before changing `main`'s manifest. |
+| `.config/Code/User/settings.json` | **No action** — already correctly encrypted on `main` (in manifest, not plaintext). |
+| `.config/yadm/encrypt` removals (`.aws/.mysql/.cobra/.pypirc`) | **No action** — already removed on `main` (intended state; files absent in live `$HOME`). |
 | i3 vim-style focus keys, `.profile` `BROWSER` | Optional preference — not pursued. |
 
 ### Drop (`main` newer / this-machine-correct / superseded)
