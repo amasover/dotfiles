@@ -19,8 +19,8 @@ Avoid re-reading `prd.md` end-to-end unless changing product direction.
 
 | Story | Issue | PR | Status |
 | --- | --- | --- | --- |
-| 1.4 Secret scan process | [#5](https://github.com/amasover/dotfiles/issues/5) | [#6](https://github.com/amasover/dotfiles/pull/6) | In review |
-| 4.1 Adopt GitHub workflow (this meta-work) | — | (pending) | In progress |
+| 1.4 Secret scan process | [#5](https://github.com/amasover/dotfiles/issues/5) | [#6](https://github.com/amasover/dotfiles/pull/6) | In Review |
+| 4.1 Adopt GitHub workflow | [#8](https://github.com/amasover/dotfiles/issues/8) | [#7](https://github.com/amasover/dotfiles/pull/7) | In Review |
 
 ## Epics
 
