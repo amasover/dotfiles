@@ -51,12 +51,13 @@ Do not overwrite live-home behavior casually. This repo is intended to converge 
 
 YADM can encrypt files. This repo already uses that model.
 
-- Treat `.yadm/encrypt` as the source of truth for encrypted paths.
+- Treat `.config/yadm/encrypt` as the source of truth for encrypted paths.
 - Treat `.yadm/files.gpg` as an encrypted artifact, not as inspectable content.
 - Never print decrypted secret file contents into chat, docs, logs, or generated files.
 - Never copy secrets from `$HOME` into plaintext tracked files.
 - Never add raw contents from paths covered by `.yadm/encrypt` into normal repo files.
-- If a new sensitive file is needed, add the path pattern to `.yadm/encrypt` and regenerate the encrypted payload with YADM instead of committing plaintext.
+- If a new sensitive file is needed, add the path pattern to `.config/yadm/encrypt` and regenerate the encrypted payload with YADM instead of committing plaintext.
+- Run a secret scan before staging commits and before pushing or opening a PR. The standard scanner is `gitleaks`; follow the [secret scan recipe](../knowledge/recipes/secret-scan.md), which also documents the manual fallback and false-positive handling. Keep scanner output redacted.
 
 Known encrypted/sensitive path patterns include:
 
@@ -118,7 +119,7 @@ If code behavior and docs disagree, say so plainly. Treat code and live-home fil
 
 ### 7. Skills and knowledge should preserve reusable lessons
 
-Use `knowledge/` and `.github/skills/` when a cleanup lesson should survive the current chat.
+Before starting work, consult existing entries under `knowledge/` and reuse the relevant recipe or reference instead of re-deriving it. Use `knowledge/` and `.github/skills/` when a cleanup lesson should survive the current chat.
 
 - Use `knowledge/reference/` for repo-specific facts, workflows, conventions, and operating notes.
 - Use `knowledge/errors/` for repeatable failure patterns and troubleshooting guidance.
@@ -135,6 +136,7 @@ Cleanup work should be story-scoped, branch-based, and PR-ready.
 - When starting a new story, create or switch to a dedicated branch before editing. Use names like `story/1.6-yadm-legacy-upgrade-workflow` or `story/2.1-classify-setup-scripts`.
 - Keep each branch focused on one story or one explicitly approved slice of a story.
 - Commit as work progresses, but keep commits scoped by risk area: docs, YADM metadata, shell config, desktop config, package inventory, bootstrap scripts, or encrypted payload updates.
+- Do not add `Co-Authored-By` trailers or other AI-attribution lines to commit messages.
 - Push the story branch to Aaron's GitHub repo when the local scope is ready for review.
 - Prepare one GitHub pull request per story. The PR description should include the story, summary, validation performed, secret-safety notes, live-home comparison notes, and follow-up work.
 - Before pushing or opening a PR, run a privacy/sensitivity pass for secrets, personal details, company/internal details, private hostnames, local IPs, and other machine-specific data. Keep sensitive files local, encrypted through YADM, or ignored; do not publish them as plaintext.
@@ -225,6 +227,7 @@ For YADM and secrets:
 
 - Review `yadm status` before staging.
 - Review `yadm diff --stat` before detailed diffs.
+- Run a secret scan (`gitleaks`, per `knowledge/recipes/secret-scan.md`) before staging commits and before opening a PR.
 - Do not show diffs for files likely to contain secrets.
 - Run `yadm encrypt` only with explicit approval.
 - Stage `.yadm/files.gpg` only when the encryption manifest and intended encrypted changes are understood.
