@@ -128,17 +128,15 @@ Run only after review / rewrite:
 
 ## Resolutions (2026-06-23, from Aaron)
 
-- **`dot` Go CLI:** the only *live* consumer is `polybar_alsa_module` (`dot sound port`).
-  The `alsa-switch` module is listed in `modules-right` of the **active** theme
-  (`themes/nord-arrow/config.ini`, [line 31](../.config/polybar/themes/nord-arrow/config.ini#L31)),
-  so the running polybar does invoke `dot` every 0.5s via its listen loop. **However**,
-  the switching half uses `pacmd` (PulseAudio), which is gone under PipeWire — so the
-  feature is functionally dead even though `dot` is still called (matches Aaron's sense
-  that it isn't really used). Nothing else live calls `dot` (zshrc only has a `dot-src`
-  cd-alias). **`dot` becomes fully removable by dropping `alsa-switch` from that
-  `modules-right` line** (volume already works via `pulseaudio-tail.sh` → `wpctl`/`pamixer`).
-  Aaron is weighing whether to keep a system-management CLI at all — see
-  [bootstrap-architecture-notes.md](./bootstrap-architecture-notes.md).
+- **`dot` Go CLI: confirmed in use.** Its live consumer is `polybar_alsa_module`
+  (`dot sound port`), and the `alsa-switch` module is in `modules-right` of the **active**
+  theme (`themes/nord-arrow/config.ini`, [line 31](../.config/polybar/themes/nord-arrow/config.ini#L31)).
+  Aaron ran `dot sound port` directly and it works — so the running polybar genuinely
+  depends on `dot` (every 0.5s via the listen loop). The *switch* path uses `pacmd`
+  (PulseAudio) and may be degraded under PipeWire, but the read path is live. **So `dot`
+  is a real dependency, not vestigial.** `dot-update` rebuilds it from
+  `patrick-motard/dot`. Whether to keep depending on it is part of the architecture
+  question — see [bootstrap-architecture-notes.md](./bootstrap-architecture-notes.md).
 - **`bb-clone`:** confirmed no longer used → **archive-candidate**. Org name scrubbed
   from the working file (parameterized to `$BITBUCKET_ACCOUNT`); history scrub stays on
   the privacy follow-up.

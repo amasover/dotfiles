@@ -31,9 +31,9 @@ being clear which is actually live:
    never forked). A stray `update` alias briefly pointed here, but that was accidental
    (git/yadm branch shuffling) and has been reverted to the bash script. Real prior art
    to evaluate, not a currently-active path.
-3. **Go CLI (VESTIGIAL)** — `patrick-motard/dot` (`~/code/go/bin/dot`, 2019 binary), now
-   invoked by exactly one thing (the polybar audio switcher), whose switching half is
-   broken under PipeWire anyway.
+3. **Go CLI (IN USE, narrowly)** — `patrick-motard/dot` (`~/code/go/bin/dot`, 2019 binary).
+   Confirmed live: the polybar audio switcher calls `dot sound port` (Aaron verified it
+   works). Only that one consumer, but it's a real dependency today.
 
 **The job of 2.3/2.5 is to pick one model deliberately** rather than let dormant lineages
 re-creep. The friend's Ansible repo is the strongest existing reference point for "what
@@ -74,13 +74,49 @@ management engine.**
   (laptop vs desktop, optional desktop stack, ordering). The friend's `dot-ansible` +
   its `Vagrantfile` are a ready starting point and a VM to test in. Ansible's
   `pacman`/AUR modules give idempotency for free.
-- **Reject a bespoke Go CLI** for system management: it re-invents the most-solved
-  problem in config management (idempotency/change-detection/ordering) and you'd own all
-  of it. "An LLM can write it" actually argues *against* it — LLMs produce far more
-  reliable Ansible/bash than a custom Go DSL the ecosystem has never seen.
-- If a personal CLI is still wanted, scope it to **imperative quality-of-life** commands
-  (the old `dot sound port` audio switch is ~15 lines of `wpctl` bash, no Go needed) —
-  not as the bootstrap/idempotency layer.
+- **Don't use a bespoke CLI as the idempotency/bootstrap engine** (whatever language).
+  The real objection is *not* "you can't read a binary" — you'd be editing readable Go
+  source, that's fine. It's three other things: (1) **chicken-and-egg** — a Go tool needs
+  the Go toolchain + a compile step *before* it can provision a bare machine, so you still
+  need a bootstrap-before-the-bootstrap; (2) you **re-implement** change-detection /
+  ordering / "already applied?" that config tools give for free; (3) **maintenance** —
+  bespoke management code rots (see `install`), and the ecosystem can't help you debug a
+  private tool.
+- **A personal CLI for *imperative* commands is totally legitimate** — that's a different
+  job from the idempotent engine. Aaron's point stands: long bash rots, and his `update`
+  works precisely because it's *linear glue* (run updater A, then B, then C). Heuristic:
+  **bash for linear orchestration that mostly shells out; a real language (Go/Python) once
+  there's real logic** — argument parsing, data structures, branching, state. So the audio
+  switch is fine as ~15 lines of `wpctl` bash, but if Aaron *wants* a richer personal
+  `dot`-style CLI, Go or Python is the right call there — just keep it for QoL ergonomics,
+  not for "make my system match this declared state."
+
+## Answering "revive dot-ansible, or something else?"
+
+Options beyond bash, roughly lightest → heaviest:
+
+- **Curated bash + package manifest (start here).** Story 2.2 produces the manifest;
+  2.3 is a thin bash bootstrap. Zero new deps, fastest fresh-machine capability.
+- **`aconfmgr`** (Arch-native; on the Arch Wiki config-management list). Declaratively
+  *tracks and restores* installed packages + `/etc` config for an Arch system. Closest
+  thing to "NixOS-like declarativeness without NixOS," and purpose-built for Arch. Strong
+  candidate worth a real look for the package/system-state half (YADM still owns `$HOME`).
+- **Ansible.** General, idempotent, great LLM support, `pacman`/AUR modules. The friend's
+  `dot-ansible` + `Vagrantfile` exist as reference.
+  - *Revive dot-ansible wholesale? No.* It's the friend's 2019 playbook tuned to *his*
+    machine ("changes to get this to work with my setup"), never forked. Reviving it means
+    inheriting his assumptions. Better: start a fresh repo you own and cherry-pick patterns
+    (and the Vagrant test harness) from it.
+- **`ansible-pull`** — run the playbook *from* the target pulling its own repo; nice for
+  "one command on a fresh box." Same Ansible, different invocation.
+- **Heavier (Salt/Chef/Puppet):** overkill for one workstation. Skip.
+- **Nix package manager / home-manager (without full NixOS):** possible, but Aaron ruled
+  out the Nix direction and it's a steep model shift. Skip unless he changes his mind.
+
+**Suggested shortlist for the 2.3/2.5 decision:** (a) curated bash now, then (b) choose
+between **aconfmgr** (Arch-native declarative system state) and **a fresh Ansible repo**
+(general, portable, friend's repo as reference) for the durable model. Validate either in
+a throwaway VM (Vagrant/`archinstall`) before trusting it on metal.
 
 ## Decision
 
