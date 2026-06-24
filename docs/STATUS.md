@@ -19,8 +19,9 @@ Avoid re-reading `prd.md` end-to-end unless changing product direction.
 
 | Story | Issue | PR | Status |
 | --- | --- | --- | --- |
-| 1.4 Secret scan process | [#5](https://github.com/amasover/dotfiles/issues/5) | [#6](https://github.com/amasover/dotfiles/pull/6) | In Review |
-| 4.1 Adopt GitHub workflow | [#8](https://github.com/amasover/dotfiles/issues/8) | [#7](https://github.com/amasover/dotfiles/pull/7) | In Review |
+| 3.6 Triage stale test-laptop drift | [#10](https://github.com/amasover/dotfiles/issues/10) | — | In progress |
+
+Recently merged: 1.4 secret scan (#6), Epic 4 workflow adoption (#9). `main` was undiverged from the test-laptop lineage (preserved as `archive/stale-test-laptop-main`).
 
 ## Epics
 
@@ -37,4 +38,7 @@ Avoid re-reading `prd.md` end-to-end unless changing product direction.
 - Story 4.3: reconcile remaining stale `.yadm/encrypt` / `.yadm/files.gpg` references in `prd.md` and runbooks.
 - Story 4.4: pre-commit `gitleaks` hook.
 - Story 4.5: install/adopt `shellcheck` + `shfmt`.
-- Prune stale remote branches (`add-ntp`, `locker`, `polybar-*`, `merge-test`, `old-master`, `test-*`); reconcile origin-only `story/1.8`, `story/1.9`.
+- Codify in copilot-instructions §8: always PR to `main`, no stacked PRs.
+- From Story 3.6 triage: salvage `update` sudo-keepalive, `.gitignore` patterns, package-manifest additions; decide `.config/yadm/encrypt` removals; encrypt-only salvage of `settings.json` (has a key).
+- Prune stale remote branches (`add-ntp`, `locker`, `polybar-*`, `merge-test`, `old-master`, `test-*`).
+- Privacy pass: work email / `[work-ref]*` refs in public `.gitconfig`/`.profile`/`.zshrc`.
