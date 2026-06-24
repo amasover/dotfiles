@@ -1,9 +1,37 @@
 #!/usr/bin/env bash
 
-pac_updates=$(checkupdates | wc -l)
+# Render instantly from a cache and refresh the slow `checkupdates` + `yay -Qua`
+# queries in the background, so this never blocks the bar (or the tray that shares
+# the bottom bar). Cache: $XDG_CACHE_HOME/polybar/arch-updates.
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/polybar/arch-updates"
+max_age=900   # seconds between background refreshes
 
-#aur_updates=$(trizen -Su --aur --quiet | wc -l)
-aur_updates=$(yay -Qua | wc -l)
+_refresh() {
+    mkdir -p "${cache%/*}"
+    local pac pac_rc aur
+    # checkupdates exits 0 (updates listed) or 2 (none); 1 means it couldn't fetch
+    # the databases — e.g. no network yet right after a hibernate resume. Bail
+    # without writing so we keep the last good counts instead of caching a bogus 0.
+    pac=$(checkupdates 2>/dev/null); pac_rc=$?
+    (( pac_rc == 0 || pac_rc == 2 )) || return 1
+    pac=$(grep -c . <<<"$pac")
+    aur=$(yay -Qua 2>/dev/null | wc -l)
+    printf '%s %s\n' "$pac" "$aur" > "$cache.$$" && mv "$cache.$$" "$cache"
+}
+
+# `--refresh` forces a synchronous refresh, then falls through to print the counts.
+if [[ $1 == --refresh ]]; then
+    _refresh
+else
+    # Kick off a background refresh when the cache is missing or stale (never blocks).
+    mtime=$(stat -c %Y "$cache" 2>/dev/null || echo 0)
+    if (( $(date +%s) - mtime > max_age )); then _refresh & fi
+fi
+
+# Read cached counts (instant); default to 0 until the first refresh lands.
+read -r pac_updates aur_updates < "$cache" 2>/dev/null
+[[ $pac_updates =~ ^[0-9]+$ ]] || pac_updates=0
+[[ $aur_updates =~ ^[0-9]+$ ]] || aur_updates=0
 
 # This script is meant to be used in Polybar.
 # Polybar doesn't support min width for modules.
