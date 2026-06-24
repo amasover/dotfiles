@@ -47,6 +47,19 @@ Use the live home directory as current-state evidence, not as automatic truth. I
 
 Do not overwrite live-home behavior casually. This repo is intended to converge with the real workstation over time.
 
+**Sanctioned reverse-test workflow (ask first).** Aaron permits validating a change on the
+live system *before* it goes through a repo PR, by working in the reverse direction:
+
+1. **Ask Aaron first** for the specific change — this edits his live machine.
+2. Edit the live file directly under `$HOME` (e.g. `~/.zshrc`) and confirm it actually works.
+3. Once verified, promote it: `yadm add <path>`, `yadm commit`, `yadm push`.
+4. Bring it back into the working repo with `git pull`.
+
+This lets changes be tested on the real workstation before a PR. It is the only sanctioned
+path that runs `yadm add/commit/push` (still gated by Hard rule 3's approval requirement),
+and it must be deliberate and careful — it mutates the live system. Never do it silently or
+without Aaron's go-ahead for that specific change.
+
 ### 2. Never expose or commit decrypted secrets
 
 YADM can encrypt files. This repo already uses that model.

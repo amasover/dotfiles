@@ -45,4 +45,7 @@ if [[ -z "${repo}" ]]; then
     echo "$usage"
     exit
 fi
-git clone git@bitbucket.org:[work-org]/"${repo}".git $HOME/code/${repo}
+# Archive-candidate (Story 2.1): no longer used. Org name parameterized to keep it
+# out of this public repo; full removal from git history is the privacy follow-up.
+: "${BITBUCKET_ACCOUNT:?set BITBUCKET_ACCOUNT to your Bitbucket team/workspace}"
+git clone "git@bitbucket.org:${BITBUCKET_ACCOUNT}/${repo}.git" "$HOME/code/${repo}"
