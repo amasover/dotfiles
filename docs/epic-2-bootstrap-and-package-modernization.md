@@ -13,34 +13,9 @@
 
 Turn the old install/update flow into a safe, staged, and documented bootstrap model for rebuilding a useful workstation without blindly executing stale scripts.
 
-## Why This Matters
+## Context
 
-The existing bootstrap material is valuable, but risky. It encodes years of workstation setup knowledge, package choices, service setup, editor setup, desktop setup, and tool installation. However, it also references old Arch/AUR assumptions and may mutate the system in ways that are no longer safe.
-
-This epic preserves the useful intent while making the bootstrap path safe to inspect, test, and eventually run. Package cleanup should be collaborative: inventory the local machine first, then ask Aaron targeted questions about specific package groups before deciding what belongs in install scripts.
-
----
-
-## Current Repo Evidence
-
-- `install.md` describes an old YADM-based install process and first-login workflow.
-- `.local/bin/setup/install` is a large Bash script that installs packages, changes services, configures YADM remotes, and installs editor/tool dependencies.
-- `.local/bin/setup/update` likely contains update behavior that needs classification.
-- `.config/dotfiles/arch-packages/pacman` and `.config/dotfiles/arch-packages/aur` contain historical package manifests.
-- `.zshrc` contains an `update` alias that points to an Ansible playbook outside this repo.
-
----
-
-## Problem Statement
-
-The repo cannot be trusted as a fresh-machine bootstrap until:
-
-- Install scripts are classified as current, legacy, unsafe, or unknown
-- Package lists are reviewed against the current machine and target OS
-- Live installed packages are grouped by purpose and triaged with Aaron before being added, retained, or removed from bootstrap
-- Destructive operations are gated behind explicit confirmation
-- Dry-run or checklist-based setup exists
-- Old assumptions are documented instead of silently executed
+The bootstrap material (`install.md`, `.local/bin/setup/install` + `update`, `.config/dotfiles/arch-packages/{pacman,aur}`) encodes years of useful setup knowledge but carries old Arch/AUR assumptions and may mutate the system unsafely. The repo can't be trusted as a fresh-machine bootstrap until scripts are classified (current/legacy/unsafe/unknown), package lists are triaged against the live machine with Aaron, destructive ops are gated, and a dry-run path exists. Package cleanup is collaborative: inventory first, then ask targeted questions before changing install inputs. Background: [prd.md](./prd.md) §2–3, FR-6.
 
 ---
 
@@ -166,13 +141,7 @@ So that cleanup does not drift into multiple half-supported approaches.
 
 ## Dependencies
 
-| Dependency | Owner | Due Date | Status | Blocked Story | Mitigation if Late |
-| --- | --- | --- | --- | --- | --- |
-| Phase 1 inventory complete | Aaron | Phase 2 start | Open | All | Do not modernize before safety inventory |
-| Target OS/package manager confirmed | Aaron | Phase 2 | Open | 2.2, 2.3 | Keep package lists historical until confirmed |
-| Current installed package list available | Aaron | Phase 2 | Open | 2.2 | Use repo-only package review |
-| Aaron available for package triage questions | Aaron | Phase 2 | Open | 2.2 | Keep ambiguous packages in `unknown` until reviewed |
-| Decision on YADM long-term use | Aaron | Phase 2 | Open | 2.5 | Continue with YADM for interim model |
+Per-story blockers live on the linked GitHub issues. Cross-cutting dependencies: see [prd.md](./prd.md) §17. Key gate: Phase 1 safety inventory must complete before modernizing.
 
 ---
 

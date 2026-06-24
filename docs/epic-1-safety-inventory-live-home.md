@@ -13,31 +13,9 @@
 
 Create a safe, evidence-based inventory of the dotfiles repo and reconcile it against the live home directory at `$HOME` before making broad cleanup commits.
 
-## Why This Matters
+## Context
 
-The repo has been idle for years while the live workstation continued to change. The first real risk is not messy config; it is making confident-looking changes against stale assumptions. This epic establishes the safety baseline for all later cleanup work.
-
-## Current Repo Evidence
-
-- YADM is the dotfile manager.
-- `.yadm/encrypt` already identifies sensitive file patterns.
-- `.yadm/files.gpg` exists as the encrypted payload.
-- `.zshrc` contains duplicated aliases and machine-specific assumptions.
-- `.local/bin/setup/install` contains old install logic and package-manager assumptions.
-- `.config/dotfiles/arch-packages/` contains historical package lists.
-- The repo includes desktop, editor, shell, and helper-script surfaces that may or may not still match `$HOME`.
-
-## Problem Statement
-
-Before cleanup can proceed, the repo needs a verified map of:
-
-- What is tracked
-- What differs from the live home directory
-- What is untracked or unsynced
-- What is sensitive
-- What is clearly current, legacy, archived, or unknown
-
-Without this, cleanup risks leaking secrets, deleting useful local behavior, or preserving obsolete config as if it were active.
+The repo sat idle for years while the live workstation kept changing, so the first risk is making confident-looking changes against stale assumptions. Before cleanup, the repo needs a verified map of what is tracked, what differs from `$HOME`, what is untracked, what is sensitive, and what is current vs legacy/archived/unknown. Background: [prd.md](./prd.md) §2–3.
 
 ---
 
@@ -126,7 +104,7 @@ So that historical cleanup does not accidentally publish sensitive material.
 - Given no scanner is installed, when Release 1 finishes, then a recommended scanner and manual fallback process are documented
 - Given a finding is likely a false positive, when it is dismissed, then the reason is documented
 
-**Status:** Done (2026-06-23). `gitleaks` selected as the standard scanner (resolves OQ-5). Working-tree and full-history (1002 commits) scans reported no leaks. Manual fallback and false-positive handling documented.
+**Issue:** [#5](https://github.com/amasover/dotfiles/issues/5) — status on the [board](https://github.com/users/amasover/projects/1/views/1)
 
 **Evidence artifact:** [Secret scan recipe](../knowledge/recipes/secret-scan.md) (includes scan evidence and manual fallback)
 
@@ -181,13 +159,7 @@ So that future reconciliation can use normal YADM commands and the repo has reco
 
 ## Dependencies
 
-| Dependency | Owner | Due Date | Status | Blocked Story | Mitigation if Late |
-| --- | --- | --- | --- | --- | --- |
-| Local YADM status available | Aaron | Phase 1 | Open | 1.1, 1.5 | Request terminal output |
-| Live home directory accessible at `$HOME` | Aaron | Phase 1 | Open | 1.2 | Mark live comparisons blocked |
-| Approval to mutate YADM data paths | Aaron | Phase 1 | Open | 1.6 | Continue using explicit legacy YADM flags |
-| Secret scan tool selected | Aaron | Phase 1 | Done (gitleaks) | 1.4 | Use manual hotspot review |
-| Decision on encrypted-file updates | Aaron | Phase 1 | Open | 1.3, 1.5 | Defer `.yadm/files.gpg` changes |
+Per-story blockers live on the linked GitHub issues. Cross-cutting dependencies: see [prd.md](./prd.md) §17.
 
 ---
 
