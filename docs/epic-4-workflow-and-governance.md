@@ -74,6 +74,8 @@ As the repo owner,
 I want work tracked on a GitHub Projects board with an issue and PR per story,
 So that the board is the single source of truth for status instead of `.md` files drifting.
 
+Issue: [#8](https://github.com/amasover/dotfiles/issues/8)
+
 **Acceptance criteria:**
 
 - Given a story is about to be started, when work begins, then a GitHub issue is opened, added to the board, and linked from the matching epic `.md` story (one-line `Issue: #N` pointer).
@@ -90,6 +92,8 @@ So that the board is the single source of truth for status instead of `.md` file
 As the repo owner,
 I want a single, unambiguous trunk branch,
 So that PRs and syncs cannot target the wrong base.
+
+Issue: [#33](https://github.com/amasover/dotfiles/issues/33)
 
 **Acceptance criteria:**
 
@@ -108,6 +112,8 @@ As the repo owner,
 I want planning docs to reference the post-1.6 YADM paths,
 So that the docs and copilot-instructions match the real YADM layout.
 
+Issue: [#34](https://github.com/amasover/dotfiles/issues/34)
+
 **Acceptance criteria:**
 
 - Given the 1.6 upgrade moved `.yadm/encrypt` to `.config/yadm/encrypt`, when docs are reconciled, then references are updated across `prd.md`, `epic-1`, and the runbooks.
@@ -123,6 +129,8 @@ So that the docs and copilot-instructions match the real YADM layout.
 As the repo owner,
 I want the Story 1.4 secret scan to run automatically before each commit,
 So that secret hygiene does not depend on anyone remembering to run it.
+
+Issue: [#35](https://github.com/amasover/dotfiles/issues/35)
 
 **Acceptance criteria:**
 
@@ -140,6 +148,8 @@ So that secret hygiene does not depend on anyone remembering to run it.
 As the repo owner,
 I want shell scripts linted and formatted with standard tools,
 So that Epic 2/3 script cleanup has an objective validation signal.
+
+Issue: [#36](https://github.com/amasover/dotfiles/issues/36)
 
 **Acceptance criteria:**
 

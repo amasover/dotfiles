@@ -68,6 +68,8 @@ As the repo owner,
 I want package lists grouped by intent and checked against the actual installed package set,
 So that a fresh-machine setup can install only what is needed.
 
+Issue: [#24](https://github.com/amasover/dotfiles/issues/24)
+
 **Acceptance criteria:**
 
 - Given historical package lists exist, when reviewed, then packages are grouped into core, shell, editor, desktop, development, cloud, media, gaming, optional, unknown, and legacy categories
@@ -89,6 +91,8 @@ So that I can become productive before restoring every desktop customization.
 
 Design input: [bootstrap-architecture-notes.md](./bootstrap-architecture-notes.md) — Bash vs Ansible vs Go, idempotency, "not NixOS."
 
+Issue: [#25](https://github.com/amasover/dotfiles/issues/25)
+
 **Acceptance criteria:**
 
 - Given a fresh Linux machine, when minimum bootstrap is followed, then shell, Git/YADM, editor basics, and core tools are installed or configured
@@ -105,6 +109,8 @@ As the repo owner,
 I want bootstrap work to show what it would do before doing it,
 So that I can avoid accidental system mutation.
 
+Issue: [#26](https://github.com/amasover/dotfiles/issues/26)
+
 **Acceptance criteria:**
 
 - Given a setup command would install packages or change services, when dry-run mode is used, then it prints planned actions without executing them
@@ -120,6 +126,8 @@ So that I can avoid accidental system mutation.
 As the repo owner,
 I want a clear decision on the future bootstrap model,
 So that cleanup does not drift into multiple half-supported approaches.
+
+Issue: [#27](https://github.com/amasover/dotfiles/issues/27)
 
 **Acceptance criteria:**
 
