@@ -206,7 +206,7 @@ alias tools="cd ~/.local/bin/tools/ && ll"
 alias npmis="npm install --save"
 alias npmisd="npm install --save-dev"
 
-alias cat="ccat"
+alias cat="bat"
 alias ls="exa"
 alias ll="exa -la"
 alias gimme="sudo pacman -S"
