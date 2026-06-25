@@ -696,6 +696,16 @@ If SPLIT-ONEWINDOW is non-`nil' window is split in persistent action."
       (with-helm-window
         (setq helm-persistent-action-display-window (get-mru-window)))))
 
+  ;; Workaround for helm-ag propertizing a read-only Helm buffer.
+  (with-eval-after-load 'helm-ag
+    (defun dotfiles/helm-ag--do-ag-propertize-inhibit-read-only (orig-fun input)
+      (let ((inhibit-read-only t))
+        (funcall orig-fun input)))
+    (unless (advice-member-p #'dotfiles/helm-ag--do-ag-propertize-inhibit-read-only
+                             'helm-ag--do-ag-propertize)
+      (advice-add 'helm-ag--do-ag-propertize
+                  :around #'dotfiles/helm-ag--do-ag-propertize-inhibit-read-only)))
+
   ;; Workaround for find-replace bug. See:
   ;; https://github.com/syl20bnr/spacemacs/issues/10938
                                         ;(setq frame-title-format nil)
