@@ -1,0 +1,15 @@
+:root,
+html,
+body {
+  --fontFamilyBase: "Liberation Sans", "Noto Sans", "Segoe UI", sans-serif !important;
+  --fontFamilyMonospace: "Liberation Sans", "Noto Sans", "Segoe UI", sans-serif !important;
+  --font-family-base: "Liberation Sans", "Noto Sans", "Segoe UI", sans-serif !important;
+  --font-family-monospace: "Liberation Sans", "Noto Sans", "Segoe UI", sans-serif !important;
+}
+
+html body,
+html body *,
+html body *::before,
+html body *::after {
+  font-family: "Liberation Sans", "Noto Sans", "Segoe UI", sans-serif !important;
+}
