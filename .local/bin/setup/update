@@ -97,3 +97,6 @@ vim -i NONE -c VundleUpdate -c quitall
 
 echo $'\n\n Updating aider...'
 uv tool install --force --python python3.12 --with pip aider-ce@latest
+
+echo $'\n\n Updating rust...'
+rustup update stable

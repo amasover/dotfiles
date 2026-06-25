@@ -4,7 +4,7 @@
 # queries in the background, so this never blocks the bar (or the tray that shares
 # the bottom bar). Cache: $XDG_CACHE_HOME/polybar/arch-updates.
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/polybar/arch-updates"
-max_age=900   # seconds between background refreshes
+max_age=30   # seconds between background refreshes
 
 _refresh() {
     mkdir -p "${cache%/*}"
