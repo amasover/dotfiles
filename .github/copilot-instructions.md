@@ -164,6 +164,7 @@ the source of truth for status.
 - Push the story branch and open one GitHub pull request per story, referencing its issue. The PR description should include the story, summary, validation performed, secret-safety notes, live-home comparison notes, and follow-up work.
 - **Always open PRs against `main`. Never create stacked/dependent PRs** (a PR based on another story branch). A stacked PR previously merged into its dead base branch instead of `main`, so the work never reached `main`. If new work seems to depend on an unmerged branch, either wait for that branch to merge to `main` first, or keep the new work self-contained so it can branch off `main` cleanly.
 - Before pushing or opening a PR, run a privacy/sensitivity pass for secrets, personal details, company/internal details, private hostnames, local IPs, and other machine-specific data. Keep sensitive files local, encrypted through YADM, or ignored; do not publish them as plaintext.
+- **When you finish a meaningful chunk of work** (open or merge a PR, land a decision, complete a story slice), update [docs/STATUS.md](../docs/STATUS.md) so the next session can orient: refresh the **In flight** and **Last session** notes. Keep it to session narrative — per-story status (todo/in-progress/done) still lives on the board, not in STATUS.
 - `main` is the trunk. Do not merge to `main` or push to a remote unless Aaron explicitly asks for that step in the current task.
 
 ---
