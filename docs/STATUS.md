@@ -17,9 +17,15 @@ Avoid re-reading `prd.md` end-to-end unless changing product direction.
 
 ## In flight
 
-**Story 2.2** (package-manifest triage, [#24](https://github.com/amasover/dotfiles/issues/24)) is **in progress** on branch `story/2.2-package-manifest-triage`: live inventory + triage in [docs/package-inventory.md](./package-inventory.md); triage decisions resolved with Aaron (yay+paru+brew; optional `work` group; drop docker/virtualbox; keep VPNs/browsers). Next: generate the grouped manifests from live state. Tooling: `expac` + `metapac` (pacdef successor) installed; manifest format (plain files vs metapac) is the Story 2.5 call. Then **2.3** bootstrap rewrite.
+**Story 2.6** (AUR-update quarantine, [#40](https://github.com/amasover/dotfiles/issues/40)) is the **active build** on branch `story/2.6-aur-update-quarantine`: hold AUR upgrades ~14 days (June 2026 AUR malware) with an override flag; anchor is `setup/update`.
+
+**Story 2.2** (package-manifest triage, [#24](https://github.com/amasover/dotfiles/issues/24)) — **PR [#43](https://github.com/amasover/dotfiles/pull/43) open for review**: inventory + triage artifact in [docs/package-inventory.md](./package-inventory.md); decisions resolved with Aaron (yay+paru+brew; optional `work` group; drop docker/virtualbox; keep VPNs/browsers). Org-internal AUR names redacted → gitignored private note. After merge: generate the grouped manifests (plain files vs `metapac` is the **2.5** call), then **2.3** bootstrap rewrite.
+
+**Repo housekeeping** — `chore/retire-master` PR: `master` is dead and now **deleted** (remote branch removed; local `origin/HEAD`→main; master refs in `.gitconfig`/`setup/install`→main). Advances Story 4.2 (#33); `old-master` still pending the stale-branch prune.
 
 New backlog from 2.2 discovery: **Story 3.9** ([#41](https://github.com/amasover/dotfiles/issues/41)) — iwd vs wpa_supplicant NM backend; **Story 3.10** ([#42](https://github.com/amasover/dotfiles/issues/42)) — consolidate screen recorders (kooha). `.zshrc` cleanup queued on **Story 3.1** ([#28](https://github.com/amasover/dotfiles/issues/28)): cat-alias repo promotion, dead `homelab-*`/docker-plugin lines, python2→daemon powerline.
+
+Recently landed on `main`: copilot-instructions now require a **manual privacy pass** (not just gitleaks) and a **STATUS.md update after each chunk of work**.
 
 Recently merged: **3.4 helper-script triage (#38)**, **2.1 classify setup scripts (#18)**, 1.4 secret scan (#6), Epic 4 workflow adoption (#9), 3.6 stale-drift triage (#10). `main` was undiverged from the test-laptop lineage (preserved as `archive/stale-test-laptop-main`).
 

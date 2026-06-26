@@ -208,7 +208,7 @@ function install_oh_my_zsh_and_plugins() {
     pacman -S zsh --no-confirm
     ## Install oh-my-zsh
     sh /home/$USER/.local/bin/tools/install_oh_my_zsh
-    yadm reset --hard origin/master
+    yadm reset --hard origin/main
     # uses: https://github.com/lukechilds/zsh-nvm
     git clone https://github.com/lukechilds/zsh-nvm \
         ${ZSH_CUSTOM:-/home/$USER/.oh-my-zsh/custom}/plugins/zsh-nvm 2>/dev/null
