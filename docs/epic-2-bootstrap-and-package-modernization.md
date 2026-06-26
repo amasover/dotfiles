@@ -68,7 +68,7 @@ As the repo owner,
 I want package lists grouped by intent and checked against the actual installed package set,
 So that a fresh-machine setup can install only what is needed.
 
-Issue: [#24](https://github.com/amasover/dotfiles/issues/24)
+Issue: [#24](https://github.com/amasover/dotfiles/issues/24) · Artifact: [package-inventory.md](./package-inventory.md)
 
 **Acceptance criteria:**
 
