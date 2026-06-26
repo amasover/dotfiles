@@ -5,3 +5,6 @@
 **.cecli
 
 TODO.org
+
+# Private, machine-local notes (org-internal redaction keys, etc.) — never publish
+docs/private/
