@@ -1,6 +1,17 @@
 #!/usr/bin/env zsh
 source ~/.zsh_plugins.sh
 
+# --- options ---
+# AUR upgrades are quarantined by default (see .local/bin/tools/aur-quarantine).
+#   --aur-now   bypass the quarantine: upgrade ALL AUR packages now, incl. -git/--devel.
+aur_now=false
+for _arg in "$@"; do
+  case "$_arg" in
+    --aur-now) aur_now=true ;;
+    -h|--help) print -- "usage: update [--aur-now]\n  --aur-now  bypass AUR quarantine; upgrade all AUR + devel packages now"; exit 0 ;;
+  esac
+done
+
 # prevent sudo timeout
 sudo -v
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
@@ -25,12 +36,44 @@ else
     echo $'\nSkipping emacs update.'
 fi
 
-echo "Updating all system and AUR packages..."
+echo "Updating system packages..."
 source $HOME/.local/bin/setup/lib.sh
 
-#install_pacman_packages
-# TODO don't update AUR packages by default unless they're at least a week or two old
-yay -Syu --sudoloop --devel --noconfirm --timeupdate --answerupgrade none --answerdiff none --answeredit none --answerclean none --useask
+# --- Official repos (signed Arch packages): always upgrade, no quarantine ---
+echo "Updating official-repo packages..."
+yay -Syu --repo --sudoloop --noconfirm --answerupgrade none --answerdiff none --answeredit none --answerclean none --useask
+
+# --- AUR: quarantine fresh/suspicious updates ---
+# Defense against compromised AUR packages (cf. the June 2026 AUR malware incident).
+# By default the helper HOLDS updates that are < ~14d old, orphaned, or have a changed
+# maintainer; see .local/bin/tools/aur-quarantine. Bypass with `update --aur-now`.
+quarantine=$HOME/.local/bin/tools/aur-quarantine
+if [[ "$aur_now" == true ]]; then
+    echo $'\nAUR quarantine bypassed (--aur-now): upgrading all AUR + devel packages now...'
+    yay -Syu --aur --devel --sudoloop --noconfirm --timeupdate --answerupgrade none --answerdiff none --answeredit none --answerclean none --useask
+else
+    echo "\nChecking AUR updates (quarantine: ${AUR_QUARANTINE_DAYS:-14}d; orphan/maintainer-change held)..."
+    "$quarantine" seed || true   # bootstrap/refresh baseline; announces any newly-trusted (first-seen) packages
+    eligible=()
+    while IFS= read -r _pkg; do [[ -n "$_pkg" ]] && eligible+=("$_pkg"); done < <("$quarantine" classify)
+    # Optional second layer: a PKGBUILD malware scanner, if AUR_SCANNER is set + installed.
+    if (( ${#eligible[@]} )) && [[ -n "${AUR_SCANNER:-}" ]] && command -v "${AUR_SCANNER%% *}" >/dev/null 2>&1; then
+        echo "Scanning eligible AUR PKGBUILDs with '${AUR_SCANNER}'..."
+        if ! eval "${AUR_SCANNER} ${eligible[*]}"; then
+            echo "AUR scanner flagged a package — skipping AUR upgrades this run." >&2
+            eligible=()
+        fi
+    fi
+    if (( ${#eligible[@]} )); then
+        echo "Upgrading AUR packages past quarantine: ${eligible[*]}"
+        if yay -S --aur --sudoloop --noconfirm --answerupgrade none --answerdiff none --answeredit none --answerclean none --useask "${eligible[@]}"; then
+            "$quarantine" accept "${eligible[@]}" >/dev/null 2>&1 || true   # bless current maintainers of what we just upgraded (clears aged-out maintainer changes)
+        fi
+    else
+        echo "No AUR packages cleared the quarantine; none upgraded."
+        echo "(Use 'update --aur-now' or AUR_QUARANTINE_DAYS=0 to upgrade now; review any held items above.)"
+    fi
+fi
 
 echo $'\n\nUpdating oh-my-zsh...'
 cd /home/$USER/.oh-my-zsh
