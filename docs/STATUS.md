@@ -2,9 +2,9 @@
 
 Read this first. It's the cheap way to learn the current state without re-reading the PRD and every epic.
 
-- **Trunk branch:** `main`
+- **Trunk branch:** `main` (`master` is retired and deleted; never diff/PR against it).
 - **Tracking source of truth:** [GitHub Projects board](https://github.com/users/amasover/projects/1/views/1) (status) + issues (discussion). Epic `.md` files hold the spec only.
-- **Secret scanning:** `gitleaks` is standard — see [secret scan recipe](../knowledge/recipes/secret-scan.md). Run before every commit/PR.
+- **Secret scanning:** `gitleaks` is standard — see [secret scan recipe](../knowledge/recipes/secret-scan.md). Run before every commit/PR, and **always pair it with a manual privacy pass by eye** (gitleaks misses employer/personal/host details).
 
 ## How to start a session
 
@@ -12,35 +12,38 @@ Read this first. It's the cheap way to learn the current state without re-readin
 2. Check the board / `gh issue list` for what's in flight.
 3. Open the issue for the story you're picking up; consult `knowledge/` for related recipes.
 4. Branch `story/<n>-<slug>`, work, scan, PR against `main`, link the issue.
+5. When you finish a chunk of work, **update this file** (In flight / Last session).
 
 Avoid re-reading `prd.md` end-to-end unless changing product direction.
 
 ## In flight
 
-**Story 2.6** (AUR-update quarantine, [#40](https://github.com/amasover/dotfiles/issues/40)) is the **active build** on branch `story/2.6-aur-update-quarantine`: hold AUR upgrades ~14 days (June 2026 AUR malware) with an override flag; anchor is `setup/update`.
+**Story 2.6 — AUR-update quarantine** ([#40](https://github.com/amasover/dotfiles/issues/40)), branch `story/2.6-aur-update-quarantine`. **Design in progress, NOT committed; paused on one architecture decision (below).**
 
-**Story 2.2** (package-manifest triage, [#24](https://github.com/amasover/dotfiles/issues/24)) — **PR [#43](https://github.com/amasover/dotfiles/pull/43) open for review**: inventory + triage artifact in [docs/package-inventory.md](./package-inventory.md); decisions resolved with Aaron (yay+paru+brew; optional `work` group; drop docker/virtualbox; keep VPNs/browsers). Org-internal AUR names redacted → gitignored private note. After merge: generate the grouped manifests (plain files vs `metapac` is the **2.5** call), then **2.3** bootstrap rewrite.
+Goal: time-delayed, risk-aware AUR upgrades — defense against freshly-weaponized AUR packages (June 2026 AUR malware). Design so far (bash helper `.local/bin/tools/aur-quarantine` + `setup/update` split, plus `knowledge/reference/aur-malware-mitigation.md`):
 
-**Repo housekeeping** — `chore/retire-master` PR: `master` is dead and now **deleted** (remote branch removed; local `origin/HEAD`→main; master refs in `.gitconfig`/`setup/install`→main). Advances Story 4.2 (#33); `old-master` still pending the stale-branch prune.
+- **Per-version age delay with stepping.** Not "hold latest until it ages" — that pins fast-moving packages (e.g. `claude-code`, ~daily) forever. Instead step to the newest version that is *itself* ≥ `AUR_QUARANTINE_DAYS` (default 14) old, read from the package's **AUR git history** and built at that pinned commit.
+- **Repo packages always upgrade** (signed Arch repos, no delay). **Orphaned** packages held. **Maintainer change** vs a trusted baseline (`seed`/`accept`) hard-stops and is flagged explicitly — even for exempted packages.
+- **Per-package exemptions** (`aur-quarantine auto <pkg>`): take updates immediately (skip the age delay), maintainer changes still flagged.
+- **`update` stays unattended**; at the end it prints a **manual-follow-ups report** with clickable AUR links + copy-paste commands (`accept` / `update <pkg>` / `auto`). Manual stepping to an older pinned version is opt-in via `aur-quarantine update <pkg>`.
+- **`-git`/`--devel`** excluded by default (a time delay is meaningless for upstream-HEAD builds); `--aur-now` bypasses the whole quarantine.
+
+⚠ **DECIDE FIRST — build on yay's Lua hooks instead of/with the bash wrapper?** Aaron flagged that yay may add this natively ([yay#2847](https://github.com/Jguer/yay/issues/2847), [#2824](https://github.com/Jguer/yay/issues/2824)) and exposes **upgrade-selection hooks** ([lua docs](https://jguer.github.io/yay/lua.html)). Preliminary lean: **hybrid** — a Lua hook for the in-flow hold/deselect (age/orphan/maintainer, runs inside `yay -Syu`), plus a companion tool for version-stepping (a selection hook can only *deselect* latest, not substitute an *older* version), state, and reporting. **Not yet researched.** Next session: fetch those 3 links + check installed `yay --version`/hook support; confirm hook capabilities (file IO / `os.execute` / HTTP?); then choose pure-hook vs hybrid vs bash.
+
+State caveats before resuming: the helper's latest rewrite is **unsyntax-checked**; `setup/update` still wires the older flow and is **inconsistent** with the current helper (`plan`); nothing is committed, so pivoting to hooks is free.
 
 New backlog from 2.2 discovery: **Story 3.9** ([#41](https://github.com/amasover/dotfiles/issues/41)) — iwd vs wpa_supplicant NM backend; **Story 3.10** ([#42](https://github.com/amasover/dotfiles/issues/42)) — consolidate screen recorders (kooha). `.zshrc` cleanup queued on **Story 3.1** ([#28](https://github.com/amasover/dotfiles/issues/28)): cat-alias repo promotion, dead `homelab-*`/docker-plugin lines, python2→daemon powerline.
 
-Recently landed on `main`: copilot-instructions now require a **manual privacy pass** (not just gitleaks) and a **STATUS.md update after each chunk of work**.
+## Last session (2026-06-26)
 
-Recently merged: **3.4 helper-script triage (#38)**, **2.1 classify setup scripts (#18)**, 1.4 secret scan (#6), Epic 4 workflow adoption (#9), 3.6 stale-drift triage (#10). `main` was undiverged from the test-laptop lineage (preserved as `archive/stale-test-laptop-main`).
-
-**Board now fully populated:** every story across epics 1–4 has a GitHub issue (#5–#37) on the [board](https://github.com/users/amasover/projects/1/views/1); each epic `.md` back-links its issue.
-
-## Last session (2026-06-24)
-
-- Merged Story **2.1** (script classification + `docs/bootstrap-inventory.md` + `docs/bootstrap-architecture-notes.md`).
-- Walked **every** `setup/` + `tools/` script with Aaron and executed **Story 3.4**: deleted 17 dead scripts + `.fehbg`, kept 12, with cascading edits to `.zshrc` / i3 / polybar / `.profile` (details in bootstrap-inventory.md § Story 3.4).
-- Removed the live dot-ansible hook (`.profile` no longer sources its `shell-imports.sh`; lastpass no longer used).
-- Created all backlog issues (#19–#37) incl. new **Story 3.8 fish-shell (#37)**.
+- Merged **Story 2.2** ([#43](https://github.com/amasover/dotfiles/pull/43)): package inventory + triage artifact (`docs/package-inventory.md`) + `pacman`-provides knowledge note. Org-internal AUR package names **redacted** from the public doc; real names kept in a **gitignored** private note (`docs/private/`, mapped in `.gitignore`). Manual privacy pass caught them; `gitleaks` did not.
+- Merged **chore/retire-master** ([#44](https://github.com/amasover/dotfiles/pull/44)): deleted the dead `master` branch (was 0 commits ahead of `main`), pointed the remaining Aaron-owned `master` refs → `main` (`.gitconfig`, `setup/install`), fixed local `origin/HEAD`. Codified two governance rules in copilot-instructions: **manual privacy pass** (not just gitleaks) and **update STATUS.md after each chunk of work**.
+- Started **Story 2.6** design (see In flight), then paused on the yay-hooks architecture question.
 
 **Heads-up for next session:**
-- **Live `$HOME` sync:** after 3.4 merges, run `yadm pull` to drop the deleted files + apply config edits live. If it complains about local `.zshrc`, `yadm checkout -- .zshrc` then pull (the live update-alias edit already matches `main`).
-- **Architecture decision pending (2.3/2.5):** bash-now → aconfmgr **or** fresh Ansible repo; home-manager/Nix left on the table. See bootstrap-architecture-notes.md.
+- **Decide the 2.6 architecture (yay Lua hooks vs bash) before writing more.** Start with the 3 links + `yay --version`.
+- **Live `$HOME` sync:** #44 changed yadm-tracked `.gitconfig` (`delete-merged` default) and `setup/install` (`origin/master`→`main`). Live `$HOME` still has the old `master` defaults — `yadm pull` to converge when convenient.
+- **Architecture decision still pending (2.3/2.5):** bash-now → aconfmgr **or** fresh Ansible repo; manifest format plain-files vs `metapac`. See bootstrap-architecture-notes.md.
 
 ## Epics
 
@@ -53,11 +56,12 @@ Recently merged: **3.4 helper-script triage (#38)**, **2.1 classify setup script
 
 ## Known follow-ups (not yet ticketed)
 
-_Backlog stories 4.2–4.5 are now ticketed (#33–#36); the items below are smaller, mostly folding into existing Epic 3 / Epic 2 stories._
+_Backlog stories 4.2–4.5 are ticketed (#33–#36); the items below are smaller, mostly folding into existing Epic 3 / Epic 2 stories._
 
 - **From Story 3.4 (Epic 3 cleanup):** fix `polybar_alsa_module` switch (`pacmd`→`wpctl`); retire `volume-go` (`~/code/go/bin/volume`)→`wpctl`/`pamixer`; rename `pulseaudio-tail.sh` (it's PipeWire); dead desktop config — termite dropdown (i3 `config:166`), stale polybar `*.bak`/non-active themes; `.zshrc` dedupe (duplicate `dot-src` etc.).
-- **Privacy pass:** work email / `wts*` refs in public `.gitconfig`/`.profile`/`.zshrc` (incl. `cgbb` alias's `[work-org]` path); scrub `[work-org]` from git **history** (BFG).
-- **Story 2.2:** evaluate `aconfmgr` for package/system-state inventory.
+- **Privacy pass:** work email / `wts*` refs in public `.gitconfig`/`.profile`/`.zshrc` (incl. `cgbb` alias's `[work-org]` path); scrub `[work-org]` from git **history** (BFG). (`.gitconfig` also still carries the [employer-1]/[employer-2] work refs.)
+- **Story 2.2:** evaluate `aconfmgr` for package/system-state inventory; generate the grouped manifests from live state (incl. optional `work` split).
 - **Story 2.3:** install oh-my-zsh via the official installer (replaces the deleted vendored `install_oh_my_zsh`).
 - From Story 3.6 triage leftovers: decide `.config/yadm/encrypt` removals; encrypt-only salvage of `settings.json` (has a key).
 - Prune stale remote branches (`add-ntp`, `locker`, `polybar-*`, `merge-test`, `old-master`, `test-*`).
+- Optionally promote the Story 2.2 private redaction note (`docs/private/`) to YADM-encrypted storage (durable/portable vs machine-local).
