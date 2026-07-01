@@ -1,15 +1,41 @@
+/*
+ * Teams-for-Linux font fixes.
+ *
+ * Two Linux-only problems, one root cause: Teams is a Windows-first Fluent UI web app
+ * that names fonts Linux doesn't have.
+ *
+ * 1. Monospace UI. Teams applies its *monospace* font token far more broadly than
+ *    intended (a client-side regression). That token's stack ends in the CSS generic
+ *    `monospace`, which fontconfig resolves to Liberation Mono on this machine, so the
+ *    whole UI rendered in a typewriter font. The :root block below redirects both the
+ *    base and monospace tokens to a sans stack, so whichever token Teams reaches for it
+ *    gets sans. (A stack ending in `sans-serif` can never render monospace, so the base
+ *    text was never the culprit -- and note "Segoe UI" already resolves to Liberation
+ *    Sans via fontconfig, so *installing* Segoe UI would not have fixed this.)
+ *
+ * 2. Missing icons (most visibly the Calendar). The first pass at fix #1 forced the sans
+ *    font onto `html body *` with !important. But Teams' icons are its own Fabric/Fluent
+ *    icon fonts (FabricMDL2Icons, ...) loaded via @font-face, with glyphs at Private Use
+ *    Area codepoints. The blanket !important overrode those @font-face families on icon
+ *    elements, and Liberation Sans has nothing at those codepoints -> blank icons. The
+ *    rule below excludes icon-tagged elements so their @font-face glyphs survive.
+ */
+
 :root,
 html,
 body {
+  /* Redirect Teams' font tokens to a sans stack (fixes the monospace UI, problem #1). */
   --fontFamilyBase: "Liberation Sans", "Noto Sans", "Segoe UI", sans-serif !important;
   --fontFamilyMonospace: "Liberation Sans", "Noto Sans", "Segoe UI", sans-serif !important;
   --font-family-base: "Liberation Sans", "Noto Sans", "Segoe UI", sans-serif !important;
   --font-family-monospace: "Liberation Sans", "Noto Sans", "Segoe UI", sans-serif !important;
 }
 
+/* Force sans on text, but never on icon glyphs (problem #2): excluding anything class-
+   or data-tagged as an icon keeps Teams' @font-face icon fonts intact. */
 html body,
-html body *,
-html body *::before,
-html body *::after {
+html body *:not([class*="icon" i]):not([data-icon-name]),
+html body *:not([class*="icon" i]):not([data-icon-name])::before,
+html body *:not([class*="icon" i]):not([data-icon-name])::after {
   font-family: "Liberation Sans", "Noto Sans", "Segoe UI", sans-serif !important;
 }
