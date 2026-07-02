@@ -18,19 +18,11 @@ Avoid re-reading `prd.md` end-to-end unless changing product direction.
 
 ## In flight
 
-**Story 2.6 — AUR-update quarantine** ([#40](https://github.com/amasover/dotfiles/issues/40)), branch `story/2.6-aur-update-quarantine`. **Design in progress, NOT committed; paused on one architecture decision (below).**
+**Story 2.6 — AUR-update quarantine** ([#40](https://github.com/amasover/dotfiles/issues/40)), branch `story/2.6-aur-update-quarantine`. **Built + harness-validated; pending a supervised live test, then PR.**
 
-Goal: time-delayed, risk-aware AUR upgrades — defense against freshly-weaponized AUR packages (June 2026 AUR malware). Design so far (bash helper `.local/bin/tools/aur-quarantine` + `setup/update` split, plus `knowledge/reference/aur-malware-mitigation.md`):
+Architecture decided (**hybrid**, after researching yay's Lua hooks): enforcement lives in a **yay `UpgradeSelect` Lua hook** (`.config/yay/init.lua`, yay v13.0.1 supports it; payload already carries `maintainer`+`last_modified`, so no RPC and it protects *every* `yay -Syu`), plus a slim **`aur-quarantine` CLI** for what hooks can't do (they can only *exclude*, not substitute versions): `seed`/`accept` trusted-maintainer baseline, `auto` exemptions, and **manual version-stepping** (`update <pkg>` builds the newest *aged* version at a pinned AUR git commit). `setup/update` simplified: hook gates in-flow, prints the hook-written manual-follow-ups report (AUR links + copy-paste commands) at the end; `--aur-now` bypasses (incl. `--devel`). Full rationale + threat model: [aur-malware-mitigation.md](../knowledge/reference/aur-malware-mitigation.md).
 
-- **Per-version age delay with stepping.** Not "hold latest until it ages" — that pins fast-moving packages (e.g. `claude-code`, ~daily) forever. Instead step to the newest version that is *itself* ≥ `AUR_QUARANTINE_DAYS` (default 14) old, read from the package's **AUR git history** and built at that pinned commit.
-- **Repo packages always upgrade** (signed Arch repos, no delay). **Orphaned** packages held. **Maintainer change** vs a trusted baseline (`seed`/`accept`) hard-stops and is flagged explicitly — even for exempted packages.
-- **Per-package exemptions** (`aur-quarantine auto <pkg>`): take updates immediately (skip the age delay), maintainer changes still flagged.
-- **`update` stays unattended**; at the end it prints a **manual-follow-ups report** with clickable AUR links + copy-paste commands (`accept` / `update <pkg>` / `auto`). Manual stepping to an older pinned version is opt-in via `aur-quarantine update <pkg>`.
-- **`-git`/`--devel`** excluded by default (a time delay is meaningless for upstream-HEAD builds); `--aur-now` bypasses the whole quarantine.
-
-⚠ **DECIDE FIRST — build on yay's Lua hooks instead of/with the bash wrapper?** Aaron flagged that yay may add this natively ([yay#2847](https://github.com/Jguer/yay/issues/2847), [#2824](https://github.com/Jguer/yay/issues/2824)) and exposes **upgrade-selection hooks** ([lua docs](https://jguer.github.io/yay/lua.html)). Preliminary lean: **hybrid** — a Lua hook for the in-flow hold/deselect (age/orphan/maintainer, runs inside `yay -Syu`), plus a companion tool for version-stepping (a selection hook can only *deselect* latest, not substitute an *older* version), state, and reporting. **Not yet researched.** Next session: fetch those 3 links + check installed `yay --version`/hook support; confirm hook capabilities (file IO / `os.execute` / HTTP?); then choose pure-hook vs hybrid vs bash.
-
-State caveats before resuming: the helper's latest rewrite is **unsyntax-checked**; `setup/update` still wires the older flow and is **inconsistent** with the current helper (`plan`); nothing is committed, so pivoting to hooks is free.
+Validated: `luac -p`/`bash -n`/`zsh -n`; Lua harness with stubbed yay API (all hold/allow paths + bypass pass); CLI round-trips in isolated state. **Remaining:** supervised live `yay -Su` to confirm real payload field names + one `aur-quarantine update` build test; then PR. Side-finding: **paru is broken live** (libalpm.so.15 soname bump — rebuild sometime).
 
 New backlog from 2.2 discovery: **Story 3.9** ([#41](https://github.com/amasover/dotfiles/issues/41)) — iwd vs wpa_supplicant NM backend; **Story 3.10** ([#42](https://github.com/amasover/dotfiles/issues/42)) — consolidate screen recorders (kooha). `.zshrc` cleanup queued on **Story 3.1** ([#28](https://github.com/amasover/dotfiles/issues/28)): cat-alias repo promotion, dead `homelab-*`/docker-plugin lines, python2→daemon powerline.
 
