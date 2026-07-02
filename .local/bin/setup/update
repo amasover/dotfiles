@@ -1,6 +1,17 @@
 #!/usr/bin/env zsh
 source ~/.zsh_plugins.sh
 
+# --- options ---
+# AUR upgrades are quarantined by default (see .local/bin/tools/aur-quarantine).
+#   --aur-now   bypass the quarantine: upgrade ALL AUR packages now, incl. -git/--devel.
+aur_now=false
+for _arg in "$@"; do
+  case "$_arg" in
+    --aur-now) aur_now=true ;;
+    -h|--help) print -- "usage: update [--aur-now]\n  --aur-now  bypass AUR quarantine; upgrade all AUR + devel packages now"; exit 0 ;;
+  esac
+done
+
 # prevent sudo timeout
 sudo -v
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
@@ -28,9 +39,21 @@ fi
 echo "Updating all system and AUR packages..."
 source $HOME/.local/bin/setup/lib.sh
 
-#install_pacman_packages
-# TODO don't update AUR packages by default unless they're at least a week or two old
-yay -Syu --sudoloop --devel --noconfirm --timeupdate --answerupgrade none --answerdiff none --answeredit none --answerclean none --useask
+# AUR upgrades are gated in-flow by the yay Lua quarantine hook (~/.config/yay/init.lua):
+# it holds AUR packages that are too new (< ~14d), orphaned, or maintainer-changed, and
+# writes a manual-follow-ups report. Repo packages are never held. Devel (-git) rebuilds
+# only happen with --aur-now. See knowledge/reference/aur-malware-mitigation.md.
+quarantine=$HOME/.local/bin/tools/aur-quarantine
+"$quarantine" seed || true   # trust first-seen AUR packages' current maintainers (announced)
+if [[ "$aur_now" == true ]]; then
+    echo $'\nAUR quarantine bypassed (--aur-now): upgrading everything incl. devel...'
+    AUR_QUARANTINE_BYPASS=1 yay -Syu --devel --sudoloop --noconfirm --timeupdate --answerupgrade none --answerdiff none --answeredit none --answerclean none --useask
+else
+    yay -Syu --sudoloop --noconfirm --answerupgrade none --answerdiff none --answeredit none --answerclean none --useask
+    # Held packages + copy-paste follow-ups (accept / update / auto), written by the hook.
+    aq_report="${XDG_STATE_HOME:-$HOME/.local/state}/aur-quarantine/last-report.txt"
+    [[ -s "$aq_report" ]] && cat "$aq_report"
+fi
 
 echo $'\n\nUpdating oh-my-zsh...'
 cd /home/$USER/.oh-my-zsh
