@@ -132,7 +132,7 @@ Issue: [#27](https://github.com/amasover/dotfiles/issues/27)
 **Acceptance criteria:**
 
 - Given current bootstrap options include Bash, YADM, package manifests, and possible Ansible, when reviewed, then a decision record documents the preferred direction
-- Given YADM remains in use, when the bootstrap model is defined, then it explains what YADM owns versus what scripts own
+- Given YADM remains in use, when the bootstrap model is defined, then it explains what YADM owns versus what scripts own the bootstrap model is defined, then it explains what YADM owns versus what scripts own
 - Given a future rewrite is deferred, when the decision is made, then the interim safe path is documented
 
 **Evidence artifact:** Decision record under `docs/`
@@ -162,6 +162,25 @@ Issue: [#40](https://github.com/amasover/dotfiles/issues/40) · Implementation a
 - Complementary control: consider running a scanner such as [`aur-malware-check`](https://github.com/lenucksi/aur-malware-check) over to-be-upgraded PKGBUILDs as a second layer, independent of the time delay.
 
 **Evidence artifact:** Changes to `.local/bin/setup/update` (or a helper) + notes; resolves the `setup/update:32` TODO.
+
+---
+
+### Story 2.7: QEMU fresh-install validation harness
+
+As the repo owner,
+I want a repeatable QEMU/KVM harness that fresh-installs Arch and runs the bootstrap,
+So that bootstrap and manifest changes are validated in a disposable VM before they are trusted on metal.
+
+Issue: [#46](https://github.com/amasover/dotfiles/issues/46) · Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (validation strategy). `qemu-desktop` + `virt-manager` are already installed (Story 2.2 decision D6).
+
+**Acceptance criteria:**
+
+- Given a bootstrap or manifest change, when the harness runs, then a fresh Arch VM is created (scripted `archinstall` or equivalent) without manual install steps
+- Given the bootstrap completes in the VM, when the result is inspected, then it matches expectations: `metapac unmanaged` reports no surprises, expected services are enabled, and the desktop session is reachable
+- Given a validation run finishes, when the next one is needed, then the VM can be reset or recreated disposably (snapshot or rebuild)
+- Given the harness exists, when documented, then a runbook covers creating, running, inspecting, and resetting the VM
+
+**Evidence artifact:** Harness scripts + a runbook under `docs/`
 
 ---
 

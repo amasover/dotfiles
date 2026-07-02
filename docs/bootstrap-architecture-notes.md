@@ -1,6 +1,12 @@
 # Bootstrap architecture notes (input for Story 2.3)
 
-**Status:** notes only — not a decision yet. Captured during Story 2.1.
+**Status:** superseded — the decision landed in
+[decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (Story 2.5,
+2026-07-01): YADM + **metapac→yay** + thin bash bootstrap; Ansible/pyinfra, aconfmgr,
+and home-manager deferred with explicit triggers. One correction to these notes:
+aconfmgr turned out to be actively maintained (June 2026 commits) — it was set aside on
+scope/AUR grounds, not staleness. Kept as the research trail. Originally captured
+during Story 2.1.
 **Decides:** what `setup/install` (and the fresh-machine bootstrap) should become.
 **Related:** [Epic 2 Story 2.3](./epic-2-bootstrap-and-package-modernization.md) and
 [Story 2.5 — future bootstrap architecture](./epic-2-bootstrap-and-package-modernization.md).
