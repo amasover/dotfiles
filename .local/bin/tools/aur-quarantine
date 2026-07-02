@@ -153,7 +153,7 @@ cmd_build() {                   # $1=pkgbase $2=sha  (installs)
     if ( cd "$dir" && makepkg -si --noconfirm ); then
         git -C "$dir" checkout --quiet - 2>/dev/null || true; return 0
     fi
-    echo "aur-quarantine: build $base @ ${sha:0:8} failed (deps/build/source) — not installed; upgrade manually if needed." >&2
+    echo "aur-quarantine: $base @ ${sha:0:8} failed (deps/build/source/install) — not installed. If the build succeeded, re-run in a terminal (sudo needs a password prompt); makepkg will reuse the built package." >&2
     git -C "$dir" checkout --quiet - 2>/dev/null || true; return 1
 }
 
