@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+#
+# aur-quarantine — state + manual stepping companion for the AUR quarantine.
+#
+# The actual upgrade gating happens in yay's Lua hook (~/.config/yay/init.lua,
+# yay >= 13.0.0): every `yay -Syu` holds AUR upgrades that are too new
+# (< AUR_QUARANTINE_DAYS, default 14), orphaned, or whose maintainer changed vs
+# the trusted baseline. This CLI manages that state and performs the manual
+# actions the hook suggests. Rationale: June 2026 AUR malware incident; see
+# knowledge/reference/aur-malware-mitigation.md.
+#
+# Subcommands:
+#   seed              record the current AUR maintainer of every installed AUR
+#                     package as trusted (adds missing only; announces first-seen).
+#   accept PKG...     trust PKG's current maintainer (clears a maintainer-change
+#                     or orphan hold after you've verified it on the AUR).
+#   auto PKG...       take PKG's updates immediately, skipping the age delay
+#                     (maintainer changes are still held). auto-off undoes.
+#   auto-off PKG...   stop auto-updating PKG.
+#   update PKG...     step PKG to its newest *vetted* version: the newest version
+#                     in the package's AUR git history that is itself older than
+#                     the threshold — built at that pinned commit. Use when the
+#                     hook holds a fast-moving package (latest always too new).
+#   build BASE SHA    (internal) build+install pkgbase BASE at AUR git commit SHA.
+#
+# Config (env):
+#   AUR_QUARANTINE_DAYS   per-version age threshold, days (default 14).
+#
+# State:  ${XDG_STATE_HOME:-~/.local/state}/aur-quarantine/{maintainers.tsv,exempt.txt}
+#         (shared with the Lua hook; formats: "<pkg>\t<maintainer>" / one name per line)
+# Cache:  ${XDG_CACHE_HOME:-~/.cache}/aur-quarantine/<pkgbase>   (AUR git clones)
+#
+# Only `update`/`build` install anything; everything else queries, clones to cache, prints.
+
+set -uo pipefail
+
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/aur-quarantine"
+baseline="$state_dir/maintainers.tsv"
+exempt_file="$state_dir/exempt.txt"
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/aur-quarantine"
+PACMAN=/usr/bin/pacman          # bypass the `pacman='sudo pacman'` shell alias; -Q needs no root
+AURWEB="https://aur.archlinux.org/packages"
+
+# rpc_info NAME...  ->  "name<TAB>pkgbase<TAB>lastmod<TAB>maintainer" per resolved package
+rpc_info() {
+    (( $# == 0 )) && return 0
+    local p args=()
+    for p in "$@"; do args+=(--data-urlencode "arg[]=$p"); done
+    curl -fsG --max-time 20 "${args[@]}" 'https://aur.archlinux.org/rpc/v5/info' 2>/dev/null \
+        | jq -r '.results[] | [.Name, .PackageBase, (.LastModified|tostring), (.Maintainer // "")] | @tsv'
+}
+
+load_baseline() { declare -gA trusted=(); [[ -f $baseline ]] || return 0
+    local k v; while IFS=$'\t' read -r k v; do [[ -n $k ]] && trusted[$k]=$v; done < "$baseline"; }
+save_baseline() { mkdir -p "$state_dir"; : > "$baseline.tmp"
+    local k; for k in "${!trusted[@]}"; do printf '%s\t%s\n' "$k" "${trusted[$k]}" >> "$baseline.tmp"; done
+    mv "$baseline.tmp" "$baseline"; }
+load_exempt() { declare -gA exempt=(); [[ -f $exempt_file ]] || return 0
+    local l; while read -r l; do [[ -n $l ]] && exempt[$l]=1; done < "$exempt_file"; }
+save_exempt() { mkdir -p "$state_dir"; : > "$exempt_file.tmp"
+    local k; for k in "${!exempt[@]}"; do echo "$k" >> "$exempt_file.tmp"; done
+    mv "$exempt_file.tmp" "$exempt_file"; }
+
+fetch_repo() {                  # $1=pkgbase -> ensures clone in cache; echoes its path
+    local base=$1 dir="$cache_dir/$1"
+    mkdir -p "$cache_dir"
+    if [[ -d $dir/.git ]]; then
+        git -C "$dir" fetch --quiet origin 2>/dev/null || return 1
+        git -C "$dir" reset --quiet --hard origin/HEAD 2>/dev/null || true
+    else
+        git clone --quiet "https://aur.archlinux.org/${base}.git" "$dir" 2>/dev/null || return 1
+    fi
+    printf '%s\n' "$dir"
+}
+
+srcinfo_version() {             # stdin = .SRCINFO -> "epoch:pkgver-pkgrel"
+    awk -F' = ' '
+        /^[[:space:]]*pkgver = /{pv=$2} /^[[:space:]]*pkgrel = /{pr=$2} /^[[:space:]]*epoch = /{ep=$2}
+        END{ if(ep!="") printf "%s:",ep; printf "%s-%s",pv,pr }'
+}
+
+# newest .SRCINFO commit with date <= cutoff AND version > installed; echoes "sha<TAB>ver"
+target_at_or_before() {         # $1=repo_dir $2=cutoff_epoch $3=installed_ver
+    local dir=$1 cutoff=$2 inst=$3 h ct ver
+    while read -r h ct; do
+        (( ct > cutoff )) && continue
+        ver=$(git -C "$dir" show "$h:.SRCINFO" 2>/dev/null | srcinfo_version)
+        [[ -z $ver || $ver == "-" ]] && return 1
+        if [[ -z $inst ]] || (( $(vercmp "$ver" "$inst") > 0 )); then printf '%s\t%s\n' "$h" "$ver"; return 0; fi
+        return 1   # newest aged version isn't newer than installed -> nothing to step to
+    done < <(git -C "$dir" log --format='%H %ct' -- .SRCINFO)
+    return 1
+}
+
+cmd_seed() {
+    load_baseline
+    local -a installed; mapfile -t installed < <("$PACMAN" -Qqm 2>/dev/null)
+    (( ${#installed[@]} == 0 )) && { echo "aur-quarantine: no foreign/AUR packages installed." >&2; return 0; }
+    local rpc_out
+    if ! rpc_out=$(rpc_info "${installed[@]}") || [[ -z $rpc_out ]]; then
+        echo "aur-quarantine: AUR RPC unreachable/empty — baseline NOT updated this run." >&2; return 1
+    fi
+    local name base lm mt added=0
+    while IFS=$'\t' read -r name base lm mt; do
+        [[ -z $name ]] && continue
+        if [[ -z ${trusted[$name]+x} ]]; then trusted[$name]=$mt; ((added++))
+            echo "aur-quarantine: now trusting $name @ ${mt:-ORPHANED} (first seen)." >&2; fi
+    done <<< "$rpc_out"
+    save_baseline
+    (( added > 0 )) && echo "aur-quarantine: recorded $added new package(s); baseline now ${#trusted[@]}." >&2
+    return 0
+}
+
+cmd_accept() {
+    (( $# )) || { echo "usage: aur-quarantine accept PKG..." >&2; return 2; }
+    load_baseline
+    local rpc_out
+    if ! rpc_out=$(rpc_info "$@") || [[ -z $rpc_out ]]; then
+        echo "aur-quarantine: AUR RPC unreachable or package(s) not found — nothing accepted." >&2; return 1
+    fi
+    local name base lm mt; declare -A seen=()
+    while IFS=$'\t' read -r name base lm mt; do
+        [[ -z $name ]] && continue
+        trusted[$name]=$mt; seen[$name]=1
+        echo "aur-quarantine: accepted maintainer for $name (${mt:-ORPHANED})." >&2
+    done <<< "$rpc_out"
+    local p; for p in "$@"; do
+        [[ -z ${seen[$p]+x} ]] && echo "aur-quarantine: WARNING $p not found in AUR RPC — not accepted." >&2
+    done
+    save_baseline
+}
+
+cmd_auto() {
+    (( $# )) || { echo "usage: aur-quarantine auto PKG..." >&2; return 2; }
+    load_exempt; local p
+    for p in "$@"; do exempt[$p]=1
+        echo "aur-quarantine: '$p' set to auto-update (age delay skipped; maintainer changes still held)." >&2; done
+    save_exempt
+}
+cmd_auto_off() {
+    (( $# )) || { echo "usage: aur-quarantine auto-off PKG..." >&2; return 2; }
+    load_exempt; local p
+    for p in "$@"; do unset "exempt[$p]"; echo "aur-quarantine: '$p' no longer auto-updates." >&2; done
+    save_exempt
+}
+
+cmd_build() {                   # $1=pkgbase $2=sha  (installs)
+    (( $# == 2 )) || { echo "usage: aur-quarantine build PKGBASE SHA" >&2; return 2; }
+    local base=$1 sha=$2 dir
+    dir=$(fetch_repo "$base") || { echo "aur-quarantine: build $base: fetch failed." >&2; return 1; }
+    git -C "$dir" checkout --quiet "$sha" 2>/dev/null || { echo "aur-quarantine: build $base: checkout ${sha:0:8} failed." >&2; return 1; }
+    # makepkg -s installs repo deps; AUR deps are NOT resolved here. Any failure -> hold.
+    if ( cd "$dir" && makepkg -si --noconfirm ); then
+        git -C "$dir" checkout --quiet - 2>/dev/null || true; return 0
+    fi
+    echo "aur-quarantine: $base @ ${sha:0:8} failed (deps/build/source/install) — not installed. If the build succeeded, re-run in a terminal (sudo needs a password prompt); makepkg will reuse the built package." >&2
+    git -C "$dir" checkout --quiet - 2>/dev/null || true; return 1
+}
+
+cmd_update() {                  # manual: step PKG(s) to the newest vetted (aged) version
+    (( $# )) || { echo "usage: aur-quarantine update PKG..." >&2; return 2; }
+    local threshold_days="${AUR_QUARANTINE_DAYS:-14}"
+    load_baseline; local now; now=$(date +%s)
+    local p n base lm mt inst cutoff repo res sha ver
+    for p in "$@"; do
+        IFS=$'\t' read -r n base lm mt < <(rpc_info "$p")
+        if [[ -z ${base:-} ]]; then echo "aur-quarantine: $p not found in AUR RPC." >&2; continue; fi
+        if [[ -n ${trusted[$p]+x} && ${trusted[$p]} != "$mt" ]]; then
+            echo "aur-quarantine: $p maintainer changed (${trusted[$p]:-ORPHANED} -> ${mt:-ORPHANED})." >&2
+            echo "    verify:  $AURWEB/$p" >&2
+            echo "    then:    aur-quarantine accept $p   (required before stepping)" >&2
+            continue
+        fi
+        repo=$(fetch_repo "$base") || { echo "aur-quarantine: could not fetch AUR git ($base)." >&2; continue; }
+        inst=$("$PACMAN" -Q "$p" 2>/dev/null | awk '{print $2}')
+        cutoff=$(( now - threshold_days*86400 ))
+        if res=$(target_at_or_before "$repo" "$cutoff" "$inst"); then
+            sha=${res%%$'\t'*}; ver=${res#*$'\t'}
+            echo "aur-quarantine: building $p $ver (pinned ${sha:0:8}; installed: ${inst:-none})..." >&2
+            if cmd_build "$base" "$sha"; then
+                trusted[$p]=$mt; save_baseline
+                echo "aur-quarantine: $p updated to $ver." >&2
+            fi
+        else
+            echo "aur-quarantine: $p has no version older than ${threshold_days}d that is newer than ${inst:-none} — nothing to step to yet." >&2
+        fi
+    done
+}
+
+case "${1:-}" in
+    seed)         shift; cmd_seed "$@" ;;
+    accept)       shift; cmd_accept "$@" ;;
+    auto)         shift; cmd_auto "$@" ;;
+    auto-off)     shift; cmd_auto_off "$@" ;;
+    update)       shift; cmd_update "$@" ;;
+    build)        shift; cmd_build "$@" ;;
+    -h|--help|"") grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//' ;;
+    *)            echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|build)" >&2; exit 2 ;;
+esac
