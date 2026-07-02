@@ -76,11 +76,15 @@ yay.create_autocmd("UpgradeSelect", {
     local exclude = {}
     local report = {}
 
-    local function hold(name, why, action)
+    -- One block per held package, shown both inline during the yay run and in the
+    -- end-of-run report file: reason, AUR link to inspect, then copy-paste command(s).
+    local function hold(name, why, actions)
       table.insert(exclude, name)
       local url = "https://aur.archlinux.org/packages/" .. name
-      yay.log.warn(string.format("aur-quarantine: HOLD %s — %s", name, why))
-      table.insert(report, string.format(" [!] %s — %s\n     check:  %s\n     %s", name, why, url, action))
+      local block = string.format("%s — %s\n     check:  %s\n     %s",
+        name, why, url, table.concat(actions, "\n     "))
+      yay.log.warn("aur-quarantine: HOLD " .. block .. "\n")
+      table.insert(report, " [!] " .. block)
     end
 
     for _, up in ipairs(event.data.upgrades or {}) do
@@ -98,12 +102,12 @@ yay.create_autocmd("UpgradeSelect", {
           hold(pkg,
             string.format("MAINTAINER CHANGED ('%s' -> '%s'); possible takeover",
               known ~= "" and known or "ORPHANED", mt ~= "" and mt or "ORPHANED"),
-            "trust:  aur-quarantine accept " .. pkg)
+            { "trust:  aur-quarantine accept " .. pkg .. "   (after verifying on the AUR)" })
         elseif mt == "" and known == nil then
           -- Orphaned and never explicitly trusted (an accept records the orphan
           -- state as "", which clears this hold): adoption-attack vector.
           hold(pkg, "ORPHANED (no maintainer); adoption-attack risk",
-            "trust:  aur-quarantine accept " .. pkg)
+            { "trust:  aur-quarantine accept " .. pkg .. "   (after verifying on the AUR)" })
         elseif exempt[pkg] then
           yay.log.info("aur-quarantine: " .. pkg .. " is auto-exempt; taking latest")
         elseif days > 0 and (age_days == nil or age_days < days) then
@@ -111,8 +115,8 @@ yay.create_autocmd("UpgradeSelect", {
             string.format("version %s is %s old (< %dd quarantine)",
               up.remote_version or "?",
               age_days and (age_days .. "d") or "of unknown age", days),
-            "step:   aur-quarantine update " .. pkg ..
-            "   (installs the newest vetted older version, if any)")
+            { "step:   aur-quarantine update " .. pkg .. "   (newest vetted older version, if any)",
+              "auto:   aur-quarantine auto "   .. pkg .. "   (always take immediately; maintainer changes still held)" })
         end
       end
     end
