@@ -18,24 +18,21 @@ Avoid re-reading `prd.md` end-to-end unless changing product direction.
 
 ## In flight
 
-**Story 2.6 — AUR-update quarantine** ([#40](https://github.com/amasover/dotfiles/issues/40)), branch `story/2.6-aur-update-quarantine`. **Built + harness-validated; pending a supervised live test, then PR.**
+**Story 2.5 — bootstrap architecture decision** ([#27](https://github.com/amasover/dotfiles/issues/27)), branch `story/2.5-bootstrap-architecture`. Deep-dive done (aconfmgr / decman / metapac / Ansible / pyinfra / home-manager surveyed); **decision drafted** in [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md): **YADM (unchanged) + metapac→yay (declarative packages, preserves the 2.6 quarantine) + thin bash `bootstrap` + `update` stays imperative**; Ansible/pyinfra, aconfmgr (`/etc` pattern), and home-manager/Nix deferred with explicit re-open triggers. Includes Aaron's layered-groups model (universal `base` groups + `hostname_groups` per machine) and a planned **yay `PostInstall` hook auto-capturing new installs into an `inbox.toml`** group for triage. Awaiting Aaron's review → PR.
 
-Architecture decided (**hybrid**, after researching yay's Lua hooks): enforcement lives in a **yay `UpgradeSelect` Lua hook** (`.config/yay/init.lua`, yay v13.0.1 supports it; payload already carries `maintainer`+`last_modified`, so no RPC and it protects *every* `yay -Syu`), plus a slim **`aur-quarantine` CLI** for what hooks can't do (they can only *exclude*, not substitute versions): `seed`/`accept` trusted-maintainer baseline, `auto` exemptions, and **manual version-stepping** (`update <pkg>` builds the newest *aged* version at a pinned AUR git commit). `setup/update` simplified: hook gates in-flow, prints the hook-written manual-follow-ups report (AUR links + copy-paste commands) at the end; `--aur-now` bypasses (incl. `--devel`). Full rationale + threat model: [aur-malware-mitigation.md](../knowledge/reference/aur-malware-mitigation.md).
+New from 2.5: **Story 2.7** ([#46](https://github.com/amasover/dotfiles/issues/46)) — QEMU fresh-install validation harness (scripted archinstall VM → run bootstrap → verify; the pre-metal gate for 2.3).
 
-Validated: `luac -p`/`bash -n`/`zsh -n`; Lua harness with stubbed yay API (all hold/allow paths + bypass); CLI round-trips in isolated state; **live-validated 2026-07-01** — hook installed to `~/.config/yay/init.lua` (live-home copy, sanctioned test), real `yay -Su` held all 9 pending AUR updates with correct ages, report written; stepping refused correctly at 14d and pin-built claude-code 2.1.195-1 at 3d (only the final sudo `pacman -U` needs a real terminal; fail-safe left system untouched). Live state seeded: 106-package trusted baseline. **Remaining:** PR. Side-finding: **paru is broken live** (libalpm.so.15 soname bump — rebuild sometime).
+Backlog reminders: **3.9** ([#41](https://github.com/amasover/dotfiles/issues/41)) iwd vs wpa_supplicant; **3.10** ([#42](https://github.com/amasover/dotfiles/issues/42)) screen recorders; **3.1** ([#28](https://github.com/amasover/dotfiles/issues/28)) `.zshrc` cleanup queue. Not yet ticketed from 2.6: clean-chroot AUR builds, fresh-install gating (`AURPostDownload`), popularity-aware holds, paru rebuild (broken: libalpm.so.15).
 
-New backlog from 2.2 discovery: **Story 3.9** ([#41](https://github.com/amasover/dotfiles/issues/41)) — iwd vs wpa_supplicant NM backend; **Story 3.10** ([#42](https://github.com/amasover/dotfiles/issues/42)) — consolidate screen recorders (kooha). `.zshrc` cleanup queued on **Story 3.1** ([#28](https://github.com/amasover/dotfiles/issues/28)): cat-alias repo promotion, dead `homelab-*`/docker-plugin lines, python2→daemon powerline.
+## Last session (2026-07-01 → 02)
 
-## Last session (2026-06-26)
-
-- Merged **Story 2.2** ([#43](https://github.com/amasover/dotfiles/pull/43)): package inventory + triage artifact (`docs/package-inventory.md`) + `pacman`-provides knowledge note. Org-internal AUR package names **redacted** from the public doc; real names kept in a **gitignored** private note (`docs/private/`, mapped in `.gitignore`). Manual privacy pass caught them; `gitleaks` did not.
-- Merged **chore/retire-master** ([#44](https://github.com/amasover/dotfiles/pull/44)): deleted the dead `master` branch (was 0 commits ahead of `main`), pointed the remaining Aaron-owned `master` refs → `main` (`.gitconfig`, `setup/install`), fixed local `origin/HEAD`. Codified two governance rules in copilot-instructions: **manual privacy pass** (not just gitleaks) and **update STATUS.md after each chunk of work**.
-- Started **Story 2.6** design (see In flight), then paused on the yay-hooks architecture question.
+- **Merged Story 2.6** ([#45](https://github.com/amasover/dotfiles/pull/45), closes #40): AUR update quarantine — yay `UpgradeSelect` Lua hook (`.config/yay/init.lua`) holds too-new / orphaned / maintainer-changed AUR upgrades on every `yay -Syu`; `aur-quarantine` CLI (seed/accept/auto + manual version-stepping via pinned AUR-git builds); `setup/update` simplified with `--aur-now` bypass. Threat model + validation record in [aur-malware-mitigation.md](../knowledge/reference/aur-malware-mitigation.md). **Live and active on the workstation** (hook + CLI + update script reverse-tested; 106-package trusted baseline seeded); live-validated end-to-end incl. a pinned build installed via polkit.
+- Technique discovered: **pkexec for root actions** from the agent shell (polkit GUI dialog; sudo can't prompt there).
+- Started **Story 2.5** (see In flight): tool landscape researched, decision record drafted, Story 2.7 ticketed (#46).
 
 **Heads-up for next session:**
-- **Decide the 2.6 architecture (yay Lua hooks vs bash) before writing more.** Start with the 3 links + `yay --version`.
-- **Live `$HOME` sync:** #44 changed yadm-tracked `.gitconfig` (`delete-merged` default) and `setup/install` (`origin/master`→`main`). Live `$HOME` still has the old `master` defaults — `yadm pull` to converge when convenient.
-- **Architecture decision still pending (2.3/2.5):** bash-now → aconfmgr **or** fresh Ansible repo; manifest format plain-files vs `metapac`. See bootstrap-architecture-notes.md.
+- **2.5:** get the decision record reviewed/merged, then **2.3** implements it (metapac group files from the 2.2 inventory, thin `bootstrap`, inbox auto-capture hook) and **2.7** builds the VM harness.
+- The metapac `config.toml` will contain the machine hostname — the work-issued hostname shape should be reviewed in the privacy follow-up before that file is ever committed publicly.
 
 ## Epics
 
