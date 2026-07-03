@@ -1,0 +1,6 @@
+# metapac inbox for machine class "workstation" — untriaged packages land here.
+# Auto-appended by the yay PostInstall hook (Story 2.9); triage moves entries to a
+# purpose group or drops them. Only this machine's class list includes this file —
+# never share an inbox across machines (see docs/decision-bootstrap-architecture.md).
+[arch]
+packages = []
