@@ -29,8 +29,9 @@ No warning is shown; the only tell is the `-> main` in the push output.
 - Or avoid creating the branch with upstream tracking `origin/main`
   (`git checkout -b <branch> origin/main --no-track`).
 - Read the push output before considering the push done — `-> main` means trouble.
-- Candidate durable fix (needs Aaron's decision; `.gitconfig` is a tracked dotfile):
-  set `push.default = simple`, which refuses this push instead of mis-routing it.
+- **Durable fix landed (2026-07-02, approved via reverse-test):** `.gitconfig` now sets
+  `push.default = simple`, which refuses this push instead of mis-routing it
+  (yadm commit `b7a7f67`). The explicit-refspec habit above remains good practice.
 
 ## If it happens again
 
