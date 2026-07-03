@@ -1,0 +1,12 @@
+# metapac group: comms — chat/meetings clients
+# Membership source: docs/package-inventory.md; adopted in Story 2.8.
+# bitlbee: keep-for-now (inventory open item; revisit Story 3.1/3.2 era).
+[arch]
+packages = [
+  "bitlbee",
+  "discord",
+  "signal-desktop",
+  "teams-for-linux-bin",
+  "weechat",
+  "zoom",
+]

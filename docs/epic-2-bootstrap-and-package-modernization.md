@@ -265,6 +265,34 @@ Issue: [#51](https://github.com/amasover/dotfiles/issues/51)
 
 ---
 
+### Story 2.12: Declare non-pacman packages via additional metapac backends
+
+As the repo owner,
+I want the tools installed through cargo/uv/pipx/npm/brew declared alongside the pacman groups,
+So that a rebuild restores the forgettable one-off installs, not just the OS packages.
+
+Issue: [#53](https://github.com/amasover/dotfiles/issues/53) · Depends on Story 2.8 (config + groups exist; `enabled_backends = ["arch"]` was 2.8's deliberate scope). Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (reconcile vs update loop).
+
+2026-07-03 inventory of the non-arch surface (tiny but high-forgettability): uv holds 3
+tools (aider + cecli), pipx holds 1 (dbt-core), npm -g holds 1 real global
+(@github/copilot; corepack/npm ship with node), brew holds 1 leaf from a custom tap
+(env0/terratag/terratag), cargo holds 0 user crates, VS Code holds 15 extensions.
+Backend entries live in the existing purpose-group files (per-backend sections in the
+same TOML), not new groups.
+
+**Acceptance criteria:**
+
+- Given each detected backend, when adoption decides, then each gets an explicit disposition with Aaron: enable + declare, leave to the update loop, or consolidate away (e.g. migrate the lone pipx tool to uv rather than enabling a fourth python-tool manager)
+- Given nvm owns node (update loop; 2.8 adoption notes), when the npm backend is considered, then the nvm ordering problem is resolved deliberately — a fresh `metapac sync` runs before nvm/node exist; verify how metapac handles an enabled-but-absent backend before enabling it
+- Given brew's tap-qualified name (`env0/terratag/terratag`), when the brew backend is enabled, then tap handling is verified against metapac 0.9.4 (taps may need install hooks or documentation)
+- Given VS Code extensions may already ride Settings Sync, when the vscode backend is considered, then only one mechanism is chosen as the source of truth
+- Given a backend is enabled, when adoption completes, then `metapac unmanaged` is exactly empty for that backend too, and the template's `enabled_backends` is updated + re-rendered live
+- Given crates/npm/PyPI installs have no quarantine analog (Story 2.6 covers AUR only), when backends are enabled, then the ungated supply-chain surface of a fresh `metapac sync` is noted in the threat-model doc — accepted or ticketed, not silent
+
+**Evidence artifact:** Updated `config.toml##template` + group files with per-backend sections; disposition table in the adoption notes.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
