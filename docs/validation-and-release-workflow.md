@@ -228,18 +228,19 @@ Expected outcome:
 
 - The branch contains one story or one explicitly approved slice of a story.
 - Unrelated live-home drift remains unstaged unless that story is reconciling it.
-- Commit messages and PR descriptions can explain the story scope without relying on GitHub issue IDs.
+- Commit messages and PR descriptions explain the story scope and reference the story's GitHub issue.
 
-When the branch is ready for remote review, push and create a PR only after Aaron asks for it or confirms that the local branch is ready:
+When the branch is ready for remote review, push and create a PR only after Aaron asks for it or confirms that the local branch is ready. Push with an explicit destination refspec — a bare `git push -u origin <branch>` once mis-routed to `main` (see [the error note](../knowledge/errors/git-push-default-upstream-footgun.md)):
 
 ```bash
-git push -u origin story/<story-id>-<short-summary>
+git push origin story/<story-id>-<short-summary>:refs/heads/story/<story-id>-<short-summary>
+git branch --set-upstream-to=origin/story/<story-id>-<short-summary>
 gh pr create --base main --head story/<story-id>-<short-summary>
 ```
 
 PR description checklist:
 
-- Story ID and title
+- Story ID, title, and issue link
 - Summary of changes
 - Validation performed
 - Secret-safety review result
@@ -247,7 +248,7 @@ PR description checklist:
 - YADM/encrypted payload impact, if any
 - Known follow-up work
 
-This repo does not currently use GitHub boards or issues for story tracking. Do not invent issue numbers, close issues, or update project boards.
+Story tracking lives on the [GitHub Projects board](https://github.com/users/amasover/projects/1/views/1) and its issues (one issue/branch/PR per story — CLAUDE.md Hard rule 8). Open the story's issue before non-trivial work, link it from the epic `.md`, and reference it in the PR.
 
 ---
 

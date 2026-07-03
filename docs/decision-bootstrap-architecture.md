@@ -49,7 +49,11 @@ as **Story 2.10** ([#50](https://github.com/amasover/dotfiles/issues/50)). Dispo
 
 Config lives in `.config/metapac/` (yadm-tracked → placed on every machine).
 
-- **Universal vs machine-specific** (`config.toml`):
+- **Universal vs machine-specific** (grill 2026-07-02): metapac offers **no hostname
+  alias or override**, so the config it reads must contain the real hostname — but the
+  repo never needs to. The tracked artifact is a **yadm template**,
+  `config.toml##template`; yadm renders the real `config.toml` (machine-local,
+  untracked) at checkout:
 
   ```toml
   hostname_groups_enabled = true
@@ -58,35 +62,52 @@ Config lives in `.config/metapac/` (yadm-tracked → placed on every machine).
   package_manager = "yay"   # REQUIRED: preserves the Story 2.6 quarantine stack
 
   [hostname_groups]
-  # every machine gets the universal groups; hosts add their own profile
-  # (each host lists only its OWN inbox — see auto-capture below)
-  "<this-workstation>" = ["base", "shell-cli", "desktop", "development", "media", "comms", "work", "inbox-<this-workstation>"]
-  # future personal laptop example:
-  # "<laptop>" = ["base", "shell-cli", "desktop", "inbox-<laptop>"]
+  # key rendered from {{ yadm.hostname }}; the group list is selected by the
+  # machine's CLASS — set once per machine: `yadm config local.class <class>`
+  "{{ yadm.hostname }}" = [ ...class-conditional purpose groups..., "inbox-<class>" ]
   ```
 
-  (Real hostnames stay out of this public doc; the tracked `config.toml` will contain
-  them — hostnames in dotfiles are already the repo's accepted exposure level, but the
-  work-issued hostname should be reviewed in the Story 2.2 privacy follow-up before push.)
+  **`yadm.class` is the machine profile selector**: a public-safe label, unique per
+  machine by convention (e.g. `workstation`, `laptop`). It picks the group list in the
+  template *and* names the machine's inbox. If two machines ever want the same profile,
+  give them distinct classes (yadm ≥3.2 allows multiple classes if a shared profile
+  class is ever worth it). This resolves the Story 2.2 privacy heads-up: the
+  work-shaped hostname exists only in the rendered, untracked file.
 
-- **Groups** (`groups/*.toml`) = the Story 2.2 purpose groups made executable:
-  `base` (any Linux box: core CLI), `shell-cli`, `desktop`, `development`, `media`,
-  `comms`, `work` (opt-in per host, from decision D2), `inbox-<hostname>` (see below).
-  Per-package `hooks` handle service enablement next to the package that needs it
-  (e.g. `after_sync` → `systemctl enable`).
+- **Groups** (`groups/*.toml`) = the Story 2.2 purpose groups made executable.
+  **The inventory's fine-grained taxonomy is normative** (grill 2026-07-02): ~16 groups
+  as proposed in [package-inventory.md](./package-inventory.md) — with two renames:
+  core-system → `base`, cloud-infra → `work` (opt-in per class, decision D2) — plus
+  `inbox-<class>` (see below). Fine groups compose better per class (a laptop takes
+  `browsers`/`office` but not `printing`/`virt`/`gaming`) and the per-package triage
+  behind them is already done. Any shorter group list elsewhere in this doc is
+  illustrative. Per-package `hooks` handle service enablement next to the package that
+  needs it (e.g. `after_sync` → `systemctl enable`).
 
 - **Auto-capture of new installs (Aaron's requirement):** a small **yay `PostInstall`
   Lua hook** appends newly *explicitly* installed packages (payload has `reason` +
   `source`, and `local_version` is empty on a first install — upgrades are skipped)
-  that aren't declared in any group to **`groups/inbox-<hostname>.toml`** — one inbox
-  file per host, each host's group list naming only its own (grill 2026-07-02: a single
-  shared `inbox.toml` would auto-*install* untriaged packages onto every other machine
-  at its next `metapac sync`, and is a merge-conflict magnet once a second machine
-  exists). Inbox files stay YADM-tracked so untriaged drift is visible in `yadm status`.
+  that aren't declared in any group to **`groups/inbox-<class>.toml`** — one inbox
+  file per machine, each machine's group list naming only its own (grill 2026-07-02: a
+  single shared `inbox.toml` would auto-*install* untriaged packages onto every other
+  machine at its next `metapac sync`, and is a merge-conflict magnet once a second
+  machine exists; named by *class*, not hostname, because a tracked filename is as
+  public as its contents). Inbox files stay YADM-tracked so untriaged drift is visible
+  in `yadm status`.
   Triage flow: packages land in the host's inbox automatically at install time; Aaron
   periodically moves them to their proper group (or drops them, and `metapac clean`
   proposes the uninstall). Backstop: `metapac unmanaged` catches anything the hook
   misses (e.g. raw `pacman -S` installs, which don't pass through yay hooks).
+
+- **Machine-local group (grill 2026-07-02):** packages whose names must not publish
+  (currently the three org-internal D10 packages from the 2.2 inventory) are declared
+  in a group file at an **absolute path outside the repo** (supported by
+  `hostname_groups`), referenced from the rendered config. Untracked and
+  not durable across a wipe — accepted, because Story 2.11
+  ([#51](https://github.com/amasover/dotfiles/issues/51)) reviews them toward
+  uninstall-or-keep; survivors can move to a YADM-encrypted group if durability is
+  wanted. This keeps `metapac unmanaged` able to reach empty (metapac has **no ignore
+  concept** — verified) without a single org name in a tracked file.
 
 - **Drift loop:** `metapac sync` (declared-but-missing) / `clean` (installed-but-
   undeclared) / `unmanaged` — all show a plan and prompt before acting, which satisfies
@@ -112,12 +133,12 @@ Thin bash, ~50 lines, linear, idempotent by delegation:
 3. `yadm clone` → decrypt secrets → dotfiles + metapac config in place.
    (Decrypt is **passphrase-interactive** — yadm uses default symmetric GPG, no
    `gpg-recipient` configured — so no key-transfer step, but no unattended decrypt.)
-4. **Profile guard (grill 2026-07-02):** if this hostname has no `[hostname_groups]`
-   entry, hard-fail with copy-paste instructions — edit `config.toml`, choose this
-   host's groups, re-run. Without the guard, an unknown hostname makes `sync` a silent
-   no-op and a later `clean` would propose removing everything. Choosing the groups on
-   this line **is** Story 2.3's "desktop optional unless explicitly selected" step; the
-   edit rides back to the repo via a later yadm commit.
+4. **Profile guard (grill 2026-07-02):** if `yadm.class` is unset (or the rendered
+   `config.toml` lacks this hostname), hard-fail with copy-paste instructions —
+   `yadm config local.class <class>`, then `yadm alt` to re-render, re-run. Without
+   the guard, an unmatched hostname makes `sync` a silent no-op and a later `clean`
+   would propose removing everything. Choosing the class **is** Story 2.3's "desktop
+   optional unless explicitly selected" step.
 5. `metapac sync` → all packages incl. AUR (through yay), service hooks fire
 6. quarantine trust state in place (baseline restore/seed — mechanism comes from the
    install-gating prerequisite story, see caveat above)
@@ -133,11 +154,16 @@ workstation once the groups are authored (grill 2026-07-02; ticketed as
 [#48](https://github.com/amasover/dotfiles/issues/48), with the steady-state
 inbox/drift-report loop as Story 2.9, [#49](https://github.com/amasover/dotfiles/issues/49)). Two rules for that window:
 
-- **`metapac clean` is off-limits until `metapac unmanaged` comes back (near-)empty.**
+- **`metapac clean` is off-limits until `metapac unmanaged` comes back exactly empty.**
   While groups are incomplete, `unmanaged` lists hundreds of packages and `clean` would
   offer to uninstall every one of them — a wall-of-yes prompt, not a safety net.
-- **Empty `unmanaged` is the acceptance test for adoption.** Fresh-path validation
-  (the 2.7 VM harness) only means something after live adoption reaches that point.
+- **Exactly empty `unmanaged` is the acceptance test for adoption** (grill 2026-07-02:
+  sharpened from "near-empty" — a tolerated remainder becomes permanent drift-report
+  noise). Every hard case has a declared home: undecided-but-wanted packages are
+  *parked in the inbox*, never-publish names go in the machine-local group, and
+  explicit-marked packages that are really dependencies get gated
+  `pacman -D --asdeps` re-marking. Empty is script-checkable; the 2.7 harness asserts
+  it. Fresh-path validation only means something after live adoption reaches empty.
 
 ## Rejected / deferred (with re-open triggers)
 

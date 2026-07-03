@@ -192,12 +192,15 @@ So that the package manifest is executable and complete — the base for any fut
 
 Issue: [#48](https://github.com/amasover/dotfiles/issues/48) · Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (package layer design; adoption on the live machine). Subsumes the open Story 2.2 follow-up "generate the grouped manifests from live state".
 
+**Working agreement (grill 2026-07-02):** the metapac config layer is inert — placing/editing `~/.config/metapac/*` (including rendering `config.toml##template`) is blanket-authorized for this story's duration. Every *mutating* command (`metapac sync`, `metapac clean`, any package install/removal, `pacman -D` re-marking) stays individually gated; `metapac unmanaged` is read-only and runs freely.
+
 **Acceptance criteria:**
 
 - Given metapac is not yet installed, when the story starts, then metapac is installed through yay (it is itself an AUR package) with explicit approval
-- Given the Story 2.2 inventory, when groups are authored, then `.config/metapac/config.toml` sets `package_manager = "yay"` and `[hostname_groups]` maps this host to its purpose groups (including its own `inbox-<hostname>`), all YADM-tracked
-- Given groups are authored, when adoption iterates, then `metapac unmanaged` comes back (near-)empty — the acceptance test for adoption
-- Given adoption is incomplete, when reconciling, then `metapac clean` is not run (off-limits until `unmanaged` is clean)
+- Given the Story 2.2 inventory, when groups are authored, then the tracked artifact is `.config/metapac/config.toml##template` (yadm template: hostname key rendered from `{{ yadm.hostname }}`, group list selected by `yadm.class`) setting `package_manager = "yay"`, and the rendered `config.toml` stays untracked — no hostname reaches the repo
+- Given a machine needs a profile, when adoption configures it, then `yadm config local.class <class>` selects the group list, and the class (public-safe, unique per machine by convention) also names the machine's inbox group
+- Given groups are authored, when adoption iterates, then `metapac unmanaged` comes back **exactly empty** — the acceptance test for adoption (undecided packages are parked in the inbox; mis-marked explicits get gated `pacman -D --asdeps` re-marking)
+- Given adoption is incomplete, when reconciling, then `metapac clean` is not run (off-limits until `unmanaged` is exactly empty)
 - Given the groups replace them, when adoption completes, then the legacy flat manifests under `.config/dotfiles/arch-packages/` are retired (archived or deleted with a pointer)
 
 **Evidence artifact:** Tracked metapac config + group files; adoption notes.
@@ -214,7 +217,7 @@ Issue: [#49](https://github.com/amasover/dotfiles/issues/49) · Depends on Story
 
 **Acceptance criteria:**
 
-- Given an explicit `yay -S` of a package not declared in any group, when the install succeeds, then a yay `PostInstall` Lua hook appends it to this host's `groups/inbox-<hostname>.toml` (upgrades — non-empty `local_version` — are skipped)
+- Given an explicit `yay -S` of a package not declared in any group, when the install succeeds, then a yay `PostInstall` Lua hook appends it to this machine's `groups/inbox-<class>.toml` (upgrades — non-empty `local_version` — are skipped)
 - Given a package is already declared in any group, when it is installed or synced, then it is not appended to the inbox
 - Given `setup/update` finishes, when the run ends, then a read-only drift report (`metapac unmanaged` + declared-but-missing) prints, ending with the copy-paste `metapac sync` command — no auto-mutation
 - Given raw `pacman -S` installs bypass yay hooks, when documented, then `metapac unmanaged` is the named backstop
@@ -239,6 +242,26 @@ Issue: [#50](https://github.com/amasover/dotfiles/issues/50) · Prerequisite for
 - Given the gate ships, when documented, then the coverage table in `aur-malware-mitigation.md` is updated (the "malicious new package" row becomes covered)
 
 **Evidence artifact:** Hook changes + baseline portability mechanism + updated threat-model doc.
+
+---
+
+### Story 2.11: Review the org-internal AUR packages
+
+As the repo owner,
+I want the three org-internal AUR packages (Story 2.2 D10) given a real disposition,
+So that the last unexplained packages on the machine stop hiding in a needs-verify bucket.
+
+Issue: [#51](https://github.com/amasover/dotfiles/issues/51)
+
+**Redaction rule:** the package names are org-internal — they live only in the gitignored private note (`docs/private/package-inventory-private.md`) and must never appear in tracked files, issues, or chat. Aaron reviews these packages himself, later.
+
+**Acceptance criteria:**
+
+- Given the three D10 packages, when Aaron reviews them, then each gets a disposition: uninstall (gated) or keep-with-reason
+- Given a package is kept, when 2.8's machine-local group is updated, then it stays declared there (or is promoted to a YADM-encrypted group if durability is wanted) — never in tracked plaintext
+- Given a package is uninstalled, when removed, then it leaves the machine-local group and `metapac unmanaged` stays clean
+
+**Evidence artifact:** Updated private note + a redacted disposition line in the inventory doc.
 
 ---
 
