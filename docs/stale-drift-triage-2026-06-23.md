@@ -58,7 +58,7 @@ The split point (merge-base) is `19a7a7e` (2026-06-20), so this is days of drift
 
 ## Privacy flag (separate concern, already on public `main`)
 
-Not introduced by this triage, but noticed: `main`'s `.gitconfig` has a work email (`amadeus.com`) and production gitconfig includes; `.profile`/`.zshrc` reference `wts-*` (work). These are company-internal details in a public repo — worth a pass through the pre-PR privacy workflow, tracked separately.
+Not introduced by this triage, but noticed: `main`'s `.gitconfig` has a work email (work domain — redacted; literal value in git history pending the BFG scrub) and production gitconfig includes; `.profile`/`.zshrc` reference `wts-*` (work). These are company-internal details in a public repo — worth a pass through the pre-PR privacy workflow, tracked separately.
 
 ## Recommended next actions
 
