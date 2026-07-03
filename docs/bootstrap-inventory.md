@@ -206,7 +206,7 @@ plus the broken `.fehbg`.
   ([config:166](../.config/i3/config#L166)); dead `$mod+p` rofi-lpass binding (off lastpass);
   stale polybar themes (`*.bak`, non-active themes).
 - **`.zshrc` dedupe** (Story 3.1): duplicate `dot-src` and other repeated alias blocks.
-- **Privacy** (existing follow-up): `cgbb` alias still names a work `[work-org]` Bitbucket path.
+- **Privacy**: the work-path alias was removed from tracked `.zshrc` in Story 1.8 ([#55](https://github.com/amasover/dotfiles/issues/55)); machine-local aliases now live in untracked `~/.zshrc.local`.
 - **Story 2.2:** rebuild package inventory properly; evaluate **aconfmgr**. Issue [#24](https://github.com/amasover/dotfiles/issues/24).
 - **Story 2.3:** install oh-my-zsh via the official installer (replaces the deleted vendored one).
 - **Fish shell:** Aaron wants to be able to switch zsh→fish later — tracked as a new Epic 3 story.
