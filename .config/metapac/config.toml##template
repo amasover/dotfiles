@@ -1,0 +1,38 @@
+# metapac config — RENDERED BY YADM from config.toml##template (Story 2.8).
+# Do not edit ~/.config/metapac/config.toml directly: edit this template and
+# re-render (yadm alt). The hostname key and $HOME path are filled at render
+# time, so neither reaches the repo (see docs/decision-bootstrap-architecture.md).
+enabled_backends = ["arch"]
+hostname_groups_enabled = true
+
+[arch]
+# yay preserves the Story 2.6 AUR quarantine stack — do not switch this to pacman/paru.
+package_manager = "yay"
+
+[hostname_groups]
+{% if yadm.class == "workstation" %}
+# Class "workstation": the daily driver — every purpose group incl. opt-in `work`.
+# machine-local.toml holds never-publish package names (Story 2.11); metapac errors
+# on a missing group file, so a fresh machine must create it (empty is fine) before
+# the first metapac run — Story 2.3's bootstrap owns that step.
+"{{ yadm.hostname }}" = [
+  "base",
+  "shell-cli",
+  "editor",
+  "desktop",
+  "development",
+  "work",
+  "network-vpn",
+  "media",
+  "comms",
+  "browsers",
+  "office",
+  "printing",
+  "virt",
+  "gaming",
+  "security",
+  "optional",
+  "inbox-workstation",
+  "{{ env.HOME }}/.local/share/metapac/machine-local.toml",
+]
+{% endif %}

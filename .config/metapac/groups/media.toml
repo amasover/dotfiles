@@ -1,0 +1,30 @@
+# metapac group: media — audio/video/image tools, document viewers, screen recording
+# Membership source: docs/package-inventory.md; adopted in Story 2.8.
+# Screen recorders (byzanz/kazam/simplescreenrecorder/kooha) pending Story 3.10 triage.
+[arch]
+packages = [
+  "alsa-utils",
+  "byzanz",
+  "cli-visualizer",
+  "feishin-bin",
+  "ffmpegthumbnailer",
+  "gimp",
+  "guvcview",
+  "imagemagick",
+  "jfbview",
+  "kazam",
+  "kooha",
+  "mpv",
+  "pamixer",
+  "pavucontrol",
+  "perl-image-exiftool",
+  "pipewire-pulse",
+  "playerctl",
+  "simplescreenrecorder",
+  "tesseract",
+  "tidal-hifi-bin",
+  "vlc",
+  "yt-dlp",
+  "zathura",
+  "zathura-ps",
+]
