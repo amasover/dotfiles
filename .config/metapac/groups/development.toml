@@ -1,0 +1,46 @@
+# metapac group: development — languages, runtimes, VCS, containers, dev tools
+# Membership source: docs/package-inventory.md; adopted in Story 2.8.
+# docker/docker-compose are decided drops (D5) — intentionally NOT declared here.
+# nodejs-vmd: KEPT per C3 (.spacemacs markdown preview); tied to Story 3.2.
+# nodejs/npm are managed by nvm (update loop), not pacman — not declared.
+[arch]
+packages = [
+  "ansible",
+  "ansible-aur-git",
+  "aspnet-runtime-9.0-bin",
+  "aspnet-runtime-bin",
+  "bfg",
+  "brew-git",
+  "changie",
+  "chatmcp",
+  "claude-code",
+  "cloc",
+  "debtap",
+  "dotnet-sdk-9.0-bin",
+  "dotnet-sdk-bin",
+  "facter",
+  "git",
+  "git-credential-manager-bin",
+  "github-cli",
+  "go",
+  "go-tools",
+  "golangci-lint-bin",
+  "gource",
+  "graphviz",
+  "groovy",
+  "mercurial",
+  "mono-msbuild",
+  "nodejs-vmd",
+  "nuget",
+  "podman",
+  "powershell-bin",
+  "pyenv",
+  "python-pip",
+  "python-pipx",
+  "python-pymssql",
+  "redis",
+  "rustup",
+  "strace",
+  "unixodbc",
+  "uv",
+]
