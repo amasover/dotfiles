@@ -217,6 +217,26 @@ droppable).
 - **Still open (later pass):** printing stack, `bitlbee`, `antibody`, `sedutil` → keep for now
   (revisit in Story 3.1/3.2). **N1 networking** is now its own story, **3.9** ([#41](https://github.com/amasover/dotfiles/issues/41)).
 
+### Story 2.8 execution addendum (2026-07-02)
+
+Metapac adoption ([#48](https://github.com/amasover/dotfiles/issues/48)) executed the
+outstanding decisions on the live machine (each mutation individually approved):
+
+- **D5/D6 executed:** `docker`, `docker-compose`, `virtualbox`,
+  `virtualbox-host-modules-arch` removed (`pacman -Rns`, 16 packages incl. orphaned
+  private deps). Note: `kind` (work group) optionally used docker as its node provider —
+  it runs against podman via `KIND_EXPERIMENTAL_PROVIDER=podman`.
+- **D9 amended:** `lsdesktopf` is **KEPT** (Aaron: still has utility) — declared in the
+  `optional` group. `python-cbeams-git` removed; restoring cbeams via a custom install is
+  **Story 3.11** ([#52](https://github.com/amasover/dotfiles/issues/52)).
+- **C4 resolved:** `python2-bin` removed — the live `.zshrc` python2-powerline sourcing
+  was already gone (Aaron had cleaned it); python3 powerline setup rides with Story 3.1.
+- **Stale firmware removed:** `ipw2100-fw`, `ipw2200-fw` (2003-era Intel PRO/Wireless).
+- **Mis-marked explicits re-marked** `pacman -D --asdeps`: `harfbuzz`, `pango`.
+- The proposed groups above are now executable metapac groups
+  (`.config/metapac/groups/`); this doc stays as the design/triage record. Adoption
+  evidence: [metapac-adoption-notes.md](./metapac-adoption-notes.md).
+
 ## Dotfile cross-references — removal safety
 
 Aaron's ask: check the *dotfiles*, not just pacman reverse-deps. Grep of the repo + live
