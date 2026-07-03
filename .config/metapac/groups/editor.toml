@@ -1,0 +1,16 @@
+# metapac group: editor — editors and editor tooling
+# Membership source: docs/package-inventory.md; adopted in Story 2.8.
+[arch]
+packages = [
+  "autopep8",
+  "editorconfig-core-c",
+  "emacs",
+  "ex-vi-compat",
+  "gvim",
+  "intellij-idea-community-edition",
+  "nano",
+  "neovim",
+  "nord-vim",
+  "omnisharp-roslyn-bin",
+  "visual-studio-code-bin",
+]
