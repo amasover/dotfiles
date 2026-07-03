@@ -18,11 +18,11 @@ Avoid re-reading `prd.md` end-to-end unless changing product direction.
 
 ## In flight
 
-**Story 2.5 — bootstrap architecture decision** ([#27](https://github.com/amasover/dotfiles/issues/27)), branch `story/2.5-bootstrap-architecture`. Deep-dive done (aconfmgr / decman / metapac / Ansible / pyinfra / home-manager surveyed); **decision drafted** in [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md): **YADM (unchanged) + metapac→yay (declarative packages, preserves the 2.6 quarantine) + thin bash `bootstrap` + `update` stays imperative**; Ansible/pyinfra, aconfmgr (`/etc` pattern), and home-manager/Nix deferred with explicit re-open triggers. Includes Aaron's layered-groups model (universal `base` groups + `hostname_groups` per machine) and a planned **yay `PostInstall` hook auto-capturing new installs into an `inbox.toml`** group for triage. Awaiting Aaron's review → PR.
+**Story 2.5 — bootstrap architecture decision** ([#27](https://github.com/amasover/dotfiles/issues/27)): **merged** ([PR #47](https://github.com/amasover/dotfiles/pull/47), 2026-07-02). Post-merge the record was **grilled** (same day, branch `story/2.5-grill-amendments`) — five sharpenings amended into [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md): (1) quarantine gates *upgrades only*; install-time gating + baseline portability is now **Story 2.10** ([#50](https://github.com/amasover/dotfiles/issues/50)), a prerequisite for metal bootstrap; (2) per-host `inbox-<hostname>.toml` (a shared inbox would auto-install untriaged packages on every machine); (3) steady state = read-only **drift report** at the end of `setup/update`, `sync`/`clean` stay manual; (4) bootstrap gains a **profile guard** (hard-fail if hostname has no `[hostname_groups]` entry); (5) live adoption rules — `clean` off-limits until `unmanaged` is (near-)empty. New `CONTEXT.md` glossary at repo root captures the vocabulary. Verified against sources: yay `PostInstall`/`AURPostDownload` events + metapac config keys all real. **Amendments awaiting their follow-up PR.**
 
-New from 2.5: **Story 2.7** ([#46](https://github.com/amasover/dotfiles/issues/46)) — QEMU fresh-install validation harness (scripted archinstall VM → run bootstrap → verify; the pre-metal gate for 2.3).
+Implementation now split across: **2.8** ([#48](https://github.com/amasover/dotfiles/issues/48)) metapac adoption on the live workstation (subsumes the 2.2 grouped-manifests follow-up) → **2.9** ([#49](https://github.com/amasover/dotfiles/issues/49)) inbox hook + drift report → **2.3** ([#25](https://github.com/amasover/dotfiles/issues/25), narrowed) thin `bootstrap` + runbook → **2.7** ([#46](https://github.com/amasover/dotfiles/issues/46)) QEMU validation harness; **2.10** before metal.
 
-Backlog reminders: **3.9** ([#41](https://github.com/amasover/dotfiles/issues/41)) iwd vs wpa_supplicant; **3.10** ([#42](https://github.com/amasover/dotfiles/issues/42)) screen recorders; **3.1** ([#28](https://github.com/amasover/dotfiles/issues/28)) `.zshrc` cleanup queue. Not yet ticketed from 2.6: clean-chroot AUR builds, fresh-install gating (`AURPostDownload`), popularity-aware holds, paru rebuild (broken: libalpm.so.15).
+Backlog reminders: **3.9** ([#41](https://github.com/amasover/dotfiles/issues/41)) iwd vs wpa_supplicant; **3.10** ([#42](https://github.com/amasover/dotfiles/issues/42)) screen recorders; **3.1** ([#28](https://github.com/amasover/dotfiles/issues/28)) `.zshrc` cleanup queue. Not yet ticketed from 2.6: clean-chroot AUR builds, popularity-aware holds, paru rebuild (broken: libalpm.so.15) — fresh-install gating is now ticketed as 2.10 (#50). Not yet ticketed from 2.5: the interim `/etc` apply script (known gap in the decision doc).
 
 ## Last session (2026-07-01 → 02)
 
@@ -30,8 +30,10 @@ Backlog reminders: **3.9** ([#41](https://github.com/amasover/dotfiles/issues/41
 - Technique discovered: **pkexec for root actions** from the agent shell (polkit GUI dialog; sudo can't prompt there).
 - Started **Story 2.5** (see In flight): tool landscape researched, decision record drafted, Story 2.7 ticketed (#46).
 
+- **2026-07-02 (later):** **2.5 merged** ([PR #47](https://github.com/amasover/dotfiles/pull/47)); then grilled the decision record (`/grill-with-docs`) — five design holes found and amended (see In flight); stories **2.8/2.9/2.10** ticketed (#48–#50) and 2.3 narrowed to bootstrap-script-only; created root `CONTEXT.md` glossary.
+
 **Heads-up for next session:**
-- **2.5:** get the decision record reviewed/merged, then **2.3** implements it (metapac group files from the 2.2 inventory, thin `bootstrap`, inbox auto-capture hook) and **2.7** builds the VM harness.
+- Land the grill-amendments PR (branch `story/2.5-grill-amendments`), then implementation order: **2.8 → 2.9 → 2.3 → 2.7**, with **2.10** before any metal run.
 - The metapac `config.toml` will contain the machine hostname — the work-issued hostname shape should be reviewed in the privacy follow-up before that file is ever committed publicly.
 
 ## Epics

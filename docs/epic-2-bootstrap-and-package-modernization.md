@@ -184,6 +184,64 @@ Issue: [#46](https://github.com/amasover/dotfiles/issues/46) · Design input: [d
 
 ---
 
+### Story 2.8: Adopt metapac on the live workstation
+
+As the repo owner,
+I want the current workstation's packages declared in metapac groups and reconciled,
+So that the package manifest is executable and complete — the base for any future bootstrap.
+
+Issue: [#48](https://github.com/amasover/dotfiles/issues/48) · Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (package layer design; adoption on the live machine). Subsumes the open Story 2.2 follow-up "generate the grouped manifests from live state".
+
+**Acceptance criteria:**
+
+- Given metapac is not yet installed, when the story starts, then metapac is installed through yay (it is itself an AUR package) with explicit approval
+- Given the Story 2.2 inventory, when groups are authored, then `.config/metapac/config.toml` sets `package_manager = "yay"` and `[hostname_groups]` maps this host to its purpose groups (including its own `inbox-<hostname>`), all YADM-tracked
+- Given groups are authored, when adoption iterates, then `metapac unmanaged` comes back (near-)empty — the acceptance test for adoption
+- Given adoption is incomplete, when reconciling, then `metapac clean` is not run (off-limits until `unmanaged` is clean)
+- Given the groups replace them, when adoption completes, then the legacy flat manifests under `.config/dotfiles/arch-packages/` are retired (archived or deleted with a pointer)
+
+**Evidence artifact:** Tracked metapac config + group files; adoption notes.
+
+---
+
+### Story 2.9: Steady-state capture loop (inbox + drift report)
+
+As the repo owner,
+I want ad-hoc installs auto-captured into a per-host inbox and drift reported on every update,
+So that the declared groups stay honest without manual bookkeeping.
+
+Issue: [#49](https://github.com/amasover/dotfiles/issues/49) · Depends on Story 2.8 (groups must exist to check declarations against). Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (auto-capture; drift loop).
+
+**Acceptance criteria:**
+
+- Given an explicit `yay -S` of a package not declared in any group, when the install succeeds, then a yay `PostInstall` Lua hook appends it to this host's `groups/inbox-<hostname>.toml` (upgrades — non-empty `local_version` — are skipped)
+- Given a package is already declared in any group, when it is installed or synced, then it is not appended to the inbox
+- Given `setup/update` finishes, when the run ends, then a read-only drift report (`metapac unmanaged` + declared-but-missing) prints, ending with the copy-paste `metapac sync` command — no auto-mutation
+- Given raw `pacman -S` installs bypass yay hooks, when documented, then `metapac unmanaged` is the named backstop
+
+**Evidence artifact:** Hook addition (`.config/yay/init.lua` or companion), `setup/update` changes, docs.
+
+---
+
+### Story 2.10: AUR install-time gating + portable trust baseline
+
+As the repo owner,
+I want fresh AUR installs gated like upgrades and the trust baseline portable across machines,
+So that a fresh-machine bootstrap doesn't install freshly-weaponized AUR packages ungated.
+
+Issue: [#50](https://github.com/amasover/dotfiles/issues/50) · Prerequisite for the first real-metal `bootstrap` run (Story 2.3); disposable 2.7 VM runs are exempt. Promotes the un-ticketed Story 2.6 follow-up (`AURPostDownload` gating); origin: 2026-07-02 grill of the 2.5 decision. Design input: [aur-malware-mitigation.md](../knowledge/reference/aur-malware-mitigation.md).
+
+**Acceptance criteria:**
+
+- Given an AUR package is being installed for the first time, when it is too new / orphaned / maintainer-changed vs the baseline, then an `AURPostDownload` hook warns and aborts, with an explicit bypass
+- Given the trusted-maintainer baseline is machine-local state today, when this story lands, then the baseline is portable to a new machine (mechanism decided in-story: YADM-tracked, encrypted, or seeded from the repo) so the bootstrap can restore trust state before first use
+- Given the 2.7 harness exists, when a fresh VM bootstrap installs the AUR set, then install-time holds behave as designed
+- Given the gate ships, when documented, then the coverage table in `aur-malware-mitigation.md` is updated (the "malicious new package" row becomes covered)
+
+**Evidence artifact:** Hook changes + baseline portability mechanism + updated threat-model doc.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
