@@ -212,7 +212,6 @@ alias ll="exa -la"
 alias gimme="sudo pacman -S"
 
 alias c="cd ~/code && ll"
-alias cgbb="cd ~/code/go/src/bitbucket.org/[work-org] && ll"
 alias cggh="cd $GOPATH/src/github.com/$GITHUB_ACCOUNT && ll"
 alias vssh="vim ~/.ssh/config"
 alias lssh="ls ~/.ssh"
@@ -348,10 +347,6 @@ if [[ -f /usr/share/bash-completion/completions/az ]]; then
     source /usr/share/bash-completion/completions/az
 fi
 
-## VIM POWERLINE
-if [[ -r ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh ]]; then
-    source ~/.local/lib/python2.7/site-packages/powerline/bindings/zsh/powerline.zsh
-fi
 export ANSIBLE_PLAYBOOKS_DIR=~/code/ansible-playbooks
 
 export PATH=$PATH:/home/han/.local/bin
@@ -367,3 +362,6 @@ tf_version=$(tenv tf detect -q | cut -d ' ' -f2)
 tg_version=$(tenv tg detect -q | cut -d ' ' -f2)
 complete -o nospace -C /home/aaron/.tenv/Terraform/${tf_version}/terraform terraform
 complete -o nospace -C /home/aaron/.tenv/Terragrunt/${tg_version}/terragrunt terragrunt
+
+# machine-local shell config (untracked; machine/site-specific aliases live there)
+[[ -r ~/.zshrc.local ]] && source ~/.zshrc.local
