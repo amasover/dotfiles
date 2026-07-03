@@ -58,7 +58,7 @@
 [pull]
 	rebase = false
 [push]
-	default = upstream
+	default = simple
 [init]
 	defaultBranch = main
 [url "git@ssh.dev.azure.com:v3/[employer-2]"]
