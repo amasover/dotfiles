@@ -49,9 +49,11 @@ as **Story 2.10** ([#50](https://github.com/amasover/dotfiles/issues/50)). Dispo
 
 Config lives in `.config/metapac/` (yadm-tracked → placed on every machine).
 
-- **Universal vs machine-specific** (grill 2026-07-02): metapac offers **no hostname
-  alias or override**, so the config it reads must contain the real hostname — but the
-  repo never needs to. The tracked artifact is a **yadm template**,
+- **Universal vs machine-specific** (grill 2026-07-02): metapac's config offers **no
+  hostname alias** (correction, found during 2.8: v0.9.4 does have a `--hostname` CLI
+  override, but a per-invocation flag would have to reach every future script and hook
+  and fails silently when forgotten — rejected), so the config it reads must contain the
+  real hostname — but the repo never needs to. The tracked artifact is a **yadm template**,
   `config.toml##template`; yadm renders the real `config.toml` (machine-local,
   untracked) at checkout:
 

@@ -230,6 +230,29 @@ reboot — verify post-reboot first. See [package-inventory.md](./package-invent
 
 ---
 
+### Story 3.11: Restore cbeams as a custom optional toy
+
+As the repo owner,
+I want cbeams working again without the dead AUR package,
+So that the terminal toy survives the package cleanup instead of silently disappearing.
+
+Issue: [#52](https://github.com/amasover/dotfiles/issues/52)
+
+Origin: Story 2.8 adoption — `python-cbeams-git` (AUR, python2-era, last touched 2021) was
+uninstalled per inventory decision D9. Aaron wants the functionality back via a custom
+install (e.g. `pipx` from upstream git, a python3-compatible fork, or a vendored script)
+rather than the stale AUR build.
+
+**Acceptance criteria:**
+
+- Given the AUR package is gone, when an install method is chosen (pipx / git fork / vendored), then cbeams runs on python3 on the live machine
+- Given the install is custom (not pacman), when it lands, then the method is captured in bootstrap docs or an optional setup script — not in metapac groups
+- Given metapac owns pacman state, when this lands, then `metapac unmanaged` stays exactly empty
+
+**Evidence artifact:** Working cbeams + documented install method.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely

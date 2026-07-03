@@ -1,0 +1,10 @@
+# metapac group: printing — CUPS stack (inventory open item Q6: keep for now)
+# Membership source: docs/package-inventory.md; adopted in Story 2.8.
+[arch]
+packages = [
+  "cups",
+  "foomatic-db",
+  "gutenprint",
+  "hplip",
+  "system-config-printer",
+]
