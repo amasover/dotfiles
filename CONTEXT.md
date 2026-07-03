@@ -38,8 +38,19 @@ _Avoid_: sync report, audit
 
 **Inbox**:
 The per-machine holding group where newly installed, not-yet-categorized packages land
-automatically until triaged into a purpose group. One inbox per host; never shared.
+automatically until triaged into a purpose group. One inbox per machine, named by its
+class; never shared.
 _Avoid_: uncategorized, misc, staging
+
+**Machine-local group**:
+A group that exists only on one machine, outside the repo, for packages whose names
+must never publish. Declared so reconciliation stays honest, but never tracked.
+_Avoid_: private group (ambiguous with encrypted), shadow list
+
+**Machine class**:
+A machine's public-safe label, unique per machine by convention. Selects the machine's
+purpose groups and names its inbox; stands in wherever the real hostname must not appear.
+_Avoid_: hostname (private), profile name, role
 
 **Purpose group**:
 A named, declarative set of packages serving one role (base, desktop, development, …).
