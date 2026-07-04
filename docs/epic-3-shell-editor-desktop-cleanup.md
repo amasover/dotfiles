@@ -98,13 +98,13 @@ Issue: [#30](https://github.com/amasover/dotfiles/issues/30)
 
 ---
 
-### Story 3.4: Inventory helper scripts
+### Story 3.4: Inventory helper scripts ✅
 
 As the repo owner,
 I want personal helper scripts categorized,
 So that useful tools are discoverable and risky scripts are labeled.
 
-Issue: [#31](https://github.com/amasover/dotfiles/issues/31)
+Issue: [#31](https://github.com/amasover/dotfiles/issues/31) (closed, PR [#38](https://github.com/amasover/dotfiles/pull/38))
 
 **Acceptance criteria:**
 
@@ -134,9 +134,9 @@ Issue: [#32](https://github.com/amasover/dotfiles/issues/32)
 
 ---
 
-### Story 3.6: Triage stale test-laptop drift for salvage
+### Story 3.6: Triage stale test-laptop drift for salvage ✅
 
-**Issue:** [#10](https://github.com/amasover/dotfiles/issues/10)
+**Issue:** [#10](https://github.com/amasover/dotfiles/issues/10) (closed, PR [#11](https://github.com/amasover/dotfiles/pull/11))
 
 As the repo owner,
 I want the archived test-laptop drift triaged file-by-file,
@@ -250,6 +250,38 @@ rather than the stale AUR build.
 - Given metapac owns pacman state, when this lands, then `metapac unmanaged` stays exactly empty
 
 **Evidence artifact:** Working cbeams + documented install method.
+
+---
+
+### Story 3.12: Replace 2019 Go audio tools (dot, volume-go) with wpctl
+
+As the repo owner,
+I want the volume keys and the polybar output switcher talking to PipeWire directly,
+So that the audio stack stops depending on unmaintained 2019 Go binaries that no bootstrap can rebuild.
+
+Issue: [#59](https://github.com/amasover/dotfiles/issues/59)
+
+Origin: Story 3.4 follow-ups, sharpened by the 2026-07-03 old-install audit. Live consumers
+of the two 2019 binaries in `~/code/go/bin/`:
+
+- `tools/polybar_alsa_module` (the `alsa-switch` module of the **active** nord-arrow theme)
+  polls `dot sound port` every 0.5s — the read works, but the click-to-switch path uses
+  `pacmd` (PulseAudio), gone under PipeWire, so switching is likely already broken.
+- The i3 `XF86AudioRaise/LowerVolume` bindings run `volume up/down 3` +
+  `volnoti-show $(volume get)` ([config:353](../.config/i3/config#L353)) — volume-go.
+  Mute already migrated to `wpctl` in Story 3.4.
+- Neither binary is rebuildable in practice: `go get -u` stopped installing binaries in
+  Go 1.18, and `patrick-motard/dot` last saw a push in December 2019.
+
+**Acceptance criteria:**
+
+- Given the polybar switcher, when rewritten against `wpctl`/`pamixer`, then the current-output icon and click-to-switch both work on the live machine and no `dot`/`pacmd` calls remain
+- Given the i3 volume keys, when rebound to `wpctl` (or `pamixer`), then volume up/down and the volnoti OSD still work
+- Given no consumers remain (grep repo + live `$HOME`), when the story lands, then `tools/dot-update` is deleted, the duplicate `dot-src` aliases go (with or ahead of the 3.1 dedupe), and the 2019 binaries are retired from `~/code/go/bin/`
+- Given `pulseaudio-tail.sh` already speaks PipeWire, when the audio modules are touched, then it is renamed to match (folds in the cosmetic 3.4 follow-up)
+- Given Story 2.13 excludes audio Go tools from the bootstrap, when this lands, then a fresh machine needs no Go audio artifacts at all — the last old-install audio gap closes
+
+**Evidence artifact:** Working volume keys + output switcher on the live machine; updated follow-ups in the bootstrap inventory.
 
 ---
 

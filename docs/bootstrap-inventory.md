@@ -34,10 +34,17 @@ bootstrap rewrite is **Story 2.3** — see [bootstrap architecture notes](./boot
 | `lib.sh` | **legacy** | Shared helper sourced by `install`/`update`. Single function `install_pacman_packages`. | `yay -S` per line of the `arch-packages/pacman` manifest. |
 | `update` | **current** | Daily "update everything" driver (modified 2026-06-23). | `yay -Syu` (system + AUR), `git pull` oh-my-zsh & Spacemacs, `antibody update`, `nvm`/`npm`/`yarn`/`pipx`/`uv` updates, `az extension update`, `tenv` (terraform/atmos), `vim VundleUpdate`. Interactive (Spacemacs prompt); holds sudo open via keepalive loop. |
 
-### `install` — do NOT run
+### `install` — RETIRED (Story 2.3, 2026-07-03)
 
-`install` is effectively unrunnable and must not be executed. Beyond the destructive
-ops above, it is internally broken:
+Deleted from the repo along with `lib.sh` (its `install_pacman_packages` read the
+`arch-packages/pacman` manifest retired in Story 2.8; `update` sourced but never
+called it). Replaced by [`setup/bootstrap`](../.local/bin/setup/bootstrap) +
+[runbook](./runbook-fresh-machine-bootstrap.md). The autopsy below is kept as the
+design record; history via `git log -- .local/bin/setup/install`. The `install:` line
+links below are dead by design.
+
+`install` was effectively unrunnable and must not be executed. Beyond the destructive
+ops above, it was internally broken:
 
 - `uninstall_deprecated_packages()` and `slow_aur_packages` are each **defined twice**
   (copy-paste); the second `uninstall_deprecated_packages` runs `sudo pacman -R --noconfirm`
@@ -198,10 +205,16 @@ plus the broken `.fehbg`.
 ## Remaining follow-ups
 
 - **Fix `polybar_alsa_module` switch**: `pacmd` (PulseAudio) → `wpctl`/`pamixer` (PipeWire);
-  the `dot sound port` read works, the click-to-switch likely doesn't.
-- **Retire `volume-go`** (`~/code/go/bin/volume`, 2019) in favor of `wpctl`/`pamixer`
-  (Epic 3); it still backs i3 volume up/down keys.
-- **Rename `pulseaudio-tail.sh`** to reflect PipeWire (cosmetic; Epic 3).
+  the `dot sound port` read works, the click-to-switch likely doesn't. → now **Story 3.12**
+  ([#59](https://github.com/amasover/dotfiles/issues/59)).
+- **Retire `volume-go`** (`~/code/go/bin/volume`, 2019) in favor of `wpctl`/`pamixer`;
+  it still backs i3 volume up/down keys. → Story 3.12 ([#59](https://github.com/amasover/dotfiles/issues/59)).
+- **Rename `pulseaudio-tail.sh`** to reflect PipeWire (cosmetic). → folded into Story 3.12.
+- **Old-install audit (2026-07-03):** the retired 2019 `install` also placed git-clone
+  artifacts nothing reinstalls — oh-my-zsh custom plugins (`zsh-autosuggestions`,
+  `zsh-nvm`→nvm), Vundle (`vendor_repos` clones it but nothing calls vendor_repos; its
+  polybar-scripts entry is dead — not cloned live, referenced by no config), Spacemacs
+  `~/.emacs.d`. → **Story 2.13** ([#60](https://github.com/amasover/dotfiles/issues/60)).
 - **Dead desktop config** (Epic 3 / Story 3.3): termite dropdown binding in i3
   ([config:166](../.config/i3/config#L166)); dead `$mod+p` rofi-lpass binding (off lastpass);
   stale polybar themes (`*.bak`, non-active themes).
