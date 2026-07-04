@@ -294,6 +294,49 @@ same TOML), not new groups.
 
 ---
 
+### Story 2.13: Close non-package bootstrap gaps (cloned shell/editor artifacts)
+
+As the repo owner,
+I want the git-cloned artifacts that `.zshrc` and the editors depend on placed by the bootstrap (or explicitly runbook'd),
+So that a fresh machine boots into a working shell and editors, not just the right package set.
+
+Issue: [#60](https://github.com/amasover/dotfiles/issues/60) · Blocked on Story 2.3
+([#25](https://github.com/amasover/dotfiles/issues/25), PR [#58](https://github.com/amasover/dotfiles/pull/58))
+merging — it owns `setup/bootstrap`; branch off `main` afterwards (no stacked PRs).
+
+Origin: 2026-07-03 audit of the retired 2019 `install` script against the live machine
+("what did the old script install that survives and nothing reinstalls?"). metapac covers
+every package (2.8) and Story 2.12 covers backend-managed tools; what's left is git-clone
+artifacts that are live and load-bearing but installed by nothing:
+
+- **oh-my-zsh custom plugins** — `~/.oh-my-zsh/custom/plugins/{zsh-autosuggestions,zsh-nvm}`;
+  both are in `.zshrc` `plugins=(…)`, and zsh-nvm is what provides nvm/node at all. On a
+  fresh machine the bootstrap's oh-my-zsh step leaves plugin-not-found warnings and no nvm.
+- **Vundle** — `~/.vim/bundle/Vundle.vim`, required by `.vimrc`. `tools/vendor_repos`
+  clones it idempotently, but nothing calls vendor_repos. (Its other entry — polybar-scripts
+  community-modules — is dead: not cloned live, referenced by no polybar config.)
+- **Spacemacs** — `~/.emacs.d` is a live clone and `setup/update` still pulls it, but only
+  the deleted 2019 installer ever created it. Needs a disposition (bootstrap / runbook /
+  retire with the Story 3.2 editor call), not silence.
+
+Deliberately out of scope: the 2019 Go audio binaries (`dot`, `volume`) — Story 3.12
+([#59](https://github.com/amasover/dotfiles/issues/59)) retires them in favor of wpctl
+instead of teaching the bootstrap to rebuild them; the python3.7–3.10-era
+`pip install --user` leftovers stay dead; one-time niceties (default browser via
+`xdg-settings`) are runbook material at most.
+
+**Acceptance criteria:**
+
+- Given a fresh machine after `bootstrap`, when an interactive zsh starts, then both custom plugins are present, no plugin-not-found warnings appear, and nvm resolves
+- Given `vendor_repos` half-overlaps this story, when it lands, then vendored clones have exactly one owner (bootstrap absorbs or calls vendor_repos) and the dead polybar-scripts entry is dropped or justified
+- Given Spacemacs is legacy-era, when this story lands, then `~/.emacs.d` has an explicit disposition with Aaron rather than an implicit gap
+- Given the fresh-machine runbook is the operator contract, when gaps close, then its step list reflects the new coverage and the remaining manual one-times
+- Given Story 2.7's harness exists, when this lands, then a VM run (or at minimum `--check`) demonstrates the added steps
+
+**Evidence artifact:** Updated `setup/bootstrap` + fresh-machine runbook; disposition notes here or in the bootstrap inventory.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

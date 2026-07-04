@@ -198,10 +198,16 @@ plus the broken `.fehbg`.
 ## Remaining follow-ups
 
 - **Fix `polybar_alsa_module` switch**: `pacmd` (PulseAudio) → `wpctl`/`pamixer` (PipeWire);
-  the `dot sound port` read works, the click-to-switch likely doesn't.
-- **Retire `volume-go`** (`~/code/go/bin/volume`, 2019) in favor of `wpctl`/`pamixer`
-  (Epic 3); it still backs i3 volume up/down keys.
-- **Rename `pulseaudio-tail.sh`** to reflect PipeWire (cosmetic; Epic 3).
+  the `dot sound port` read works, the click-to-switch likely doesn't. → now **Story 3.12**
+  ([#59](https://github.com/amasover/dotfiles/issues/59)).
+- **Retire `volume-go`** (`~/code/go/bin/volume`, 2019) in favor of `wpctl`/`pamixer`;
+  it still backs i3 volume up/down keys. → Story 3.12 ([#59](https://github.com/amasover/dotfiles/issues/59)).
+- **Rename `pulseaudio-tail.sh`** to reflect PipeWire (cosmetic). → folded into Story 3.12.
+- **Old-install audit (2026-07-03):** the retired 2019 `install` also placed git-clone
+  artifacts nothing reinstalls — oh-my-zsh custom plugins (`zsh-autosuggestions`,
+  `zsh-nvm`→nvm), Vundle (`vendor_repos` clones it but nothing calls vendor_repos; its
+  polybar-scripts entry is dead — not cloned live, referenced by no config), Spacemacs
+  `~/.emacs.d`. → **Story 2.13** ([#60](https://github.com/amasover/dotfiles/issues/60)).
 - **Dead desktop config** (Epic 3 / Story 3.3): termite dropdown binding in i3
   ([config:166](../.config/i3/config#L166)); dead `$mod+p` rofi-lpass binding (off lastpass);
   stale polybar themes (`*.bak`, non-active themes).
