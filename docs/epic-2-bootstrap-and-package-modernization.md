@@ -394,6 +394,23 @@ Issue: [#64](https://github.com/amasover/dotfiles/issues/64) · Origin: 2.7 VM v
 
 ---
 
+### Story 2.17: Fix the issues observed in the first fully-bootstrapped VM
+
+As the repo owner,
+I want the UI-level issues I saw in the first fully-bootstrapped VM's session fixed,
+So that a fresh machine boots into a desktop that's actually right, not just package-complete.
+
+Issue: [#65](https://github.com/amasover/dotfiles/issues/65) · Tracking story so 2.7 closes on its own acceptance (exactly-empty `unmanaged` + reachable session). **Specifics enumerated by Aaron at pickup** — observed via the virt-manager console after the 2026-07-04 acceptance run; the issue holds working notes (reproduction, likely fix destinations, overlap check with Story 2.13's known cloned-artifact gaps).
+
+**Acceptance criteria:**
+
+- Given Aaron's observed-issue list, when triaged, then each is fixed here or explicitly routed to its owning story (2.13 gaps, group membership, service-enablement hooks, desktop config)
+- Given fixes land, when a VM session is re-inspected (revived or fresh run), then the observed issues are gone
+
+**Evidence artifact:** Triaged issue list + fixes + re-validated VM session.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
