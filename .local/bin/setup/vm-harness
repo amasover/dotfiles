@@ -66,43 +66,67 @@ write_seed() {
     local d="$WORKDIR/seed"
     rm -rf "$d"; mkdir -p "$d"
 
-    # archinstall answers: UEFI/systemd-boot, ext4 best-effort on vda, hostname,
-    # user with sudo, sshd enabled. Kept minimal — everything else is bootstrap's job.
+    # archinstall answers in the RELEASE 4.4 dialect (the ISO's version — master's
+    # sample config differs; see runbook "schema skew"). UEFI/systemd-boot, explicit
+    # ESP+root on vda, sshd enabled via chroot custom_commands. Passwords ship as
+    # SHA512 crypt hashes (4.4 creds schema).
+    local pass_hash
+    pass_hash=$(openssl passwd -6 "$VM_PASS")
+    # Host pubkey → VM authorized_keys, so harness ssh steps never need a password.
+    local host_pubkey="" k
+    for k in "$HOME"/.ssh/id_*.pub; do
+        [[ -f "$k" ]] && { host_pubkey=$(<"$k"); break; }
+    done
     cat > "$d/user_configuration.json" <<JSON
 {
-  "config_version": "3.0.9",
+  "version": "2.8.6",
   "archinstall-language": "English",
-  "bootloader": "Systemd-boot",
+  "bootloader_config": {"bootloader": "Systemd-boot", "uki": false, "removable": false},
   "hostname": "$VM_HOST",
   "kernels": ["linux"],
-  "locale_config": {"kb_layout": "us", "sys_enc": "UTF-8", "sys_lang": "en_US.UTF-8"},
-  "mirror_config": null,
+  "locale_config": {"kb_layout": "us", "sys_enc": "UTF-8", "sys_lang": "en_US"},
   "network_config": {"type": "iso"},
   "ntp": true,
   "packages": ["git", "base-devel", "yadm", "openssh"],
-  "swap": true,
+  "swap": {"enabled": true},
   "timezone": "UTC",
   "disk_config": {
     "config_type": "default_layout",
     "device_modifications": [{
       "device": "/dev/vda",
       "wipe": true,
-      "partitions": []
+      "partitions": [
+        {
+          "obj_id": "11111111-1111-1111-1111-111111111111",
+          "status": "create", "type": "primary", "dev_path": null,
+          "start": {"unit": "MiB", "value": 1, "sector_size": {"value": 512, "unit": "B"}},
+          "size":  {"unit": "MiB", "value": 1023, "sector_size": {"value": 512, "unit": "B"}},
+          "fs_type": "fat32", "flags": ["boot", "esp"], "btrfs": [],
+          "mount_options": [], "mountpoint": "/boot"
+        },
+        {
+          "obj_id": "22222222-2222-2222-2222-222222222222",
+          "status": "create", "type": "primary", "dev_path": null,
+          "start": {"unit": "MiB", "value": 1024, "sector_size": {"value": 512, "unit": "B"}},
+          "size":  {"unit": "GiB", "value": 38, "sector_size": {"value": 512, "unit": "B"}},
+          "fs_type": "ext4", "flags": [], "btrfs": [],
+          "mount_options": [], "mountpoint": "/"
+        }
+      ]
     }]
   },
-  "disk_encryption": null,
-  "profile_config": null,
-  "services": ["sshd"],
   "custom_commands": [
+    "systemctl enable sshd",
     "chsh -s /usr/bin/zsh $VM_USER || true",
-    "echo '$VM_USER ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/90-harness"
+    "echo '$VM_USER ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/90-harness",
+    "install -d -m 700 /home/$VM_USER/.ssh && echo '$host_pubkey' > /home/$VM_USER/.ssh/authorized_keys && chmod 600 /home/$VM_USER/.ssh/authorized_keys && chown -R $VM_USER: /home/$VM_USER/.ssh"
   ]
 }
 JSON
     cat > "$d/user_credentials.json" <<JSON
 {
-  "!root-password": "$VM_PASS",
-  "!users": [{"username": "$VM_USER", "!password": "$VM_PASS", "sudo": true}]
+  "root_enc_password": "$pass_hash",
+  "users": [{"username": "$VM_USER", "enc_password": "$pass_hash", "sudo": true}]
 }
 JSON
 
@@ -122,7 +146,8 @@ write_files:
     encoding: b64
     content: $(base64 -w0 "$d/user_credentials.json")
 runcmd:
-  - [sh, -c, "archinstall --config /root/user_configuration.json --creds /root/user_credentials.json --silent > /dev/ttyS0 2>&1; systemctl poweroff"]
+  - [sh, -c, "echo HARNESS-RUNCMD-START > /dev/ttyS0"]
+  - [sh, -c, "archinstall --config /root/user_configuration.json --creds /root/user_credentials.json --silent > /dev/ttyS0 2>&1; rc=\$?; echo HARNESS-ARCHINSTALL-EXIT:\$rc > /dev/ttyS0; if [ \$rc -ne 0 ]; then tail -n 80 /var/log/archinstall/install.log > /dev/ttyS0 2>&1; fi; systemctl poweroff"]
 EOF
 
     local mkiso
