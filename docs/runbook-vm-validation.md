@@ -42,6 +42,32 @@ serial logs in `~/.local/share/bootstrap-harness/`. Throwaway credentials
 - **The acceptance assert:** `vm-harness check` fails unless `metapac unmanaged` is
   exactly empty — same bar as live adoption (Story 2.8).
 
+## archinstall schema skew (debugging record, 2026-07-03)
+
+The seed config targets the **release** on the ISO (4.4 at first build), whose JSON
+dialect differs from archinstall's master-branch sample — validating against the
+wrong one cost five iterations. Release-4.4 facts, all verified the hard way:
+
+- `version` (e.g. `"2.8.6"`), not `config_version`; `bootloader_config` object, not
+  a `bootloader` string; `swap` is `{"enabled": true}`, not a bool.
+- Credentials ship as SHA512-crypt **hashes**: `users[].enc_password` +
+  `root_enc_password` (no plaintext `!password` keys).
+- Partitions need `dev_path` present, `sector_size` as a real `{value, unit}` object
+  (`null` crashes), no `Percent` size unit, **non-overlapping ranges** (1MiB + 1GiB
+  ESP overlaps a root starting at 1GiB), and the ESP wants the **`esp` flag** —
+  `boot` alone leaves bootctl unable to detect the ESP after pacstrap.
+- **Failure visibility:** archinstall's late-stage errors print via its TUI to the
+  VGA console — invisible on serial even with stdout/stderr redirected. The seed's
+  `runcmd` therefore emits `HARNESS-RUNCMD-START` / `HARNESS-ARCHINSTALL-EXIT:<rc>`
+  markers and dumps the archinstall log tail to serial on failure. When that still
+  isn't enough: boot the ISO with a debug seed (root `ssh_authorized_keys`, no
+  runcmd), ssh in, and run archinstall by hand on a real pty — that's how
+  "Partitions overlap" and the ESP error finally surfaced.
+
+On an ISO refresh (`vm-harness fetch`), expect this section to need re-verification
+against the new release's `examples/config-sample.json` **at its git tag** — never
+master.
+
 ## Expectations / known wrinkles
 
 - `vm-harness bootstrap` is **attended**: `metapac sync` shows its plan and prompts,
