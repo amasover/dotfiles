@@ -117,6 +117,13 @@ master.
 - Install-time AUR gating does not exist until **2.10** — VM runs accept that risk
   by design; metal runs do not (bootstrap's metal gate).
 
+- **Interrupted runs leave scars** (seen while iterating): repo providers fill deps
+  of partially-installed AUR families (`dotnet-host` vs `dotnet-host-bin`, rust vs
+  rustup) and failed builds leave requirer-less explicit deps (`gtk2` from a
+  colorpicker attempt) plus corrupt `.pkg.tar.zst` archives. The retry loop purges
+  corrupt archives and bootstrap normalizes install reasons; anything else → the
+  clean answer is `destroy` + a fresh single-pass run.
+
 ## Resetting
 
 `vm-harness destroy` removes the whole VM state; `create` starts pristine. The only
