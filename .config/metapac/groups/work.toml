@@ -24,7 +24,6 @@ packages = [
   "storageexplorer",
   "tenv-bin",
   "terraform-ls-bin",
-  "uplink",
   "wstunnel-bin",
   "yor-bin",
 ]
