@@ -220,6 +220,7 @@ Issue: [#49](https://github.com/amasover/dotfiles/issues/49) · Depends on Story
 - Given an explicit `yay -S` of a package not declared in any group, when the install succeeds, then a yay `PostInstall` Lua hook appends it to this machine's `groups/inbox-<class>.toml` (upgrades — non-empty `local_version` — are skipped)
 - Given a package is already declared in any group, when it is installed or synced, then it is not appended to the inbox
 - Given `setup/update` finishes, when the run ends, then a read-only drift report (`metapac unmanaged` + declared-but-missing) prints, ending with the copy-paste `metapac sync` command — no auto-mutation
+- Given the inbox holds untriaged packages, when the drift report prints, then it includes an **inbox-triage section** (count, names, file to edit) — the periodic review nudge; inboxed packages are declared, so `unmanaged` alone would never surface them (amended 2026-07-03, Aaron's question during 2.9 kickoff)
 - Given raw `pacman -S` installs bypass yay hooks, when documented, then `metapac unmanaged` is the named backstop
 
 **Evidence artifact:** Hook addition (`.config/yay/init.lua` or companion), `setup/update` changes, docs.
