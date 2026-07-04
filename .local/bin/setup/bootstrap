@@ -123,6 +123,18 @@ else
     yay -S --needed "${NC[@]}" metapac
 fi
 
+# --- 5b. multilib (lib32-* packages in the desktop group need it) -------------
+say "multilib repo"
+if grep -q '^\[multilib\]' /etc/pacman.conf; then
+    echo "  already enabled"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: enable [multilib] in /etc/pacman.conf + pacman -Sy"
+else
+    sudo sed -i '/^#\[multilib\]/,+1 s/^#//' /etc/pacman.conf
+    grep -q '^\[multilib\]' /etc/pacman.conf || die "failed to enable [multilib] in /etc/pacman.conf"
+    sudo pacman -Sy
+fi
+
 # --- 6. reconcile: the fresh install is just the first reconcile --------------
 say "Package reconcile (metapac shows its plan and prompts)"
 if [[ $CHECK -eq 1 ]]; then
