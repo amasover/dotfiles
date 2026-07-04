@@ -337,6 +337,26 @@ instead of teaching the bootstrap to rebuild them; the python3.7–3.10-era
 
 ---
 
+### Story 2.14: Vendor the openconnect-service PKGBUILD into dotfiles
+
+As the repo owner,
+I want the dead-upstream VPN service package rebuildable from my own repo,
+So that the work-VPN stack survives a fresh machine instead of living only as an orphaned install.
+
+Issue: [#62](https://github.com/amasover/dotfiles/issues/62) · Origin: Story 2.7 VM validation caught `openconnect-service` as AUR-deleted while its socket unit is live infrastructure (the untracked `~/.local/bin/tools/vpn` script drives it). Upstream PKGBUILD source: [WarheadsSE/PKGs](https://github.com/WarheadsSE/PKGs/tree/master/openconnect-service) (Aaron's original source).
+
+**Acceptance criteria:**
+
+- Given the upstream PKGBUILD, when vendored, then it lives at a yadm-tracked path with provenance and license recorded
+- Given a machine needs the VPN stack, when setup runs, then the package builds/installs via `makepkg -si` as a (class-gated if work-only) setup step
+- Given metapac ≥0.10 validates group names against repos/AUR, when the locally-built package is declared, then it lives in the machine's machine-local group (or a cleaner mechanism found in-story) — never a tracked group
+- Given the live `vpn` script references the work VPN hostname, when adopted, then the hostname is externalized to an untracked or YADM-encrypted file — never tracked plaintext
+- Given the site config in `/etc/openconnect/`, when handled, then it stays machine-local or YADM-encrypted
+
+**Evidence artifact:** Vendored PKGBUILD + setup step + adopted `vpn` script with externalized config.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
