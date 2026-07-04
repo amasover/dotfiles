@@ -68,13 +68,13 @@ other. Status does not live in the `.md`; the spec does not live in the issue.
 
 ## Stories
 
-### Story 4.1: Adopt GitHub Projects as the tracking source of truth
+### Story 4.1: Adopt GitHub Projects as the tracking source of truth ✅
 
 As the repo owner,
 I want work tracked on a GitHub Projects board with an issue and PR per story,
 So that the board is the single source of truth for status instead of `.md` files drifting.
 
-Issue: [#8](https://github.com/amasover/dotfiles/issues/8)
+Issue: [#8](https://github.com/amasover/dotfiles/issues/8) (closed, PR [#9](https://github.com/amasover/dotfiles/pull/9))
 
 **Acceptance criteria:**
 
@@ -161,9 +161,9 @@ Issue: [#36](https://github.com/amasover/dotfiles/issues/36)
 
 ---
 
-### Story 4.6: Codify always-PR-to-main rule and add CLAUDE.md
+### Story 4.6: Codify always-PR-to-main rule and add CLAUDE.md ✅
 
-**Issue:** [#12](https://github.com/amasover/dotfiles/issues/12)
+**Issue:** [#12](https://github.com/amasover/dotfiles/issues/12) (closed, PR [#13](https://github.com/amasover/dotfiles/pull/13))
 
 As the repo owner,
 I want the PR-to-main rule codified and the instructions auto-loaded,

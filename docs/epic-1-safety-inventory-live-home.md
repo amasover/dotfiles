@@ -44,13 +44,13 @@ The repo sat idle for years while the live workstation kept changing, so the fir
 
 ## Stories
 
-### Story 1.1: Capture YADM current state
+### Story 1.1: Capture YADM current state ✅
 
 As the repo owner,
 I want a read-only summary of YADM status and diffs,
 So that I can understand unsynced work before staging anything.
 
-Issue: [#19](https://github.com/amasover/dotfiles/issues/19)
+Issue: [#19](https://github.com/amasover/dotfiles/issues/19) (closed)
 
 **Acceptance criteria:**
 
@@ -62,13 +62,13 @@ Issue: [#19](https://github.com/amasover/dotfiles/issues/19)
 
 ---
 
-### Story 1.2: Build the live-home reconciliation list
+### Story 1.2: Build the live-home reconciliation list ✅
 
 As the repo owner,
 I want tracked files mapped to `$HOME`,
 So that cleanup decisions reflect the actual workstation.
 
-Issue: [#20](https://github.com/amasover/dotfiles/issues/20)
+Issue: [#20](https://github.com/amasover/dotfiles/issues/20) (closed)
 
 **Acceptance criteria:**
 
@@ -80,13 +80,13 @@ Issue: [#20](https://github.com/amasover/dotfiles/issues/20)
 
 ---
 
-### Story 1.3: Review YADM encryption coverage
+### Story 1.3: Review YADM encryption coverage ✅
 
 As the repo owner,
 I want sensitive paths covered by YADM encryption,
 So that local secrets can be backed up without plaintext exposure.
 
-Issue: [#21](https://github.com/amasover/dotfiles/issues/21)
+Issue: [#21](https://github.com/amasover/dotfiles/issues/21) (closed)
 
 **Acceptance criteria:**
 
@@ -98,7 +98,7 @@ Issue: [#21](https://github.com/amasover/dotfiles/issues/21)
 
 ---
 
-### Story 1.4: Run or select a secret scan process
+### Story 1.4: Run or select a secret scan process ✅
 
 As the repo owner,
 I want a repeatable secret scan before commits,
@@ -110,19 +110,19 @@ So that historical cleanup does not accidentally publish sensitive material.
 - Given no scanner is installed, when Release 1 finishes, then a recommended scanner and manual fallback process are documented
 - Given a finding is likely a false positive, when it is dismissed, then the reason is documented
 
-**Issue:** [#5](https://github.com/amasover/dotfiles/issues/5) — status on the [board](https://github.com/users/amasover/projects/1/views/1)
+**Issue:** [#5](https://github.com/amasover/dotfiles/issues/5) (closed, PR [#6](https://github.com/amasover/dotfiles/pull/6)) — status on the [board](https://github.com/users/amasover/projects/1/views/1)
 
 **Evidence artifact:** [Secret scan recipe](../knowledge/recipes/secret-scan.md) (includes scan evidence and manual fallback)
 
 ---
 
-### Story 1.5: Create the first safe commit sequence
+### Story 1.5: Create the first safe commit sequence ✅
 
 As the repo owner,
 I want cleanup commits ordered by risk,
 So that syncing changes is reviewable and reversible.
 
-Issue: [#22](https://github.com/amasover/dotfiles/issues/22)
+Issue: [#22](https://github.com/amasover/dotfiles/issues/22) (closed)
 
 **Acceptance criteria:**
 
@@ -134,13 +134,13 @@ Issue: [#22](https://github.com/amasover/dotfiles/issues/22)
 
 ---
 
-### Story 1.6: Upgrade YADM legacy paths and establish local tracking
+### Story 1.6: Upgrade YADM legacy paths and establish local tracking ✅
 
 As the repo owner,
 I want YADM's legacy data paths upgraded and cleanup work committed locally in small steps,
 So that future reconciliation can use normal YADM commands and the repo has recoverable checkpoints before any remote workflow is formalized.
 
-Issue: [#23](https://github.com/amasover/dotfiles/issues/23)
+Issue: [#23](https://github.com/amasover/dotfiles/issues/23) (closed)
 
 **Acceptance criteria:**
 

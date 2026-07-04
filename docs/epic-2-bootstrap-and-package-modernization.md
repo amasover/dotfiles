@@ -44,13 +44,13 @@ The bootstrap material (`install.md`, `.local/bin/setup/install` + `update`, `.c
 
 ## Stories
 
-### Story 2.1: Classify setup scripts
+### Story 2.1: Classify setup scripts ✅
 
 As the repo owner,
 I want every setup script classified by safety and currentness,
 So that I know what can be inspected, tested, rewritten, or archived.
 
-Issue: [#16](https://github.com/amasover/dotfiles/issues/16) · Artifact: [bootstrap-inventory.md](./bootstrap-inventory.md)
+Issue: [#16](https://github.com/amasover/dotfiles/issues/16) (closed, PR [#18](https://github.com/amasover/dotfiles/pull/18)) · Artifact: [bootstrap-inventory.md](./bootstrap-inventory.md)
 
 **Acceptance criteria:**
 
@@ -62,13 +62,13 @@ Issue: [#16](https://github.com/amasover/dotfiles/issues/16) · Artifact: [boots
 
 ---
 
-### Story 2.2: Inventory local packages and split manifests by purpose
+### Story 2.2: Inventory local packages and split manifests by purpose ✅
 
 As the repo owner,
 I want package lists grouped by intent and checked against the actual installed package set,
 So that a fresh-machine setup can install only what is needed.
 
-Issue: [#24](https://github.com/amasover/dotfiles/issues/24) · Artifact: [package-inventory.md](./package-inventory.md)
+Issue: [#24](https://github.com/amasover/dotfiles/issues/24) (closed, PR [#43](https://github.com/amasover/dotfiles/pull/43)) · Artifact: [package-inventory.md](./package-inventory.md)
 
 **Acceptance criteria:**
 
@@ -121,13 +121,13 @@ Issue: [#26](https://github.com/amasover/dotfiles/issues/26)
 
 ---
 
-### Story 2.5: Decide future bootstrap architecture
+### Story 2.5: Decide future bootstrap architecture ✅
 
 As the repo owner,
 I want a clear decision on the future bootstrap model,
 So that cleanup does not drift into multiple half-supported approaches.
 
-Issue: [#27](https://github.com/amasover/dotfiles/issues/27)
+Issue: [#27](https://github.com/amasover/dotfiles/issues/27) (closed, PR [#47](https://github.com/amasover/dotfiles/pull/47))
 
 **Acceptance criteria:**
 
@@ -139,13 +139,13 @@ Issue: [#27](https://github.com/amasover/dotfiles/issues/27)
 
 ---
 
-### Story 2.6: Quarantine AUR updates by a default delay
+### Story 2.6: Quarantine AUR updates by a default delay ✅
 
 As the repo owner,
 I want AUR package upgrades held back by a default delay (~2 weeks),
 So that a freshly compromised AUR package (cf. the June 2026 AUR malware incident) is less likely to land on my machine immediately.
 
-Issue: [#40](https://github.com/amasover/dotfiles/issues/40) · Implementation anchor: existing TODO at `.local/bin/setup/update:32` (line 33 runs `yay -Syu --devel --noconfirm ...`).
+Issue: [#40](https://github.com/amasover/dotfiles/issues/40) (closed, PR [#45](https://github.com/amasover/dotfiles/pull/45)) · Implementation anchor: existing TODO at `.local/bin/setup/update:32` (line 33 runs `yay -Syu --devel --noconfirm ...`).
 
 **Acceptance criteria:**
 
@@ -184,13 +184,13 @@ Issue: [#46](https://github.com/amasover/dotfiles/issues/46) · Design input: [d
 
 ---
 
-### Story 2.8: Adopt metapac on the live workstation
+### Story 2.8: Adopt metapac on the live workstation ✅
 
 As the repo owner,
 I want the current workstation's packages declared in metapac groups and reconciled,
 So that the package manifest is executable and complete — the base for any future bootstrap.
 
-Issue: [#48](https://github.com/amasover/dotfiles/issues/48) · Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (package layer design; adoption on the live machine). Subsumes the open Story 2.2 follow-up "generate the grouped manifests from live state".
+Issue: [#48](https://github.com/amasover/dotfiles/issues/48) (closed, PR [#54](https://github.com/amasover/dotfiles/pull/54)) · Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (package layer design; adoption on the live machine). Subsumes the open Story 2.2 follow-up "generate the grouped manifests from live state".
 
 **Working agreement (grill 2026-07-02):** the metapac config layer is inert — placing/editing `~/.config/metapac/*` (including rendering `config.toml##template`) is blanket-authorized for this story's duration. Every *mutating* command (`metapac sync`, `metapac clean`, any package install/removal, `pacman -D` re-marking) stays individually gated; `metapac unmanaged` is read-only and runs freely.
 
@@ -207,13 +207,13 @@ Issue: [#48](https://github.com/amasover/dotfiles/issues/48) · Design input: [d
 
 ---
 
-### Story 2.9: Steady-state capture loop (inbox + drift report)
+### Story 2.9: Steady-state capture loop (inbox + drift report) ✅
 
 As the repo owner,
 I want ad-hoc installs auto-captured into a per-host inbox and drift reported on every update,
 So that the declared groups stay honest without manual bookkeeping.
 
-Issue: [#49](https://github.com/amasover/dotfiles/issues/49) · Depends on Story 2.8 (groups must exist to check declarations against). Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (auto-capture; drift loop).
+Issue: [#49](https://github.com/amasover/dotfiles/issues/49) (closed, PR [#57](https://github.com/amasover/dotfiles/pull/57)) · Depends on Story 2.8 (groups must exist to check declarations against). Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (auto-capture; drift loop).
 
 **Acceptance criteria:**
 
@@ -291,6 +291,49 @@ same TOML), not new groups.
 - Given crates/npm/PyPI installs have no quarantine analog (Story 2.6 covers AUR only), when backends are enabled, then the ungated supply-chain surface of a fresh `metapac sync` is noted in the threat-model doc — accepted or ticketed, not silent
 
 **Evidence artifact:** Updated `config.toml##template` + group files with per-backend sections; disposition table in the adoption notes.
+
+---
+
+### Story 2.13: Close non-package bootstrap gaps (cloned shell/editor artifacts)
+
+As the repo owner,
+I want the git-cloned artifacts that `.zshrc` and the editors depend on placed by the bootstrap (or explicitly runbook'd),
+So that a fresh machine boots into a working shell and editors, not just the right package set.
+
+Issue: [#60](https://github.com/amasover/dotfiles/issues/60) · Blocked on Story 2.3
+([#25](https://github.com/amasover/dotfiles/issues/25), PR [#58](https://github.com/amasover/dotfiles/pull/58))
+merging — it owns `setup/bootstrap`; branch off `main` afterwards (no stacked PRs).
+
+Origin: 2026-07-03 audit of the retired 2019 `install` script against the live machine
+("what did the old script install that survives and nothing reinstalls?"). metapac covers
+every package (2.8) and Story 2.12 covers backend-managed tools; what's left is git-clone
+artifacts that are live and load-bearing but installed by nothing:
+
+- **oh-my-zsh custom plugins** — `~/.oh-my-zsh/custom/plugins/{zsh-autosuggestions,zsh-nvm}`;
+  both are in `.zshrc` `plugins=(…)`, and zsh-nvm is what provides nvm/node at all. On a
+  fresh machine the bootstrap's oh-my-zsh step leaves plugin-not-found warnings and no nvm.
+- **Vundle** — `~/.vim/bundle/Vundle.vim`, required by `.vimrc`. `tools/vendor_repos`
+  clones it idempotently, but nothing calls vendor_repos. (Its other entry — polybar-scripts
+  community-modules — is dead: not cloned live, referenced by no polybar config.)
+- **Spacemacs** — `~/.emacs.d` is a live clone and `setup/update` still pulls it, but only
+  the deleted 2019 installer ever created it. Needs a disposition (bootstrap / runbook /
+  retire with the Story 3.2 editor call), not silence.
+
+Deliberately out of scope: the 2019 Go audio binaries (`dot`, `volume`) — Story 3.12
+([#59](https://github.com/amasover/dotfiles/issues/59)) retires them in favor of wpctl
+instead of teaching the bootstrap to rebuild them; the python3.7–3.10-era
+`pip install --user` leftovers stay dead; one-time niceties (default browser via
+`xdg-settings`) are runbook material at most.
+
+**Acceptance criteria:**
+
+- Given a fresh machine after `bootstrap`, when an interactive zsh starts, then both custom plugins are present, no plugin-not-found warnings appear, and nvm resolves
+- Given `vendor_repos` half-overlaps this story, when it lands, then vendored clones have exactly one owner (bootstrap absorbs or calls vendor_repos) and the dead polybar-scripts entry is dropped or justified
+- Given Spacemacs is legacy-era, when this story lands, then `~/.emacs.d` has an explicit disposition with Aaron rather than an implicit gap
+- Given the fresh-machine runbook is the operator contract, when gaps close, then its step list reflects the new coverage and the remaining manual one-times
+- Given Story 2.7's harness exists, when this lands, then a VM run (or at minimum `--check`) demonstrates the added steps
+
+**Evidence artifact:** Updated `setup/bootstrap` + fresh-machine runbook; disposition notes here or in the bootstrap inventory.
 
 ---
 
