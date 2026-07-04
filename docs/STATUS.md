@@ -8,11 +8,11 @@ Read this first. It's the cheap way to learn the current state without re-readin
 
 ## How to start a session
 
-1. Read this file + the relevant epic's **Stories** section (not the whole epic).
+1. Read this file + the relevant epic's **Stories** section (not the whole epic). A ✅ on a story heading means done (issue closed); unmarked stories may still be in flight — check the board.
 2. Check the board / `gh issue list` for what's in flight.
 3. Open the issue for the story you're picking up; consult `knowledge/` for related recipes.
 4. Branch `story/<n>-<slug>`, work, scan, PR against `main`, link the issue.
-5. When you finish a chunk of work, **update this file** (In flight / Last session).
+5. When you finish a chunk of work, **update this file** (In flight / Last session) and ✅-mark the epic heading of any story whose issue closed.
 
 Avoid re-reading `prd.md` end-to-end unless changing product direction.
 

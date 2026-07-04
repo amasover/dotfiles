@@ -44,13 +44,13 @@ The bootstrap material (`install.md`, `.local/bin/setup/install` + `update`, `.c
 
 ## Stories
 
-### Story 2.1: Classify setup scripts
+### Story 2.1: Classify setup scripts ✅
 
 As the repo owner,
 I want every setup script classified by safety and currentness,
 So that I know what can be inspected, tested, rewritten, or archived.
 
-Issue: [#16](https://github.com/amasover/dotfiles/issues/16) · Artifact: [bootstrap-inventory.md](./bootstrap-inventory.md)
+Issue: [#16](https://github.com/amasover/dotfiles/issues/16) (closed, PR [#18](https://github.com/amasover/dotfiles/pull/18)) · Artifact: [bootstrap-inventory.md](./bootstrap-inventory.md)
 
 **Acceptance criteria:**
 
@@ -62,13 +62,13 @@ Issue: [#16](https://github.com/amasover/dotfiles/issues/16) · Artifact: [boots
 
 ---
 
-### Story 2.2: Inventory local packages and split manifests by purpose
+### Story 2.2: Inventory local packages and split manifests by purpose ✅
 
 As the repo owner,
 I want package lists grouped by intent and checked against the actual installed package set,
 So that a fresh-machine setup can install only what is needed.
 
-Issue: [#24](https://github.com/amasover/dotfiles/issues/24) · Artifact: [package-inventory.md](./package-inventory.md)
+Issue: [#24](https://github.com/amasover/dotfiles/issues/24) (closed, PR [#43](https://github.com/amasover/dotfiles/pull/43)) · Artifact: [package-inventory.md](./package-inventory.md)
 
 **Acceptance criteria:**
 
@@ -121,13 +121,13 @@ Issue: [#26](https://github.com/amasover/dotfiles/issues/26)
 
 ---
 
-### Story 2.5: Decide future bootstrap architecture
+### Story 2.5: Decide future bootstrap architecture ✅
 
 As the repo owner,
 I want a clear decision on the future bootstrap model,
 So that cleanup does not drift into multiple half-supported approaches.
 
-Issue: [#27](https://github.com/amasover/dotfiles/issues/27)
+Issue: [#27](https://github.com/amasover/dotfiles/issues/27) (closed, PR [#47](https://github.com/amasover/dotfiles/pull/47))
 
 **Acceptance criteria:**
 
@@ -139,13 +139,13 @@ Issue: [#27](https://github.com/amasover/dotfiles/issues/27)
 
 ---
 
-### Story 2.6: Quarantine AUR updates by a default delay
+### Story 2.6: Quarantine AUR updates by a default delay ✅
 
 As the repo owner,
 I want AUR package upgrades held back by a default delay (~2 weeks),
 So that a freshly compromised AUR package (cf. the June 2026 AUR malware incident) is less likely to land on my machine immediately.
 
-Issue: [#40](https://github.com/amasover/dotfiles/issues/40) · Implementation anchor: existing TODO at `.local/bin/setup/update:32` (line 33 runs `yay -Syu --devel --noconfirm ...`).
+Issue: [#40](https://github.com/amasover/dotfiles/issues/40) (closed, PR [#45](https://github.com/amasover/dotfiles/pull/45)) · Implementation anchor: existing TODO at `.local/bin/setup/update:32` (line 33 runs `yay -Syu --devel --noconfirm ...`).
 
 **Acceptance criteria:**
 
@@ -184,13 +184,13 @@ Issue: [#46](https://github.com/amasover/dotfiles/issues/46) · Design input: [d
 
 ---
 
-### Story 2.8: Adopt metapac on the live workstation
+### Story 2.8: Adopt metapac on the live workstation ✅
 
 As the repo owner,
 I want the current workstation's packages declared in metapac groups and reconciled,
 So that the package manifest is executable and complete — the base for any future bootstrap.
 
-Issue: [#48](https://github.com/amasover/dotfiles/issues/48) · Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (package layer design; adoption on the live machine). Subsumes the open Story 2.2 follow-up "generate the grouped manifests from live state".
+Issue: [#48](https://github.com/amasover/dotfiles/issues/48) (closed, PR [#54](https://github.com/amasover/dotfiles/pull/54)) · Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (package layer design; adoption on the live machine). Subsumes the open Story 2.2 follow-up "generate the grouped manifests from live state".
 
 **Working agreement (grill 2026-07-02):** the metapac config layer is inert — placing/editing `~/.config/metapac/*` (including rendering `config.toml##template`) is blanket-authorized for this story's duration. Every *mutating* command (`metapac sync`, `metapac clean`, any package install/removal, `pacman -D` re-marking) stays individually gated; `metapac unmanaged` is read-only and runs freely.
 
@@ -207,13 +207,13 @@ Issue: [#48](https://github.com/amasover/dotfiles/issues/48) · Design input: [d
 
 ---
 
-### Story 2.9: Steady-state capture loop (inbox + drift report)
+### Story 2.9: Steady-state capture loop (inbox + drift report) ✅
 
 As the repo owner,
 I want ad-hoc installs auto-captured into a per-host inbox and drift reported on every update,
 So that the declared groups stay honest without manual bookkeeping.
 
-Issue: [#49](https://github.com/amasover/dotfiles/issues/49) · Depends on Story 2.8 (groups must exist to check declarations against). Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (auto-capture; drift loop).
+Issue: [#49](https://github.com/amasover/dotfiles/issues/49) (closed, PR [#57](https://github.com/amasover/dotfiles/pull/57)) · Depends on Story 2.8 (groups must exist to check declarations against). Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (auto-capture; drift loop).
 
 **Acceptance criteria:**
 
