@@ -108,6 +108,12 @@ master.
   sync run is expected, answer it (attended run).
 - First `yay -Syu` inside the VM is quarantine-gated like any machine (2.6 hook
   arrives with the dotfiles; baseline seeded by bootstrap step 7).
+- **Disk sizing:** the full workstation profile filled a 38G root mid-run (1,500+
+  packages + pacman's download cache + yay's build cache with multi-GB AUR
+  tarballs) — the harness default is now **80G** (sparse, costs nothing until
+  used). A live-grow rescue is possible without reboot: `virsh blockresize` →
+  in-guest `sfdisk -N 2` + `partx -u` + `resize2fs`. Metal sizing: budget the
+  same before a first real run.
 - Install-time AUR gating does not exist until **2.10** — VM runs accept that risk
   by design; metal runs do not (bootstrap's metal gate).
 
