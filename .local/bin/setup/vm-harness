@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+# vm-harness — disposable QEMU/KVM validation harness (Story 2.7, #46).
+#
+# Fresh-installs Arch in a VM (unattended archinstall via the ISO's cloud-init),
+# then runs the repo bootstrap inside it and asserts the result — so bootstrap and
+# manifest changes are proven in a throwaway VM before they are trusted on metal
+# (Story 2.10 gates metal; VM runs are exempt).
+#
+# Subcommands:
+#   fetch      download + verify the latest Arch ISO into the cache
+#   create     create the disk image + cloud-init seed (fresh every time)
+#   install    boot ISO+seed; archinstall runs unattended, VM powers off when done
+#   boot       boot the installed disk headless; ssh on localhost:2222
+#   bootstrap  ssh in and run the repo bootstrap (attended; AUR builds take a while)
+#   check      ssh in and assert: metapac unmanaged empty, services, session target
+#   destroy    delete disk + seed (ISO cache kept); 'create' again for a fresh run
+#
+# Learned from the retired win10 VM: q35/KVM sized 4G/8vcpu worked, but it was
+# legacy-BIOS on a SATA bus — this harness uses OVMF/UEFI (matches the refind
+# metal setup) and virtio disk/net. Host deps: qemu-desktop, edk2-ovmf, xorriso
+# (seed ISO; falls back to mkisofs).
+set -euo pipefail
+
+WORKDIR="${VM_HARNESS_DIR:-$HOME/.local/share/bootstrap-harness}"
+CACHE="$HOME/.cache/bootstrap-harness"
+DISK="$WORKDIR/arch-vm.qcow2"
+SEED="$WORKDIR/seed.iso"
+ISO="$CACHE/archlinux-x86_64.iso"
+OVMF_CODE=/usr/share/edk2/x64/OVMF_CODE.4m.fd
+OVMF_VARS_SRC=/usr/share/edk2/x64/OVMF_VARS.4m.fd
+OVMF_VARS="$WORKDIR/OVMF_VARS.fd"
+MIRROR="https://geo.mirror.pkgbuild.com/iso/latest"
+REPO_URL="${VM_HARNESS_REPO:-https://github.com/amasover/dotfiles.git}"
+VM_HOST=archvm
+VM_USER=aaron
+VM_PASS=vm          # throwaway VM only; sshd bound to localhost
+SSH_PORT=2222
+DISK_SIZE=40G
+RAM=4096
+CPUS=8
+
+say() { printf '\n==> %s\n' "$*"; }
+die() { printf 'vm-harness: FATAL: %s\n' "$*" >&2; exit 1; }
+
+qemu_common() {
+    echo -machine q35,accel=kvm -cpu host -m "$RAM" -smp "$CPUS" \
+        -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
+        -drive if=pflash,format=raw,file="$OVMF_VARS" \
+        -drive file="$DISK",if=virtio,format=qcow2 \
+        -netdev user,id=n0,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22 \
+        -device virtio-net-pci,netdev=n0
+}
+
+cmd_fetch() {
+    mkdir -p "$CACHE"
+    say "Fetching latest Arch ISO + checksum from $MIRROR"
+    curl -fL --progress-bar -o "$ISO.new" "$MIRROR/archlinux-x86_64.iso"
+    curl -fsSL -o "$CACHE/sha256sums.txt" "$MIRROR/sha256sums.txt"
+    (cd "$CACHE" && mv archlinux-x86_64.iso.new archlinux-x86_64.iso \
+        && grep ' archlinux-x86_64.iso$' sha256sums.txt | sha256sum -c -) \
+        || die "ISO checksum verification failed"
+    say "ISO cached: $(du -h "$ISO" | cut -f1)"
+}
+
+write_seed() {
+    local d="$WORKDIR/seed"
+    rm -rf "$d"; mkdir -p "$d"
+
+    # archinstall answers: UEFI/systemd-boot, ext4 best-effort on vda, hostname,
+    # user with sudo, sshd enabled. Kept minimal — everything else is bootstrap's job.
+    cat > "$d/user_configuration.json" <<JSON
+{
+  "config_version": "3.0.9",
+  "archinstall-language": "English",
+  "bootloader": "Systemd-boot",
+  "hostname": "$VM_HOST",
+  "kernels": ["linux"],
+  "locale_config": {"kb_layout": "us", "sys_enc": "UTF-8", "sys_lang": "en_US.UTF-8"},
+  "mirror_config": null,
+  "network_config": {"type": "iso"},
+  "ntp": true,
+  "packages": ["git", "base-devel", "yadm", "openssh"],
+  "swap": true,
+  "timezone": "UTC",
+  "disk_config": {
+    "config_type": "default_layout",
+    "device_modifications": [{
+      "device": "/dev/vda",
+      "wipe": true,
+      "partitions": []
+    }]
+  },
+  "disk_encryption": null,
+  "profile_config": null,
+  "services": ["sshd"],
+  "custom_commands": [
+    "chsh -s /usr/bin/zsh $VM_USER || true",
+    "echo '$VM_USER ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/90-harness"
+  ]
+}
+JSON
+    cat > "$d/user_credentials.json" <<JSON
+{
+  "!root-password": "$VM_PASS",
+  "!users": [{"username": "$VM_USER", "!password": "$VM_PASS", "sudo": true}]
+}
+JSON
+
+    # NoCloud seed: recent archisos ship cloud-init enabled; runcmd fires once the
+    # live environment is up, runs archinstall unattended, then powers off.
+    cat > "$d/meta-data" <<EOF
+instance-id: bootstrap-harness
+local-hostname: archiso
+EOF
+    cat > "$d/user-data" <<EOF
+#cloud-config
+write_files:
+  - path: /root/user_configuration.json
+    encoding: b64
+    content: $(base64 -w0 "$d/user_configuration.json")
+  - path: /root/user_credentials.json
+    encoding: b64
+    content: $(base64 -w0 "$d/user_credentials.json")
+runcmd:
+  - [sh, -c, "archinstall --config /root/user_configuration.json --creds /root/user_credentials.json --silent > /dev/ttyS0 2>&1; systemctl poweroff"]
+EOF
+
+    local mkiso
+    mkiso=$(command -v xorrisofs || command -v mkisofs || true)
+    [[ -n "$mkiso" ]] || die "need xorrisofs (pacman: libisoburn) or mkisofs for the seed ISO"
+    "$mkiso" -quiet -output "$SEED" -volid CIDATA -joliet -rock "$d/user-data" "$d/meta-data"
+}
+
+cmd_create() {
+    [[ -f "$ISO" ]] || die "no cached ISO — run: vm-harness fetch"
+    mkdir -p "$WORKDIR"
+    [[ -f "$DISK" ]] && die "disk exists ($DISK) — run: vm-harness destroy first"
+    say "Creating $DISK_SIZE disk + cloud-init seed"
+    qemu-img create -q -f qcow2 "$DISK" "$DISK_SIZE"
+    cp "$OVMF_VARS_SRC" "$OVMF_VARS"
+    write_seed
+    say "Ready. Next: vm-harness install"
+}
+
+cmd_install() {
+    [[ -f "$DISK" && -f "$SEED" ]] || die "run: vm-harness create first"
+    say "Unattended install (serial log: $WORKDIR/install.log; VM powers off when done)"
+    # shellcheck disable=SC2046
+    qemu-system-x86_64 $(qemu_common) \
+        -drive file="$ISO",media=cdrom,readonly=on \
+        -drive file="$SEED",media=cdrom,readonly=on \
+        -display none -serial "file:$WORKDIR/install.log"
+    say "Install VM exited. Check tail -20 $WORKDIR/install.log, then: vm-harness boot"
+}
+
+cmd_boot() {
+    [[ -f "$DISK" ]] || die "no disk — run create + install first"
+    say "Booting installed VM headless; ssh: ssh -p $SSH_PORT $VM_USER@127.0.0.1 (pass: $VM_PASS)"
+    # shellcheck disable=SC2046
+    qemu-system-x86_64 $(qemu_common) \
+        -display none -serial "file:$WORKDIR/boot.log" -daemonize -pidfile "$WORKDIR/qemu.pid"
+    say "Running in background (pid $(cat "$WORKDIR/qemu.pid")). Stop: kill \$(cat $WORKDIR/qemu.pid)"
+}
+
+vm_ssh() {
+    ssh -t -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "$VM_USER@127.0.0.1" "$@"
+}
+
+cmd_bootstrap() {
+    say "Running repo bootstrap inside the VM (attended: metapac sync prompts; AUR builds take a while)"
+    vm_ssh "set -e
+        sudo pacman -S --needed --noconfirm git base-devel yadm
+        yadm clone --no-bootstrap '$REPO_URL' || true
+        yadm config local.class workstation
+        yadm alt
+        touch ~/.zshenv   # VM: no secrets passphrase — bootstrap skips decrypt
+        ~/.local/bin/setup/bootstrap --check
+        ~/.local/bin/setup/bootstrap"
+}
+
+cmd_check() {
+    say "Asserting VM end state"
+    vm_ssh "set -e
+        echo '--- metapac unmanaged (must be exactly empty):'
+        out=\$(metapac unmanaged 2>/dev/null); [ -z \"\$out\" ] && echo OK || { echo \"\$out\"; exit 1; }
+        echo '--- enabled services (sample):'
+        systemctl is-enabled sshd NetworkManager 2>/dev/null || true
+        echo '--- graphical target reachable:'
+        systemctl status graphical.target --no-pager | head -3 || true
+        echo '--- drift report:'
+        ~/.local/bin/tools/metapac-drift-report"
+}
+
+cmd_destroy() {
+    say "Destroying VM state (ISO cache kept)"
+    [[ -f "$WORKDIR/qemu.pid" ]] && kill "$(cat "$WORKDIR/qemu.pid")" 2>/dev/null || true
+    rm -rf "$WORKDIR"
+    echo "  gone: $WORKDIR"
+}
+
+case "${1:-}" in
+    fetch)     cmd_fetch ;;
+    create)    cmd_create ;;
+    install)   cmd_install ;;
+    boot)      cmd_boot ;;
+    bootstrap) cmd_bootstrap ;;
+    check)     cmd_check ;;
+    destroy)   cmd_destroy ;;
+    *) sed -n '2,20p' "$0"; exit 1 ;;
+esac
