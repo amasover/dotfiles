@@ -177,6 +177,29 @@ Issue: [#17](https://github.com/amasover/dotfiles/issues/17)
 
 ---
 
+### Story 1.8: Privacy scrub — de-work the tracked configs and rewrite history
+
+As the repo owner,
+I want work identifiers removed from tracked files and from git history,
+So that the public repo stops naming my employer, work email domain, and internal paths.
+
+Issue: [#55](https://github.com/amasover/dotfiles/issues/55) · Promotes the long-standing "privacy pass / BFG scrub" backlog item
+(STATUS known follow-ups). Literal target strings live only in the gitignored private
+note (`docs/private/`); tracked files and this spec use neutral placeholders.
+
+**Acceptance criteria:**
+
+- Given the tracked `.gitconfig`, when restructured, then the default work identity and the employer URL-rewrite move to an untracked `~/.gitconfig-local` (joining the existing untracked `-personal`/`-production` includes; scoped includeIfs keep winning for their repos), and a machine without the local file fails loudly on commit rather than mis-attributing
+- Given `.zshrc`, when cleaned, then the work-path alias moves to an untracked local rc (a `~/.zshrc.local` source-if-exists hook is added) and the dead python2-powerline block is dropped (adopts the live-home state)
+- Given docs mention literal work strings, when neutralized, then placeholders replace them and the literals are preserved only in the gitignored private note
+- Given current files are clean and merged, when history is rewritten, then BFG `--replace-text` (replacements file generated from the private note) rewrites all refs on a fresh `--mirror` clone and force-pushes only with explicit approval; stale remote branches are pruned first; binary assets (fonts, screenshots) are protected from byte-level replacement
+- Given the rewrite lands, when clones reconcile, then this machine's working repo and yadm repo are reset with approval, and a documented reset procedure covers other machines (work machine included)
+- Given GitHub retains caches, when the scrub completes, then residual exposure (cached views, old PR diffs, possible forks) is documented — accepted or escalated to GitHub support
+
+**Evidence artifact:** Clean sweep (gitleaks + per-family grep over HEAD and full history) + a history-rewrite runbook under `knowledge/recipes/`.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - `yadm status` and `yadm diff --stat` have been reviewed or requested from the local terminal
