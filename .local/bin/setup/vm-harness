@@ -245,7 +245,7 @@ cmd_bootstrap() {
         yadm alt
         touch ~/.zshenv   # VM: no secrets passphrase — bootstrap skips decrypt
         ~/.local/bin/setup/bootstrap --check
-        ~/.local/bin/setup/bootstrap"
+        ~/.local/bin/setup/bootstrap --unattended"
 }
 
 cmd_check() {

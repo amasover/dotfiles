@@ -20,7 +20,14 @@
 set -euo pipefail
 
 CHECK=0
-[[ "${1:-}" == "--check" ]] && CHECK=1
+UNATTENDED=0
+for arg in "$@"; do
+    case "$arg" in
+        --check)      CHECK=1 ;;
+        --unattended) UNATTENDED=1 ;;   # harness/VM runs: pass tools their no-confirm flags
+    esac
+done
+NC=(); [[ $UNATTENDED -eq 1 ]] && NC=(--noconfirm)
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf '\nbootstrap: FATAL: %s\n' "$*" >&2; exit 1; }
@@ -102,7 +109,7 @@ elif [[ $CHECK -eq 1 ]]; then
 else
     tmp=$(mktemp -d)
     git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin"
-    (cd "$tmp/yay-bin" && makepkg -si)
+    (cd "$tmp/yay-bin" && makepkg -si "${NC[@]}")
     rm -rf "$tmp"
 fi
 
@@ -113,7 +120,7 @@ if command -v metapac >/dev/null; then
 elif [[ $CHECK -eq 1 ]]; then
     echo "  would: yay -S --needed metapac"
 else
-    yay -S --needed metapac
+    yay -S --needed "${NC[@]}" metapac
 fi
 
 # --- 6. reconcile: the fresh install is just the first reconcile --------------
@@ -121,6 +128,8 @@ say "Package reconcile (metapac shows its plan and prompts)"
 if [[ $CHECK -eq 1 ]]; then
     echo "  would: metapac sync   (installs this class's declared set, AUR via yay;"
     echo "         per-package service hooks fire as declared in the groups)"
+elif [[ $UNATTENDED -eq 1 ]]; then
+    metapac sync --no-confirm
 else
     metapac sync
 fi
