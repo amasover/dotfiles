@@ -98,13 +98,13 @@ Issue: [#30](https://github.com/amasover/dotfiles/issues/30)
 
 ---
 
-### Story 3.4: Inventory helper scripts
+### Story 3.4: Inventory helper scripts ✅
 
 As the repo owner,
 I want personal helper scripts categorized,
 So that useful tools are discoverable and risky scripts are labeled.
 
-Issue: [#31](https://github.com/amasover/dotfiles/issues/31)
+Issue: [#31](https://github.com/amasover/dotfiles/issues/31) (closed, PR [#38](https://github.com/amasover/dotfiles/pull/38))
 
 **Acceptance criteria:**
 
@@ -134,9 +134,9 @@ Issue: [#32](https://github.com/amasover/dotfiles/issues/32)
 
 ---
 
-### Story 3.6: Triage stale test-laptop drift for salvage
+### Story 3.6: Triage stale test-laptop drift for salvage ✅
 
-**Issue:** [#10](https://github.com/amasover/dotfiles/issues/10)
+**Issue:** [#10](https://github.com/amasover/dotfiles/issues/10) (closed, PR [#11](https://github.com/amasover/dotfiles/pull/11))
 
 As the repo owner,
 I want the archived test-laptop drift triaged file-by-file,
