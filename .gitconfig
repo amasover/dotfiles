@@ -2,7 +2,11 @@
 	insteadOf = gh:
 [user]
 	name = Aaron Masover
-    email = aaron.masover@[work-domain]
+[include]
+    # machine-local identity + site-specific config (untracked; create per machine,
+    # like the existing -personal/-production includes). Scoped includeIf blocks
+    # below still win for their repos. No file => git asks for identity loudly.
+    path = ~/.gitconfig-local
 [includeIf "gitdir:~/code/github/"]
     path = ~/code/github/.gitconfig
 [includeIf "gitdir:~/code/production-*/"]
@@ -61,8 +65,6 @@
 	default = simple
 [init]
 	defaultBranch = main
-[url "git@ssh.dev.azure.com:v3/[employer-2]"]
-	insteadOf = https://dev.azure.com
 [credential "https://github.com"]
 	helper = 
 	helper = !/usr/bin/gh auth git-credential
