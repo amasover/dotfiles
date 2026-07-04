@@ -123,3 +123,7 @@ uv tool install --force --python python3.12 --with pip aider-ce@latest
 
 echo $'\n\n Updating rust...'
 rustup update stable
+
+# Read-only package-drift report (Story 2.9): unmanaged / declared-but-missing /
+# inbox-triage nudge. Reports only — sync/clean stay manual, prompted commands.
+"$HOME/.local/bin/tools/metapac-drift-report" || true

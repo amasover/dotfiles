@@ -46,6 +46,24 @@ Post-inventory arrivals and dual-listed packages got a primary group:
 `gparted`/`plocate`/`fcron`/`haveged`/`dialog`/`uudeview`/`yadm`/`yay-bin`/`paru-bin`→base ·
 `systemd-lock-handler`/`perl-anyevent-i3`→desktop · `lsdesktopf`→optional (D9 reversed).
 
+## Steady-state capture loop (Story 2.9, live 2026-07-03)
+
+- **Auto-capture:** yay `PostInstall` hook (second autocmd in `.config/yay/init.lua`)
+  appends fresh explicit installs (`local_version == ""`; upgrades/reinstalls skipped,
+  deps skipped) that no group declares to `groups/inbox-<class>.toml`. The inbox file
+  is discovered by glob (exactly one per machine); the declared-set scan covers the
+  groups dir plus absolute-path groups from the rendered config.
+- **Nudge:** `.local/bin/tools/metapac-drift-report` (also run at the end of
+  `setup/update`) prints three read-only sections — unmanaged (raw-pacman backstop),
+  declared-but-missing (+ copy-paste `metapac sync`), and **inbox triage** (count,
+  names, file to edit). The inbox section is the periodic-review mechanism: inboxed
+  packages are *declared*, so `unmanaged` alone never surfaces them.
+- **Live validation:** stubbed-yay offline test (4 skip/capture cases), then a real
+  `yay -S figlet shellcheck` — both captured inline, nudge fired, then triaged:
+  shellcheck → `development` (kept), figlet uninstalled; end state back to
+  exactly-empty everywhere.
+- yay through the agent shell needs `--sudo /usr/bin/pkexec` (sudo can't prompt there).
+
 ## Gotchas for future machines
 
 - **polybar**: the machine's only polybar is `polybar-wireguard-git` (provides

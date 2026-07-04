@@ -139,3 +139,124 @@ yay.create_autocmd("UpgradeSelect", {
     return { exclude = exclude }
   end,
 })
+
+-- metapac inbox auto-capture (Story 2.9) — yay PostInstall hook.
+--
+-- Fresh *explicit* installs (local_version == "" — upgrades and reinstalls are
+-- skipped) that are not declared in any metapac group are appended to this
+-- machine's inbox group, ~/.config/metapac/groups/inbox-<class>.toml, so ad-hoc
+-- installs never silently drift out of the manifest. Triage nudge: the
+-- metapac-drift-report tool (run by setup/update) lists inbox contents until
+-- each package is moved to a purpose group or dropped.
+-- Raw `pacman -S` bypasses yay hooks; `metapac unmanaged` is the backstop.
+-- Docs: docs/decision-bootstrap-architecture.md (auto-capture; drift loop).
+
+local function metapac_dir()
+  return (os.getenv("HOME") or "") .. "/.config/metapac"
+end
+
+-- The single inbox-*.toml in the groups dir names this machine's inbox
+-- (one per machine by design; the filename carries the yadm class).
+local function find_inbox()
+  local p = io.popen('ls "' .. metapac_dir() .. '/groups/inbox-"*.toml 2>/dev/null')
+  if not p then return nil end
+  local matches = {}
+  for line in p:lines() do table.insert(matches, line) end
+  p:close()
+  if #matches == 1 then return matches[1] end
+  return nil, #matches
+end
+
+-- Set of every package name declared in any group: all groups-dir files plus
+-- absolute-path groups referenced from the rendered config.toml (machine-local).
+local function declared_set()
+  local set = {}
+  local files = {}
+  local p = io.popen('ls "' .. metapac_dir() .. '/groups/"*.toml 2>/dev/null')
+  if p then
+    for line in p:lines() do table.insert(files, line) end
+    p:close()
+  end
+  local cfg = io.open(metapac_dir() .. "/config.toml", "r")
+  if cfg then
+    for line in cfg:lines() do
+      for abs in line:gmatch('"(/[^"]+)"') do
+        local f = io.open(abs, "r") and abs or (abs .. ".toml")
+        table.insert(files, f)
+      end
+    end
+    cfg:close()
+  end
+  for _, path in ipairs(files) do
+    local f = io.open(path, "r")
+    if f then
+      for line in f:lines() do
+        local name = line:match('^%s*"([^"]+)"')
+        if name then set[name] = true end
+      end
+      f:close()
+    end
+  end
+  return set
+end
+
+-- Insert `"pkg",` before the closing `]` of the inbox packages array.
+local function append_to_inbox(inbox, pkgs)
+  local f = io.open(inbox, "r")
+  if not f then return false end
+  local lines = {}
+  for line in f:lines() do table.insert(lines, line) end
+  f:close()
+  local close_idx = nil
+  for i = #lines, 1, -1 do
+    if lines[i]:match("^%s*%]") then close_idx = i break end
+  end
+  if not close_idx then return false end
+  for n, pkg in ipairs(pkgs) do
+    table.insert(lines, close_idx + n - 1, string.format('  "%s",', pkg))
+  end
+  local tmp = inbox .. ".tmp"
+  local out = io.open(tmp, "w")
+  if not out then return false end
+  out:write(table.concat(lines, "\n"), "\n")
+  out:close()
+  return os.rename(tmp, inbox)
+end
+
+yay.create_autocmd("PostInstall", {
+  desc = "metapac inbox: capture fresh explicit installs not declared in any group",
+  callback = function(event)
+    local fresh = {}
+    for _, pkg in ipairs(event.data.packages or {}) do
+      if pkg.reason == "explicit" and (pkg.local_version == nil or pkg.local_version == "") then
+        table.insert(fresh, pkg.name)
+      end
+    end
+    if #fresh == 0 then return end
+
+    local inbox, count = find_inbox()
+    if not inbox then
+      yay.log.warn(string.format(
+        "metapac-inbox: expected exactly one groups/inbox-*.toml, found %d — not capturing: %s",
+        count or 0, table.concat(fresh, " ")))
+      return
+    end
+
+    local declared = declared_set()
+    local capture = {}
+    for _, name in ipairs(fresh) do
+      if not declared[name] then table.insert(capture, name) end
+    end
+    if #capture == 0 then return end
+
+    if append_to_inbox(inbox, capture) then
+      for _, name in ipairs(capture) do
+        yay.log.info("metapac-inbox: captured " .. name ..
+          " -> " .. inbox:match("[^/]+$") .. " (triage: move to a purpose group)")
+      end
+    else
+      yay.log.warn("metapac-inbox: failed to update " .. inbox ..
+        " — add manually: " .. table.concat(capture, " "))
+    end
+  end,
+})
