@@ -80,8 +80,8 @@ if [[ $CHECK -eq 0 ]]; then
 fi
 cfg="$HOME/.config/metapac/config.toml"
 [[ -f "$cfg" ]] || die "rendered metapac config missing ($cfg) — run 'yadm alt' and re-run"
-grep -q "\"$(hostname)\"" "$cfg" \
-    || die "no [hostname_groups] entry for host '$(hostname)' in $cfg.
+grep -q "\"$(uname -n)\"" "$cfg" \
+    || die "no [hostname_groups] entry for host '$(uname -n)' in $cfg.
     The template only renders known classes — check the class ('$class') against
     config.toml##template's branches, then: yadm alt   and re-run"
 echo "  hostname entry: present"
