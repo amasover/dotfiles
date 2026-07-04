@@ -123,7 +123,21 @@ else
     yay -S --needed "${NC[@]}" metapac
 fi
 
-# --- 5b. multilib (lib32-* packages in the desktop group need it) -------------
+# --- 5b. rustup before the big sync: AUR makedeps otherwise pull the repo
+# 'rust' package, which then conflicts with the declared rustup and aborts the
+# whole transaction under --noconfirm (2.7 VM finding). rustup also needs a
+# default toolchain or Rust AUR builds (xidlehook, ...) fail mid-sync.
+say "rustup (must precede Rust AUR builds)"
+if command -v rustup >/dev/null && rustup show active-toolchain >/dev/null 2>&1; then
+    echo "  rustup + toolchain already present"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: yay -S --needed rustup && rustup default stable"
+else
+    yay -S --needed "${NC[@]}" rustup
+    rustup show active-toolchain >/dev/null 2>&1 || rustup default stable
+fi
+
+# --- 5c. multilib (lib32-* packages in the desktop group need it) -------------
 say "multilib repo"
 if grep -q '^\[multilib\]' /etc/pacman.conf; then
     echo "  already enabled"
