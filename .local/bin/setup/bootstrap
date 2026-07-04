@@ -161,7 +161,13 @@ elif [[ $UNATTENDED -eq 1 ]]; then
     sync_ok=0
     for attempt in 1 2 3 4 5; do
         metapac sync --no-confirm && { sync_ok=1; break; }
-        echo "bootstrap: sync attempt $attempt failed (AUR throttling?) — retrying in 90s"
+        echo "bootstrap: sync attempt $attempt failed — retrying in 90s"
+        # Purge corrupt built archives (e.g. truncated by a disk-full episode):
+        # yay reuses cached builds, so one bad .pkg.tar.zst poisons every retry.
+        for f in "$HOME"/.cache/yay/*/*.pkg.tar.zst; do
+            [[ -f "$f" ]] || continue
+            pacman -Qp "$f" >/dev/null 2>&1 || { echo "  purging corrupt $(basename "$f")"; rm -f "$f"; }
+        done
         sleep 90
     done
     [[ $sync_ok -eq 1 ]] || die "metapac sync failed after 5 attempts"
