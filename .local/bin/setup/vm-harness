@@ -87,7 +87,7 @@ write_seed() {
   "locale_config": {"kb_layout": "us", "sys_enc": "UTF-8", "sys_lang": "en_US"},
   "network_config": {"type": "iso"},
   "ntp": true,
-  "packages": ["git", "base-devel", "yadm", "openssh"],
+  "packages": ["git", "base-devel", "yadm", "openssh", "zsh"],
   "swap": {"enabled": true},
   "timezone": "UTC",
   "disk_config": {
