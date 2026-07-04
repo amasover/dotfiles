@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# bootstrap — minimum viable fresh-machine setup (Story 2.3, #25).
+#
+# Thin by design (docs/decision-bootstrap-architecture.md): every hard part is
+# delegated — yadm owns files/secrets, metapac owns package idempotency, yay owns
+# AUR builds + the Story 2.6 quarantine. Linear and re-runnable; each mutating
+# tool shows its own plan and prompts before acting.
+#
+# Preconditions (docs/runbook-fresh-machine-bootstrap.md):
+#   1. Arch installed (archinstall is fine): network up, user created, sudo works
+#   2. sudo pacman -S --needed git base-devel yadm
+#   3. yadm clone <repo-url>            # places dotfiles, incl. this script
+#   4. ~/.local/bin/setup/bootstrap     # or: bootstrap --check
+#
+# --check: read-only — run the guards and print what each step would do.
+#
+# METAL GATE: until Story 2.10 lands (install-time AUR gating + portable trust
+# baseline), run this only in disposable VMs (Story 2.7 harness) — a fresh
+# machine installs its AUR set ungated against freshly-weaponized packages.
+set -euo pipefail
+
+CHECK=0
+[[ "${1:-}" == "--check" ]] && CHECK=1
+
+say() { printf '\n==> %s\n' "$*"; }
+die() { printf '\nbootstrap: FATAL: %s\n' "$*" >&2; exit 1; }
+
+[[ $EUID -ne 0 ]] || die "run as your normal user, not root (sudo is invoked where needed)"
+command -v pacman >/dev/null || die "pacman not found — this bootstrap is Arch-only"
+yadm rev-parse --git-dir >/dev/null 2>&1 \
+    || die "yadm repo not present — run the runbook preconditions first (yadm clone)"
+
+# --- metal gate (Story 2.10 prerequisite) -----------------------------------
+# systemd-detect-virt prints "none" AND exits nonzero on bare metal; empty output
+# (binary missing) also gates conservatively.
+virt=$(systemd-detect-virt 2>/dev/null || true)
+if [[ -z "$virt" || "$virt" == "none" ]]; then
+    say "WARNING: bare metal detected — Story 2.10 (install-time AUR gating) has not landed."
+    if [[ $CHECK -eq 1 ]]; then
+        echo "  (--check: would require typing 'metal' to continue)"
+    else
+        read -r -p "  Type 'metal' to continue anyway, anything else aborts: " ans
+        [[ "$ans" == "metal" ]] || die "aborted at the metal gate"
+    fi
+fi
+
+# --- 1. secrets (yadm decrypt; passphrase-interactive, contents never printed) ---
+say "Secrets"
+archive="$HOME/.local/share/yadm/archive"
+if [[ ! -f "$archive" ]]; then
+    echo "  no encrypted archive at $archive — nothing to decrypt"
+elif [[ -f "$HOME/.zshenv" ]]; then
+    echo "  secrets appear decrypted already (~/.zshenv exists) — skipping"
+    echo "  (re-run manually anytime: yadm decrypt)"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: yadm decrypt   (interactive passphrase prompt)"
+else
+    yadm decrypt
+fi
+
+# --- 2. profile guard (grill 2026-07-02) -------------------------------------
+# Without a class + hostname entry, `metapac sync` is a silent no-op and a later
+# `clean` would propose removing everything. Choosing the class IS the
+# "desktop optional unless explicitly selected" step.
+say "Profile guard"
+class=$(yadm config local.class 2>/dev/null || true)
+[[ -n "$class" ]] || die "yadm.class is unset. Pick this machine's profile, then re-run:
+    yadm config local.class <class>    # e.g. workstation (see runbook class table)
+    yadm alt"
+echo "  class: $class"
+if [[ $CHECK -eq 0 ]]; then
+    yadm alt >/dev/null 2>&1 || true   # (re)render ##template files for class+hostname
+fi
+cfg="$HOME/.config/metapac/config.toml"
+[[ -f "$cfg" ]] || die "rendered metapac config missing ($cfg) — run 'yadm alt' and re-run"
+grep -q "\"$(hostname)\"" "$cfg" \
+    || die "no [hostname_groups] entry for host '$(hostname)' in $cfg.
+    The template only renders known classes — check the class ('$class') against
+    config.toml##template's branches, then: yadm alt   and re-run"
+echo "  hostname entry: present"
+
+# --- 3. absolute-path group files must exist (metapac hard-errors if missing) ---
+say "Machine-local group files"
+while IFS= read -r p; do
+    [[ -f "$p" || -f "$p.toml" ]] && { echo "  ok: $p"; continue; }
+    target="$p"; [[ "$p" == *.toml ]] || target="$p.toml"
+    if [[ $CHECK -eq 1 ]]; then
+        echo "  would: create empty group $target"
+    else
+        mkdir -p "$(dirname "$target")"
+        printf '# machine-local metapac group — untracked, never published\n[arch]\npackages = [\n]\n' > "$target"
+        echo "  created empty: $target"
+    fi
+done < <(grep -o '"/[^"]*"' "$cfg" | tr -d '"')
+
+# --- 4. yay (AUR helper; one manual makepkg, everything else goes through it) ---
+say "yay"
+if command -v yay >/dev/null; then
+    echo "  already installed"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: git clone aur.archlinux.org/yay-bin + makepkg -si"
+else
+    tmp=$(mktemp -d)
+    git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin"
+    (cd "$tmp/yay-bin" && makepkg -si)
+    rm -rf "$tmp"
+fi
+
+# --- 5. metapac (itself an AUR package) --------------------------------------
+say "metapac"
+if command -v metapac >/dev/null; then
+    echo "  already installed"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: yay -S --needed metapac"
+else
+    yay -S --needed metapac
+fi
+
+# --- 6. reconcile: the fresh install is just the first reconcile --------------
+say "Package reconcile (metapac shows its plan and prompts)"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: metapac sync   (installs this class's declared set, AUR via yay;"
+    echo "         per-package service hooks fire as declared in the groups)"
+else
+    metapac sync
+fi
+
+# --- 7. interim AUR trust baseline (Story 2.10 replaces with a portable one) ---
+say "AUR quarantine baseline"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: aur-quarantine seed   (trust-first-seen; interim until 2.10)"
+else
+    "$HOME/.local/bin/tools/aur-quarantine" seed || true
+fi
+
+# --- 8. oh-my-zsh (official installer; not a pacman package) ------------------
+say "oh-my-zsh"
+if [[ -d "$HOME/.oh-my-zsh" ]]; then
+    echo "  already installed"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: run the official installer (RUNZSH=no CHSH=no KEEP_ZSHRC=yes)"
+else
+    RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
+        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+fi
+
+# --- 9. login shell ------------------------------------------------------------
+say "Login shell"
+if [[ "${SHELL:-}" == */zsh ]]; then
+    echo "  already zsh"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: chsh -s /usr/bin/zsh"
+else
+    chsh -s /usr/bin/zsh
+fi
+
+say "Bootstrap complete — reboot to land in the configured session."
+echo "  steady state: setup/update (drift report at the end); yay -Syu is quarantine-gated."

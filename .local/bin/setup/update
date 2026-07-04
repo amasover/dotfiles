@@ -37,7 +37,6 @@ else
 fi
 
 echo "Updating all system and AUR packages..."
-source $HOME/.local/bin/setup/lib.sh
 
 # AUR upgrades are gated in-flow by the yay Lua quarantine hook (~/.config/yay/init.lua):
 # it holds AUR packages that are too new (< ~14d), orphaned, or maintainer-changed, and
