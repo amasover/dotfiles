@@ -123,6 +123,21 @@ else
     yay -S --needed "${NC[@]}" metapac
 fi
 
+# --- 5a2. no -debug package splits: Arch's default makepkg builds them, they're
+# never declared, and Electron-bundling AUR packages ship IDENTICAL .build-id
+# files in their -debug splits — pacman file-conflicts then kill the whole
+# batch under --noconfirm (feishin-bin-debug vs storageexplorer-debug, 2.7 VM).
+say "makepkg: disable debug splits"
+mkdir -p "$HOME/.config/pacman"
+if grep -qs '!debug' "$HOME/.config/pacman/makepkg.conf"; then
+    echo "  already disabled"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: append OPTIONS+=(!debug) to ~/.config/pacman/makepkg.conf"
+else
+    echo 'OPTIONS+=(!debug)' >> "$HOME/.config/pacman/makepkg.conf"
+    echo "  disabled via ~/.config/pacman/makepkg.conf"
+fi
+
 # --- 5b. rustup before the big sync: AUR makedeps otherwise pull the repo
 # 'rust' package, which then conflicts with the declared rustup and aborts the
 # whole transaction under --noconfirm (2.7 VM finding). rustup also needs a
