@@ -3,4 +3,5 @@
 # purpose group or drops them. Only this machine's class list includes this file —
 # never share an inbox across machines (see docs/decision-bootstrap-architecture.md).
 [arch]
-packages = []
+packages = [
+]
