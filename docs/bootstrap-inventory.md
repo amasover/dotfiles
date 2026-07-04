@@ -34,10 +34,17 @@ bootstrap rewrite is **Story 2.3** — see [bootstrap architecture notes](./boot
 | `lib.sh` | **legacy** | Shared helper sourced by `install`/`update`. Single function `install_pacman_packages`. | `yay -S` per line of the `arch-packages/pacman` manifest. |
 | `update` | **current** | Daily "update everything" driver (modified 2026-06-23). | `yay -Syu` (system + AUR), `git pull` oh-my-zsh & Spacemacs, `antibody update`, `nvm`/`npm`/`yarn`/`pipx`/`uv` updates, `az extension update`, `tenv` (terraform/atmos), `vim VundleUpdate`. Interactive (Spacemacs prompt); holds sudo open via keepalive loop. |
 
-### `install` — do NOT run
+### `install` — RETIRED (Story 2.3, 2026-07-03)
 
-`install` is effectively unrunnable and must not be executed. Beyond the destructive
-ops above, it is internally broken:
+Deleted from the repo along with `lib.sh` (its `install_pacman_packages` read the
+`arch-packages/pacman` manifest retired in Story 2.8; `update` sourced but never
+called it). Replaced by [`setup/bootstrap`](../.local/bin/setup/bootstrap) +
+[runbook](./runbook-fresh-machine-bootstrap.md). The autopsy below is kept as the
+design record; history via `git log -- .local/bin/setup/install`. The `install:` line
+links below are dead by design.
+
+`install` was effectively unrunnable and must not be executed. Beyond the destructive
+ops above, it was internally broken:
 
 - `uninstall_deprecated_packages()` and `slow_aur_packages` are each **defined twice**
   (copy-paste); the second `uninstall_deprecated_packages` runs `sudo pacman -R --noconfirm`
