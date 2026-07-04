@@ -1,11 +1,12 @@
 # metapac group: work — cloud/k8s/Azure stack (opt-in per class; Story 2.2 decision D2)
 # Membership source: docs/package-inventory.md; adopted in Story 2.8.
-# openconnect + openconnect-service accompany globalprotect-openconnect (D2).
+# openconnect accompanies globalprotect-openconnect (D2). openconnect-service is
+# dead upstream (AUR-removed) but live infrastructure on the workstation — it lives
+# in that machine's machine-local group, not here (2.7 VM validation finding).
 [arch]
 packages = [
   "astro-cli",
   "azcopy",
-  "aztfexport-bin",
   "azure-cli",
   "azure-functions-core-tools-bin",
   "databricks-cli-bin",
@@ -14,13 +15,12 @@ packages = [
   "istio",
   "k9s",
   "kind",
-  "krew-bin",
+  "krew",
   "kube-capacity",
   "kubectl",
   "kustomize",
   "ngrok",
   "openconnect",
-  "openconnect-service",
   "storageexplorer",
   "tenv-bin",
   "terraform-ls-bin",
