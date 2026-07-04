@@ -357,6 +357,43 @@ Issue: [#62](https://github.com/amasover/dotfiles/issues/62) · Origin: Story 2.
 
 ---
 
+### Story 2.15: yay removal hook — auto-update group TOMLs on uninstall
+
+As the repo owner,
+I want package removals to update my group declarations the way installs update the inbox,
+So that uninstalling doesn't leave landmines (sync reinstalling it, or dead names aborting validation).
+
+Issue: [#63](https://github.com/amasover/dotfiles/issues/63) · Companion to Story 2.9's `PostInstall` capture. Origin: 2.7 close-out — today a removal leaves the declaration behind; tracked groups would get re-synced back in, and stale machine-local entries for AUR-deleted names abort `metapac sync` under ≥0.10 name validation.
+
+**Acceptance criteria:**
+
+- Given an explicit removal through yay, when the package is declared in a machine-scoped file (`inbox-<class>`, machine-local), then the hook deletes the line silently
+- Given it's declared in a tracked purpose group, when removed, then the hook edits the group and the change surfaces as normal yadm/git drift for review at commit time
+- Given raw `pacman -R` bypasses yay hooks, when documented, then the drift report is the named backstop (mirror of the 2.9 caveat)
+- Given the hook lands, when the drift report runs after a hooked removal, then no declared-but-missing line appears for that package
+
+**Evidence artifact:** Hook addition + a live validation removal (e.g. the gnu-netcat → openbsd-netcat swap).
+
+---
+
+### Story 2.16: Automate Uplink (the game) install on the work machine
+
+As the repo owner,
+I want my purchased copy of Uplink installable by setup on the machines I play it on,
+So that feeling like a hacker at work survives a machine rebuild.
+
+Issue: [#64](https://github.com/amasover/dotfiles/issues/64) · Origin: 2.7 VM validation — the AUR-era PKGBUILD needs the purchased `uplink.zip` supplied locally (`file://` source), so it can never unattended-install; currently parked machine-local.
+
+**Acceptance criteria:**
+
+- Given the purchased zip can't be distributed, when storage is decided (YADM-encrypted payload / private fetch / documented drop-point), then the zip is never plaintext-committed to the public repo
+- Given a machine should have the game, when the (class-gated) setup step runs with the zip available, then the package builds and installs via the vendored PKGBUILD (Story 2.14 pattern)
+- Given fresh unattended installs skip it, when declared, then it lives machine-local on machines that have it — never in tracked groups
+
+**Evidence artifact:** Vendored PKGBUILD + automated step + zip provenance/storage doc.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
