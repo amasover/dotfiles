@@ -1,8 +1,13 @@
 # metapac group: base — kernel/boot/fs/toolchain/core userland (Story 2.2 "core-system")
 # Membership source: docs/package-inventory.md; adopted in Story 2.8.
+# base/base-devel/mkinitcpio: archinstall marks these explicit on fresh machines
+# (2.7 VM finding). NOTE: the workstation predates the 2019 `base` meta-package and
+# lacks it — expect one declared-but-missing drift line until a sync adopts it.
 [arch]
 packages = [
   "7zip",
+  "base",
+  "base-devel",
   "acpi",
   "acpid",
   "autoconf",
@@ -62,6 +67,7 @@ packages = [
   "man-db",
   "man-pages",
   "mdadm",
+  "mkinitcpio",
   "mokutil-git",
   "nfs-utils",
   "nilfs-utils",

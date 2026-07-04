@@ -193,6 +193,21 @@ else
     metapac sync
 fi
 
+# --- 6b. normalize install reasons: yay --asexplicit marks split-package
+# siblings and some deps explicit; anything undeclared-but-required-by-another-
+# package gets dep-marked so `metapac unmanaged` reflects real drift (2.7 VM).
+say "Normalizing install reasons"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: pacman -D --asdeps every explicit-but-undeclared package that has a requirer"
+else
+    while IFS= read -r p; do
+        [[ -n "$p" ]] || continue
+        if [[ -n "$(pactree -r -d1 "$p" 2>/dev/null | sed -n 2p)" ]]; then
+            sudo pacman -D -q --asdeps "$p" >/dev/null 2>&1 && echo "  dep-marked: $p"
+        fi
+    done < <(metapac unmanaged 2>/dev/null | sed -n 's/^\s*"\([^"]*\)".*/\1/p')
+fi
+
 # --- 7. interim AUR trust baseline (Story 2.10 replaces with a portable one) ---
 say "AUR quarantine baseline"
 if [[ $CHECK -eq 1 ]]; then
