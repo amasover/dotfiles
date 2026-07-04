@@ -80,5 +80,5 @@ public-safe labels; one per machine (see CONTEXT.md).
 - **metapac errors on a missing group file** — re-run the script (step 3 creates
   empty ones), or check the absolute paths in the rendered config.
 - **`metapac sync` proposes nothing** — the profile guard should have caught it;
-  verify the hostname key really is in the rendered config (guard checks the literal
-  `hostname` output).
+  verify the hostname key really is in the rendered config (guard checks the
+  `uname -n` nodename — the `hostname` binary does not exist on minimal installs).
