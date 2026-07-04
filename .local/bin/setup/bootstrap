@@ -141,7 +141,16 @@ if [[ $CHECK -eq 1 ]]; then
     echo "  would: metapac sync   (installs this class's declared set, AUR via yay;"
     echo "         per-package service hooks fire as declared in the groups)"
 elif [[ $UNATTENDED -eq 1 ]]; then
-    metapac sync --no-confirm
+    # The AUR throttles clone bursts (connection resets when yay pre-fetches ~100
+    # PKGBUILDs; seen in 2.7 VM validation). Retries are incremental: fetched
+    # clones persist in yay's cache, so each attempt shrinks the remainder.
+    sync_ok=0
+    for attempt in 1 2 3 4 5; do
+        metapac sync --no-confirm && { sync_ok=1; break; }
+        echo "bootstrap: sync attempt $attempt failed (AUR throttling?) — retrying in 90s"
+        sleep 90
+    done
+    [[ $sync_ok -eq 1 ]] || die "metapac sync failed after 5 attempts"
 else
     metapac sync
 fi
