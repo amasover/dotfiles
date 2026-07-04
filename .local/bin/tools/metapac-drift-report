@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# metapac-drift-report — read-only package-drift summary (Story 2.9).
+#
+# Three sections, then the copy-paste follow-up:
+#   1. unmanaged            — installed explicitly but declared nowhere
+#                             (raw `pacman -S` backstop; yay installs are inbox-captured)
+#   2. declared-but-missing — in a group but not installed (fresh-machine gap / removal drift)
+#   3. inbox triage         — auto-captured packages awaiting a real purpose group
+#
+# Run standalone anytime, or via `setup/update` (end of run). Never mutates:
+# `metapac sync`/`clean` stay manual, prompted commands (see
+# docs/decision-bootstrap-architecture.md — drift loop).
+set -euo pipefail
+
+groups_dir="$HOME/.config/metapac/groups"
+config="$HOME/.config/metapac/config.toml"
+
+if [[ ! -d "$groups_dir" || ! -f "$config" ]]; then
+    echo "metapac-drift-report: no metapac config on this machine — skipping."
+    exit 0
+fi
+
+# Group files = groups dir + absolute-path groups referenced in the rendered config
+# (the machine-local group). Entries may omit the .toml suffix.
+group_files=("$groups_dir"/*.toml)
+while IFS= read -r abs; do
+    if [[ -f "$abs" ]]; then group_files+=("$abs")
+    elif [[ -f "$abs.toml" ]]; then group_files+=("$abs.toml")
+    fi
+done < <(grep -o '"/[^"]*"' "$config" | tr -d '"')
+
+declared=$(grep -h '^[[:space:]]*"' "${group_files[@]}" 2>/dev/null \
+    | sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' | sort -u)
+
+echo
+echo "=============================================================="
+echo " metapac drift report ($(date +%F\ %H:%M)) — read-only"
+echo "=============================================================="
+
+# 1. unmanaged — metapac itself is the authority here.
+unmanaged=$(metapac unmanaged 2>/dev/null || true)
+if [[ -n "$unmanaged" ]]; then
+    echo
+    echo " [!] unmanaged (installed, declared nowhere — likely raw pacman -S):"
+    echo "$unmanaged" | sed -n 's/^[[:space:]]*"\([^"]*\)".*/     \1/p'
+    echo "     fix: declare in a purpose group, park in the inbox, or uninstall"
+else
+    echo
+    echo " [ok] unmanaged: none"
+fi
+
+# 2. declared-but-missing — declared in some group, not installed at all.
+missing=$(comm -13 <(pacman -Qq | sort) <(printf '%s\n' "$declared") | sed '/^$/d' || true)
+if [[ -n "$missing" ]]; then
+    echo
+    echo " [!] declared but not installed:"
+    sed 's/^/     /' <<<"$missing"
+    echo "     apply:  metapac sync   (prompts before acting)"
+else
+    echo " [ok] declared-but-missing: none"
+fi
+
+# 3. inbox triage nudge — captured installs waiting for a real group.
+inbox=("$groups_dir"/inbox-*.toml)
+if [[ -f "${inbox[0]:-}" ]]; then
+    inboxed=$(sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' "${inbox[0]}")
+    if [[ -n "$inboxed" ]]; then
+        n=$(wc -l <<<"$inboxed")
+        echo
+        echo " [!] inbox: $n package(s) awaiting triage in ${inbox[0]##*/}:"
+        sed 's/^/     /' <<<"$inboxed"
+        echo "     triage: edit ${inbox[0]/#$HOME/\~}"
+        echo "             move each entry to a purpose group (or delete it, then"
+        echo "             'metapac clean' proposes the uninstall)"
+    else
+        echo " [ok] inbox: empty"
+    fi
+fi
