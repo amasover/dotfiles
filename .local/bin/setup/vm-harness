@@ -19,6 +19,8 @@
 #              off when done; media ejected so later boots hit the disk
 #   boot       start the domain; prints the NAT IP when the lease appears
 #   ip         print the VM's current IPv4
+#   exec CMD   run a command in the guest as root via the qemu agent (works in
+#              the live ISO too, where ssh isn't up yet — great for debugging)
 #   bootstrap  ssh in and run the repo bootstrap (attended; AUR builds take a while)
 #   check      ssh in and assert: metapac unmanaged empty, services, session target
 #   destroy    undefine domain + delete disk/seed volumes (cached ISO volume kept)
@@ -41,6 +43,7 @@ ISO="$CACHE/archlinux-x86_64.iso"
 INSTALL_LOG="$WORKDIR/install.log"
 MIRROR="https://geo.mirror.pkgbuild.com/iso/latest"
 REPO_URL="${VM_HARNESS_REPO:-https://github.com/amasover/dotfiles.git}"
+VM_CLASS="${VM_HARNESS_CLASS:-workstation}"   # which class profile the VM validates
 VM_HOST=archvm
 VM_USER=aaron
 VM_PASS=vm          # throwaway VM only; reachable only from this host's NAT
@@ -230,6 +233,22 @@ cmd_boot() {
 
 cmd_ip() { vm_ip; }
 
+# Root exec via qemu-guest-agent (ships on modern archisos and installed systems
+# alike). No network needed; output is captured and decoded.
+cmd_exec() {
+    local cmd=$1 payload pid
+    payload=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$cmd")
+    pid=$(v qemu-agent-command "$VM_NAME" \
+        "{\"execute\":\"guest-exec\",\"arguments\":{\"path\":\"/bin/sh\",\"arg\":[\"-c\",$payload],\"capture-output\":true}}" \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["return"]["pid"])')
+    sleep 2
+    v qemu-agent-command "$VM_NAME" \
+        "{\"execute\":\"guest-exec-status\",\"arguments\":{\"pid\":$pid}}" \
+        | python3 -c 'import json,sys,base64; r=json.load(sys.stdin)["return"]; \
+sys.stdout.write(base64.b64decode(r.get("out-data","")).decode()); \
+sys.stdout.write(base64.b64decode(r.get("err-data","")).decode())'
+}
+
 vm_ssh() {
     local ip; ip=$(vm_ip)
     [[ -n "$ip" ]] || die "VM has no IP (is it booted?)"
@@ -237,11 +256,11 @@ vm_ssh() {
 }
 
 cmd_bootstrap() {
-    say "Running repo bootstrap inside the VM (attended: metapac sync prompts; AUR builds take a while)"
+    say "Running repo bootstrap inside the VM (class: $VM_CLASS, unattended; AUR builds take a while)"
     vm_ssh "set -e
         sudo pacman -S --needed --noconfirm git base-devel yadm
         yadm clone --no-bootstrap '$REPO_URL' || true
-        yadm config local.class workstation
+        yadm config local.class '$VM_CLASS'
         yadm alt
         touch ~/.zshenv   # VM: no secrets passphrase — bootstrap skips decrypt
         ~/.local/bin/setup/bootstrap --check
@@ -277,6 +296,7 @@ case "${1:-}" in
     install)   cmd_install ;;
     boot)      cmd_boot ;;
     ip)        cmd_ip ;;
+    exec)      cmd_exec "${2:?usage: vm-harness exec '<command>'}" ;;
     bootstrap) cmd_bootstrap ;;
     check)     cmd_check ;;
     destroy)   cmd_destroy ;;

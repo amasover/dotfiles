@@ -77,6 +77,27 @@ master.
 
 ## Expectations / known wrinkles
 
+- **Host prerequisite: the `default` libvirt network must actually work.** A wedged
+  `virbr0` (no IPv4 on the bridge — happened after the docker/iptables removal) means
+  the guest gets no DHCP → no NTP → `systemd-time-wait-sync` blocks cloud-init's
+  *final* stage forever, i.e. `runcmd`/archinstall never starts even though
+  `cloud-init status` says "running" and the datasource was found. Check
+  `ip -4 addr show virbr0`; fix with `virsh net-destroy default && virsh net-start
+  default` — then **power-cycle the VM** (`virsh destroy` + `start`): the net bounce
+  detaches running taps, and `virsh reset` does not reliably reset this OVMF domain.
+- **`vm-harness exec '<cmd>'`** runs commands as root in the guest via the qemu
+  agent — works in the live ISO before ssh exists; it's how the hang above was
+  diagnosed without touching the console.
+- **Don't touch the console during `install`'s boot menu** — any keypress in the
+  archiso's systemd-boot menu cancels the auto-boot countdown and the VM waits
+  forever (bit us live: attaching virt-manager and grazing a key stalled a run;
+  `virsh send-key arch-harness KEY_ENTER` un-stuck it). Attach *after* the menu, or
+  look, don't type.
+- **Class profile**: `vm-harness bootstrap` sets `yadm config local.class` to
+  `$VM_HARNESS_CLASS` (default `workstation` — the full 16-group daily-driver set,
+  ~375 packages; that's the profile 2.7 exists to prove). When other classes exist,
+  validate them with e.g. `VM_HARNESS_CLASS=laptop vm-harness bootstrap`.
+
 - `vm-harness bootstrap` is **attended**: `metapac sync` shows its plan and prompts,
   and the AUR set (dotnet, storageexplorer, etc.) builds for **hours** in the VM.
   Run it in a spare terminal; ssh disconnects don't kill the qemu process.
