@@ -127,14 +127,17 @@ fi
 # never declared, and Electron-bundling AUR packages ship IDENTICAL .build-id
 # files in their -debug splits — pacman file-conflicts then kill the whole
 # batch under --noconfirm (feishin-bin-debug vs storageexplorer-debug, 2.7 VM).
-say "makepkg: disable debug splits"
+# !check too: abandoned-upstream AUR packages (antibody-era) fail their own
+# test suites on modern toolchains and abort unattended rebuilds (2.7 VM).
+say "makepkg: disable debug splits + check()"
 mkdir -p "$HOME/.config/pacman"
-if grep -qs '!debug' "$HOME/.config/pacman/makepkg.conf"; then
+if grep -qs '!debug !check' "$HOME/.config/pacman/makepkg.conf"; then
     echo "  already disabled"
 elif [[ $CHECK -eq 1 ]]; then
-    echo "  would: append OPTIONS+=(!debug) to ~/.config/pacman/makepkg.conf"
+    echo "  would: append OPTIONS+=(!debug !check) to ~/.config/pacman/makepkg.conf"
 else
-    echo 'OPTIONS+=(!debug)' >> "$HOME/.config/pacman/makepkg.conf"
+    sed -i '/OPTIONS+=(!debug)/d' "$HOME/.config/pacman/makepkg.conf" 2>/dev/null || true
+    echo 'OPTIONS+=(!debug !check)' >> "$HOME/.config/pacman/makepkg.conf"
     echo "  disabled via ~/.config/pacman/makepkg.conf"
 fi
 
