@@ -6,6 +6,8 @@
 # on other machines for VPN status — it stays in desktop (not work) because it is also
 # the bar itself.
 # bluez/bluez-utils/bluetui: post-inventory arrivals, placed here as session hardware (2.8 call).
+# colorpicker: build-rot relic (2017 GTK, no longer compiles) — machine-local on the
+# workstation; gpick (declared here) is the live alternative (2.7 VM finding).
 [arch]
 packages = [
   "adobe-source-code-pro-fonts",
@@ -20,7 +22,6 @@ packages = [
   "bluez-utils",
   "clight",
   "clight-gui-git",
-  "colorpicker",
   "conky",
   "dunst",
   "feh",
