@@ -1,54 +1,67 @@
 #!/usr/bin/env bash
-# vm-harness — disposable QEMU/KVM validation harness (Story 2.7, #46).
+# vm-harness — disposable libvirt/QEMU validation harness (Story 2.7, #46).
 #
 # Fresh-installs Arch in a VM (unattended archinstall via the ISO's cloud-init),
 # then runs the repo bootstrap inside it and asserts the result — so bootstrap and
 # manifest changes are proven in a throwaway VM before they are trusted on metal
 # (Story 2.10 gates metal; VM runs are exempt).
 #
+# The VM is a first-class libvirt domain ("arch-harness" on qemu:///system): it
+# shows up in virt-manager with a graphical console (where archinstall's TUI
+# errors are actually visible — serial only carries what we redirect), storage
+# lives as volumes in the "default" pool (libvirtd owns file access), and
+# networking is the default NAT — ssh straight to the VM's IP (vm-harness ip).
+#
 # Subcommands:
-#   fetch      download + verify the latest Arch ISO into the cache
-#   create     create the disk image + cloud-init seed (fresh every time)
-#   install    boot ISO+seed; archinstall runs unattended, VM powers off when done
-#   boot       boot the installed disk headless; ssh on localhost:2222
+#   fetch      download + sha256-verify the latest Arch ISO into the local cache
+#   create     pool volumes (disk + ISO + cloud-init seed) — fresh answers each time
+#   install    virt-install, unattended; archinstall runs via cloud-init, VM powers
+#              off when done; media ejected so later boots hit the disk
+#   boot       start the domain; prints the NAT IP when the lease appears
+#   ip         print the VM's current IPv4
 #   bootstrap  ssh in and run the repo bootstrap (attended; AUR builds take a while)
 #   check      ssh in and assert: metapac unmanaged empty, services, session target
-#   destroy    delete disk + seed (ISO cache kept); 'create' again for a fresh run
+#   destroy    undefine domain + delete disk/seed volumes (cached ISO volume kept)
 #
 # Learned from the retired win10 VM: q35/KVM sized 4G/8vcpu worked, but it was
 # legacy-BIOS on a SATA bus — this harness uses OVMF/UEFI (matches the refind
-# metal setup) and virtio disk/net. Host deps: qemu-desktop, edk2-ovmf, xorriso
-# (seed ISO; falls back to mkisofs).
+# metal setup) and virtio disk/net. Host deps: qemu-desktop, virt-install,
+# edk2-ovmf, xorriso (seed ISO).
 set -euo pipefail
 
+URI=qemu:///system
+VM_NAME=arch-harness
+POOL=default
+VOL_DISK="$VM_NAME.qcow2"
+VOL_ISO="$VM_NAME-archiso.iso"
+VOL_SEED="$VM_NAME-seed.iso"
 WORKDIR="${VM_HARNESS_DIR:-$HOME/.local/share/bootstrap-harness}"
 CACHE="$HOME/.cache/bootstrap-harness"
-DISK="$WORKDIR/arch-vm.qcow2"
-SEED="$WORKDIR/seed.iso"
 ISO="$CACHE/archlinux-x86_64.iso"
-OVMF_CODE=/usr/share/edk2/x64/OVMF_CODE.4m.fd
-OVMF_VARS_SRC=/usr/share/edk2/x64/OVMF_VARS.4m.fd
-OVMF_VARS="$WORKDIR/OVMF_VARS.fd"
+INSTALL_LOG="$WORKDIR/install.log"
 MIRROR="https://geo.mirror.pkgbuild.com/iso/latest"
 REPO_URL="${VM_HARNESS_REPO:-https://github.com/amasover/dotfiles.git}"
 VM_HOST=archvm
 VM_USER=aaron
-VM_PASS=vm          # throwaway VM only; sshd bound to localhost
-SSH_PORT=2222
+VM_PASS=vm          # throwaway VM only; reachable only from this host's NAT
 DISK_SIZE=40G
 RAM=4096
 CPUS=8
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'vm-harness: FATAL: %s\n' "$*" >&2; exit 1; }
+v()   { virsh -c "$URI" "$@"; }
 
-qemu_common() {
-    echo -machine q35,accel=kvm -cpu host -m "$RAM" -smp "$CPUS" \
-        -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
-        -drive if=pflash,format=raw,file="$OVMF_VARS" \
-        -drive file="$DISK",if=virtio,format=qcow2 \
-        -netdev user,id=n0,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22 \
-        -device virtio-net-pci,netdev=n0
+vol_path() { v vol-path --pool "$POOL" "$1" 2>/dev/null; }
+
+# Create-or-replace a pool volume from a local file (libvirtd does the writing,
+# so no home-dir permission games).
+vol_upload() {
+    local name=$1 file=$2 size
+    size=$(stat -c%s "$file")
+    v vol-delete --pool "$POOL" "$name" >/dev/null 2>&1 || true
+    v vol-create-as "$POOL" "$name" "$size" --format raw >/dev/null
+    v vol-upload --pool "$POOL" "$name" "$file"
 }
 
 cmd_fetch() {
@@ -59,7 +72,8 @@ cmd_fetch() {
     (cd "$CACHE" && mv archlinux-x86_64.iso.new archlinux-x86_64.iso \
         && grep ' archlinux-x86_64.iso$' sha256sums.txt | sha256sum -c -) \
         || die "ISO checksum verification failed"
-    say "ISO cached: $(du -h "$ISO" | cut -f1)"
+    v vol-delete --pool "$POOL" "$VOL_ISO" >/dev/null 2>&1 || true
+    say "ISO cached: $(du -h "$ISO" | cut -f1) (pool volume refreshes on next create)"
 }
 
 write_seed() {
@@ -132,6 +146,8 @@ JSON
 
     # NoCloud seed: recent archisos ship cloud-init enabled; runcmd fires once the
     # live environment is up, runs archinstall unattended, then powers off.
+    # HARNESS-* markers + failure log-tail land on the serial log; archinstall's
+    # TUI-level errors are on the virt-manager console (schema-skew runbook note).
     cat > "$d/meta-data" <<EOF
 instance-id: bootstrap-harness
 local-hostname: archiso
@@ -153,43 +169,71 @@ EOF
     local mkiso
     mkiso=$(command -v xorrisofs || command -v mkisofs || true)
     [[ -n "$mkiso" ]] || die "need xorrisofs (pacman: libisoburn) or mkisofs for the seed ISO"
-    "$mkiso" -quiet -output "$SEED" -volid CIDATA -joliet -rock "$d/user-data" "$d/meta-data"
+    "$mkiso" -quiet -output "$WORKDIR/seed.iso" -volid CIDATA -joliet -rock "$d/user-data" "$d/meta-data"
 }
 
 cmd_create() {
     [[ -f "$ISO" ]] || die "no cached ISO — run: vm-harness fetch"
+    v dominfo "$VM_NAME" >/dev/null 2>&1 && die "domain '$VM_NAME' exists — run: vm-harness destroy first"
     mkdir -p "$WORKDIR"
-    [[ -f "$DISK" ]] && die "disk exists ($DISK) — run: vm-harness destroy first"
-    say "Creating $DISK_SIZE disk + cloud-init seed"
-    qemu-img create -q -f qcow2 "$DISK" "$DISK_SIZE"
-    cp "$OVMF_VARS_SRC" "$OVMF_VARS"
+    say "Creating pool volumes (disk $DISK_SIZE + ISO + cloud-init seed)"
+    v vol-delete --pool "$POOL" "$VOL_DISK" >/dev/null 2>&1 || true
+    v vol-create-as "$POOL" "$VOL_DISK" "$DISK_SIZE" --format qcow2 >/dev/null
+    [[ -n "$(vol_path "$VOL_ISO")" ]] || { echo "  uploading ISO to pool (once per fetch)..."; vol_upload "$VOL_ISO" "$ISO"; }
     write_seed
+    vol_upload "$VOL_SEED" "$WORKDIR/seed.iso"
     say "Ready. Next: vm-harness install"
 }
 
 cmd_install() {
-    [[ -f "$DISK" && -f "$SEED" ]] || die "run: vm-harness create first"
-    say "Unattended install (serial log: $WORKDIR/install.log; VM powers off when done)"
-    # shellcheck disable=SC2046
-    qemu-system-x86_64 $(qemu_common) \
-        -drive file="$ISO",media=cdrom,readonly=on \
-        -drive file="$SEED",media=cdrom,readonly=on \
-        -display none -serial "file:$WORKDIR/install.log"
-    say "Install VM exited. Check tail -20 $WORKDIR/install.log, then: vm-harness boot"
+    [[ -n "$(vol_path "$VOL_DISK")" && -n "$(vol_path "$VOL_SEED")" ]] || die "run: vm-harness create first"
+    say "Unattended install — watch in virt-manager ('$VM_NAME' console) or: tail -f $INSTALL_LOG"
+    install -m 666 /dev/null "$INSTALL_LOG"
+    virt-install --connect "$URI" --name "$VM_NAME" \
+        --memory "$RAM" --vcpus "$CPUS" --cpu host-passthrough \
+        --osinfo archlinux \
+        --boot uefi,cdrom,hd \
+        --disk "vol=$POOL/$VOL_DISK,bus=virtio" \
+        --disk "vol=$POOL/$VOL_ISO,device=cdrom" \
+        --disk "vol=$POOL/$VOL_SEED,device=cdrom" \
+        --network network=default,model=virtio \
+        --serial "file,path=$INSTALL_LOG" \
+        --graphics spice --noautoconsole --wait -1 >/dev/null
+    # Install ended (guest powered off). Eject media persistently so every later
+    # boot hits the installed disk, and put the disk first in boot order.
+    local t
+    while read -r t; do
+        v change-media "$VM_NAME" "$t" --eject --config >/dev/null 2>&1 || true
+    done < <(v domblklist "$VM_NAME" --details | awk '$2=="cdrom"{print $3}')
+    # Success check via libvirt (the serial log is root-owned by virtlogd — it's the
+    # debug artifact, `sudo cat` it; markers: HARNESS-RUNCMD-START / -ARCHINSTALL-EXIT:n).
+    # A successful pacstrap allocates gigabytes; a failed one leaves the volume near-empty.
+    local alloc
+    alloc=$(v vol-info --pool "$POOL" "$VOL_DISK" --bytes | awk '/Allocation/{print $2}')
+    [[ "${alloc:-0}" -gt 1000000000 ]] \
+        || die "install wrote only ${alloc:-0} bytes — failed; inspect: sudo cat $INSTALL_LOG"
+    say "Install OK (disk allocation $((alloc / 1024 / 1024)) MiB). Next: vm-harness boot"
+}
+
+vm_ip() {
+    v domifaddr "$VM_NAME" 2>/dev/null | awk '/ipv4/{sub("/.*","",$4); print $4; exit}'
 }
 
 cmd_boot() {
-    [[ -f "$DISK" ]] || die "no disk — run create + install first"
-    say "Booting installed VM headless; ssh: ssh -p $SSH_PORT $VM_USER@127.0.0.1 (pass: $VM_PASS)"
-    # shellcheck disable=SC2046
-    qemu-system-x86_64 $(qemu_common) \
-        -display none -serial "file:$WORKDIR/boot.log" -daemonize -pidfile "$WORKDIR/qemu.pid"
-    say "Running in background (pid $(cat "$WORKDIR/qemu.pid")). Stop: kill \$(cat $WORKDIR/qemu.pid)"
+    say "Starting domain '$VM_NAME' (console in virt-manager)"
+    v start "$VM_NAME" >/dev/null 2>&1 || true
+    local ip=""
+    for _ in $(seq 1 30); do ip=$(vm_ip); [[ -n "$ip" ]] && break; sleep 3; done
+    [[ -n "$ip" ]] || die "no DHCP lease yet — try: vm-harness ip"
+    say "Up. ssh $VM_USER@$ip   (password: $VM_PASS, or the seeded host key)"
 }
 
+cmd_ip() { vm_ip; }
+
 vm_ssh() {
-    ssh -t -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        "$VM_USER@127.0.0.1" "$@"
+    local ip; ip=$(vm_ip)
+    [[ -n "$ip" ]] || die "VM has no IP (is it booted?)"
+    ssh -t -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$VM_USER@$ip" "$@"
 }
 
 cmd_bootstrap() {
@@ -218,10 +262,13 @@ cmd_check() {
 }
 
 cmd_destroy() {
-    say "Destroying VM state (ISO cache kept)"
-    [[ -f "$WORKDIR/qemu.pid" ]] && kill "$(cat "$WORKDIR/qemu.pid")" 2>/dev/null || true
+    say "Destroying domain + disk/seed volumes (cached ISO volume kept)"
+    v destroy "$VM_NAME" >/dev/null 2>&1 || true
+    v undefine "$VM_NAME" --nvram >/dev/null 2>&1 || true
+    v vol-delete --pool "$POOL" "$VOL_DISK" >/dev/null 2>&1 || true
+    v vol-delete --pool "$POOL" "$VOL_SEED" >/dev/null 2>&1 || true
     rm -rf "$WORKDIR"
-    echo "  gone: $WORKDIR"
+    echo "  gone: domain '$VM_NAME', volumes, $WORKDIR"
 }
 
 case "${1:-}" in
@@ -229,8 +276,9 @@ case "${1:-}" in
     create)    cmd_create ;;
     install)   cmd_install ;;
     boot)      cmd_boot ;;
+    ip)        cmd_ip ;;
     bootstrap) cmd_bootstrap ;;
     check)     cmd_check ;;
     destroy)   cmd_destroy ;;
-    *) sed -n '2,20p' "$0"; exit 1 ;;
+    *) sed -n '2,29p' "$0"; exit 1 ;;
 esac

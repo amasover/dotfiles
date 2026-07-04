@@ -9,20 +9,27 @@ disposable VM before anything is trusted on metal (Story 2.10 gates metal runs).
 
 ```bash
 vm-harness fetch      # once per ISO refresh: download + sha256-verify latest archiso
-vm-harness create     # 40G sparse qcow2 + cloud-init seed (fresh answers every time)
+vm-harness create     # pool volumes: 40G qcow2 + ISO + cloud-init seed (fresh answers)
 vm-harness install    # unattended: archiso's cloud-init runs archinstall --silent,
-                      #   VM powers off; watch: tail -f ~/.local/share/bootstrap-harness/install.log
-vm-harness boot       # boot installed disk headless, sshd forwarded to localhost:2222
+                      #   VM powers off, media auto-ejected; watch the virt-manager console
+vm-harness boot       # start the domain; prints its NAT IP when the lease appears
+vm-harness ip         # the VM's IPv4 (ssh aaron@$(vm-harness ip))
 vm-harness bootstrap  # ssh in: yadm clone → class workstation → repo bootstrap (attended)
 vm-harness check      # assert: metapac unmanaged EXACTLY empty, services, graphical target
-vm-harness destroy    # delete disk+seed (ISO cache kept) — next run is pristine
+vm-harness destroy    # undefine domain + delete disk/seed volumes — next run is pristine
 ```
 
-VM specifics (learned partly from the retired win10 VM's config): q35 + KVM, 4G/8vcpu,
-**OVMF/UEFI** (win10 ran legacy BIOS; UEFI mirrors the refind metal setup), virtio
-disk/net (win10's SATA was the slow path), user-mode net with ssh on `127.0.0.1:2222`,
-serial logs in `~/.local/share/bootstrap-harness/`. Throwaway credentials
-(`aaron`/`vm`, NOPASSWD sudo) — sshd is loopback-only, and the VM is disposable.
+The VM is a **first-class libvirt domain** — `arch-harness` on `qemu:///system`, visible
+and attachable in **virt-manager** (Aaron's ask, 2026-07-04), with storage as managed
+volumes in the `default` pool and NAT networking (no port forwards). VM shape (learned
+partly from the retired win10 VM's config): q35 + KVM, 4G/8vcpu, **OVMF/UEFI** (win10
+ran legacy BIOS; UEFI mirrors the refind metal setup), virtio disk/net (win10's SATA
+was the slow path). Throwaway credentials (`aaron`/`vm`, NOPASSWD sudo, host pubkey
+pre-authorized) — reachable only from this host's NAT, and the VM is disposable.
+The serial log (`~/.local/share/bootstrap-harness/install.log`, **root-owned** by
+virtlogd — `sudo cat` to read) carries the `HARNESS-*` markers; install success is
+asserted via libvirt itself (disk-volume allocation), and archinstall's TUI errors
+show on the virt-manager console.
 
 ## How the pieces fit
 
