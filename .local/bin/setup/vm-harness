@@ -240,8 +240,14 @@ JSON
 #!/bin/sh
 exec > /dev/ttyS0 2>&1
 echo HARNESS-RUNCMD-START
+# --skip-ntp: archinstall's own time-sync wait (separate from the archiso's
+# systemd-time-wait-sync, which the install cmdline masks) — a KVM guest's
+# clock is the host's via the RTC, and timesyncd may never sync in the NAT
+# guest anyway, leaving this wait warning forever. The docs' recommendation
+# for a known-correct clock is exactly this flag. The config's "ntp": true
+# still enables NTP on the installed system.
 archinstall --config /root/user_configuration.json \
-            --creds  /root/user_credentials.json --silent
+            --creds  /root/user_credentials.json --silent --skip-ntp
 rc=$?
 echo "HARNESS-ARCHINSTALL-EXIT:$rc"
 [ "$rc" -ne 0 ] && tail -n 80 /var/log/archinstall/install.log

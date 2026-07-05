@@ -122,6 +122,12 @@ anyway. The failure message names the phase, the rc, and the options
   cmdline now masks `systemd-time-wait-sync` (also turning the wedged-bridge
   silent hang into loud archinstall errors), and a `bootcmd` prints
   `HARNESS-CLOUDINIT-UP` early so the remaining quiet is attributable.
+  Removing that gate exposed a SECOND one: archinstall's own sync check,
+  which previously always found the clock already synced — and timesyncd may
+  never sync inside the NAT guest, so it warned forever ("Time
+  synchronization not completing"). Fixed with `--skip-ntp`, the documented
+  flag for a known-correct clock (Aaron found it); the config's `ntp: true`
+  still enables NTP on the installed system.
 - **First direct-boot run failed — getty vs installer:** `console=ttyS0` made
   systemd auto-spawn `serial-getty@ttyS0` on the live ISO, and agetty's
   `vhangup()` invalidated archinstall's open serial fds — instant
