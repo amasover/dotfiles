@@ -243,6 +243,9 @@ EOF
 
     # NoCloud seed: recent archisos ship cloud-init enabled; runcmd fires once
     # the live environment is up and just invokes the driver script above.
+    # bootcmd fires much earlier (cloud-init's init stage) — its marker splits
+    # "still booting" from "waiting on cloud-init's later stages" in the serial
+    # stream, so a quiet stretch is attributable at a glance.
     cat > "$d/meta-data" <<EOF
 instance-id: bootstrap-harness
 local-hostname: archiso
@@ -260,6 +263,8 @@ write_files:
     encoding: b64
     content: $(base64 -w0 "$d/run-install.sh")
     permissions: '0755'
+bootcmd:
+  - [sh, -c, 'echo HARNESS-CLOUDINIT-UP > /dev/ttyS0']
 runcmd:
   - [sh, /root/run-install.sh]
 EOF
@@ -310,11 +315,16 @@ cmd_install() {
     while read -r p; do
         bsdtar -xOf "$ISO" "${p#/}" >> "$WORKDIR/initrd.img"
     done < <(bsdtar -xOf "$ISO" "$entry" | awk '$1=="initrd"{print $2}')
+    # systemd.mask=systemd-time-wait-sync: cloud-init's final stage (which runs
+    # the installer) waits for NTP sync, but a KVM guest's clock is already the
+    # host's via the RTC — the wait adds dead time after boot and was the
+    # silent-forever hang when the NAT bridge was wedged (runbook). Masked, that
+    # failure shows up as loud archinstall mirror errors instead.
     virt-install --connect "$URI" --name "$VM_NAME" \
         --memory "$RAM" --vcpus "$CPUS" --cpu host-passthrough \
         --osinfo archlinux \
         --boot uefi \
-        --install "kernel=$WORKDIR/vmlinuz,initrd=$WORKDIR/initrd.img,kernel_args=$opts console=tty0 console=ttyS0" \
+        --install "kernel=$WORKDIR/vmlinuz,initrd=$WORKDIR/initrd.img,kernel_args=$opts console=tty0 console=ttyS0 systemd.mask=systemd-time-wait-sync.service" \
         --noreboot \
         --disk "vol=$POOL/$VOL_DISK,bus=virtio" \
         --disk "vol=$POOL/$VOL_ISO,device=cdrom" \
