@@ -1,0 +1,335 @@
+#!/usr/bin/env bash
+# vm-harness — disposable libvirt/QEMU validation harness.
+#
+# Fresh-installs Arch in a VM (unattended archinstall via the ISO's cloud-init),
+# then runs the repo bootstrap inside it and asserts the result — so bootstrap and
+# manifest changes are proven in a throwaway VM before they are trusted on metal
+# (Story 2.10 gates metal; VM runs are exempt).
+#
+# The VM is a first-class libvirt domain ("arch-harness" on qemu:///system): it
+# shows up in virt-manager with a graphical console (where archinstall's TUI
+# errors are actually visible — serial only carries what we redirect), storage
+# lives as volumes in the "default" pool (libvirtd owns file access), and
+# networking is the default NAT — ssh straight to the VM's IP (vm-harness ip).
+#
+# Subcommands:
+#   fetch      download + sha256-verify the latest Arch ISO into the local cache
+#   create     pool volumes (disk + ISO + cloud-init seed) — fresh answers each time
+#   install    virt-install, unattended; archinstall runs via cloud-init, VM powers
+#              off when done; media ejected so later boots hit the disk
+#   boot       start the domain; prints the NAT IP when the lease appears
+#   ip         print the VM's current IPv4
+#   exec CMD   run a command in the guest as root via the qemu agent (works in
+#              the live ISO too, where ssh isn't up yet — great for debugging)
+#   bootstrap  ssh in and run the repo bootstrap (attended; AUR builds take a while)
+#   check      ssh in and assert: metapac unmanaged empty, services, session target
+#   destroy    undefine domain + delete disk/seed volumes (cached ISO volume kept)
+#
+# Learned from the retired win10 VM: q35/KVM sized 4G/8vcpu worked, but it was
+# legacy-BIOS on a SATA bus — this harness uses OVMF/UEFI (matches the refind
+# metal setup) and virtio disk/net. Host deps: qemu-desktop, virt-install,
+# edk2-ovmf, xorriso (seed ISO).
+set -euo pipefail
+
+URI=qemu:///system
+VM_NAME=arch-harness
+POOL=default
+VOL_DISK="$VM_NAME.qcow2"
+VOL_ISO="$VM_NAME-archiso.iso"
+VOL_SEED="$VM_NAME-seed.iso"
+WORKDIR="${VM_HARNESS_DIR:-$HOME/.local/share/bootstrap-harness}"
+CACHE="$HOME/.cache/bootstrap-harness"
+ISO="$CACHE/archlinux-x86_64.iso"
+INSTALL_LOG="$WORKDIR/install.log"
+MIRROR="https://geo.mirror.pkgbuild.com/iso/latest"
+REPO_URL="${VM_HARNESS_REPO:-https://github.com/amasover/dotfiles.git}"
+VM_CLASS="${VM_HARNESS_CLASS:-workstation}"   # which class profile the VM validates
+VM_HOST=archvm
+VM_USER=aaron
+VM_PASS=vm          # throwaway VM only; reachable only from this host's NAT
+DISK_SIZE="${VM_HARNESS_DISK:-80G}"
+RAM="${VM_HARNESS_RAM:-12288}"      # MiB
+CPUS="${VM_HARNESS_CPUS:-16}"
+
+say() { printf '\n==> %s\n' "$*"; }
+die() { printf 'vm-harness: FATAL: %s\n' "$*" >&2; exit 1; }
+v()   { virsh -c "$URI" "$@"; }
+
+vol_path() { v vol-path --pool "$POOL" "$1" 2>/dev/null; }
+
+# Create-or-replace a pool volume from a local file (libvirtd does the writing,
+# so no home-dir permission games).
+vol_upload() {
+    local name=$1 file=$2 size
+    size=$(stat -c%s "$file")
+    v vol-delete --pool "$POOL" "$name" >/dev/null 2>&1 || true
+    v vol-create-as "$POOL" "$name" "$size" --format raw >/dev/null
+    v vol-upload --pool "$POOL" "$name" "$file"
+}
+
+cmd_fetch() {
+    mkdir -p "$CACHE"
+    say "Fetching latest Arch ISO + checksum from $MIRROR"
+    curl -fL --progress-bar -o "$ISO.new" "$MIRROR/archlinux-x86_64.iso"
+    curl -fsSL -o "$CACHE/sha256sums.txt" "$MIRROR/sha256sums.txt"
+    # Verify BEFORE renaming into place: a failed check must not leave a bad
+    # ISO at the path cmd_create trusts with a bare -f test.
+    (cd "$CACHE" && grep ' archlinux-x86_64.iso$' sha256sums.txt \
+        | sed 's/ archlinux-x86_64\.iso$/ archlinux-x86_64.iso.new/' \
+        | sha256sum -c -) \
+        || { rm -f "$ISO.new"; die "ISO checksum verification failed (bad download discarded)"; }
+    mv "$ISO.new" "$ISO"
+    v vol-delete --pool "$POOL" "$VOL_ISO" >/dev/null 2>&1 || true
+    say "ISO cached: $(du -h "$ISO" | cut -f1) (pool volume refreshes on next create)"
+}
+
+write_seed() {
+    local d="$WORKDIR/seed"
+    rm -rf "$d"; mkdir -p "$d"
+
+    # archinstall answers in the RELEASE 4.4 dialect (the ISO's version — master's
+    # sample config differs; see runbook "schema skew"). UEFI/systemd-boot, explicit
+    # ESP+root on vda, sshd enabled via chroot custom_commands. Passwords ship as
+    # SHA512 crypt hashes (4.4 creds schema).
+    local pass_hash
+    pass_hash=$(openssl passwd -6 "$VM_PASS")
+    # Host pubkey → VM authorized_keys, so harness ssh steps never need a password.
+    local host_pubkey="" k
+    for k in "$HOME"/.ssh/id_*.pub; do
+        [[ -f "$k" ]] && { host_pubkey=$(<"$k"); break; }
+    done
+    [[ -n "$host_pubkey" ]] \
+        || say "WARNING: no ~/.ssh/id_*.pub on the host — ssh steps will password-prompt ($VM_PASS)"
+    cat > "$d/user_configuration.json" <<JSON
+{
+  "version": "2.8.6",
+  "archinstall-language": "English",
+  "bootloader_config": {"bootloader": "Systemd-boot", "uki": false, "removable": false},
+  "hostname": "$VM_HOST",
+  "kernels": ["linux"],
+  "locale_config": {"kb_layout": "us", "sys_enc": "UTF-8", "sys_lang": "en_US"},
+  "network_config": {"type": "iso"},
+  "ntp": true,
+  "packages": ["git", "base-devel", "yadm", "openssh", "zsh", "qemu-guest-agent"],
+  "swap": {"enabled": true},
+  "timezone": "UTC",
+  "disk_config": {
+    "config_type": "default_layout",
+    "device_modifications": [{
+      "device": "/dev/vda",
+      "wipe": true,
+      "partitions": [
+        {
+          "obj_id": "11111111-1111-1111-1111-111111111111",
+          "status": "create", "type": "primary", "dev_path": null,
+          "start": {"unit": "MiB", "value": 1, "sector_size": {"value": 512, "unit": "B"}},
+          "size":  {"unit": "MiB", "value": 1023, "sector_size": {"value": 512, "unit": "B"}},
+          "fs_type": "fat32", "flags": ["boot", "esp"], "btrfs": [],
+          "mount_options": [], "mountpoint": "/boot"
+        },
+        {
+          "obj_id": "22222222-2222-2222-2222-222222222222",
+          "status": "create", "type": "primary", "dev_path": null,
+          "start": {"unit": "MiB", "value": 1024, "sector_size": {"value": 512, "unit": "B"}},
+          "size":  {"unit": "GiB", "value": 38, "sector_size": {"value": 512, "unit": "B"}},
+          "fs_type": "ext4", "flags": [], "btrfs": [],
+          "mount_options": [], "mountpoint": "/"
+        }
+      ]
+    }]
+  },
+  "custom_commands": [
+    "systemctl enable sshd",
+    "chsh -s /usr/bin/zsh $VM_USER || true",
+    "echo '$VM_USER ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/90-harness",
+    "install -d -m 700 /home/$VM_USER/.ssh && echo '$host_pubkey' > /home/$VM_USER/.ssh/authorized_keys && chmod 600 /home/$VM_USER/.ssh/authorized_keys && chown -R $VM_USER: /home/$VM_USER/.ssh"
+  ]
+}
+JSON
+    cat > "$d/user_credentials.json" <<JSON
+{
+  "root_enc_password": "$pass_hash",
+  "users": [{"username": "$VM_USER", "enc_password": "$pass_hash", "sudo": true}]
+}
+JSON
+
+    # The guest-side install driver — a plain readable script instead of an
+    # escaped runcmd one-liner. All output goes to the serial log (HARNESS-*
+    # markers; archinstall's log is tailed on failure); archinstall's TUI-level
+    # errors are on the virt-manager console (schema-skew runbook note).
+    # Quoted heredoc: nothing here expands on the host.
+    cat > "$d/run-install.sh" <<'EOF'
+#!/bin/sh
+exec > /dev/ttyS0 2>&1
+echo HARNESS-RUNCMD-START
+archinstall --config /root/user_configuration.json \
+            --creds  /root/user_credentials.json --silent
+rc=$?
+echo "HARNESS-ARCHINSTALL-EXIT:$rc"
+[ "$rc" -ne 0 ] && tail -n 80 /var/log/archinstall/install.log
+systemctl poweroff
+EOF
+
+    # NoCloud seed: recent archisos ship cloud-init enabled; runcmd fires once
+    # the live environment is up and just invokes the driver script above.
+    cat > "$d/meta-data" <<EOF
+instance-id: bootstrap-harness
+local-hostname: archiso
+EOF
+    cat > "$d/user-data" <<EOF
+#cloud-config
+write_files:
+  - path: /root/user_configuration.json
+    encoding: b64
+    content: $(base64 -w0 "$d/user_configuration.json")
+  - path: /root/user_credentials.json
+    encoding: b64
+    content: $(base64 -w0 "$d/user_credentials.json")
+  - path: /root/run-install.sh
+    encoding: b64
+    content: $(base64 -w0 "$d/run-install.sh")
+    permissions: '0755'
+runcmd:
+  - [sh, /root/run-install.sh]
+EOF
+
+    local mkiso
+    mkiso=$(command -v xorrisofs || command -v mkisofs || true)
+    [[ -n "$mkiso" ]] || die "need xorrisofs (pacman: libisoburn) or mkisofs for the seed ISO"
+    "$mkiso" -quiet -output "$WORKDIR/seed.iso" -volid CIDATA -joliet -rock "$d/user-data" "$d/meta-data"
+}
+
+cmd_create() {
+    [[ -f "$ISO" ]] || die "no cached ISO — run: vm-harness fetch"
+    v dominfo "$VM_NAME" >/dev/null 2>&1 && die "domain '$VM_NAME' exists — run: vm-harness destroy first"
+    mkdir -p "$WORKDIR"
+    say "Creating pool volumes (disk $DISK_SIZE + ISO + cloud-init seed)"
+    v vol-delete --pool "$POOL" "$VOL_DISK" >/dev/null 2>&1 || true
+    v vol-create-as "$POOL" "$VOL_DISK" "$DISK_SIZE" --format qcow2 >/dev/null
+    [[ -n "$(vol_path "$VOL_ISO")" ]] || { echo "  uploading ISO to pool (once per fetch)..."; vol_upload "$VOL_ISO" "$ISO"; }
+    write_seed
+    vol_upload "$VOL_SEED" "$WORKDIR/seed.iso"
+    say "Ready. Next: vm-harness install"
+}
+
+cmd_install() {
+    [[ -n "$(vol_path "$VOL_DISK")" && -n "$(vol_path "$VOL_SEED")" ]] || die "run: vm-harness create first"
+    say "Unattended install — watch in virt-manager ('$VM_NAME' console) or: tail -f $INSTALL_LOG"
+    install -m 666 /dev/null "$INSTALL_LOG"
+    virt-install --connect "$URI" --name "$VM_NAME" \
+        --memory "$RAM" --vcpus "$CPUS" --cpu host-passthrough \
+        --osinfo archlinux \
+        --boot uefi,cdrom,hd \
+        --disk "vol=$POOL/$VOL_DISK,bus=virtio" \
+        --disk "vol=$POOL/$VOL_ISO,device=cdrom" \
+        --disk "vol=$POOL/$VOL_SEED,device=cdrom" \
+        --network network=default,model=virtio \
+        --serial "file,path=$INSTALL_LOG" \
+        --graphics spice --noautoconsole --wait -1 >/dev/null
+    # Install ended (guest powered off). Eject media persistently so every later
+    # boot hits the installed disk, and put the disk first in boot order.
+    local t
+    while read -r t; do
+        v change-media "$VM_NAME" "$t" --eject --config >/dev/null 2>&1 || true
+    done < <(v domblklist "$VM_NAME" --details | awk '$2=="cdrom"{print $3}')
+    # Success check via libvirt (the serial log is root-owned by virtlogd — it's the
+    # debug artifact, `sudo cat` it; markers: HARNESS-RUNCMD-START / -ARCHINSTALL-EXIT:n).
+    # A successful pacstrap allocates gigabytes; a failed one leaves the volume near-empty.
+    local alloc
+    alloc=$(v vol-info --pool "$POOL" "$VOL_DISK" --bytes | awk '/Allocation/{print $2}')
+    [[ "${alloc:-0}" -gt 1000000000 ]] \
+        || die "install wrote only ${alloc:-0} bytes — failed; inspect: sudo cat $INSTALL_LOG"
+    say "Install OK (disk allocation $((alloc / 1024 / 1024)) MiB). Next: vm-harness boot"
+}
+
+vm_ip() {
+    v domifaddr "$VM_NAME" 2>/dev/null | awk '/ipv4/{sub("/.*","",$4); print $4; exit}'
+}
+
+cmd_boot() {
+    say "Starting domain '$VM_NAME' (console in virt-manager)"
+    v start "$VM_NAME" >/dev/null 2>&1 || true
+    local ip=""
+    for _ in $(seq 1 30); do ip=$(vm_ip); [[ -n "$ip" ]] && break; sleep 3; done
+    [[ -n "$ip" ]] || die "no DHCP lease yet — try: vm-harness ip"
+    say "Up. ssh $VM_USER@$ip   (password: $VM_PASS, or the seeded host key)"
+}
+
+cmd_ip() { vm_ip; }
+
+# Root exec via qemu-guest-agent (ships on modern archisos and installed systems
+# alike). No network needed; output is captured and decoded. Polls until the
+# guest command exits, up to VM_HARNESS_EXEC_TIMEOUT seconds (default 120).
+# The guest exit code is deliberately NOT propagated — this is a debugging
+# peephole; callers read the output, not $?.
+cmd_exec() {
+    local cmd=$1 payload pid status i timeout="${VM_HARNESS_EXEC_TIMEOUT:-120}"
+    payload=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$cmd")
+    pid=$(v qemu-agent-command "$VM_NAME" \
+        "{\"execute\":\"guest-exec\",\"arguments\":{\"path\":\"/bin/sh\",\"arg\":[\"-c\",$payload],\"capture-output\":true}}" \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["return"]["pid"])')
+    for (( i=0; i<timeout; i++ )); do
+        status=$(v qemu-agent-command "$VM_NAME" \
+            "{\"execute\":\"guest-exec-status\",\"arguments\":{\"pid\":$pid}}")
+        [[ "$status" == *'"exited":true'* ]] && break
+        sleep 1
+    done
+    [[ "$status" == *'"exited":true'* ]] \
+        || die "guest command still running after ${timeout}s (guest pid $pid)"
+    python3 -c 'import json,sys,base64; r=json.load(sys.stdin)["return"]; \
+sys.stdout.write(base64.b64decode(r.get("out-data","")).decode()); \
+sys.stdout.write(base64.b64decode(r.get("err-data","")).decode())' <<<"$status"
+}
+
+vm_ssh() {
+    local ip; ip=$(vm_ip)
+    [[ -n "$ip" ]] || die "VM has no IP (is it booted?)"
+    ssh -t -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$VM_USER@$ip" "$@"
+}
+
+cmd_bootstrap() {
+    say "Running repo bootstrap inside the VM (class: $VM_CLASS, unattended; AUR builds take a while)"
+    vm_ssh "set -e
+        sudo pacman -S --needed --noconfirm git base-devel yadm
+        yadm clone --no-bootstrap '$REPO_URL' || true
+        yadm config local.class '$VM_CLASS'
+        yadm alt
+        ~/.local/bin/setup/bootstrap --check --unattended
+        ~/.local/bin/setup/bootstrap --unattended"
+}
+
+cmd_check() {
+    say "Asserting VM end state"
+    vm_ssh "set -e
+        echo '--- metapac unmanaged (must be exactly empty):'
+        out=\$(metapac unmanaged 2>/dev/null); [ -z \"\$out\" ] && echo OK || { echo \"\$out\"; exit 1; }
+        echo '--- enabled services (sample):'
+        systemctl is-enabled sshd NetworkManager 2>/dev/null || true
+        echo '--- graphical target reachable:'
+        systemctl status graphical.target --no-pager | head -3 || true
+        echo '--- drift report:'
+        ~/.local/bin/tools/metapac-drift-report"
+}
+
+cmd_destroy() {
+    say "Destroying domain + disk/seed volumes (cached ISO volume kept)"
+    v destroy "$VM_NAME" >/dev/null 2>&1 || true
+    v undefine "$VM_NAME" --nvram >/dev/null 2>&1 || true
+    v vol-delete --pool "$POOL" "$VOL_DISK" >/dev/null 2>&1 || true
+    v vol-delete --pool "$POOL" "$VOL_SEED" >/dev/null 2>&1 || true
+    rm -rf "$WORKDIR"
+    echo "  gone: domain '$VM_NAME', volumes, $WORKDIR"
+}
+
+case "${1:-}" in
+    fetch)     cmd_fetch ;;
+    create)    cmd_create ;;
+    install)   cmd_install ;;
+    boot)      cmd_boot ;;
+    ip)        cmd_ip ;;
+    exec)      cmd_exec "${2:?usage: vm-harness exec '<command>'}" ;;
+    bootstrap) cmd_bootstrap ;;
+    check)     cmd_check ;;
+    destroy)   cmd_destroy ;;
+    *) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; exit 1 ;;   # the header is the help
+esac

@@ -337,6 +337,98 @@ instead of teaching the bootstrap to rebuild them; the python3.7–3.10-era
 
 ---
 
+### Story 2.14: Vendor the openconnect-service PKGBUILD into dotfiles
+
+As the repo owner,
+I want the dead-upstream VPN service package rebuildable from my own repo,
+So that the work-VPN stack survives a fresh machine instead of living only as an orphaned install.
+
+Issue: [#62](https://github.com/amasover/dotfiles/issues/62) · Origin: Story 2.7 VM validation caught `openconnect-service` as AUR-deleted while its socket unit is live infrastructure (the untracked `~/.local/bin/tools/vpn` script drives it). Upstream PKGBUILD source: [WarheadsSE/PKGs](https://github.com/WarheadsSE/PKGs/tree/master/openconnect-service) (Aaron's original source).
+
+**Acceptance criteria:**
+
+- Given the upstream PKGBUILD, when vendored, then it lives at a yadm-tracked path with provenance and license recorded
+- Given a machine needs the VPN stack, when setup runs, then the package builds/installs via `makepkg -si` as a (class-gated if work-only) setup step
+- Given metapac ≥0.10 validates group names against repos/AUR, when the locally-built package is declared, then it lives in the machine's machine-local group (or a cleaner mechanism found in-story) — never a tracked group
+- Given the live `vpn` script references the work VPN hostname, when adopted, then the hostname is externalized to an untracked or YADM-encrypted file — never tracked plaintext
+- Given the site config in `/etc/openconnect/`, when handled, then it stays machine-local or YADM-encrypted
+
+**Evidence artifact:** Vendored PKGBUILD + setup step + adopted `vpn` script with externalized config.
+
+---
+
+### Story 2.15: yay removal hook — auto-update group TOMLs on uninstall
+
+As the repo owner,
+I want package removals to update my group declarations the way installs update the inbox,
+So that uninstalling doesn't leave landmines (sync reinstalling it, or dead names aborting validation).
+
+Issue: [#63](https://github.com/amasover/dotfiles/issues/63) · Companion to Story 2.9's `PostInstall` capture. Origin: 2.7 close-out — today a removal leaves the declaration behind; tracked groups would get re-synced back in, and stale machine-local entries for AUR-deleted names abort `metapac sync` under ≥0.10 name validation.
+
+**Acceptance criteria:**
+
+- Given an explicit removal through yay, when the package is declared in a machine-scoped file (`inbox-<class>`, machine-local), then the hook deletes the line silently
+- Given it's declared in a tracked purpose group, when removed, then the hook edits the group and the change surfaces as normal yadm/git drift for review at commit time
+- Given raw `pacman -R` bypasses yay hooks, when documented, then the drift report is the named backstop (mirror of the 2.9 caveat)
+- Given the hook lands, when the drift report runs after a hooked removal, then no declared-but-missing line appears for that package
+
+**Evidence artifact:** Hook addition + a live validation removal (e.g. the gnu-netcat → openbsd-netcat swap).
+
+---
+
+### Story 2.16: Automate Uplink (the game) install on the work machine
+
+As the repo owner,
+I want my purchased copy of Uplink installable by setup on the machines I play it on,
+So that feeling like a hacker survives a machine rebuild.
+
+Issue: [#64](https://github.com/amasover/dotfiles/issues/64) · Origin: 2.7 VM validation — the AUR-era PKGBUILD needs the purchased `uplink.zip` supplied locally (`file://` source), so it can never unattended-install; currently parked machine-local.
+
+**Acceptance criteria:**
+
+- Given the purchased zip can't be distributed, when storage is decided (YADM-encrypted payload / private fetch / documented drop-point), then the zip is never plaintext-committed to the public repo
+- Given a machine should have the game, when the (class-gated) setup step runs with the zip available, then the package builds and installs via the vendored PKGBUILD (Story 2.14 pattern)
+- Given fresh unattended installs skip it, when declared, then it lives machine-local on machines that have it — never in tracked groups
+
+**Evidence artifact:** Vendored PKGBUILD + automated step + zip provenance/storage doc.
+
+---
+
+### Story 2.17: Fix the issues observed in the first fully-bootstrapped VM
+
+As the repo owner,
+I want the UI-level issues I saw in the first fully-bootstrapped VM's session fixed,
+So that a fresh machine boots into a desktop that's actually right, not just package-complete.
+
+Issue: [#65](https://github.com/amasover/dotfiles/issues/65) · Tracking story so 2.7 closes on its own acceptance (exactly-empty `unmanaged` + reachable session). **Specifics enumerated by Aaron at pickup** — observed via the virt-manager console after the 2026-07-04 acceptance run; the issue holds working notes (reproduction, likely fix destinations, overlap check with Story 2.13's known cloned-artifact gaps).
+
+**Acceptance criteria:**
+
+- Given Aaron's observed-issue list, when triaged, then each is fixed here or explicitly routed to its owning story (2.13 gaps, group membership, service-enablement hooks, desktop config)
+- Given fixes land, when a VM session is re-inspected (revived or fresh run), then the observed issues are gone
+
+**Evidence artifact:** Triaged issue list + fixes + re-validated VM session.
+
+---
+
+### Story 2.18: Keep pacman mirrors fresh (reflector.timer)
+
+As the repo owner,
+I want mirror ranking to happen on a schedule on live machines,
+So that pacman/yay traffic doesn't crawl because the mirrorlist quietly rotted.
+
+Issue: [#66](https://github.com/amasover/dotfiles/issues/66) · Origin: 2.7 pre-merge review — bootstrap step 3b now re-ranks a stale (>7 days) mirrorlist at bootstrap/re-run time, but between bootstraps the list rots; Aaron re-runs reflector by hand today (US, https, fastest/latest 20, rate-sorted, age 3).
+
+**Acceptance criteria:**
+
+- Given the `reflector` package ships `reflector.timer` and `/etc/xdg/reflector/reflector.conf`, when this lands, then reflector is declared in a tracked group and the timer is enabled by a declared hook (same pattern as the other service hooks)
+- Given the conf lives under `/etc` (outside yadm's `$HOME` worktree), when a fresh machine bootstraps, then the chosen reflector args apply without hand-editing (hook-written conf or an equivalently reproducible mechanism)
+- Given the timer is the steady-state owner, when it's active, then `systemctl is-enabled reflector.timer` passes on the live machine and in a bootstrapped VM
+
+**Evidence artifact:** Group + hook change; `systemctl list-timers` showing reflector.timer.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

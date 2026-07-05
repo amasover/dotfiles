@@ -10,7 +10,6 @@ packages = [
   "displaylink",
   "downgrade",
   "evdi-dkms",
-  "ext4magic",
   "extundelete",
   "inotify-info",
   "lsdesktopf",
