@@ -8,16 +8,40 @@ disposable VM before anything is trusted on metal (Story 2.10 gates metal runs).
 ## The loop
 
 ```bash
+vm-harness up         # the whole loop below except destroy: fetch (only if no
+                      #   cached ISO) → create → install → boot → bootstrap → check
+# …or phase by phase:
 vm-harness fetch      # once per ISO refresh: download + sha256-verify latest archiso
-vm-harness create     # pool volumes: 40G qcow2 + ISO + cloud-init seed (fresh answers)
+vm-harness create     # pool volumes: 80G sparse qcow2 + ISO + cloud-init seed (fresh answers)
 vm-harness install    # unattended: archiso's cloud-init runs archinstall --silent,
-                      #   VM powers off, media auto-ejected; watch the virt-manager console
+                      #   VM powers off, media auto-ejected; watch: vm-harness tail install
 vm-harness boot       # start the domain; prints its NAT IP when the lease appears
 vm-harness ip         # the VM's IPv4 (ssh aaron@$(vm-harness ip))
-vm-harness bootstrap  # ssh in: yadm clone → class workstation → repo bootstrap (attended)
+vm-harness bootstrap  # waits for ssh, then: yadm clone → class workstation → repo
+                      #   bootstrap --unattended (metapac sync --no-confirm inside)
 vm-harness check      # assert: metapac unmanaged EXACTLY empty, services, graphical target
 vm-harness destroy    # undefine domain + delete disk/seed volumes — next run is pristine
 ```
+
+## Logs, watching, walking away (Story 2.19)
+
+Every phase writes an ANSI-stripped copy of its output to
+`~/.local/state/bootstrap-harness/logs/<timestamp>-<phase>.log`, ending with a
+`=== <phase> done rc=N` result line. Logs **survive `destroy`** (the post-mortem
+of a failed run is their main job); phases run by one `up` share the run's
+timestamp so they sort as a set. The terminal keeps the raw colorful stream;
+`--quiet` (or `VM_HARNESS_QUIET=1`) suppresses it.
+
+- **Watch live:** `vm-harness tail` follows the newest log and hops to the next
+  phase as an `up` run advances; `vm-harness tail install` follows the guest
+  serial log instead (sudo — qemu writes it root-owned in the workdir).
+- **Walk away:** `vm-harness --detach up` runs under `systemd-run --user` — it
+  survives the closed terminal, logs plain output, and sends a desktop
+  notification on completion (success or failure). `vm-harness status` shows
+  the detached unit, the domain state, and the newest log's tail.
+- **On failure** (any phase, attached or not): the run stops at the failing
+  phase and the VM is left exactly as it died — read the log, fix and re-run
+  the phase, or `destroy` for a clean slate. `up` never auto-destroys.
 
 The VM is a **first-class libvirt domain** — `arch-harness` on `qemu:///system`, visible
 and attachable in **virt-manager** (Aaron's ask, 2026-07-04), with storage as managed
@@ -27,9 +51,11 @@ ran legacy BIOS; UEFI mirrors the refind metal setup), virtio disk/net (win10's 
 was the slow path). Throwaway credentials (`aaron`/`vm`, NOPASSWD sudo, host pubkey
 pre-authorized) — reachable only from this host's NAT, and the VM is disposable.
 The serial log (`~/.local/share/bootstrap-harness/install.log`, **root-owned** by
-virtlogd — `sudo cat` to read) carries the `HARNESS-*` markers; install success is
-asserted via libvirt itself (disk-volume allocation), and archinstall's TUI errors
-show on the virt-manager console.
+virtlogd — `sudo cat` to read) carries the `HARNESS-*` markers; when `install`
+finishes it is copied into the run's state logs as `<timestamp>-install-serial.log`
+so it outlives `destroy`. Install success is asserted via libvirt itself
+(disk-volume allocation), and archinstall's TUI errors show on the virt-manager
+console.
 
 ## How the pieces fit
 
@@ -99,14 +125,15 @@ master.
   ~375 packages; that's the profile 2.7 exists to prove). When other classes exist,
   validate them with e.g. `VM_HARNESS_CLASS=laptop vm-harness bootstrap`.
 
-- `vm-harness bootstrap` is **attended**: `metapac sync` shows its plan and prompts,
-  and the AUR set (dotnet, storageexplorer, etc.) builds for **hours** in the VM.
-  Run it in a spare terminal; ssh disconnects don't kill the qemu process.
+- `vm-harness bootstrap` runs `bootstrap --unattended` in the guest (no prompts),
+  but the AUR set (dotnet, storageexplorer, etc.) builds for **hours** in the VM.
+  A closed terminal kills an *attached* harness run (the qemu process survives;
+  the driver doesn't) — use `--detach` when walking away.
 - The VM clones the repo from **GitHub main** — bootstrap-affecting PRs must merge
   before their VM validation run (or pass a branch clone URL via `VM_HARNESS_REPO`).
 - archinstall's network choice is the ISO's (systemd-networkd/dhcp); `metapac sync`
-  later installs `networkmanager-iwd` per the groups — a replace prompt inside the
-  sync run is expected, answer it (attended run).
+  later installs `networkmanager-iwd` per the groups — the replace prompt inside the
+  sync run is expected (`--no-confirm` answers it in harness runs).
 - First `yay -Syu` inside the VM is quarantine-gated like any machine (2.6 hook
   arrives with the dotfiles; baseline seeded by bootstrap step 7).
 - **Disk sizing:** the full workstation profile filled a 38G root mid-run (1,500+
