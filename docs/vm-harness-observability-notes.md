@@ -134,6 +134,11 @@ anyway. The failure message names the phase, the rc, and the options
   exits 1 if its first open failed, even after `-F` recovers); scrub widened
   to CSI-with-intermediates, ST-terminated OSC, and DCS sequences (agetty and
   systemd's console service markers emit all three).
+- **`boot` streams the installed system's boot (Aaron's ask):** same serial
+  file, followed with `-n 0` (the install capture precedes it) by a foreground
+  `tail --pid` watching a backgrounded lease poll — a backgrounded sudo tail
+  can't be killed by the non-root harness and holds the logging pipeline open
+  (caught in a scratch test before it shipped).
 
 ## Parked
 
