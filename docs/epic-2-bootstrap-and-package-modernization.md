@@ -380,7 +380,7 @@ Issue: [#63](https://github.com/amasover/dotfiles/issues/63) · Companion to Sto
 
 As the repo owner,
 I want my purchased copy of Uplink installable by setup on the machines I play it on,
-So that feeling like a hacker at work survives a machine rebuild.
+So that feeling like a hacker survives a machine rebuild.
 
 Issue: [#64](https://github.com/amasover/dotfiles/issues/64) · Origin: 2.7 VM validation — the AUR-era PKGBUILD needs the purchased `uplink.zip` supplied locally (`file://` source), so it can never unattended-install; currently parked machine-local.
 
