@@ -115,6 +115,12 @@ master.
   `ip -4 addr show virbr0`; fix with `virsh net-destroy default && virsh net-start
   default` — then **power-cycle the VM** (`virsh destroy` + `start`): the net bounce
   detaches running taps, and `virsh reset` does not reliably reset this OVMF domain.
+  Since 2.19, the install boot masks `systemd-time-wait-sync` (a KVM guest's clock
+  is already the host's via the RTC), so this failure mode is loud archinstall
+  mirror errors rather than a silent hang — and healthy boots skip the NTP wait,
+  reaching archinstall sooner. The serial stream also prints a
+  `HARNESS-CLOUDINIT-UP` marker at cloud-init's early stage: quiet before it =
+  still booting; quiet after it = cloud-init's later stages.
 - **`vm-harness exec '<cmd>'`** runs commands as root in the guest via the qemu
   agent — works in the live ISO before ssh exists; it's how the hang above was
   diagnosed without touching the console.
