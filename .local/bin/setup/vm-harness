@@ -81,10 +81,16 @@ v()   { virsh -c "$URI" "$@"; }
 
 usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; }   # the header is the help
 
-# The log copy is plain text: strip ANSI escapes (colors, cursor moves, the
-# ESC(B charset reset tput hides in sgr0) and turn carriage-return redraws
-# (progress bars) into ordinary lines. -u keeps `vm-harness tail` near-live.
-scrub() { sed -u -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b\][^\x07]*\x07//g' -e 's/\x1b[()][0-9A-Za-z]//g' -e 's/\x1b[=>]//g' -e 's/\r$//' -e 's/\r/\n/g'; }
+# The log copy is plain text: strip ANSI escapes — CSI (colors, cursor moves,
+# agetty's ESC[!p soft reset), OSC with either terminator (systemd's clickable
+# service markers use ESC\), DCS (agetty terminfo queries), charset selectors
+# (the ESC(B tput hides in sgr0) — and turn carriage-return redraws (progress
+# bars) into ordinary lines. -u keeps `vm-harness tail` near-live.
+scrub() { sed -u -e 's/\x1b\[[0-9;?!<>=]*[a-zA-Z]//g' \
+                 -e 's/\x1b\][^\x1b\x07]*\(\x07\|\x1b\\\)//g' \
+                 -e 's/\x1bP[^\x1b]*\x1b\\//g' \
+                 -e 's/\x1b[()][0-9A-Za-z]//g' -e 's/\x1b[=>]//g' \
+                 -e 's/\r$//' -e 's/\r/\n/g'; }
 
 # Run one phase with host-side logging. The terminal (unless --quiet) gets the
 # raw stream — colors and progress bars intact — while the log gets a scrubbed
@@ -238,7 +244,12 @@ archinstall --config /root/user_configuration.json \
 rc=$?
 echo "HARNESS-ARCHINSTALL-EXIT:$rc"
 [ "$rc" -ne 0 ] && tail -n 80 /var/log/archinstall/install.log
-systemctl poweroff
+# The real poweroff is cloud-init's power_state directive, which fires AFTER
+# its final stage completes — powering off from here races the remaining
+# cloud-init modules and every log ended in a harmless-but-scary
+# BrokenPipeError traceback. This delayed shutdown is only the safety net for
+# cloud-init dying before it reaches power_state.
+shutdown -P +2 "harness fallback poweroff" >/dev/null 2>&1 || true
 EOF
 
     # NoCloud seed: recent archisos ship cloud-init enabled; runcmd fires once
@@ -267,6 +278,9 @@ bootcmd:
   - [sh, -c, 'echo HARNESS-CLOUDINIT-UP > /dev/ttyS0']
 runcmd:
   - [sh, /root/run-install.sh]
+power_state:
+  mode: poweroff
+  message: HARNESS-POWEROFF
 EOF
 
     local mkiso
@@ -315,16 +329,22 @@ cmd_install() {
     while read -r p; do
         bsdtar -xOf "$ISO" "${p#/}" >> "$WORKDIR/initrd.img"
     done < <(bsdtar -xOf "$ISO" "$entry" | awk '$1=="initrd"{print $2}')
-    # systemd.mask=systemd-time-wait-sync: cloud-init's final stage (which runs
-    # the installer) waits for NTP sync, but a KVM guest's clock is already the
-    # host's via the RTC — the wait adds dead time after boot and was the
-    # silent-forever hang when the NAT bridge was wedged (runbook). Masked, that
-    # failure shows up as loud archinstall mirror errors instead.
+    # Two masks on the install boot:
+    # - systemd-time-wait-sync: cloud-init's final stage (which runs the
+    #   installer) waits for NTP sync, but a KVM guest's clock is already the
+    #   host's via the RTC — dead time, and the silent-forever hang when the
+    #   NAT bridge was wedged (runbook). Masked, that failure shows up as loud
+    #   archinstall mirror errors instead.
+    # - serial-getty@ttyS0: console=ttyS0 makes systemd auto-spawn a getty on
+    #   the serial line, and agetty's vhangup() invalidates every fd already
+    #   open on it — it killed archinstall mid-write on the first direct-boot
+    #   run (instant BrokenPipeError, empty disk). The installer owns the
+    #   serial line; nobody logs in to the live ISO over serial.
     virt-install --connect "$URI" --name "$VM_NAME" \
         --memory "$RAM" --vcpus "$CPUS" --cpu host-passthrough \
         --osinfo archlinux \
         --boot uefi \
-        --install "kernel=$WORKDIR/vmlinuz,initrd=$WORKDIR/initrd.img,kernel_args=$opts console=tty0 console=ttyS0 systemd.mask=systemd-time-wait-sync.service" \
+        --install "kernel=$WORKDIR/vmlinuz,initrd=$WORKDIR/initrd.img,kernel_args=$opts console=tty0 console=ttyS0 systemd.mask=systemd-time-wait-sync.service systemd.mask=serial-getty@ttyS0.service" \
         --noreboot \
         --disk "vol=$POOL/$VOL_DISK,bus=virtio" \
         --disk "vol=$POOL/$VOL_ISO,device=cdrom" \
@@ -337,9 +357,16 @@ cmd_install() {
     # thing happening, and without it the phase is dark for minutes. --pid ends
     # the tail on its own when virt-install exits. run_phase also captures this
     # stream into the install phase log.
+    # Probe sudo separately: tail's own exit code is useless here (GNU tail
+    # exits nonzero if its FIRST open failed — the log appears moments after
+    # virt-install starts — even though -F recovers and streams everything).
     local streamed=1
-    sudo -n tail -n +1 -F --pid="$vpid" "$INSTALL_LOG" 2>/dev/null || streamed=0
-    [[ $streamed -eq 1 ]] || echo "  (no sudo — serial stream skipped; follow it with: vm-harness tail install)"
+    if sudo -n true 2>/dev/null; then
+        sudo -n tail -n +1 -F --pid="$vpid" "$INSTALL_LOG" 2>/dev/null || true
+    else
+        streamed=0
+        echo "  (no sudo — serial stream skipped; follow it with: vm-harness tail install)"
+    fi
     wait "$vpid" || die "virt-install failed — see errors above"
     # Install ended (guest powered off). Eject media persistently so every later
     # boot hits the installed disk, and put the disk first in boot order.
