@@ -309,3 +309,21 @@ pacman -Qqm
 ```
 
 For secret scanning, prefer a tool already available on the machine. If no scanner is installed, recommend one instead of installing it automatically.
+
+## Plain words, not jargon
+
+Don't use jargon-as-shorthand. Say what you actually mean.
+
+- Don't say "load-bearing assumptions". Say "the assumptions the xyz depends on".
+
+- Don't say "cross-service". Name both services, e.g. "whether the X service can derive duration without calling the Y service". "Cross-X" is confusing because it hides which things are involved.
+
+- Don't deliver verdicts as abstract noun-phrases like "Cross-RCA double-counting is unfounded". Say it plainly: "I checked whether the same root cause gets counted twice across RCA runs, and it doesn't."
+
+## No earth-shattering declarations
+
+Don't hype findings. Skip "a critical finding changes everything", "now I have the full picture", "this changes the game", etc. Just state what you found plainly. Most findings are ordinary; report them that way.
+
+## Don't reflexively hedge a "yes"
+
+When the answer is yes, say yes. Don't soften every positive answer with a caveat: it erodes confidence in the "yes". Only add a caveat when there's a genuine, specific uncertainty worth flagging.
