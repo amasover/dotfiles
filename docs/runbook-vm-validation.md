@@ -64,11 +64,13 @@ archinstall's TUI errors show on the virt-manager console.
 
 - **Unattended install:** recent official archisos ship cloud-init; the seed ISO
   (NoCloud) writes `user_configuration.json`/`user_credentials.json` and runs
-  `archinstall --silent` via `runcmd`; cloud-init's `power_state` directive powers
-  off after its final stage completes (a poweroff from inside `runcmd` raced the
-  remaining cloud-init modules — every log ended in a harmless-but-scary
-  `BrokenPipeError` traceback; a delayed `shutdown -P +2` in the driver script is
-  the safety net if cloud-init dies mid-stage). Systemd-boot, ext4
+  `archinstall --silent` via `runcmd`, which launches the install driver as its
+  own transient unit (`systemd-run`) and returns at once: cloud-init finishes in
+  seconds, so systemd's "A start job is running for Cloud-init: Final Stage"
+  spinner stops spamming the serial stream for the whole install, and the driver
+  powers off with cloud-init already done (a poweroff from inside `runcmd` raced
+  cloud-init's teardown — every log ended in a harmless-but-scary
+  `BrokenPipeError` traceback). Systemd-boot, ext4
   best-effort on `/dev/vda`, hostname `archvm`, sshd enabled, git/base-devel/yadm
   preinstalled to skip bootstrap preconditions.
 - **VM accommodations:** the seed's `custom_commands` set the login shell to zsh at

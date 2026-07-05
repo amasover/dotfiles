@@ -134,6 +134,15 @@ anyway. The failure message names the phase, the rc, and the options
   exits 1 if its first open failed, even after `-F` recovers); scrub widened
   to CSI-with-intermediates, ST-terminated OSC, and DCS sequences (agetty and
   systemd's console service markers emit all three).
+- **Spinner spam (Aaron's ask):** with archinstall inside cloud-init's final
+  stage, that job stayed "activating" for the whole install and systemd redrew
+  "A start job is running for Cloud-init: Final Stage" onto the serial console
+  every few seconds. `runcmd` now launches the driver as its own transient
+  unit (`systemd-run --collect --unit=harness-install`) — cloud-init completes
+  in seconds and the spinner stops, while every `[ OK ]` boot line stays
+  (`systemd.show_status=no` was the blunt alternative). This also let the
+  poweroff move back into the driver script and `power_state` go: cloud-init
+  is fully finished before the install ends, so there is nothing left to race.
 - **`boot` streams the installed system's boot (Aaron's ask):** same serial
   file, followed with `-n 0` (the install capture precedes it) by a foreground
   `tail --pid` watching a backgrounded lease poll — a backgrounded sudo tail
