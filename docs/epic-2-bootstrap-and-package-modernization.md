@@ -83,7 +83,7 @@ Issue: [#24](https://github.com/amasover/dotfiles/issues/24) (closed, PR [#43](h
 
 ---
 
-### Story 2.3: Define minimum viable bootstrap
+### Story 2.3: Define minimum viable bootstrap ✅
 
 As future Aaron on a new machine,
 I want a minimal setup path,
@@ -91,7 +91,7 @@ So that I can become productive before restoring every desktop customization.
 
 Design input: [bootstrap-architecture-notes.md](./bootstrap-architecture-notes.md) — Bash vs Ansible vs Go, idempotency, "not NixOS."
 
-Issue: [#25](https://github.com/amasover/dotfiles/issues/25)
+Issue: [#25](https://github.com/amasover/dotfiles/issues/25) (closed, PR [#58](https://github.com/amasover/dotfiles/pull/58))
 
 **Acceptance criteria:**
 
@@ -165,13 +165,13 @@ Issue: [#40](https://github.com/amasover/dotfiles/issues/40) (closed, PR [#45](h
 
 ---
 
-### Story 2.7: QEMU fresh-install validation harness
+### Story 2.7: QEMU fresh-install validation harness ✅
 
 As the repo owner,
 I want a repeatable QEMU/KVM harness that fresh-installs Arch and runs the bootstrap,
 So that bootstrap and manifest changes are validated in a disposable VM before they are trusted on metal.
 
-Issue: [#46](https://github.com/amasover/dotfiles/issues/46) · Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (validation strategy). `qemu-desktop` + `virt-manager` are already installed (Story 2.2 decision D6).
+Issue: [#46](https://github.com/amasover/dotfiles/issues/46) (closed, PR [#61](https://github.com/amasover/dotfiles/pull/61)) · Design input: [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md) (validation strategy). `qemu-desktop` + `virt-manager` are already installed (Story 2.2 decision D6).
 
 **Acceptance criteria:**
 
@@ -426,6 +426,26 @@ Issue: [#66](https://github.com/amasover/dotfiles/issues/66) · Origin: 2.7 pre-
 - Given the timer is the steady-state owner, when it's active, then `systemctl is-enabled reflector.timer` passes on the live machine and in a bootstrapped VM
 
 **Evidence artifact:** Group + hook change; `systemctl list-timers` showing reflector.timer.
+
+---
+
+### Story 2.19: vm-harness observability — host logs, `--detach`, and `up`
+
+As the repo owner,
+I want harness runs logged on the host, detachable, and runnable end-to-end with one command,
+So that multi-hour VM validations survive a closed terminal and leave evidence I can read afterwards.
+
+Issue: [#70](https://github.com/amasover/dotfiles/issues/70) · Design input: [vm-harness-observability-notes.md](./vm-harness-observability-notes.md) (2026-07-04 grill, decisions D1–D11) + [CONTEXT.md](./CONTEXT.md) vocabulary. Branch off `main`.
+
+**Acceptance criteria:**
+
+- Given any phase produces output, when it runs, then a per-phase timestamped log lands in `~/.local/state/bootstrap-harness/logs/` (survives `destroy`), ANSI-stripped, ending in a result line; the default tees to stdout with colors intact, and `--quiet`/`VM_HARNESS_QUIET` suppresses stdout
+- Given `--detach`, when a command starts, then it runs under `systemd-run --user`, returns immediately, notifies on completion (`notify-send`), and `vm-harness status` / `tail` can find it
+- Given `vm-harness up`, when invoked, then fetch-if-missing → create → install → boot → wait_ssh → bootstrap → check run in order; it dies if a domain already exists (never auto-destroys), and on failure stops, leaves the VM intact, and names the phase, rc, and next options
+- Given `wait_ssh`, when `bootstrap` runs (inside `up` or manually), then it proceeds only once an authenticated shell succeeds (bounded poll)
+- Given `tail`, bare invocation follows the newest log; `tail install` sudo-follows the serial log; completed installs copy the serial log into the run's state logs
+
+**Evidence artifact:** Script changes + a detached `up` run's complete log set.
 
 ---
 
