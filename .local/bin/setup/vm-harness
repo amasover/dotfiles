@@ -16,7 +16,9 @@
 #   fetch      download + sha256-verify the latest Arch ISO into the local cache
 #   create     pool volumes (disk + ISO + cloud-init seed) — fresh answers each time
 #   install    virt-install, unattended; archinstall runs via cloud-init, VM powers
-#              off when done; media ejected so later boots hit the disk
+#              off when done; media ejected so later boots hit the disk. The
+#              guest serial console streams to the terminal (needs sudo — the
+#              log file is root-owned; skipped without it)
 #   boot       start the domain; prints the NAT IP when the lease appears
 #   up         everything but destroy: fetch (only if no ISO is cached) → create →
 #              install → boot → bootstrap → check. Dies if the domain already
@@ -78,10 +80,10 @@ v()   { virsh -c "$URI" "$@"; }
 
 usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; }   # the header is the help
 
-# The log copy is plain text: strip ANSI escapes (colors, cursor moves) and
-# turn carriage-return redraws (progress bars) into ordinary lines. -u keeps
-# `vm-harness tail` near-live.
-scrub() { sed -u -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b\][^\x07]*\x07//g' -e 's/\r$//' -e 's/\r/\n/g'; }
+# The log copy is plain text: strip ANSI escapes (colors, cursor moves, the
+# ESC(B charset reset tput hides in sgr0) and turn carriage-return redraws
+# (progress bars) into ordinary lines. -u keeps `vm-harness tail` near-live.
+scrub() { sed -u -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\x1b\][^\x07]*\x07//g' -e 's/\x1b[()][0-9A-Za-z]//g' -e 's/\x1b[=>]//g' -e 's/\r$//' -e 's/\r/\n/g'; }
 
 # Run one phase with host-side logging. The terminal (unless --quiet) gets the
 # raw stream — colors and progress bars intact — while the log gets a scrubbed
@@ -277,8 +279,13 @@ cmd_create() {
 
 cmd_install() {
     [[ -n "$(vol_path "$VOL_DISK")" && -n "$(vol_path "$VOL_SEED")" ]] || die "run: vm-harness create first"
-    say "Unattended install — watch in virt-manager ('$VM_NAME' console) or: vm-harness tail install"
-    install -m 666 /dev/null "$INSTALL_LOG"
+    say "Unattended install — serial console streams below (also: vm-harness tail install, or virt-manager)"
+    # virtlogd (re)creates the serial log root:0600 no matter what is pre-created
+    # (verified live — a 0666 pre-create does not survive), so reading it takes
+    # sudo. Refresh the sudo timestamp now, while a human may be at the keyboard;
+    # the stream itself uses sudo -n so a detached run never hangs on a prompt.
+    rm -f "$INSTALL_LOG"
+    [[ -t 0 ]] && sudo -v 2>/dev/null || true
     virt-install --connect "$URI" --name "$VM_NAME" \
         --memory "$RAM" --vcpus "$CPUS" --cpu host-passthrough \
         --osinfo archlinux \
@@ -288,28 +295,40 @@ cmd_install() {
         --disk "vol=$POOL/$VOL_SEED,device=cdrom" \
         --network network=default,model=virtio \
         --serial "file,path=$INSTALL_LOG" \
-        --graphics spice --noautoconsole --wait -1 >/dev/null
+        --graphics spice --noautoconsole --wait -1 >/dev/null &
+    local vpid=$!
+    # Stream the guest's serial console while the install runs — it's the only
+    # thing happening, and without it the phase is dark for minutes. --pid ends
+    # the tail on its own when virt-install exits. run_phase also captures this
+    # stream into the install phase log.
+    local streamed=1
+    sudo -n tail -n +1 -F --pid="$vpid" "$INSTALL_LOG" 2>/dev/null || streamed=0
+    [[ $streamed -eq 1 ]] || echo "  (no sudo — serial stream skipped; follow it with: vm-harness tail install)"
+    wait "$vpid" || die "virt-install failed — see errors above"
     # Install ended (guest powered off). Eject media persistently so every later
     # boot hits the installed disk, and put the disk first in boot order.
     local t
     while read -r t; do
         v change-media "$VM_NAME" "$t" --eject --config >/dev/null 2>&1 || true
     done < <(v domblklist "$VM_NAME" --details | awk '$2=="cdrom"{print $3}')
-    # Copy the serial capture into this run's state logs — the workdir copy dies
-    # with destroy, and a failed install is exactly when it's wanted later.
-    # sudo -n: never prompt (detached runs have no TTY); worst case the copy is
-    # skipped and the workdir original stays until destroy.
-    mkdir -p "$LOG_DIR"
-    { cat "$INSTALL_LOG" 2>/dev/null || sudo -n cat "$INSTALL_LOG" 2>/dev/null; } \
-        | scrub > "$LOG_DIR/$RUN_STAMP-install-serial.log" \
-        || echo "  (couldn't read $INSTALL_LOG for a state-log copy — sudo cat it yourself if needed)"
+    # The stream above already put the serial output into this phase's state
+    # log; this separate raw copy is the fallback for runs where sudo wasn't
+    # available — the workdir original dies with destroy, and a failed install
+    # is exactly when it's wanted later.
+    if [[ $streamed -eq 0 ]]; then
+        mkdir -p "$LOG_DIR"
+        { cat "$INSTALL_LOG" 2>/dev/null || sudo -n cat "$INSTALL_LOG" 2>/dev/null; } \
+            | scrub > "$LOG_DIR/$RUN_STAMP-install-serial.log" \
+            || { rm -f "$LOG_DIR/$RUN_STAMP-install-serial.log"
+                 echo "  (couldn't read $INSTALL_LOG for a state-log copy — sudo cat it yourself if needed)"; }
+    fi
     # Success check via libvirt (the serial log is root-owned by virtlogd — it's the
     # debug artifact, `sudo cat` it; markers: HARNESS-RUNCMD-START / -ARCHINSTALL-EXIT:n).
     # A successful pacstrap allocates gigabytes; a failed one leaves the volume near-empty.
     local alloc
     alloc=$(v vol-info --pool "$POOL" "$VOL_DISK" --bytes | awk '/Allocation/{print $2}')
     [[ "${alloc:-0}" -gt 1000000000 ]] \
-        || die "install wrote only ${alloc:-0} bytes — failed; inspect: sudo cat $INSTALL_LOG (state-log copy: $LOG_DIR/$RUN_STAMP-install-serial.log)"
+        || die "install wrote only ${alloc:-0} bytes — failed; the serial output above has the story (also: sudo cat $INSTALL_LOG)"
     say "Install OK (disk allocation $((alloc / 1024 / 1024)) MiB). Next: vm-harness boot"
 }
 
