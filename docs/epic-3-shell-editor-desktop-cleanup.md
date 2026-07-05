@@ -285,6 +285,61 @@ of the two 2019 binaries in `~/code/go/bin/`:
 
 ---
 
+### Story 3.13: Adopt atuin shell history (self-hosted sync)
+
+As the repo owner,
+I want atuin managing zsh history, syncing to a self-hosted server,
+So that shell history is searchable across machines and survives reinstalls without depending on a third-party service.
+
+Issue: [#67](https://github.com/amasover/dotfiles/issues/67)
+
+Aaron's ask (2026-07-04). `atuin` is in the official repos (`extra/atuin`), so install is a
+one-line add to the `shell-cli` metapac group; zsh integration is an `atuin init zsh` hook in
+`.zshrc`. **Partially blocked:** the sync half needs the atuin server running on the homelab
+server first (outside this repo); the local half (install, hook, tracked config) can proceed
+independently. Secret-safety: the client key (`~/.local/share/atuin/key`) and session are
+credentials — never tracked as plaintext — and the sync-server address is a private hostname,
+so decide how `~/.config/atuin/config.toml` is handled (encrypt manifest / local file /
+template) before tracking it.
+
+**Acceptance criteria:**
+
+- Given `atuin` is declared in the `shell-cli` group and the zsh hook lands in `.zshrc`, when a new shell starts, then ctrl-r search works on the live machine and `metapac unmanaged` stays exactly empty
+- Given atuin config is handled (tracked, templated, or local), when it lands, then no key/session material and no private sync address reach the repo as plaintext
+- Given the homelab atuin server exists (blocker), when sync is configured, then `atuin sync` round-trips history between the workstation and the server
+- Given a fresh machine runs bootstrap, when atuin lands via metapac, then the manual login/key-import step is documented in the [fresh-machine runbook](./runbook-fresh-machine-bootstrap.md)
+
+**Evidence artifact:** Working ctrl-r + sync on the live machine; runbook note for the login step.
+
+---
+
+### Story 3.14: Evaluate Atuin Desktop (runbook app)
+
+As the repo owner,
+I want Atuin Desktop installed and exercised against a real runbook,
+So that I can judge whether executable runbooks earn a place in the daily workflow.
+
+Issue: [#68](https://github.com/amasover/dotfiles/issues/68)
+
+Aaron's ask (2026-07-04). Atuin Desktop is the executable-runbook app from the atuin
+developers — separate from the Story 3.13 history CLI; neither requires the other. Verify the
+install method at pickup (AUR preferred so metapac owns it; upstream shipped it as a beta with
+its own installer). This repo has real runbooks to test against, e.g.
+[runbook-vm-validation.md](./runbook-vm-validation.md) and
+[runbook-fresh-machine-bootstrap.md](./runbook-fresh-machine-bootstrap.md). The evaluation may
+prove work-shaped — in that case the story transfers to the work/internal tracker and the
+issue closes with a pointer note; no internal details land in this repo either way.
+
+**Acceptance criteria:**
+
+- Given an install method is chosen (AUR if one exists, else upstream installer), when installed, then the method is captured (metapac group if pacman/AUR owns it; machine-local or a docs note otherwise) and `metapac unmanaged` stays exactly empty
+- Given one of this repo's runbooks, when ported into and exercised in Atuin Desktop, then a keep/drop verdict is recorded on the issue
+- Given the verdict is "work tool", when transferred to the internal tracker, then the issue closes with a pointer note and nothing internal is committed here
+
+**Evidence artifact:** Keep/drop verdict + install-method note on the issue.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely
