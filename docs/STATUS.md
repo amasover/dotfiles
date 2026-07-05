@@ -30,7 +30,7 @@ Next: **2.7** ([#46](https://github.com/amasover/dotfiles/issues/46)) QEMU harne
 
 **2.5 record** (merged [PR #47](https://github.com/amasover/dotfiles/pull/47) + grill amendments direct to main, 2026-07-02) lives in [decision-bootstrap-architecture.md](./decision-bootstrap-architecture.md); vocabulary in root `CONTEXT.md`.
 
-Backlog reminders: **3.9** ([#41](https://github.com/amasover/dotfiles/issues/41)) iwd vs wpa_supplicant; **3.10** ([#42](https://github.com/amasover/dotfiles/issues/42)) screen recorders; **3.1** ([#28](https://github.com/amasover/dotfiles/issues/28)) `.zshrc` cleanup queue. Not yet ticketed from 2.6: clean-chroot AUR builds, popularity-aware holds, paru rebuild (broken: libalpm.so.15) — fresh-install gating is now ticketed as 2.10 (#50). Not yet ticketed from 2.5: the interim `/etc` apply script (known gap in the decision doc).
+Backlog reminders: **3.9** ([#41](https://github.com/amasover/dotfiles/issues/41)) iwd vs wpa_supplicant; **3.10** ([#42](https://github.com/amasover/dotfiles/issues/42)) screen recorders; **3.1** ([#28](https://github.com/amasover/dotfiles/issues/28)) `.zshrc` cleanup queue; **3.13** ([#67](https://github.com/amasover/dotfiles/issues/67)) atuin shell history (sync half blocked on the homelab atuin server); **3.14** ([#68](https://github.com/amasover/dotfiles/issues/68)) Atuin Desktop runbook app (may transfer to the work tracker). Not yet ticketed from 2.6: clean-chroot AUR builds, popularity-aware holds, paru rebuild (broken: libalpm.so.15) — fresh-install gating is now ticketed as 2.10 (#50). Not yet ticketed from 2.5: the interim `/etc` apply script (known gap in the decision doc).
 
 ## Last session (2026-07-01 → 02)
 
