@@ -91,6 +91,22 @@ so resume-by-hand already works, and acceptance evidence wants the fresh path
 anyway. The failure message names the phase, the rc, and the options
 (inspect / resume manually / destroy and re-run).
 
+## Implementation deltas (2026-07-05, found while building/first live run)
+
+- **D4 refined:** the raw/scrubbed split happens only when stdout is a
+  terminal — a raw tee into a redirected file re-opens the target, truncating
+  it and writing at an independent offset (reproduced in a scratch test).
+  Pipes and files get the scrubbed stream; colors only render on terminals
+  anyway.
+- **D6 upgraded (Aaron's ask, first live `up`):** `install` streams the serial
+  console to the terminal and into the install phase log, instead of leaving
+  the phase dark and copying at the end. The serial file is root:0600
+  (virtlogd re-creates it; a 0666 pre-create does not survive — verified
+  live), so the stream is `sudo -n tail --pid`, with a `sudo -v` refresh at
+  phase start when attended. The `-install-serial.log` copy is now only the
+  fallback when sudo wasn't available (e.g. detached without cached
+  credentials).
+
 ## Parked
 
 - Log retention: none initially; revisit if the directory ever annoys.

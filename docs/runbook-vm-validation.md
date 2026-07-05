@@ -33,8 +33,9 @@ timestamp so they sort as a set. The terminal keeps the raw colorful stream;
 `--quiet` (or `VM_HARNESS_QUIET=1`) suppresses it.
 
 - **Watch live:** `vm-harness tail` follows the newest log and hops to the next
-  phase as an `up` run advances; `vm-harness tail install` follows the guest
-  serial log instead (sudo — qemu writes it root-owned in the workdir).
+  phase as an `up` run advances — including `install`, whose serial console is
+  streamed into its phase log (when sudo was available). `vm-harness tail
+  install` follows the raw serial file itself (sudo — root-owned in the workdir).
 - **Walk away:** `vm-harness --detach up` runs under `systemd-run --user` — it
   survives the closed terminal, logs plain output, and sends a desktop
   notification on completion (success or failure). `vm-harness status` shows
@@ -51,11 +52,13 @@ ran legacy BIOS; UEFI mirrors the refind metal setup), virtio disk/net (win10's 
 was the slow path). Throwaway credentials (`aaron`/`vm`, NOPASSWD sudo, host pubkey
 pre-authorized) — reachable only from this host's NAT, and the VM is disposable.
 The serial log (`~/.local/share/bootstrap-harness/install.log`, **root-owned** by
-virtlogd — `sudo cat` to read) carries the `HARNESS-*` markers; when `install`
-finishes it is copied into the run's state logs as `<timestamp>-install-serial.log`
-so it outlives `destroy`. Install success is asserted via libvirt itself
-(disk-volume allocation), and archinstall's TUI errors show on the virt-manager
-console.
+virtlogd — a 0666 pre-create does not survive, verified live) carries the
+`HARNESS-*` markers. `install` streams it live to the terminal and into the
+install phase log via `sudo -n tail` (a `sudo -v` at phase start prompts once
+when attended); a detached run without cached sudo skips the stream and instead
+attempts a `<timestamp>-install-serial.log` fallback copy at completion. Install
+success is asserted via libvirt itself (disk-volume allocation), and
+archinstall's TUI errors show on the virt-manager console.
 
 ## How the pieces fit
 
