@@ -34,24 +34,30 @@ shows its own plan and prompts (makepkg, metapac sync, chsh). What it does, in o
 
 1. **Secrets** — `yadm decrypt` (interactive passphrase; symmetric GPG, no key
    transfer needed; secret contents are never printed). Skipped when `~/.zshenv`
-   already exists.
+   already exists, and always skipped under `--unattended` — a passphrase prompt
+   can't run without a TTY, so VM/harness runs get no secrets; run `yadm decrypt`
+   in the guest manually if a test needs them.
 2. **Profile guard** — hard-fails unless `yadm config local.class <class>` is set and
    the rendered `~/.config/metapac/config.toml` has this hostname's entry. Choosing
    the class **is** the desktop-optional step: a class whose group list omits
    `desktop`/`media`/`gaming` bootstraps a headless-ish machine; nothing installs
    i3/polybar/rofi unless the class says so.
-3. **Machine-local groups** — creates (empty) any absolute-path group file the config
-   references; metapac hard-errors on missing group files. On the workstation class
-   this is `~/.local/share/metapac/machine-local.toml` (Story 2.11 owns its contents).
-4. **yay** — one manual `makepkg -si` from `yay-bin`; the only unmanaged install.
-5. **metapac** — `yay -S metapac` (it's an AUR package).
-6. **`metapac sync`** — the fresh install is just the first reconcile: installs the
+3. **Machine-local group** — creates (empty) `~/.local/share/metapac/machine-local.toml`
+   if missing: the one group file living outside the repo, and metapac hard-errors
+   on missing group files (Story 2.11 owns its contents).
+4. **Mirrors** — when `/etc/pacman.d/mirrorlist` is older than 7 days, installs
+   reflector and re-ranks the fastest US https mirrors. Fresh installs usually
+   skip it (the archiso ranks mirrors at live-boot and the install copies that
+   list in); steady-state re-ranking on live machines is Story 2.18.
+5. **yay** — one manual `makepkg -si` from `yay-bin`; the only unmanaged install.
+6. **metapac** — `yay -S metapac` (it's an AUR package).
+7. **`metapac sync`** — the fresh install is just the first reconcile: installs the
    class's declared set (AUR through yay), per-package service hooks fire as declared.
-7. **AUR trust baseline** — `aur-quarantine seed` (trust-first-seen, announced;
+8. **AUR trust baseline** — `aur-quarantine seed` (trust-first-seen, announced;
    interim until 2.10's portable baseline).
-8. **oh-my-zsh** — official installer, `KEEP_ZSHRC=yes` so yadm's `.zshrc` survives
+9. **oh-my-zsh** — official installer, `KEEP_ZSHRC=yes` so yadm's `.zshrc` survives
    (replaces the deleted vendored `install_oh_my_zsh`).
-9. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
+10. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
 
 ## Class table
 
@@ -80,5 +86,5 @@ public-safe labels; one per machine (see CONTEXT.md).
 - **metapac errors on a missing group file** — re-run the script (step 3 creates
   empty ones), or check the absolute paths in the rendered config.
 - **`metapac sync` proposes nothing** — the profile guard should have caught it;
-  verify the hostname key really is in the rendered config (guard checks the literal
-  `hostname` output).
+  verify the hostname key really is in the rendered config (guard checks the
+  `uname -n` nodename — the `hostname` binary does not exist on minimal installs).

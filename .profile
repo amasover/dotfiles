@@ -8,9 +8,6 @@ export GOPATH=~/code/go
 # executed from anywhere using terminal
 export PATH="$GOPATH/bin:$PATH"
 ## END GOLANG
-## RUST export PATH=~/.cargo/bin:$PATH
-export RUST_SRC_PATH=~/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/src
-## end RUST
 
 ## Robo3t -mongo-client-
 export PATH=/usr/bin/robo3t/bin:$PATH

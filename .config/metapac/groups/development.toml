@@ -12,7 +12,6 @@ packages = [
   "bfg",
   "brew-git",
   "changie",
-  "chatmcp",
   "claude-code",
   "cloc",
   "debtap",
@@ -39,7 +38,7 @@ packages = [
   "python-pipx",
   "python-pymssql",
   "redis",
-  "rustup",
+  "rust",  # repo rust, not rustup: satisfies AUR makedeps, updates via pacman; no Rust dev here (2.7 review)
   "shellcheck",
   "strace",
   "unixodbc",

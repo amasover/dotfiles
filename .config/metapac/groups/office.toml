@@ -2,7 +2,7 @@
 # Membership source: docs/package-inventory.md; adopted in Story 2.8.
 [arch]
 packages = [
-  "anki-bin",
+  "anki",
   "libreoffice-fresh",
   "yed",
 ]
