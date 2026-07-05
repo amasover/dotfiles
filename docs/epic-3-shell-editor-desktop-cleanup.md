@@ -340,6 +340,24 @@ issue closes with a pointer note; no internal details land in this repo either w
 
 ---
 
+### Story 3.15: Encrypt-manifest leftovers from 3.6
+
+As the repo owner,
+I want the parked encrypt-list decisions closed out,
+So that the encryption manifest matches reality and the one keyed file is either protected or deliberately dropped.
+
+Issue: [#77](https://github.com/amasover/dotfiles/issues/77) · Leftovers from Story 3.6 triage plus one 1.8 candidate, previously parked in STATUS.
+
+**Acceptance criteria:**
+
+- Given `.config/yadm/encrypt`, stale patterns are removed or re-justified
+- Given `settings.json` (contains a key), it is adopted through the YADM encrypt path or deliberately dropped — recorded either way
+- Given the gitignored `docs/private/` redaction note, its promotion to YADM-encrypted storage is decided and recorded (yes or no)
+
+**Evidence artifact:** the encrypt-manifest diff + decision notes on the issue.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely
