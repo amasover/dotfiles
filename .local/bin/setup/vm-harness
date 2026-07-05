@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vm-harness — disposable libvirt/QEMU validation harness (Story 2.7, #46).
+# vm-harness — disposable libvirt/QEMU validation harness.
 #
 # Fresh-installs Arch in a VM (unattended archinstall via the ISO's cloud-init),
 # then runs the repo bootstrap inside it and asserts the result — so bootstrap and
@@ -47,9 +47,9 @@ VM_CLASS="${VM_HARNESS_CLASS:-workstation}"   # which class profile the VM valid
 VM_HOST=archvm
 VM_USER=aaron
 VM_PASS=vm          # throwaway VM only; reachable only from this host's NAT
-DISK_SIZE=80G
-RAM=12288
-CPUS=16
+DISK_SIZE="${VM_HARNESS_DISK:-80G}"
+RAM="${VM_HARNESS_RAM:-12288}"      # MiB
+CPUS="${VM_HARNESS_CPUS:-16}"
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'vm-harness: FATAL: %s\n' "$*" >&2; exit 1; }
@@ -72,9 +72,13 @@ cmd_fetch() {
     say "Fetching latest Arch ISO + checksum from $MIRROR"
     curl -fL --progress-bar -o "$ISO.new" "$MIRROR/archlinux-x86_64.iso"
     curl -fsSL -o "$CACHE/sha256sums.txt" "$MIRROR/sha256sums.txt"
-    (cd "$CACHE" && mv archlinux-x86_64.iso.new archlinux-x86_64.iso \
-        && grep ' archlinux-x86_64.iso$' sha256sums.txt | sha256sum -c -) \
-        || die "ISO checksum verification failed"
+    # Verify BEFORE renaming into place: a failed check must not leave a bad
+    # ISO at the path cmd_create trusts with a bare -f test.
+    (cd "$CACHE" && grep ' archlinux-x86_64.iso$' sha256sums.txt \
+        | sed 's/ archlinux-x86_64\.iso$/ archlinux-x86_64.iso.new/' \
+        | sha256sum -c -) \
+        || { rm -f "$ISO.new"; die "ISO checksum verification failed (bad download discarded)"; }
+    mv "$ISO.new" "$ISO"
     v vol-delete --pool "$POOL" "$VOL_ISO" >/dev/null 2>&1 || true
     say "ISO cached: $(du -h "$ISO" | cut -f1) (pool volume refreshes on next create)"
 }
@@ -94,6 +98,8 @@ write_seed() {
     for k in "$HOME"/.ssh/id_*.pub; do
         [[ -f "$k" ]] && { host_pubkey=$(<"$k"); break; }
     done
+    [[ -n "$host_pubkey" ]] \
+        || say "WARNING: no ~/.ssh/id_*.pub on the host — ssh steps will password-prompt ($VM_PASS)"
     cat > "$d/user_configuration.json" <<JSON
 {
   "version": "2.8.6",
@@ -147,10 +153,25 @@ JSON
 }
 JSON
 
-    # NoCloud seed: recent archisos ship cloud-init enabled; runcmd fires once the
-    # live environment is up, runs archinstall unattended, then powers off.
-    # HARNESS-* markers + failure log-tail land on the serial log; archinstall's
-    # TUI-level errors are on the virt-manager console (schema-skew runbook note).
+    # The guest-side install driver — a plain readable script instead of an
+    # escaped runcmd one-liner. All output goes to the serial log (HARNESS-*
+    # markers; archinstall's log is tailed on failure); archinstall's TUI-level
+    # errors are on the virt-manager console (schema-skew runbook note).
+    # Quoted heredoc: nothing here expands on the host.
+    cat > "$d/run-install.sh" <<'EOF'
+#!/bin/sh
+exec > /dev/ttyS0 2>&1
+echo HARNESS-RUNCMD-START
+archinstall --config /root/user_configuration.json \
+            --creds  /root/user_credentials.json --silent
+rc=$?
+echo "HARNESS-ARCHINSTALL-EXIT:$rc"
+[ "$rc" -ne 0 ] && tail -n 80 /var/log/archinstall/install.log
+systemctl poweroff
+EOF
+
+    # NoCloud seed: recent archisos ship cloud-init enabled; runcmd fires once
+    # the live environment is up and just invokes the driver script above.
     cat > "$d/meta-data" <<EOF
 instance-id: bootstrap-harness
 local-hostname: archiso
@@ -164,9 +185,12 @@ write_files:
   - path: /root/user_credentials.json
     encoding: b64
     content: $(base64 -w0 "$d/user_credentials.json")
+  - path: /root/run-install.sh
+    encoding: b64
+    content: $(base64 -w0 "$d/run-install.sh")
+    permissions: '0755'
 runcmd:
-  - [sh, -c, "echo HARNESS-RUNCMD-START > /dev/ttyS0"]
-  - [sh, -c, "archinstall --config /root/user_configuration.json --creds /root/user_credentials.json --silent > /dev/ttyS0 2>&1; rc=\$?; echo HARNESS-ARCHINSTALL-EXIT:\$rc > /dev/ttyS0; if [ \$rc -ne 0 ]; then tail -n 80 /var/log/archinstall/install.log > /dev/ttyS0 2>&1; fi; systemctl poweroff"]
+  - [sh, /root/run-install.sh]
 EOF
 
     local mkiso
@@ -234,19 +258,27 @@ cmd_boot() {
 cmd_ip() { vm_ip; }
 
 # Root exec via qemu-guest-agent (ships on modern archisos and installed systems
-# alike). No network needed; output is captured and decoded.
+# alike). No network needed; output is captured and decoded. Polls until the
+# guest command exits, up to VM_HARNESS_EXEC_TIMEOUT seconds (default 120).
+# The guest exit code is deliberately NOT propagated — this is a debugging
+# peephole; callers read the output, not $?.
 cmd_exec() {
-    local cmd=$1 payload pid
+    local cmd=$1 payload pid status i timeout="${VM_HARNESS_EXEC_TIMEOUT:-120}"
     payload=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$cmd")
     pid=$(v qemu-agent-command "$VM_NAME" \
         "{\"execute\":\"guest-exec\",\"arguments\":{\"path\":\"/bin/sh\",\"arg\":[\"-c\",$payload],\"capture-output\":true}}" \
         | python3 -c 'import json,sys; print(json.load(sys.stdin)["return"]["pid"])')
-    sleep 2
-    v qemu-agent-command "$VM_NAME" \
-        "{\"execute\":\"guest-exec-status\",\"arguments\":{\"pid\":$pid}}" \
-        | python3 -c 'import json,sys,base64; r=json.load(sys.stdin)["return"]; \
+    for (( i=0; i<timeout; i++ )); do
+        status=$(v qemu-agent-command "$VM_NAME" \
+            "{\"execute\":\"guest-exec-status\",\"arguments\":{\"pid\":$pid}}")
+        [[ "$status" == *'"exited":true'* ]] && break
+        sleep 1
+    done
+    [[ "$status" == *'"exited":true'* ]] \
+        || die "guest command still running after ${timeout}s (guest pid $pid)"
+    python3 -c 'import json,sys,base64; r=json.load(sys.stdin)["return"]; \
 sys.stdout.write(base64.b64decode(r.get("out-data","")).decode()); \
-sys.stdout.write(base64.b64decode(r.get("err-data","")).decode())'
+sys.stdout.write(base64.b64decode(r.get("err-data","")).decode())' <<<"$status"
 }
 
 vm_ssh() {
@@ -262,8 +294,7 @@ cmd_bootstrap() {
         yadm clone --no-bootstrap '$REPO_URL' || true
         yadm config local.class '$VM_CLASS'
         yadm alt
-        touch ~/.zshenv   # VM: no secrets passphrase — bootstrap skips decrypt
-        ~/.local/bin/setup/bootstrap --check
+        ~/.local/bin/setup/bootstrap --check --unattended
         ~/.local/bin/setup/bootstrap --unattended"
 }
 
@@ -300,5 +331,5 @@ case "${1:-}" in
     bootstrap) cmd_bootstrap ;;
     check)     cmd_check ;;
     destroy)   cmd_destroy ;;
-    *) sed -n '2,29p' "$0"; exit 1 ;;
+    *) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; exit 1 ;;   # the header is the help
 esac
