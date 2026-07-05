@@ -449,6 +449,25 @@ Issue: [#70](https://github.com/amasover/dotfiles/issues/70) · Design input: [v
 
 ---
 
+### Story 2.21: vm-harness progress mode — compact stage display instead of raw logs
+
+As the repo owner,
+I want a mode that shows a compact live status (phase, current stage, elapsed) instead of streaming raw output,
+So that I can watch a run's health at a glance without the serial/ssh firehose, while failures still stop the run loudly.
+
+Issue: [#73](https://github.com/amasover/dotfiles/issues/73) · Follow-up to Story 2.19 ([#70](https://github.com/amasover/dotfiles/issues/70)): a hybrid between fully-attached (raw stream) and `--detach` (no terminal). Branch off `main`.
+
+**Acceptance criteria:**
+
+- Given the progress flag (name decided at pickup grill), when a phase runs, then the terminal shows a compact live-updating status — phase (n of 6), a stage derived from the underlying stream (HARNESS-* markers, archinstall/pacstrap/yay milestones), and elapsed time — instead of raw output
+- Given progress mode, the state logs are unchanged — the full scrubbed capture is still written and `vm-harness tail` remains the drill-down
+- Given a phase fails in progress mode, the run stops exactly as today (phase, rc, options) and the tail of the failing phase's log is printed, so the error is visible without switching commands
+- Given `--detach` or `--quiet` combined with progress mode, the behavior is explicit (rejected or defined), not accidental
+
+**Evidence artifact:** a progress-mode `up` transcript + its unchanged full log set.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
