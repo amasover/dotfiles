@@ -20,7 +20,8 @@
 #              kernel is booted directly with a serial console added, so the whole
 #              boot + install streams to the terminal (needs sudo — the serial log
 #              is root-owned; skipped without it) and there's no boot menu to stall
-#   boot       start the domain; prints the NAT IP when the lease appears
+#   boot       start the domain; streams the boot's serial console (sudo) and
+#              prints the NAT IP when the lease appears
 #   up         everything but destroy: fetch (only if no ISO is cached) → create →
 #              install → boot → bootstrap → check. Dies if the domain already
 #              exists — it never auto-destroys.
@@ -400,10 +401,31 @@ vm_ip() {
 }
 
 cmd_boot() {
-    say "Starting domain '$VM_NAME' (console in virt-manager)"
+    say "Starting domain '$VM_NAME' — serial console streams below until the NAT lease appears"
+    # The installed system logs its boot to the serial file too (console=ttyS0
+    # in its loader entries, set at install time), so stream it while waiting
+    # for the lease — same structure as the install stream: the lease poll runs
+    # in the background and a FOREGROUND tail --pid follows until the poll
+    # ends. (A backgrounded sudo tail can't be killed by the non-root harness
+    # and its open fd would hold run_phase's logging pipeline forever —
+    # verified in a scratch test.) -n 0: the file still holds the whole
+    # install-phase capture; follow new lines only. The first few firmware
+    # lines can land before tail attaches — the file itself always has them.
+    [[ -t 0 ]] && sudo -v 2>/dev/null || true
     v start "$VM_NAME" >/dev/null 2>&1 || true
-    local ip=""
-    for _ in $(seq 1 30); do ip=$(vm_ip); [[ -n "$ip" ]] && break; sleep 3; done
+    local ipfile="$WORKDIR/.boot-ip" waiter ip=""
+    rm -f "$ipfile"
+    ( ip=""
+      for _ in $(seq 1 30); do ip=$(vm_ip); [[ -n "$ip" ]] && break; sleep 3; done
+      printf '%s' "$ip" > "$ipfile" ) &
+    waiter=$!
+    if sudo -n true 2>/dev/null; then
+        sudo -n tail -n 0 -F --pid="$waiter" "$INSTALL_LOG" 2>/dev/null || true
+    else
+        echo "  (no sudo — serial boot stream skipped; follow it with: vm-harness tail install)"
+    fi
+    wait "$waiter" || true
+    [[ -f "$ipfile" ]] && ip=$(<"$ipfile"); rm -f "$ipfile"
     [[ -n "$ip" ]] || die "no DHCP lease yet — try: vm-harness ip"
     say "Up. ssh $VM_USER@$ip   (password: $VM_PASS, or the seeded host key)"
 }

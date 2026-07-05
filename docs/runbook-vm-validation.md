@@ -140,7 +140,8 @@ master.
   disk, caught by the alloc check).
 - **The installed system keeps a serial console too**: its loader entries get
   `console=tty0 console=ttyS0` and `serial-getty@ttyS0` is enabled at install
-  time — every later boot logs to the serial file, and
+  time — every later boot logs to the serial file, `vm-harness boot` streams it
+  live while waiting for the NAT lease (then the flow switches to ssh), and
   `virsh -c qemu:///system console arch-harness` gives a login when ssh is down.
 - **Serial output and terminal resizes:** full-screen phases (firmware, TUI
   redraws) draw for a fixed 80×24-ish geometry; a serial line carries no resize
