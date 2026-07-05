@@ -106,6 +106,16 @@ anyway. The failure message names the phase, the rc, and the options
   phase start when attended. The `-install-serial.log` copy is now only the
   fallback when sudo wasn't available (e.g. detached without cached
   credentials).
+- **Full boot on serial (Aaron's ask, watching the stream):** the ISO's own
+  kernel cmdline has no `console=ttyS0`, so serial went dark between the boot
+  menu (firmware output, mirrored by OVMF) and the install driver's explicit
+  redirect. `install` now boots the archiso kernel directly via fw_cfg —
+  kernel, initrd(s) and cmdline read from the ISO's default loader entry,
+  `console=ttyS0` appended — which also removes the boot menu and its
+  stray-keypress stall. The installed system gets the same console params plus
+  `serial-getty@ttyS0` via archinstall `custom_commands`. Terminal-resize
+  garbling during full-screen phases stays: a serial line has no resize
+  back-channel — documented as inherent, not fixed.
 
 ## Parked
 

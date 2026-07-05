@@ -118,11 +118,21 @@ master.
 - **`vm-harness exec '<cmd>'`** runs commands as root in the guest via the qemu
   agent — works in the live ISO before ssh exists; it's how the hang above was
   diagnosed without touching the console.
-- **Don't touch the console during `install`'s boot menu** — any keypress in the
-  archiso's systemd-boot menu cancels the auto-boot countdown and the VM waits
-  forever (bit us live: attaching virt-manager and grazing a key stalled a run;
-  `virsh send-key arch-harness KEY_ENTER` un-stuck it). Attach *after* the menu, or
-  look, don't type.
+- **There is no boot menu during `install` anymore** — the archiso kernel is
+  loaded directly (qemu fw_cfg) with `console=ttyS0` appended, read from the ISO's
+  own loader entry. Two effects: the full kernel/systemd boot shows on the serial
+  stream, and the old footgun is gone (a stray keypress in the systemd-boot menu
+  used to cancel the auto-boot countdown and stall the run forever;
+  `virsh send-key arch-harness KEY_ENTER` was the rescue).
+- **The installed system keeps a serial console too**: its loader entries get
+  `console=tty0 console=ttyS0` and `serial-getty@ttyS0` is enabled at install
+  time — every later boot logs to the serial file, and
+  `virsh -c qemu:///system console arch-harness` gives a login when ssh is down.
+- **Serial output and terminal resizes:** full-screen phases (firmware, TUI
+  redraws) draw for a fixed 80×24-ish geometry; a serial line carries no resize
+  signal back to the guest, so resizing the watching terminal garbles the
+  picture until the next linear output. Inherent to serial consoles — wait it
+  out or don't resize mid-TUI.
 - **Class profile**: `vm-harness bootstrap` sets `yadm config local.class` to
   `$VM_HARNESS_CLASS` (default `workstation` — the full 16-group daily-driver set,
   ~375 packages; that's the profile 2.7 exists to prove). When other classes exist,
