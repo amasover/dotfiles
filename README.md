@@ -31,6 +31,23 @@ This project uses [YADM](https://thelocehiliosan.github.io/yadm/), a dotfile man
 4. Follow the instructions outlined in the [Installation Page](https://github.com/patrick-motard/dotfiles/wiki/Installation) in the wiki.
 5. report any bugs or manual steps as issues to this repo so that the install process can be improved.
 
+# Package management
+
+Packages are declared, not remembered: [metapac](https://github.com/ripytide/metapac)
+reconciles what's installed against what's declared here.
+
+- **Groups** — [.config/metapac/groups/](.config/metapac/groups/) lists packages by
+  purpose (base, desktop, work, ...). Add a package: edit a group, run `metapac sync`.
+- **Machine profile** — each machine declares a *class* once
+  (`yadm config local.class workstation`); yadm renders
+  [config.toml##template](.config/metapac/config.toml%23%23template) into an untracked
+  machine-local `config.toml` mapping this hostname to its group list — so no
+  hostname ever reaches the repo.
+- **Fresh machine** — `.local/bin/setup/bootstrap` wires it all up; see the
+  [fresh-machine runbook](docs/runbook-fresh-machine-bootstrap.md).
+
+Details: [.config/metapac/README.md](.config/metapac/README.md).
+
 # Inspiration & Information Sources
 
 ### desktop backgrounds

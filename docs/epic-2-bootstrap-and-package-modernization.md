@@ -411,6 +411,24 @@ Issue: [#65](https://github.com/amasover/dotfiles/issues/65) · Tracking story s
 
 ---
 
+### Story 2.18: Keep pacman mirrors fresh (reflector.timer)
+
+As the repo owner,
+I want mirror ranking to happen on a schedule on live machines,
+So that pacman/yay traffic doesn't crawl because the mirrorlist quietly rotted.
+
+Issue: [#66](https://github.com/amasover/dotfiles/issues/66) · Origin: 2.7 pre-merge review — bootstrap step 3b now re-ranks a stale (>7 days) mirrorlist at bootstrap/re-run time, but between bootstraps the list rots; Aaron re-runs reflector by hand today (US, https, fastest/latest 20, rate-sorted, age 3).
+
+**Acceptance criteria:**
+
+- Given the `reflector` package ships `reflector.timer` and `/etc/xdg/reflector/reflector.conf`, when this lands, then reflector is declared in a tracked group and the timer is enabled by a declared hook (same pattern as the other service hooks)
+- Given the conf lives under `/etc` (outside yadm's `$HOME` worktree), when a fresh machine bootstraps, then the chosen reflector args apply without hand-editing (hook-written conf or an equivalently reproducible mechanism)
+- Given the timer is the steady-state owner, when it's active, then `systemctl is-enabled reflector.timer` passes on the live machine and in a bootstrapped VM
+
+**Evidence artifact:** Group + hook change; `systemctl list-timers` showing reflector.timer.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
