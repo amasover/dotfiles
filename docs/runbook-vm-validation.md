@@ -124,7 +124,9 @@ master.
   Since 2.19, the install boot masks `systemd-time-wait-sync` (a KVM guest's clock
   is already the host's via the RTC), so this failure mode is loud archinstall
   mirror errors rather than a silent hang — and healthy boots skip the NTP wait,
-  reaching archinstall sooner. The serial stream also prints a
+  reaching archinstall sooner. archinstall's *own* sync check is skipped too
+  (`--skip-ntp`): timesyncd may never sync inside the NAT guest, and with the
+  first gate gone it no longer pre-syncs the clock before archinstall checks. The serial stream also prints a
   `HARNESS-CLOUDINIT-UP` marker at cloud-init's early stage: quiet before it =
   still booting; quiet after it = cloud-init's later stages.
 - **`vm-harness exec '<cmd>'`** runs commands as root in the guest via the qemu
