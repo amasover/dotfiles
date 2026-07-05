@@ -1,23 +1,38 @@
 #!/usr/bin/env bash
-# bootstrap — minimum viable fresh-machine setup (Story 2.3, #25).
+# bootstrap — take a fresh Arch install to this repo's fully configured machine.
 #
-# Thin by design (docs/decision-bootstrap-architecture.md): every hard part is
-# delegated — yadm owns files/secrets, metapac owns package idempotency, yay owns
-# AUR builds + the Story 2.6 quarantine. Linear and re-runnable; each mutating
-# tool shows its own plan and prompts before acting.
+# yadm clone lays down the dotfiles; this script does everything else a new
+# machine needs: decrypt secrets, render the machine's class profile, install
+# yay, hand the declared package set to metapac (a fresh install is just the
+# first reconcile), seed the AUR trust baseline, and set up zsh. Re-runnable:
+# every step checks state before acting, so it doubles as repair.
+#
+# Thin by design (docs/decision-bootstrap-architecture.md): the hard parts are
+# delegated — yadm owns files/secrets, metapac owns package idempotency, yay
+# owns AUR builds + the quarantine (tools/aur-quarantine).
+#
+# Usage:
+#   bootstrap               attended — each mutating tool shows its plan and prompts
+#   bootstrap --check       dry-run: mutates nothing, prints what each step would do
+#                           in this machine's state. Guards still fail for real, so it
+#                           doubles as a cheap preflight for profile/config mistakes
+#   bootstrap --unattended  no prompts — VM/harness runs; tools get their no-confirm
+#                           flags, and secret decrypt is skipped (yadm decrypt later)
+#   bootstrap -h            print this help
 #
 # Preconditions (docs/runbook-fresh-machine-bootstrap.md):
 #   1. Arch installed (archinstall is fine): network up, user created, sudo works
 #   2. sudo pacman -S --needed git base-devel yadm
 #   3. yadm clone <repo-url>            # places dotfiles, incl. this script
-#   4. ~/.local/bin/setup/bootstrap     # or: bootstrap --check
-#
-# --check: read-only — run the guards and print what each step would do.
 #
 # METAL GATE: until Story 2.10 lands (install-time AUR gating + portable trust
-# baseline), run this only in disposable VMs (Story 2.7 harness) — a fresh
+# baseline), run this only in disposable VMs (setup/vm-harness) — a fresh
 # machine installs its AUR set ungated against freshly-weaponized packages.
 set -euo pipefail
+
+say() { printf '\n==> %s\n' "$*"; }
+die() { printf '\nbootstrap: FATAL: %s\n' "$*" >&2; exit 1; }
+usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; }   # the header is the help
 
 CHECK=0
 UNATTENDED=0
@@ -25,12 +40,11 @@ for arg in "$@"; do
     case "$arg" in
         --check)      CHECK=1 ;;
         --unattended) UNATTENDED=1 ;;   # harness/VM runs: pass tools their no-confirm flags
+        -h|--help)    usage; exit 0 ;;
+        *)            die "unknown argument: $arg   (try: bootstrap -h)" ;;
     esac
 done
 NC=(); [[ $UNATTENDED -eq 1 ]] && NC=(--noconfirm)
-
-say() { printf '\n==> %s\n' "$*"; }
-die() { printf '\nbootstrap: FATAL: %s\n' "$*" >&2; exit 1; }
 
 [[ $EUID -ne 0 ]] || die "run as your normal user, not root (sudo is invoked where needed)"
 command -v pacman >/dev/null || die "pacman not found — this bootstrap is Arch-only"
@@ -45,6 +59,8 @@ if [[ -z "$virt" || "$virt" == "none" ]]; then
     say "WARNING: bare metal detected — Story 2.10 (install-time AUR gating) has not landed."
     if [[ $CHECK -eq 1 ]]; then
         echo "  (--check: would require typing 'metal' to continue)"
+    elif [[ $UNATTENDED -eq 1 ]]; then
+        die "unattended runs are VM-only until Story 2.10 lands (and there's no TTY to type 'metal')"
     else
         read -r -p "  Type 'metal' to continue anyway, anything else aborts: " ans
         [[ "$ans" == "metal" ]] || die "aborted at the metal gate"
@@ -59,16 +75,33 @@ if [[ ! -f "$archive" ]]; then
 elif [[ -f "$HOME/.zshenv" ]]; then
     echo "  secrets appear decrypted already (~/.zshenv exists) — skipping"
     echo "  (re-run manually anytime: yadm decrypt)"
+elif [[ $UNATTENDED -eq 1 ]]; then
+    echo "  unattended: skipping decrypt — a passphrase prompt can't run without a TTY"
+    echo "  (if this machine needs secrets, run manually: yadm decrypt)"
 elif [[ $CHECK -eq 1 ]]; then
     echo "  would: yadm decrypt   (interactive passphrase prompt)"
 else
     yadm decrypt
 fi
 
-# --- 2. profile guard (grill 2026-07-02) -------------------------------------
-# Without a class + hostname entry, `metapac sync` is a silent no-op and a later
-# `clean` would propose removing everything. Choosing the class IS the
-# "desktop optional unless explicitly selected" step.
+# --- 2. profile guard ----------------------------------------------------------
+# A class is this machine's profile: one word (e.g. workstation) that decides
+# which package groups — and someday maybe which dotfiles — this machine gets.
+# It lives in yadm's local, untracked config: the repo carries every profile,
+# and each machine just declares which one applies to it.
+#
+# Why yadm.class for a metapac concern? metapac wants a literal hostname->groups
+# map, but hostnames shouldn't be committed to a public repo, and a fresh
+# machine's hostname isn't knowable in advance anyway. yadm already owns the
+# "render machine-specific files from tracked templates" problem
+# (config.toml##template + yadm alt), so metapac just reads the rendered result
+# — and any future per-class dotfile (work-vs-home shell config, say) reuses
+# the same single knob instead of growing a second profile mechanism.
+#
+# The guard is strict because the failure mode is silent: with no class the
+# template renders no [hostname_groups] entry, `metapac sync` does NOTHING, and
+# a later `clean` would offer to remove every package on the machine. Picking
+# the class IS the "desktop optional unless explicitly selected" decision.
 say "Profile guard"
 class=$(yadm config local.class 2>/dev/null || true)
 [[ -n "$class" ]] || die "yadm.class is unset. Pick this machine's profile, then re-run:
@@ -76,29 +109,52 @@ class=$(yadm config local.class 2>/dev/null || true)
     yadm alt"
 echo "  class: $class"
 if [[ $CHECK -eq 0 ]]; then
-    yadm alt >/dev/null 2>&1 || true   # (re)render ##template files for class+hostname
+    # (Re)render ##templates for this class+hostname. Usually redundant — yadm
+    # auto-renders when local.class changes — but it also covers
+    # yadm.auto-alt=false and hand-edited local configs.
+    yadm alt >/dev/null || true
 fi
 cfg="$HOME/.config/metapac/config.toml"
 [[ -f "$cfg" ]] || die "rendered metapac config missing ($cfg) — run 'yadm alt' and re-run"
-grep -q "\"$(uname -n)\"" "$cfg" \
+grep -q "^\"$(uname -n)\" = \[" "$cfg" \
     || die "no [hostname_groups] entry for host '$(uname -n)' in $cfg.
     The template only renders known classes — check the class ('$class') against
     config.toml##template's branches, then: yadm alt   and re-run"
 echo "  hostname entry: present"
 
-# --- 3. absolute-path group files must exist (metapac hard-errors if missing) ---
-say "Machine-local group files"
-while IFS= read -r p; do
-    [[ -f "$p" || -f "$p.toml" ]] && { echo "  ok: $p"; continue; }
-    target="$p"; [[ "$p" == *.toml ]] || target="$p.toml"
-    if [[ $CHECK -eq 1 ]]; then
-        echo "  would: create empty group $target"
-    else
-        mkdir -p "$(dirname "$target")"
-        printf '# machine-local metapac group — untracked, never published\n[arch]\npackages = [\n]\n' > "$target"
-        echo "  created empty: $target"
-    fi
-done < <(grep -o '"/[^"]*"' "$cfg" | tr -d '"')
+# --- 3. machine-local group (untracked, never published) ----------------------
+# The one group file living outside the repo; hostname_groups references it by
+# absolute path and metapac hard-errors if it's missing, so a fresh machine
+# needs it to exist (empty is fine). Must match config.toml##template's path —
+# if they drift, metapac's own error names the missing path.
+say "Machine-local group"
+ml="$HOME/.local/share/metapac/machine-local.toml"
+if [[ -f "$ml" ]]; then
+    echo "  ok: $ml"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: create empty $ml"
+else
+    mkdir -p "$(dirname "$ml")"
+    printf '# machine-local metapac group — untracked, never published\n[arch]\npackages = [\n]\n' > "$ml"
+    echo "  created empty: $ml"
+fi
+
+# --- 3b. pacman mirrors (reflector) --------------------------------------------
+# One slow mirror can stretch the first sync from minutes into hours. Fresh
+# installs are usually fine — the archiso ranks mirrors at live-boot and
+# pacstrap copies that list in — so re-rank only when the list has aged out.
+# Steady-state re-ranking on live machines is Story 2.18 (reflector.timer).
+say "Pacman mirrors"
+mirrorlist=/etc/pacman.d/mirrorlist
+if [[ -n "$(find "$mirrorlist" -mtime -7 2>/dev/null)" ]]; then
+    echo "  mirrorlist is younger than 7 days — keeping it"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: pacman -S reflector, then rank the fastest US https mirrors"
+else
+    sudo pacman -S --needed "${NC[@]}" reflector
+    sudo reflector --verbose --country 'United States' --fastest 10 --latest 10 \
+        --sort rate --protocol https --age 6 --save "$mirrorlist"
+fi
 
 # --- 4. yay (AUR helper; one manual makepkg, everything else goes through it) ---
 say "yay"
@@ -123,39 +179,7 @@ else
     yay -S --needed "${NC[@]}" metapac
 fi
 
-# --- 5a2. no -debug package splits: Arch's default makepkg builds them, they're
-# never declared, and Electron-bundling AUR packages ship IDENTICAL .build-id
-# files in their -debug splits — pacman file-conflicts then kill the whole
-# batch under --noconfirm (feishin-bin-debug vs storageexplorer-debug, 2.7 VM).
-# !check too: abandoned-upstream AUR packages (antibody-era) fail their own
-# test suites on modern toolchains and abort unattended rebuilds (2.7 VM).
-say "makepkg: disable debug splits + check()"
-mkdir -p "$HOME/.config/pacman"
-if grep -qs '!debug !check' "$HOME/.config/pacman/makepkg.conf"; then
-    echo "  already disabled"
-elif [[ $CHECK -eq 1 ]]; then
-    echo "  would: append OPTIONS+=(!debug !check) to ~/.config/pacman/makepkg.conf"
-else
-    sed -i '/OPTIONS+=(!debug)/d' "$HOME/.config/pacman/makepkg.conf" 2>/dev/null || true
-    echo 'OPTIONS+=(!debug !check)' >> "$HOME/.config/pacman/makepkg.conf"
-    echo "  disabled via ~/.config/pacman/makepkg.conf"
-fi
-
-# --- 5b. rustup before the big sync: AUR makedeps otherwise pull the repo
-# 'rust' package, which then conflicts with the declared rustup and aborts the
-# whole transaction under --noconfirm (2.7 VM finding). rustup also needs a
-# default toolchain or Rust AUR builds (xidlehook, ...) fail mid-sync.
-say "rustup (must precede Rust AUR builds)"
-if command -v rustup >/dev/null && rustup show active-toolchain >/dev/null 2>&1; then
-    echo "  rustup + toolchain already present"
-elif [[ $CHECK -eq 1 ]]; then
-    echo "  would: yay -S --needed rustup && rustup default stable"
-else
-    yay -S --needed "${NC[@]}" rustup
-    rustup show active-toolchain >/dev/null 2>&1 || rustup default stable
-fi
-
-# --- 5c. multilib (lib32-* packages in the desktop group need it) -------------
+# --- 5a. multilib (lib32-* packages in the desktop group need it) -------------
 say "multilib repo"
 if grep -q '^\[multilib\]' /etc/pacman.conf; then
     echo "  already enabled"
@@ -193,13 +217,22 @@ else
     metapac sync
 fi
 
-# --- 6b. normalize install reasons: yay --asexplicit marks split-package
-# siblings and some deps explicit; anything undeclared-but-required-by-another-
-# package gets dep-marked so `metapac unmanaged` reflects real drift (2.7 VM).
+# --- 6b. normalize install reasons ---------------------------------------------
+# pacman tags each package "explicit" (a human asked for it) or "dependency",
+# and `metapac unmanaged` trusts that tag: explicit + undeclared = reported
+# drift. The sync leaves wrong tags behind — yay installs built AUR files via
+# `pacman -U --asexplicit`, and the flag paints every target in the transaction:
+# split-package siblings and AUR-of-AUR deps too, not just declared packages
+# (2.7 VM). Repair: an explicit-but-undeclared package that something requires
+# is really a dependency — retag it (metadata-only; installs/removes nothing).
+# Requirer-less explicits stay visible on purpose: that's real drift to triage.
 say "Normalizing install reasons"
 if [[ $CHECK -eq 1 ]]; then
     echo "  would: pacman -D --asdeps every explicit-but-undeclared package that has a requirer"
 else
+    # The sed is coupled to metapac's output shape (quoted package names): if a
+    # metapac release reformats `unmanaged`, this loop silently becomes a no-op.
+    # The harness's exactly-empty unmanaged assert is what would catch that.
     while IFS= read -r p; do
         [[ -n "$p" ]] || continue
         if [[ -n "$(pactree -r -d1 "$p" 2>/dev/null | sed -n 2p)" ]]; then
