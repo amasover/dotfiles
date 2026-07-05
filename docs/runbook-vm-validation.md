@@ -64,7 +64,11 @@ archinstall's TUI errors show on the virt-manager console.
 
 - **Unattended install:** recent official archisos ship cloud-init; the seed ISO
   (NoCloud) writes `user_configuration.json`/`user_credentials.json` and runs
-  `archinstall --silent` via `runcmd`, then powers off. Systemd-boot, ext4
+  `archinstall --silent` via `runcmd`; cloud-init's `power_state` directive powers
+  off after its final stage completes (a poweroff from inside `runcmd` raced the
+  remaining cloud-init modules — every log ended in a harmless-but-scary
+  `BrokenPipeError` traceback; a delayed `shutdown -P +2` in the driver script is
+  the safety net if cloud-init dies mid-stage). Systemd-boot, ext4
   best-effort on `/dev/vda`, hostname `archvm`, sshd enabled, git/base-devel/yadm
   preinstalled to skip bootstrap preconditions.
 - **VM accommodations:** the seed's `custom_commands` set the login shell to zsh at
@@ -129,7 +133,11 @@ master.
   own loader entry. Two effects: the full kernel/systemd boot shows on the serial
   stream, and the old footgun is gone (a stray keypress in the systemd-boot menu
   used to cancel the auto-boot countdown and stall the run forever;
-  `virsh send-key arch-harness KEY_ENTER` was the rescue).
+  `virsh send-key arch-harness KEY_ENTER` was the rescue). The install boot also
+  masks `serial-getty@ttyS0`: `console=ttyS0` makes systemd auto-spawn a getty
+  there, and agetty's `vhangup()` invalidates every fd already open on the line —
+  it killed archinstall on its first write (instant BrokenPipeError, ~200KB on
+  disk, caught by the alloc check).
 - **The installed system keeps a serial console too**: its loader entries get
   `console=tty0 console=ttyS0` and `serial-getty@ttyS0` is enabled at install
   time — every later boot logs to the serial file, and

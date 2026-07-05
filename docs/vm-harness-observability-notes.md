@@ -122,6 +122,18 @@ anyway. The failure message names the phase, the rc, and the options
   cmdline now masks `systemd-time-wait-sync` (also turning the wedged-bridge
   silent hang into loud archinstall errors), and a `bootcmd` prints
   `HARNESS-CLOUDINIT-UP` early so the remaining quiet is attributable.
+- **First direct-boot run failed — getty vs installer:** `console=ttyS0` made
+  systemd auto-spawn `serial-getty@ttyS0` on the live ISO, and agetty's
+  `vhangup()` invalidated archinstall's open serial fds — instant
+  BrokenPipeError, ~200KB on disk, caught by the alloc check. Fixed by masking
+  that getty on the install boot (the installed system keeps its getty —
+  nothing there holds the line open). Same round: poweroff moved from `runcmd`
+  to cloud-init's `power_state` (a runcmd poweroff races the remaining final
+  modules; every log ended in a scary traceback) with a delayed `shutdown -P
+  +2` fallback; `streamed` no longer inferred from tail's exit code (GNU tail
+  exits 1 if its first open failed, even after `-F` recovers); scrub widened
+  to CSI-with-intermediates, ST-terminated OSC, and DCS sequences (agetty and
+  systemd's console service markers emit all three).
 
 ## Parked
 
