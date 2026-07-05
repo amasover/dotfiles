@@ -116,6 +116,12 @@ anyway. The failure message names the phase, the rc, and the options
   `serial-getty@ttyS0` via archinstall `custom_commands`. Terminal-resize
   garbling during full-screen phases stays: a serial line has no resize
   back-channel — documented as inherent, not fixed.
+- **Post-boot dead time cut (Aaron: "it seems to hang for a bit"):** the wait
+  between boot-done and archinstall was cloud-init's staging, gated on NTP
+  sync — pointless in a KVM guest (clock comes from the host RTC). The install
+  cmdline now masks `systemd-time-wait-sync` (also turning the wedged-bridge
+  silent hang into loud archinstall errors), and a `bootcmd` prints
+  `HARNESS-CLOUDINIT-UP` early so the remaining quiet is attributable.
 
 ## Parked
 
