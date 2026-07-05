@@ -245,16 +245,22 @@ archinstall --config /root/user_configuration.json \
 rc=$?
 echo "HARNESS-ARCHINSTALL-EXIT:$rc"
 [ "$rc" -ne 0 ] && tail -n 80 /var/log/archinstall/install.log
-# The real poweroff is cloud-init's power_state directive, which fires AFTER
-# its final stage completes — powering off from here races the remaining
-# cloud-init modules and every log ended in a harmless-but-scary
-# BrokenPipeError traceback. This delayed shutdown is only the safety net for
-# cloud-init dying before it reaches power_state.
-shutdown -P +2 "harness fallback poweroff" >/dev/null 2>&1 || true
+# Safe to power off from here: this script runs as its own transient unit,
+# detached from cloud-init, which finished long ago — no cloud-init modules
+# left to race (the old in-runcmd poweroff tore cloud-init's reporting socket
+# down mid-write and every log ended in a BrokenPipeError traceback).
+systemctl poweroff
 EOF
 
     # NoCloud seed: recent archisos ship cloud-init enabled; runcmd fires once
-    # the live environment is up and just invokes the driver script above.
+    # the live environment is up. It launches the driver as its OWN transient
+    # unit (systemd-run) and returns at once, for two reasons: cloud-init's
+    # final stage completes in seconds, so systemd stops spamming the console
+    # with "A start job is running for Cloud-init: Final Stage" spinner lines
+    # for the whole install; and with cloud-init fully finished, the driver can
+    # power off without racing cloud-init's own teardown. (A plain `setsid &`
+    # would leave the installer in cloud-init's cgroup, killable at unit stop —
+    # the transient unit is the correct detach.)
     # bootcmd fires much earlier (cloud-init's init stage) — its marker splits
     # "still booting" from "waiting on cloud-init's later stages" in the serial
     # stream, so a quiet stretch is attributable at a glance.
@@ -278,10 +284,7 @@ write_files:
 bootcmd:
   - [sh, -c, 'echo HARNESS-CLOUDINIT-UP > /dev/ttyS0']
 runcmd:
-  - [sh, /root/run-install.sh]
-power_state:
-  mode: poweroff
-  message: HARNESS-POWEROFF
+  - [systemd-run, --collect, --unit=harness-install, sh, /root/run-install.sh]
 EOF
 
     local mkiso
