@@ -38,11 +38,12 @@ show on the virt-manager console.
   `archinstall --silent` via `runcmd`, then powers off. Systemd-boot, ext4
   best-effort on `/dev/vda`, hostname `archvm`, sshd enabled, git/base-devel/yadm
   preinstalled to skip bootstrap preconditions.
-- **VM accommodations (no bootstrap changes needed):** the seed's `custom_commands`
-  set the login shell to zsh at install time (bootstrap's `chsh` step self-skips —
-  `chsh` would password-prompt over ssh), and `vm-harness bootstrap` touches
-  `~/.zshenv` so the secrets step self-skips (no yadm passphrase inside VMs; secret
-  contents never enter the harness).
+- **VM accommodations:** the seed's `custom_commands` set the login shell to zsh at
+  install time (bootstrap's `chsh` step self-skips — `chsh` would password-prompt
+  over ssh), and `bootstrap --unattended` skips secret decrypt by design — a
+  passphrase prompt can't run without a TTY, so no yadm passphrase or secret
+  contents ever enter the harness. If a test needs real secrets, run `yadm decrypt`
+  in the guest manually.
 - **Profile guard in the VM:** `yadm config local.class workstation` + `yadm alt`
   renders the VM's own hostname into `config.toml` — the guard passes without any
   repo change; `machine-local.toml` is auto-created empty by bootstrap step 3.
