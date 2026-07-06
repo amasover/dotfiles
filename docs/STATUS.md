@@ -43,6 +43,10 @@ Facts:
 - **1.8 privacy scrub** ([#55](https://github.com/amasover/dotfiles/issues/55)): rewrite executed and
   verified; open only for the work-machine steps — its `~/.gitconfig-local` and `~/.zshrc.local` must
   exist **before** it pulls anything, then hard-reset its clones. Full wrap-up record: comment on #55.
+- **2.24 update script: sync batch Spacemacs update** ([#79](https://github.com/amasover/dotfiles/issues/79)):
+  branch `story/2.24-update-script-sync-emacs`, PR pending. Root-caused today's lsp-mode startup
+  breakage (half-installed package after interrupted update); live elpa repair already done in place.
+  Detail: issue + [error note](../knowledge/errors/spacemacs-half-installed-package.md).
 - Queue: **2.10** ([#50](https://github.com/amasover/dotfiles/issues/50)) gates any metal bootstrap run;
   everything else lives on the board.
 
