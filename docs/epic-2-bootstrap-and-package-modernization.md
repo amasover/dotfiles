@@ -503,6 +503,24 @@ Issue: [#76](https://github.com/amasover/dotfiles/issues/76) · Captured live by
 
 ---
 
+### Story 2.24: update script — synchronous batch Spacemacs package update
+
+As the repo owner,
+I want the update script to run the Spacemacs package update synchronously and verify the result,
+So that an interrupted update can no longer leave a half-installed package that breaks every emacs startup.
+
+Issue: [#79](https://github.com/amasover/dotfiles/issues/79) · Root cause of the 2026-07-06 `lsp-mode` "Cannot open load file" breakage; see [knowledge/errors/spacemacs-half-installed-package.md](../knowledge/errors/spacemacs-half-installed-package.md).
+
+**Acceptance criteria:**
+
+- Given the emacs branch of `.local/bin/setup/update`, both halves of the Spacemacs update (update-packages, then the startup reinstall) run as synchronous batch emacs invocations whose failures are visible in the terminal
+- Given a package dir under `elpa/develop` missing its `<pkg>-autoloads.el`, the script warns and names it before relaunching GUI emacs
+- Given a clean update, GUI emacs is relaunched automatically
+
+**Evidence artifact:** script diff + a dry-run of the autoloads scan over the live elpa tree.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
