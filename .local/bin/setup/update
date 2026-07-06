@@ -27,11 +27,39 @@ if [[ "${update_emacs}" == "y" ]]; then
     git stash
     git pull
     git stash pop
-    echo $'\nUpdating installed emacs packages...\n'
-    echo 'Please follow prompts and restart emacs (SPC q r)
-if new packages were installed.' | tr '\n' ' '
-    i3-msg "exec --no-startup-id emacs --eval '(configuration-layer/update-packages)'" \
-        >> /dev/null
+    echo $'\nUpdating installed emacs packages (batch, synchronous)...\n'
+    # Spacemacs' update-packages only backs up and DELETES old package dirs; the
+    # new versions install on the next startup. Run both halves here in batch so
+    # the script waits, sees failures, and no half-installed package survives a
+    # closed window (see knowledge/errors/spacemacs-half-installed-package.md).
+    if emacs --batch -l "$HOME/.emacs.d/init.el" \
+             --eval '(configuration-layer/update-packages t)'; then
+        echo $'\nInstalling updated packages (batch restart)...'
+        emacs --batch -l "$HOME/.emacs.d/init.el" \
+            || echo $'\nWARNING: emacs package reinstall reported errors above.'
+    else
+        echo $'\nWARNING: emacs package update failed; see output above.'
+    fi
+
+    # Guard: a package dir without its autoloads file is a half-finished install;
+    # package.el thinks it is installed and every later startup fails with
+    # "Cannot open load file". Catch it now instead of at next launch.
+    # (elpa/develop is flat because dotspacemacs-elpa-subdirectory is nil.)
+    elpa_dir="$HOME/.emacs.d/elpa/develop"
+    broken_pkgs=()
+    for d in "$elpa_dir"/*(N/); do
+        [[ "${d:t}" == "archives" || "${d:t}" == "gnupg" ]] && continue
+        base="${${d:t}%-[0-9]*}"
+        [[ -f "$d/${base}-autoloads.el" ]] || broken_pkgs+=("${d:t}")
+    done
+    if (( ${#broken_pkgs} )); then
+        echo $'\nWARNING: half-installed emacs packages (missing autoloads):'
+        printf '  %s\n' "${broken_pkgs[@]}"
+        echo 'Fix: rm -r the dir(s) above and start emacs to reinstall them.'
+    fi
+
+    echo $'\nRelaunching emacs...'
+    i3-msg 'exec --no-startup-id emacs' >> /dev/null
 else
     echo $'\nSkipping emacs update.'
 fi
