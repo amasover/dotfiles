@@ -16,14 +16,37 @@
 #   fetch      download + sha256-verify the latest Arch ISO into the local cache
 #   create     pool volumes (disk + ISO + cloud-init seed) — fresh answers each time
 #   install    virt-install, unattended; archinstall runs via cloud-init, VM powers
-#              off when done; media ejected so later boots hit the disk
-#   boot       start the domain; prints the NAT IP when the lease appears
+#              off when done; media ejected so later boots hit the disk. The ISO's
+#              kernel is booted directly with a serial console added, so the whole
+#              boot + install streams to the terminal (needs sudo — the serial log
+#              is root-owned; skipped without it) and there's no boot menu to stall
+#   boot       start the domain; streams the boot's serial console (sudo) and
+#              prints the NAT IP when the lease appears
+#   up         everything but destroy: fetch (only if no ISO is cached) → create →
+#              install → boot → bootstrap → check. Dies if the domain already
+#              exists — it never auto-destroys.
 #   ip         print the VM's current IPv4
 #   exec CMD   run a command in the guest as root via the qemu agent (works in
 #              the live ISO too, where ssh isn't up yet — great for debugging)
-#   bootstrap  ssh in and run the repo bootstrap (attended; AUR builds take a while)
+#   bootstrap  ssh in and run the repo bootstrap (waits for ssh; AUR builds take a while)
 #   check      ssh in and assert: metapac unmanaged empty, services, session target
-#   destroy    undefine domain + delete disk/seed volumes (cached ISO volume kept)
+#   tail [P]   follow the newest log live (or phase P's newest); `tail install`
+#              follows the guest serial log in the workdir instead (sudo)
+#   status     what's going on: detached units, domain state, newest log tail
+#   destroy    undefine domain + delete disk/seed volumes (cached ISO volume kept;
+#              logs kept too — they live outside the workdir)
+#
+# Logging: every phase (fetch/create/install/boot/bootstrap/check) writes an
+# ANSI-stripped copy of its output to ~/.local/state/bootstrap-harness/logs/ as
+# <timestamp>-<phase>.log, ending with "=== <phase> done rc=N". The terminal
+# still gets the raw colorful stream. Phases run by one `up` share the run's
+# timestamp so its logs sort as a set. Logs survive destroy; the workdir doesn't.
+#
+# Flags (before the subcommand):
+#   --quiet    log only, nothing on stdout (env: VM_HARNESS_QUIET=1)
+#   --detach   run under systemd-run --user and return at once: survives closing
+#              the terminal, logs plain output, sends a desktop notification on
+#              completion. Watch with `vm-harness tail`; ask `vm-harness status`.
 #
 # Learned from the retired win10 VM: q35/KVM sized 4G/8vcpu worked, but it was
 # legacy-BIOS on a SATA bus — this harness uses OVMF/UEFI (matches the refind
@@ -50,10 +73,60 @@ VM_PASS=vm          # throwaway VM only; reachable only from this host's NAT
 DISK_SIZE="${VM_HARNESS_DISK:-80G}"
 RAM="${VM_HARNESS_RAM:-12288}"      # MiB
 CPUS="${VM_HARNESS_CPUS:-16}"
+LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/bootstrap-harness/logs"   # survives destroy
+RUN_STAMP=$(date +%Y%m%d-%H%M%S)    # one stamp per invocation — an `up` run's phases share it
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'vm-harness: FATAL: %s\n' "$*" >&2; exit 1; }
 v()   { virsh -c "$URI" "$@"; }
+
+usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; }   # the header is the help
+
+# The log copy is plain text: strip ANSI escapes — CSI (colors, cursor moves,
+# agetty's ESC[!p soft reset), OSC with either terminator (systemd's clickable
+# service markers use ESC\), DCS (agetty terminfo queries), charset selectors
+# (the ESC(B tput hides in sgr0) — and turn carriage-return redraws (progress
+# bars) into ordinary lines. -u keeps `vm-harness tail` near-live.
+scrub() { sed -u -e 's/\x1b\[[0-9;?!<>=]*[a-zA-Z]//g' \
+                 -e 's/\x1b\][^\x1b\x07]*\(\x07\|\x1b\\\)//g' \
+                 -e 's/\x1bP[^\x1b]*\x1b\\//g' \
+                 -e 's/\x1b[()][0-9A-Za-z]//g' -e 's/\x1b[=>]//g' \
+                 -e 's/\r$//' -e 's/\r/\n/g'; }
+
+# Run one phase with host-side logging. The terminal (unless --quiet) gets the
+# raw stream — colors and progress bars intact — while the log gets a scrubbed
+# copy. The log write is the tail of the pipeline, so when the pipeline returns
+# the file is complete and the result line can't land out of order.
+run_phase() {
+    local phase=$1; shift
+    local log="$LOG_DIR/$RUN_STAMP-$phase.log" rc=0
+    mkdir -p "$LOG_DIR"
+    ln -sfn "$log" "$LOG_DIR/latest-$phase.log"
+    ln -sfn "$log" "$LOG_DIR/latest.log"
+    if [[ $QUIET -eq 1 ]]; then
+        "$@" 2>&1 | scrub >> "$log" || rc=$?
+    elif [[ -t 1 ]]; then
+        # a human is watching: raw stream (colors, live progress bars) to the
+        # terminal via /dev/tty, scrubbed copy to the log
+        "$@" 2>&1 | tee /dev/tty | scrub >> "$log" || rc=$?
+    else
+        # stdout is a pipe/file — nothing renders colors there, so both sides
+        # get the scrubbed stream (a raw tee would also corrupt a redirect:
+        # re-opening the target truncates it and writes at its own offset)
+        "$@" 2>&1 | scrub | tee -a "$log" || rc=$?
+    fi
+    echo "=== $phase done rc=$rc" >> "$log"
+    [[ $QUIET -eq 1 ]] || echo "=== $phase done rc=$rc"
+    (( rc == 0 )) || die "phase '$phase' failed (rc=$rc) — VM left as-is for inspection. Log: $log. Next: read it (vm-harness tail $phase), fix and re-run the phase, or vm-harness destroy for a clean slate."
+}
+
+# Detached-run completion ping (best effort — no notification daemon, no harm).
+notify_done() {
+    local rc=$?
+    local m="completed OK"
+    (( rc != 0 )) && m="FAILED (rc=$rc) — vm-harness status"
+    notify-send -a vm-harness "vm-harness $CMD" "$m" 2>/dev/null || true
+}
 
 vol_path() { v vol-path --pool "$POOL" "$1" 2>/dev/null; }
 
@@ -90,7 +163,10 @@ write_seed() {
     # archinstall answers in the RELEASE 4.4 dialect (the ISO's version — master's
     # sample config differs; see runbook "schema skew"). UEFI/systemd-boot, explicit
     # ESP+root on vda, sshd enabled via chroot custom_commands. Passwords ship as
-    # SHA512 crypt hashes (4.4 creds schema).
+    # SHA512 crypt hashes (4.4 creds schema). The installed system also gets a
+    # serial console (kernel messages land in the serial log on every boot) and a
+    # serial getty — `virsh -c qemu:///system console arch-harness` gives a login
+    # even when ssh is down.
     local pass_hash
     pass_hash=$(openssl passwd -6 "$VM_PASS")
     # Host pubkey → VM authorized_keys, so harness ssh steps never need a password.
@@ -140,6 +216,8 @@ write_seed() {
   },
   "custom_commands": [
     "systemctl enable sshd",
+    "sed -i 's|^options |options console=tty0 console=ttyS0 |' /boot/loader/entries/*.conf",
+    "systemctl enable serial-getty@ttyS0.service",
     "chsh -s /usr/bin/zsh $VM_USER || true",
     "echo '$VM_USER ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/90-harness",
     "install -d -m 700 /home/$VM_USER/.ssh && echo '$host_pubkey' > /home/$VM_USER/.ssh/authorized_keys && chmod 600 /home/$VM_USER/.ssh/authorized_keys && chown -R $VM_USER: /home/$VM_USER/.ssh"
@@ -162,16 +240,36 @@ JSON
 #!/bin/sh
 exec > /dev/ttyS0 2>&1
 echo HARNESS-RUNCMD-START
+# --skip-ntp: archinstall's own time-sync wait (separate from the archiso's
+# systemd-time-wait-sync, which the install cmdline masks) — a KVM guest's
+# clock is the host's via the RTC, and timesyncd may never sync in the NAT
+# guest anyway, leaving this wait warning forever. The docs' recommendation
+# for a known-correct clock is exactly this flag. The config's "ntp": true
+# still enables NTP on the installed system.
 archinstall --config /root/user_configuration.json \
-            --creds  /root/user_credentials.json --silent
+            --creds  /root/user_credentials.json --silent --skip-ntp
 rc=$?
 echo "HARNESS-ARCHINSTALL-EXIT:$rc"
 [ "$rc" -ne 0 ] && tail -n 80 /var/log/archinstall/install.log
+# Safe to power off from here: this script runs as its own transient unit,
+# detached from cloud-init, which finished long ago — no cloud-init modules
+# left to race (the old in-runcmd poweroff tore cloud-init's reporting socket
+# down mid-write and every log ended in a BrokenPipeError traceback).
 systemctl poweroff
 EOF
 
     # NoCloud seed: recent archisos ship cloud-init enabled; runcmd fires once
-    # the live environment is up and just invokes the driver script above.
+    # the live environment is up. It launches the driver as its OWN transient
+    # unit (systemd-run) and returns at once, for two reasons: cloud-init's
+    # final stage completes in seconds, so systemd stops spamming the console
+    # with "A start job is running for Cloud-init: Final Stage" spinner lines
+    # for the whole install; and with cloud-init fully finished, the driver can
+    # power off without racing cloud-init's own teardown. (A plain `setsid &`
+    # would leave the installer in cloud-init's cgroup, killable at unit stop —
+    # the transient unit is the correct detach.)
+    # bootcmd fires much earlier (cloud-init's init stage) — its marker splits
+    # "still booting" from "waiting on cloud-init's later stages" in the serial
+    # stream, so a quiet stretch is attributable at a glance.
     cat > "$d/meta-data" <<EOF
 instance-id: bootstrap-harness
 local-hostname: archiso
@@ -189,8 +287,10 @@ write_files:
     encoding: b64
     content: $(base64 -w0 "$d/run-install.sh")
     permissions: '0755'
+bootcmd:
+  - [sh, -c, 'echo HARNESS-CLOUDINIT-UP > /dev/ttyS0']
 runcmd:
-  - [sh, /root/run-install.sh]
+  - [systemd-run, --collect, --unit=harness-install, sh, /root/run-install.sh]
 EOF
 
     local mkiso
@@ -214,31 +314,94 @@ cmd_create() {
 
 cmd_install() {
     [[ -n "$(vol_path "$VOL_DISK")" && -n "$(vol_path "$VOL_SEED")" ]] || die "run: vm-harness create first"
-    say "Unattended install — watch in virt-manager ('$VM_NAME' console) or: tail -f $INSTALL_LOG"
-    install -m 666 /dev/null "$INSTALL_LOG"
+    say "Unattended install — serial console streams below (also: vm-harness tail install, or virt-manager)"
+    # virtlogd (re)creates the serial log root:0600 no matter what is pre-created
+    # (verified live — a 0666 pre-create does not survive), so reading it takes
+    # sudo. Refresh the sudo timestamp now, while a human may be at the keyboard;
+    # the stream itself uses sudo -n so a detached run never hangs on a prompt.
+    rm -f "$INSTALL_LOG"
+    [[ -t 0 ]] && sudo -v 2>/dev/null || true
+    # Boot the archiso kernel directly (qemu fw_cfg) instead of through its boot
+    # menu, appending a serial console: the whole kernel/systemd boot then shows
+    # on the stream (the ISO's own cmdline has no console=ttyS0 — why serial went
+    # dark between the menu and our install driver), and with no menu a stray
+    # console keypress can't stall the countdown (old runbook wrinkle). Kernel,
+    # initrd(s) and cmdline are read from the ISO's own default loader entry, so
+    # an ISO refresh keeps working. (bsdtar: libarchive, on every Arch host.)
+    local entry kfile opts p
+    entry=$(bsdtar -tf "$ISO" | grep -E '/01-.*\.conf$' | head -1 || true)
+    [[ -n "$entry" ]] || die "no default loader entry in the ISO (layout changed?)"
+    kfile=$(bsdtar -xOf "$ISO" "$entry" | awk '$1=="linux"{print $2; exit}')
+    opts=$(bsdtar -xOf "$ISO" "$entry" | awk '$1=="options"{$1=""; sub(/^ +/,""); print; exit}')
+    [[ -n "$kfile" && -n "$opts" ]] || die "couldn't parse linux/options lines from $entry"
+    bsdtar -xOf "$ISO" "${kfile#/}" > "$WORKDIR/vmlinuz"
+    : > "$WORKDIR/initrd.img"   # concatenated in entry order (ucode first, when present)
+    while read -r p; do
+        bsdtar -xOf "$ISO" "${p#/}" >> "$WORKDIR/initrd.img"
+    done < <(bsdtar -xOf "$ISO" "$entry" | awk '$1=="initrd"{print $2}')
+    # Two masks on the install boot:
+    # - systemd-time-wait-sync: cloud-init's final stage (which runs the
+    #   installer) waits for NTP sync, but a KVM guest's clock is already the
+    #   host's via the RTC — dead time, and the silent-forever hang when the
+    #   NAT bridge was wedged (runbook). Masked, that failure shows up as loud
+    #   archinstall mirror errors instead.
+    # - serial-getty@ttyS0: console=ttyS0 makes systemd auto-spawn a getty on
+    #   the serial line, and agetty's vhangup() invalidates every fd already
+    #   open on it — it killed archinstall mid-write on the first direct-boot
+    #   run (instant BrokenPipeError, empty disk). The installer owns the
+    #   serial line; nobody logs in to the live ISO over serial.
     virt-install --connect "$URI" --name "$VM_NAME" \
         --memory "$RAM" --vcpus "$CPUS" --cpu host-passthrough \
         --osinfo archlinux \
-        --boot uefi,cdrom,hd \
+        --boot uefi \
+        --install "kernel=$WORKDIR/vmlinuz,initrd=$WORKDIR/initrd.img,kernel_args=$opts console=tty0 console=ttyS0 systemd.mask=systemd-time-wait-sync.service systemd.mask=serial-getty@ttyS0.service" \
+        --noreboot \
         --disk "vol=$POOL/$VOL_DISK,bus=virtio" \
         --disk "vol=$POOL/$VOL_ISO,device=cdrom" \
         --disk "vol=$POOL/$VOL_SEED,device=cdrom" \
         --network network=default,model=virtio \
         --serial "file,path=$INSTALL_LOG" \
-        --graphics spice --noautoconsole --wait -1 >/dev/null
+        --graphics spice --noautoconsole --wait -1 >/dev/null &
+    local vpid=$!
+    # Stream the guest's serial console while the install runs — it's the only
+    # thing happening, and without it the phase is dark for minutes. --pid ends
+    # the tail on its own when virt-install exits. run_phase also captures this
+    # stream into the install phase log.
+    # Probe sudo separately: tail's own exit code is useless here (GNU tail
+    # exits nonzero if its FIRST open failed — the log appears moments after
+    # virt-install starts — even though -F recovers and streams everything).
+    local streamed=1
+    if sudo -n true 2>/dev/null; then
+        sudo -n tail -n +1 -F --pid="$vpid" "$INSTALL_LOG" 2>/dev/null || true
+    else
+        streamed=0
+        echo "  (no sudo — serial stream skipped; follow it with: vm-harness tail install)"
+    fi
+    wait "$vpid" || die "virt-install failed — see errors above"
     # Install ended (guest powered off). Eject media persistently so every later
     # boot hits the installed disk, and put the disk first in boot order.
     local t
     while read -r t; do
         v change-media "$VM_NAME" "$t" --eject --config >/dev/null 2>&1 || true
     done < <(v domblklist "$VM_NAME" --details | awk '$2=="cdrom"{print $3}')
+    # The stream above already put the serial output into this phase's state
+    # log; this separate raw copy is the fallback for runs where sudo wasn't
+    # available — the workdir original dies with destroy, and a failed install
+    # is exactly when it's wanted later.
+    if [[ $streamed -eq 0 ]]; then
+        mkdir -p "$LOG_DIR"
+        { cat "$INSTALL_LOG" 2>/dev/null || sudo -n cat "$INSTALL_LOG" 2>/dev/null; } \
+            | scrub > "$LOG_DIR/$RUN_STAMP-install-serial.log" \
+            || { rm -f "$LOG_DIR/$RUN_STAMP-install-serial.log"
+                 echo "  (couldn't read $INSTALL_LOG for a state-log copy — sudo cat it yourself if needed)"; }
+    fi
     # Success check via libvirt (the serial log is root-owned by virtlogd — it's the
     # debug artifact, `sudo cat` it; markers: HARNESS-RUNCMD-START / -ARCHINSTALL-EXIT:n).
     # A successful pacstrap allocates gigabytes; a failed one leaves the volume near-empty.
     local alloc
     alloc=$(v vol-info --pool "$POOL" "$VOL_DISK" --bytes | awk '/Allocation/{print $2}')
     [[ "${alloc:-0}" -gt 1000000000 ]] \
-        || die "install wrote only ${alloc:-0} bytes — failed; inspect: sudo cat $INSTALL_LOG"
+        || die "install wrote only ${alloc:-0} bytes — failed; the serial output above has the story (also: sudo cat $INSTALL_LOG)"
     say "Install OK (disk allocation $((alloc / 1024 / 1024)) MiB). Next: vm-harness boot"
 }
 
@@ -247,10 +410,31 @@ vm_ip() {
 }
 
 cmd_boot() {
-    say "Starting domain '$VM_NAME' (console in virt-manager)"
+    say "Starting domain '$VM_NAME' — serial console streams below until the NAT lease appears"
+    # The installed system logs its boot to the serial file too (console=ttyS0
+    # in its loader entries, set at install time), so stream it while waiting
+    # for the lease — same structure as the install stream: the lease poll runs
+    # in the background and a FOREGROUND tail --pid follows until the poll
+    # ends. (A backgrounded sudo tail can't be killed by the non-root harness
+    # and its open fd would hold run_phase's logging pipeline forever —
+    # verified in a scratch test.) -n 0: the file still holds the whole
+    # install-phase capture; follow new lines only. The first few firmware
+    # lines can land before tail attaches — the file itself always has them.
+    [[ -t 0 ]] && sudo -v 2>/dev/null || true
     v start "$VM_NAME" >/dev/null 2>&1 || true
-    local ip=""
-    for _ in $(seq 1 30); do ip=$(vm_ip); [[ -n "$ip" ]] && break; sleep 3; done
+    local ipfile="$WORKDIR/.boot-ip" waiter ip=""
+    rm -f "$ipfile"
+    ( ip=""
+      for _ in $(seq 1 30); do ip=$(vm_ip); [[ -n "$ip" ]] && break; sleep 3; done
+      printf '%s' "$ip" > "$ipfile" ) &
+    waiter=$!
+    if sudo -n true 2>/dev/null; then
+        sudo -n tail -n 0 -F --pid="$waiter" "$INSTALL_LOG" 2>/dev/null || true
+    else
+        echo "  (no sudo — serial boot stream skipped; follow it with: vm-harness tail install)"
+    fi
+    wait "$waiter" || true
+    [[ -f "$ipfile" ]] && ip=$(<"$ipfile"); rm -f "$ipfile"
     [[ -n "$ip" ]] || die "no DHCP lease yet — try: vm-harness ip"
     say "Up. ssh $VM_USER@$ip   (password: $VM_PASS, or the seeded host key)"
 }
@@ -287,7 +471,30 @@ vm_ssh() {
     ssh -t -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$VM_USER@$ip" "$@"
 }
 
+# Poll for an authenticated shell — not port 22, not the qemu agent: an ssh
+# login is exactly what the next phase needs. Closes the boot→bootstrap race.
+wait_ssh() {
+    local ip out i
+    say "Waiting for ssh (up to ~2 min)"
+    for (( i=0; i<40; i++ )); do
+        ip=$(vm_ip || true)
+        if [[ -n "$ip" ]]; then
+            if out=$(ssh -o BatchMode=yes -o ConnectTimeout=2 -o StrictHostKeyChecking=no \
+                         -o UserKnownHostsFile=/dev/null "$VM_USER@$ip" true 2>&1); then
+                echo "  ssh ready: $VM_USER@$ip"; return 0
+            fi
+            # sshd answered but refused the key: it's up; later steps will password-prompt.
+            if [[ "$out" == *"Permission denied"* ]]; then
+                echo "  sshd up at $ip (key auth refused — expect password prompts)"; return 0
+            fi
+        fi
+        sleep 3
+    done
+    die "no ssh after ~2 minutes — check: vm-harness ip, or the virt-manager console"
+}
+
 cmd_bootstrap() {
+    wait_ssh
     say "Running repo bootstrap inside the VM (class: $VM_CLASS, unattended; AUR builds take a while)"
     vm_ssh "set -e
         sudo pacman -S --needed --noconfirm git base-devel yadm
@@ -318,18 +525,112 @@ cmd_destroy() {
     v vol-delete --pool "$POOL" "$VOL_DISK" >/dev/null 2>&1 || true
     v vol-delete --pool "$POOL" "$VOL_SEED" >/dev/null 2>&1 || true
     rm -rf "$WORKDIR"
-    echo "  gone: domain '$VM_NAME', volumes, $WORKDIR"
+    echo "  gone: domain '$VM_NAME', volumes, $WORKDIR   (logs kept: $LOG_DIR)"
 }
 
-case "${1:-}" in
-    fetch)     cmd_fetch ;;
-    create)    cmd_create ;;
-    install)   cmd_install ;;
-    boot)      cmd_boot ;;
+# The all-in-one: everything but destroy. Fetch only when no ISO is cached
+# (an explicit `fetch` stays the force-refresh); dies rather than clobber an
+# existing domain. Stops at the first failing phase (run_phase reports it) and
+# leaves the VM exactly as it died — inspect or destroy, your call.
+cmd_up() {
+    v dominfo "$VM_NAME" >/dev/null 2>&1 \
+        && die "domain '$VM_NAME' already exists — up never auto-destroys; run: vm-harness destroy first"
+    [[ -f "$ISO" ]] || run_phase fetch cmd_fetch
+    run_phase create cmd_create
+    run_phase install cmd_install
+    run_phase boot cmd_boot
+    run_phase bootstrap cmd_bootstrap
+    run_phase check cmd_check
+    say "up complete — installed, bootstrapped, checks green. Logs: $LOG_DIR/$RUN_STAMP-*.log"
+}
+
+# Follow logs. Bare: the newest log of any phase (latest.log flips as an `up`
+# run advances — tail -F follows it across phases). `tail install`: the live
+# serial capture in the workdir (qemu writes it there; root-owned, hence sudo).
+cmd_tail() {
+    case "${1:-}" in
+        install) exec sudo tail -F "$INSTALL_LOG" ;;
+        "")      [[ -e "$LOG_DIR/latest.log" ]] || die "no logs yet in $LOG_DIR"
+                 exec tail -F "$LOG_DIR/latest.log" ;;
+        *)       [[ -e "$LOG_DIR/latest-$1.log" ]] || die "no '$1' log yet in $LOG_DIR"
+                 exec tail -F "$LOG_DIR/latest-$1.log" ;;
+    esac
+}
+
+# One screen of "what's going on": detached units (liveness comes from systemd,
+# not pidfiles), domain state, and the newest log's tail — whose result line is
+# the completion record (finished detached units are reaped by --collect).
+cmd_status() {
+    say "Detached runs (systemd --user, vm-harness-*)"
+    local units
+    units=$(systemctl --user list-units --all --no-legend 'vm-harness-*' 2>/dev/null || true)
+    if [[ -n "$units" ]]; then printf '%s\n' "$units" | sed 's/^/  /'; else echo "  none"; fi
+    say "Domain '$VM_NAME'"
+    echo "  $(v domstate "$VM_NAME" 2>/dev/null || echo 'not defined')"
+    say "Newest log"
+    if [[ -e "$LOG_DIR/latest.log" ]]; then
+        echo "  $(readlink -f "$LOG_DIR/latest.log")"
+        tail -n 5 "$LOG_DIR/latest.log" | sed 's/^/  | /'
+    else
+        echo "  none yet ($LOG_DIR)"
+    fi
+}
+
+# ---- dispatch: vm-harness [--quiet] [--detach] <subcommand> ----------------
+QUIET=0
+[[ "${VM_HARNESS_QUIET:-0}" != 0 ]] && QUIET=1
+DETACH=0
+while [[ "${1:-}" == -* ]]; do
+    case "$1" in
+        --quiet)   QUIET=1 ;;
+        --detach)  DETACH=1 ;;
+        -h|--help) usage; exit 0 ;;
+        *)         die "unknown flag: $1   (try: vm-harness -h)" ;;
+    esac
+    shift
+done
+CMD="${1:-}"
+
+# Detached child (see --detach below): nobody is watching, so log only, and
+# ping the desktop when the whole command finishes — success or failure.
+if [[ "${VM_HARNESS_DETACHED:-0}" != 0 ]]; then
+    QUIET=1
+    trap notify_done EXIT
+fi
+
+if [[ $DETACH -eq 1 ]]; then
+    case "$CMD" in
+        fetch|create|install|boot|bootstrap|check|up) ;;
+        *) die "--detach is for the long-running phases (or up), not '${CMD:-<none>}'" ;;
+    esac
+    # Re-exec inside the systemd user manager: survives the terminal, findable
+    # as a unit (vm-harness status), reaped on exit (--collect) — the log's
+    # result line is the durable record. Forward the VM_HARNESS_* knobs
+    # explicitly; a user unit doesn't inherit this shell's environment.
+    setenv_args=()
+    for var in VM_HARNESS_DIR VM_HARNESS_REPO VM_HARNESS_CLASS VM_HARNESS_DISK \
+               VM_HARNESS_RAM VM_HARNESS_CPUS VM_HARNESS_EXEC_TIMEOUT; do
+        if [[ -n "${!var:-}" ]]; then setenv_args+=("--setenv=$var=${!var}"); fi
+    done
+    unit="vm-harness-$CMD"
+    systemd-run --user --collect --unit "$unit" --setenv=VM_HARNESS_DETACHED=1 \
+        "${setenv_args[@]}" "$(realpath "$0")" "$@" >/dev/null
+    say "Detached as user unit '$unit'. Watch: vm-harness tail · vm-harness status · journalctl --user -u $unit"
+    exit 0
+fi
+
+case "$CMD" in
+    fetch)     run_phase fetch cmd_fetch ;;
+    create)    run_phase create cmd_create ;;
+    install)   run_phase install cmd_install ;;
+    boot)      run_phase boot cmd_boot ;;
+    up)        cmd_up ;;
     ip)        cmd_ip ;;
     exec)      cmd_exec "${2:?usage: vm-harness exec '<command>'}" ;;
-    bootstrap) cmd_bootstrap ;;
-    check)     cmd_check ;;
+    bootstrap) run_phase bootstrap cmd_bootstrap ;;
+    check)     run_phase check cmd_check ;;
+    tail)      cmd_tail "${2:-}" ;;
+    status)    cmd_status ;;
     destroy)   cmd_destroy ;;
-    *) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; exit 1 ;;   # the header is the help
+    *)         usage; exit 1 ;;
 esac

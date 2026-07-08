@@ -479,6 +479,77 @@ zsh-nvm) stay with Story 2.13 ([#60](https://github.com/amasover/dotfiles/issues
 
 **Evidence artifact:** Tracked theme + bootstrap step; live verification that the custom theme is the one sourced.
 
+### Story 2.21: vm-harness progress mode — compact stage display instead of raw logs
+
+As the repo owner,
+I want a mode that shows a compact live status (phase, current stage, elapsed) instead of streaming raw output,
+So that I can watch a run's health at a glance without the serial/ssh firehose, while failures still stop the run loudly.
+
+Issue: [#73](https://github.com/amasover/dotfiles/issues/73) · Follow-up to Story 2.19 ([#70](https://github.com/amasover/dotfiles/issues/70)): a hybrid between fully-attached (raw stream) and `--detach` (no terminal). Branch off `main`.
+
+**Acceptance criteria:**
+
+- Given the progress flag (name decided at pickup grill), when a phase runs, then the terminal shows a compact live-updating status — phase (n of 6), a stage derived from the underlying stream (HARNESS-* markers, archinstall/pacstrap/yay milestones), and elapsed time — instead of raw output
+- Given progress mode, the state logs are unchanged — the full scrubbed capture is still written and `vm-harness tail` remains the drill-down
+- Given a phase fails in progress mode, the run stops exactly as today (phase, rc, options) and the tail of the failing phase's log is printed, so the error is visible without switching commands
+- Given `--detach` or `--quiet` combined with progress mode, the behavior is explicit (rejected or defined), not accidental
+
+**Evidence artifact:** a progress-mode `up` transcript + its unchanged full log set.
+
+---
+
+### Story 2.22: AUR download hygiene for VM runs
+
+As the repo owner,
+I want VM bootstrap runs to stop tripping AUR's clone-burst throttling,
+So that full-profile validations run fast without hammering shared infrastructure.
+
+Issue: [#75](https://github.com/amasover/dotfiles/issues/75) · Options recorded on the issue (host-cache seed excluding built packages / GitHub AUR-mirror pre-seed / gentler retry backoff); decide at pickup grill. From the 2.19 sessions; bootstrap's retry loop is the current band-aid.
+
+**Acceptance criteria:**
+
+- Given a fresh VM `up`, when the AUR set installs, then a normal run completes without throttling-induced retries
+- Given any cache seeding, it is opt-in and excludes built packages — the default `up` still proves that every AUR package builds from source on a fresh machine
+- Given bootstrap's sync retry loop, backoff grows between attempts instead of retrying hot
+
+**Evidence artifact:** a fresh `up` log set showing the AUR phase with no throttle retries.
+
+---
+
+### Story 2.23: Triage redis→valkey
+
+As the repo owner,
+I want the repos' redis→valkey replacement decided and reflected in the groups,
+So that the standing drift line disappears and installs stop pulling a superseded package.
+
+Issue: [#76](https://github.com/amasover/dotfiles/issues/76) · Captured live by the 2.9 inbox hook during the 2.7 VM acceptance run; the host group still declares `redis` and the host runs AUR redis. Small; Aaron's call.
+
+**Acceptance criteria:**
+
+- Given the decision (migrate to valkey or deliberately pin redis), the group TOML declares the chosen package and the live machine matches it
+- Given `metapac unmanaged` and the drift report, no redis/valkey line remains
+
+**Evidence artifact:** the group diff + a clean drift report.
+
+---
+
+### Story 2.24: update script — synchronous batch Spacemacs package update
+
+As the repo owner,
+I want the update script to run the Spacemacs package update synchronously and verify the result,
+So that an interrupted update can no longer leave a half-installed package that breaks every emacs startup.
+
+Issue: [#79](https://github.com/amasover/dotfiles/issues/79) · Root cause of the 2026-07-06 `lsp-mode` "Cannot open load file" breakage; see [knowledge/errors/spacemacs-half-installed-package.md](../knowledge/errors/spacemacs-half-installed-package.md).
+
+**Acceptance criteria:**
+
+- Given the emacs branch of `.local/bin/setup/update`, both halves of the Spacemacs update (update-packages, then the startup reinstall) run as synchronous batch emacs invocations whose failures are visible in the terminal
+- Given a package dir under `elpa/develop` missing its `<pkg>-autoloads.el`, the script warns and names it before relaunching GUI emacs
+- Given a clean update, GUI emacs is relaunched automatically
+
+**Evidence artifact:** script diff + a dry-run of the autoloads scan over the live elpa tree.
+>>>>>>> main
+
 ---
 
 ## Acceptance Criteria (Epic Level)

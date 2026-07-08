@@ -1,30 +1,62 @@
 # Status — session entry point
 
-Read this first. It's the cheap way to learn the current state without re-reading the PRD and every epic.
+Read this first: it's the cheap way to orient without re-reading the PRD and every epic.
+
+**Format contract — keep this file cheap.** This is a disposable handoff note between
+agent-assisted sessions, not an archive:
+
+- **In flight** holds one entry per story actually moving: status, where the detail
+  lives (issue / PR / epic spec / notes doc / runbook), and what's next or blocking.
+  1–3 lines each.
+- Nothing may live *only* here. If a detail has no other home, move it to the story's
+  issue, an epic spec, or a notes doc — or open an issue — and keep at most a pointer.
+- Merged/closed work leaves this file at the next update; the epic ✅ and git history
+  are the record. Keep a single **Last session** digest and delete older ones.
+- If this file outgrows roughly one screen, it's wrong: trim it, don't append.
+
+Facts:
 
 - **Trunk branch:** `main` (`master` is retired and deleted; never diff/PR against it).
-- **Tracking source of truth:** [GitHub Projects board](https://github.com/users/amasover/projects/1/views/1) (status) + issues (discussion). Epic `.md` files hold the spec only.
-- **Secret scanning:** `gitleaks` is standard — see [secret scan recipe](../knowledge/recipes/secret-scan.md). Run before every commit/PR, and **always pair it with a manual privacy pass by eye** (gitleaks misses employer/personal/host details).
+- **Tracking source of truth:** [GitHub Projects board](https://github.com/users/amasover/projects/1/views/1)
+  (status) + issues (discussion). Epic `.md` files hold specs only; ✅ on a story heading = issue closed.
+- **Secret scanning:** `gitleaks` before every commit/PR ([recipe](../knowledge/recipes/secret-scan.md)),
+  always paired with a manual privacy pass by eye — gitleaks misses employer/personal/host details.
 
 ## How to start a session
 
-1. Read this file + the relevant epic's **Stories** section (not the whole epic). A ✅ on a story heading means done (issue closed); unmarked stories may still be in flight — check the board.
-2. Check the board / `gh issue list` for what's in flight.
-3. Open the issue for the story you're picking up; consult `knowledge/` for related recipes.
-4. Branch `story/<n>-<slug>`, work, scan, PR against `main`, link the issue.
-5. When you finish a chunk of work, **update this file** (In flight / Last session) and ✅-mark the epic heading of any story whose issue closed.
-
-Avoid re-reading `prd.md` end-to-end unless changing product direction.
+1. Read this file, then the relevant epic's **Stories** section (not the whole epic).
+2. Pick up work via its GitHub issue; check `knowledge/` for related recipes.
+3. Branch `story/<n>-<slug>` off `main`; one story per branch and PR; PRs against `main` only (never stacked).
+4. When a chunk lands, update this file *per the format contract above*.
 
 ## In flight
 
-**Story 2.8 — metapac adoption** ([#48](https://github.com/amasover/dotfiles/issues/48)): **merged** ([PR #54](https://github.com/amasover/dotfiles/pull/54), 2026-07-03). **2.12 ticketed** ([#53](https://github.com/amasover/dotfiles/issues/53)): non-pacman metapac backends (uv/brew/npm/vscode dispositions; cargo empty; pipx→uv consolidation candidate). 2.9 not yet started — **1.8 jumped the queue** (Aaron's call: the leak ages badly).
+- **2.19 vm-harness observability** ([#70](https://github.com/amasover/dotfiles/issues/70)):
+  [PR #74](https://github.com/amasover/dotfiles/pull/74) **merged 2026-07-05**; issue stays open
+  until the evidence lands — one green detached `up` with its full log set (the final fix stack
+  hasn't completed a run yet). Detail: epic spec, [observability notes](./vm-harness-observability-notes.md)
+  (grill D1–D11 + implementation deltas), [VM runbook](./runbook-vm-validation.md).
+- **2.20 agnoster custom theme** ([#71](https://github.com/amasover/dotfiles/issues/71)):
+  [PR #72](https://github.com/amasover/dotfiles/pull/72) open; detail in the PR.
+  ⚠️ Before this machine yadm-pulls the merge: `rm ~/.config/dotfiles/oh-my-zsh-custom/themes/agnoster.zsh-theme`
+  (untracked, identical content — checkout collision). Leftover to delete: `~/.oh-my-zsh/themes/agnoster.zsh-theme.bak`.
+- **1.8 privacy scrub** ([#55](https://github.com/amasover/dotfiles/issues/55)): rewrite executed and
+  verified; open only for the work-machine steps — its `~/.gitconfig-local` and `~/.zshrc.local` must
+  exist **before** it pulls anything, then hard-reset its clones. Full wrap-up record: comment on #55.
+- **2.24 update script: sync batch Spacemacs update** ([#79](https://github.com/amasover/dotfiles/issues/79)):
+  branch `story/2.24-update-script-sync-emacs`, PR pending. Root-caused today's lsp-mode startup
+  breakage (half-installed package after interrupted update); live elpa repair already done in place.
+  Detail: issue + [error note](../knowledge/errors/spacemacs-half-installed-package.md).
+- Queue: **2.10** ([#50](https://github.com/amasover/dotfiles/issues/50)) gates any metal bootstrap run;
+  everything else lives on the board.
 
-**Story 1.8 — privacy scrub** ([#55](https://github.com/amasover/dotfiles/issues/55)): **phase 2 executed 2026-07-03** — history rewritten and force-pushed (main `3f852eb`, 1069 commits cleaned, 20 refs). Verified: all 13 literals zero across mirror, working repo, and yadm (3 kept stashes pin old chains locally — deliberate, patches exported; 40 machine-local sweep hits documented); positive controls used throughout. Procedure + gotchas: [bfg-history-rewrite recipe](../knowledge/recipes/bfg-history-rewrite.md). **Residue (accepted unless ticketed with GitHub Support):** refs/pull keeps old PR blobs; the repo sits in the patrick-motard fork network (old objects SHA-addressable until GitHub gc; one child fork 404s). Salvage bundles + stash patches in `~/.local/share/dotfiles-salvage/`. **Aaron's remaining steps:** work machine — create `~/.gitconfig-local` + `~/.zshrc.local` **before** pulling, then hard-reset its clones to rewritten history; optional GitHub Support ticket. Local `.gitconfig` GCM drift is deliberate (see follow-ups). Phase 1 done on-branch: `.gitconfig` de-worked (default identity → untracked `~/.gitconfig-local`, already created live with the current identity; employer URL-rewrite removed — live had it commented out anyway), `.zshrc` cleaned (work alias out, dead python2-powerline block out matching live, `~/.zshrc.local` source-hook added), three docs neutralized to placeholders, BFG replacements file generated into gitignored `docs/private/` from actual historical case variants. Phase 2 (after phase-1 merges; every step gated): prune stale remote branches → BFG `--replace-text` on a fresh mirror clone (**protect binaries** — fonts/PNG match short tokens as coincidental bytes) → force-push all refs → reset this machine's working repo + yadm repo → **Aaron manually resets the work machine's yadm clone**, which also needs its own `~/.gitconfig-local` (work identity + URL-rewrite) and `~/.zshrc.local` (cgbb alias) **before pulling phase 1**, or its git identity breaks → record GitHub cache residue (old PR diffs may persist; support ticket optional). **`metapac unmanaged` is exactly empty** — 378 explicit = 375 declared in 17 tracked groups (16 purpose groups + empty `inbox-workstation`) + 3 org names in the untracked machine-local group (`~/.local/share/metapac/machine-local.toml`). Tracked config is `config.toml##template` (class `workstation` set live via `yadm config local.class`). Gated mutations executed with approval: D5/D6 drops (docker×2, virtualbox×2 + orphans), `python-cbeams-git` (→ **Story 3.11** [#52](https://github.com/amasover/dotfiles/issues/52), custom cbeams restore), `python2-bin` (C4: live `.zshrc` was already clean), `ipw2100/2200-fw`, and `--asdeps` re-marks (harfbuzz, pango). **D9 amended: `lsdesktopf` KEPT** (Aaron). Legacy flat manifests retired (pointer README). Evidence: [metapac-adoption-notes.md](./metapac-adoption-notes.md). Decision doc corrected: metapac 0.9.4 *does* have a `--hostname` CLI flag (template still wins). ⚠️ 2.11 note: the three org package names got echoed into the working chat once (unfiltered `unmanaged` output) — they remain out of all tracked files/issues; treat chat transcripts as sensitive.
+## Standing warnings
 
-**Story 2.9 — inbox hook + drift report** ([#49](https://github.com/amasover/dotfiles/issues/49)): **complete on `story/2.9-inbox-drift-report`, PR pending** (2026-07-03). yay `PostInstall` hook auto-captures fresh explicit undeclared installs into `inbox-workstation.toml`; new `tools/metapac-drift-report` (also at end of `setup/update`) prints unmanaged / declared-but-missing / **inbox-triage nudge** — the spec gained that third section during kickoff (Aaron: "do I get nudged?" — inboxed packages are declared, so `unmanaged` never surfaces them). Validated offline (stubbed-yay, 4 cases) and **live end-to-end**: `yay -S figlet shellcheck` → both captured inline → nudge fired → triaged (shellcheck kept → `development`; figlet reverted); end state exactly-empty everywhere. shellcheck now installed and part of validation.
+- **Chat transcripts are sensitive.** Org package names and the work email have each leaked into a
+  session transcript (the repo stayed clean). Filter package listings before echoing them, and never
+  inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-**Story 2.3 — thin bootstrap** ([#25](https://github.com/amasover/dotfiles/issues/25)): **merged** ([PR #58](https://github.com/amasover/dotfiles/pull/58), 2026-07-04). `setup/bootstrap` (shellcheck-clean, `--check` mode, metal gate, profile guard, machine-local pre-create); 2019 `install` + `lib.sh` retired; [runbook](./runbook-fresh-machine-bootstrap.md). Never executed for real — that's 2.7.
+## Last session (2026-07-05)
 
 **Story 2.7 — QEMU harness** ([#46](https://github.com/amasover/dotfiles/issues/46)): **MERGED** ([PR #61](https://github.com/amasover/dotfiles/pull/61), 2026-07-04). Full acceptance passed the same day: fresh VM → unattended archinstall → `bootstrap --unattended` → **`metapac unmanaged` exactly empty in the VM**, graphical.target active, sshd enabled; the 2.9 inbox hook even captured the repo's redis→valkey replacement live in-VM (**pending triage:** host group still declares `redis`; host runs AUR redis — migrate-to-valkey is Aaron's call). **13 findings** fixed along the way, all committed to bootstrap/harness/groups + runbook: hostname-binary absent on minimal installs; multilib disabled; 9 rotted manifest names; AUR clone-burst throttling (retry loop); rustup-before-AUR ordering; 80G disk sizing; corrupt-archive purge after disk-full; interrupted-sync scars (repo providers filling AUR-family deps; requirer-less explicit orphans); makepkg `!debug` (colliding .build-id files across Electron -debug splits) + `!check` (abandoned upstreams fail own tests); `file://`-source PKGBUILDs can't unattended-install (uplink → machine-local, with openconnect-service, colorpicker, gnu-netcat, netmask — build-rot relics with modern equivalents already declared); install-reason normalization post-sync; archinstall explicits declared (`base`/`base-devel`/`mkinitcpio` — NOTE: host lacks the 2019 `base` meta → one drift line until synced). Desktop-session polish observed in the VM UI → **Story 2.17** ([#65](https://github.com/amasover/dotfiles/issues/65), placeholder — Aaron enumerates at pickup). **Recommended before closing #46:** one clean gold-run (`destroy→create→install→bootstrap→check`, uninterrupted, everything committed) as the final evidence. Earlier record: fully unattended `create → install` (cloud-init → archinstall 4.4) → `boot` from disk (OVMF → systemd-boot → sshd) → **key-based ssh with NOPASSWD sudo verified**. Six debugging iterations — release-vs-master archinstall schema skew + partition overlap + missing `esp` flag — recorded in the [runbook's schema-skew section](./runbook-vm-validation.md); serial markers + a root-ssh debug seed are permanent harness features. **Harness is libvirt-native** (Aaron's ask): domain `arch-harness` on `qemu:///system`, visible/attachable in virt-manager (confirmed), default-pool volumes, NAT IP (`vm-harness ip`), media auto-eject; install success asserted via volume allocation (serial log is virtlogd/root-owned). VM accommodations: chsh + zsh at install-time (harness seed); secrets skip is now native — `bootstrap --unattended` skips decrypt by design (the `~/.zshenv` touch hack is gone). **Remaining for full AC:** in-VM `vm-harness bootstrap` + `check` (unblocked — #58 merged; AUR builds make it multi-hour, attended). **Disk prep executed (approved):** +~101G freed — win10 VM deleted (67G; config learnings in the runbook), dead `/var/lib/docker`+`containerd` purged (22G), pacman cache pruned (997 pkgs), yay cache 17G→13G, 5 dead work containers + dangling images; kept: running kind node + recent exited work containers. `update` gained a cache-clean step (paccache + `yay -Sc`). **Pre-merge review pass (2026-07-04, on-branch):** full line-by-line review with Aaron; every finding applied — bootstrap: purpose/usage header + `-h`, unknown args die, unattended-on-metal dies at the gate, `--unattended` skips secret decrypt natively (harness `touch ~/.zshenv` hack deleted), profile-guard comment rewritten + tight `[hostname_groups]` match, machine-local step de-generalized to the one well-known path, **new mirrors step** (reflector when the list is >7 days stale; steady state = Story 2.18 [#66](https://github.com/amasover/dotfiles/issues/66)), makepkg step deleted (**overrides now tracked** at `.config/pacman/makepkg.conf`: `!debug !check`, `-j$(nproc)`, `PKGEXT='.pkg.tar'`), rustup step deleted (**repo `rust` declared instead** — no Rust dev; live swap executed, unmanaged still exactly empty); vm-harness: fetch now verifies the ISO checksum *before* the rename (real bug), guest install driver is a readable `run-install.sh`, `exec` polls to completion (bounded, `VM_HARNESS_EXEC_TIMEOUT`), env-overridable RAM/CPUS/DISK, missing-pubkey warning, rot-proof usage. ⚠️ **Before `yadm pull` of this branch on any machine:** remove the untracked `~/.config/pacman/makepkg.conf` first (checkout collision with the newly tracked file). **Post-merge:** Story 2.19 ticketed ([#70](https://github.com/amasover/dotfiles/issues/70)) from the observability grill — host-side per-phase logs, `--detach`, `vm-harness up`, `tail`/`status`; design decisions D1–D11 in [vm-harness-observability-notes.md](./vm-harness-observability-notes.md), vocabulary in [CONTEXT.md](./CONTEXT.md).
 
@@ -52,6 +84,22 @@ Backlog reminders: **3.9** ([#41](https://github.com/amasover/dotfiles/issues/41
 - ⚠️ Before the work machine pulls phase-1 of 1.8: create its `~/.gitconfig-local` (work identity + employer URL-rewrite) and `~/.zshrc.local` (cgbb alias) or its git identity breaks. This machine's `~/.gitconfig-local` already exists.
 - ~~metapac `config.toml` hostname privacy~~ **resolved (2026-07-02 grill of 2.8):** the tracked artifact is `config.toml##template` (yadm template; hostname rendered at checkout, group list selected by `yadm.class`) — no hostname reaches the repo. Inboxes are class-named for the same reason.
 
+- **2.19 built, live-shaken-down, merged** ([PR #74](https://github.com/amasover/dotfiles/pull/74)):
+  per-phase state logs, `--quiet`/`--detach`, `up`/`tail`/`status`, `wait_ssh`, full serial visibility
+  (direct-kernel-boot with no boot menu, streamed install/boot, NTP gates skipped, spinner-spam and
+  getty-vhangup bugs fixed) — five live fix rounds, each diagnosed from the feature's own logs; record
+  in the notes doc's implementation deltas. Ride-along hotfix: tracked makepkg.conf carried a fatal
+  `!check` in OPTIONS → moved to BUILDENV.
+- **2.20** implemented by a parallel session → PR #72 (open).
+- Follow-ups ticketed: **2.21** ([#73](https://github.com/amasover/dotfiles/issues/73)) vm-harness
+  progress mode, **2.22** ([#75](https://github.com/amasover/dotfiles/issues/75)) AUR download hygiene,
+  **2.23** ([#76](https://github.com/amasover/dotfiles/issues/76)) redis→valkey triage,
+  **3.15** ([#77](https://github.com/amasover/dotfiles/issues/77)) encrypt-manifest leftovers.
+  Scope notes filed on open issues: #28 (.zshrc dedupe, credential-helper unification),
+  #30 (termite dropdown, polybar `*.bak`), #50 (2.6 leftovers), #55 (1.8 wrap-up record).
+- STATUS rewritten to the format contract above; all archived narrative rehomed (this file's git
+  history is the map).
+
 ## Epics
 
 | Epic | Scope | Phase |
@@ -60,16 +108,3 @@ Backlog reminders: **3.9** ([#41](https://github.com/amasover/dotfiles/issues/41
 | [2](./epic-2-bootstrap-and-package-modernization.md) | Bootstrap & package modernization | 2 |
 | [3](./epic-3-shell-editor-desktop-cleanup.md) | Shell / editor / desktop cleanup | 3 |
 | [4](./epic-4-workflow-and-governance.md) | Workflow & governance (operating model) | 1 |
-
-## Known follow-ups (not yet ticketed)
-
-_Backlog stories 4.2–4.5 are ticketed (#33–#36); the items below are smaller, mostly folding into existing Epic 3 / Epic 2 stories._
-
-- **From Story 3.4 (Epic 3 cleanup):** audio wpctl migration (fix `polybar_alsa_module` switch, retire `volume-go`, rename `pulseaudio-tail.sh`) — **ticketed as Story 3.12** ([#59](https://github.com/amasover/dotfiles/issues/59)); non-package bootstrap gaps from the 2026-07-03 old-install audit (zsh custom plugins, Vundle/`vendor_repos`, Spacemacs) — **ticketed as Story 2.13** ([#60](https://github.com/amasover/dotfiles/issues/60), blocked on PR #58). Still loose: dead desktop config — termite dropdown (i3 `config:166`), stale polybar `*.bak`/non-active themes; `.zshrc` dedupe (duplicate `dot-src` etc. — `dot-src` itself dies with 3.12).
-- **Privacy pass → Story 1.8 ([#55](https://github.com/amasover/dotfiles/issues/55)):** tracked-config work refs removed (gitconfig identity/URL-rewrite → untracked `~/.gitconfig-local`; work alias → `~/.zshrc.local`); BFG history scrub is 1.8 phase 2. Literal strings preserved only in the gitignored private note.
-- **Story 2.2:** evaluate `aconfmgr` for package/system-state inventory; generate the grouped manifests from live state (incl. optional `work` split).
-- **Story 2.3:** install oh-my-zsh via the official installer (replaces the deleted vendored `install_oh_my_zsh`).
-- From Story 3.6 triage leftovers: decide `.config/yadm/encrypt` removals; encrypt-only salvage of `settings.json` (has a key).
-- ~~Prune stale remote branches~~ **done in 1.8 phase 2** (all 27 non-main branches deleted 2026-07-03; the 8 originally-listed stale ones plus 4 unmerged others bundled to `~/.local/share/dotfiles-salvage/` first — origin now has `main` only).
-- Credential-helper unification: live `.gitconfig` carries GCM + `useHttpPath` lines as deliberate drift (order-sensitive vs tracked `helper = store`); fold into a 3.1-era config cleanup story.
-- Optionally promote the Story 2.2 private redaction note (`docs/private/`) to YADM-encrypted storage (durable/portable vs machine-local).
