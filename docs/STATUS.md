@@ -40,12 +40,16 @@ Facts:
   [PR #84](https://github.com/amasover/dotfiles/pull/84) **merged 2026-07-08**; issue open for the
   gated host live swap (-bin family → repo stack) + the `dotnet-runtime-2.1`/`2.2` relic drop decision.
   Until the swap, host drift shows the four repo names as declared-but-missing.
-- **2.26 bootstrap determinism** ([#83](https://github.com/amasover/dotfiles/issues/83)): fail fast on
-  deterministic sync errors + pin virtual-package providers (host truth: gtk portal, runc, gstreamer,
-  tesseract-eng). Implementation in progress.
+- **2.26 bootstrap determinism** ([#83](https://github.com/amasover/dotfiles/issues/83)):
+  [PR #86](https://github.com/amasover/dotfiles/pull/86) open — fail fast on deterministic sync
+  errors + provider pins matching host truth (gtk portal, runc, gstreamer, tesseract-eng).
 - **1.8 privacy scrub** ([#55](https://github.com/amasover/dotfiles/issues/55)): rewrite executed and
   verified; open only for the work-machine steps — its `~/.gitconfig-local` and `~/.zshrc.local` must
   exist **before** it pulls anything, then hard-reset its clones. Full wrap-up record: comment on #55.
+- **2.27 vm root fills disk** ([#87](https://github.com/amasover/dotfiles/issues/87)):
+  [PR #88](https://github.com/amasover/dotfiles/pull/88) open — archinstall layout pinned root at
+  38 GiB on the 80G volume; now derived from `DISK_SIZE`. Running VM already rescued in place
+  (78G/48%); fresh create validates the fix.
 - Queue: **2.10** ([#50](https://github.com/amasover/dotfiles/issues/50)) gates any metal bootstrap run;
   everything else lives on the board.
 
