@@ -1,8 +1,12 @@
 # metapac group: office — office suite and document tools (Story 2.2 "office/docs")
 # Membership source: docs/package-inventory.md; adopted in Story 2.8.
+# qt6-multimedia-gstreamer pins the `qt6-multimedia-backend` provider for anki (also
+# wanted by network-vpn's wireshark-qt) — Story 2.26; unattended default was ffmpeg,
+# host runs gstreamer.
 [arch]
 packages = [
   "anki",
   "libreoffice-fresh",
+  "qt6-multimedia-gstreamer",
   "yed",
 ]
