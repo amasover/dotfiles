@@ -449,6 +449,36 @@ Issue: [#70](https://github.com/amasover/dotfiles/issues/70) · Design input: [v
 
 ---
 
+### Story 2.20: Track the patched agnoster theme as an oh-my-zsh custom theme
+
+As the repo owner,
+I want my patched agnoster prompt tracked in this repo and placed by the bootstrap,
+So that the wrap fix survives oh-my-zsh updates and lands on a fresh machine automatically.
+
+Issue: [#71](https://github.com/amasover/dotfiles/issues/71) · Origin: the live
+`~/.oh-my-zsh/themes/agnoster.zsh-theme` carries a local patch (the segment bar is
+printed by a `precmd` hook instead of living in `PROMPT`, so long input lines wrap
+without smearing segment colors; plus git ahead/behind and hg prompt-latency fixes).
+It sits in the omz checkout's own tracked tree, so `setup/update`'s omz pull fights
+it, and nothing recreates it on a fresh machine.
+
+Design constraint: the theme cannot be yadm-tracked inside `.oh-my-zsh/` — yadm clone
+runs before bootstrap, so the pre-existing directory would make the oh-my-zsh step
+skip the real install (and the official installer refuses an existing dir anyway).
+So the file lives at `.config/dotfiles/oh-my-zsh-custom/themes/agnoster.zsh-theme`
+(yadm-mapped, outside the omz checkout) and bootstrap symlinks it into
+`~/.oh-my-zsh/custom/themes/`, which shadows the bundled theme by name and is
+gitignored by the omz checkout. The custom *plugin* clones (zsh-autosuggestions,
+zsh-nvm) stay with Story 2.13 ([#60](https://github.com/amasover/dotfiles/issues/60)).
+
+**Acceptance criteria:**
+
+- Given the theme is tracked at `.config/dotfiles/oh-my-zsh-custom/themes/agnoster.zsh-theme`, when bootstrap runs past the oh-my-zsh step, then `~/.oh-my-zsh/custom/themes/agnoster.zsh-theme` is a symlink to it (idempotent; `--check` prints the step)
+- Given the live machine, when this lands, then the bundled theme is restored to upstream (clean omz checkout) and an interactive zsh still gets the patched prompt (the custom theme defines `agnoster_precmd`; upstream's doesn't — so the function existing proves the custom file is the one sourced)
+- Given the fresh-machine runbook is the operator contract, when this lands, then its step list names the symlink step
+
+**Evidence artifact:** Tracked theme + bootstrap step; live verification that the custom theme is the one sourced.
+
 ### Story 2.21: vm-harness progress mode — compact stage display instead of raw logs
 
 As the repo owner,
@@ -518,6 +548,7 @@ Issue: [#79](https://github.com/amasover/dotfiles/issues/79) · Root cause of th
 - Given a clean update, GUI emacs is relaunched automatically
 
 **Evidence artifact:** script diff + a dry-run of the autoloads scan over the live elpa tree.
+>>>>>>> main
 
 ---
 

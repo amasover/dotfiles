@@ -260,6 +260,25 @@ else
         sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 fi
 
+# --- 8b. oh-my-zsh custom theme (patched agnoster prompt; Story 2.20) ----------
+# Tracked outside the omz checkout on purpose: a yadm-placed file inside
+# ~/.oh-my-zsh would pre-create the dir and make step 8 skip the real install.
+# custom/ shadows the bundled theme by name and is gitignored by omz, so
+# updates never touch it.
+say "oh-my-zsh custom theme"
+theme_src="$HOME/.config/dotfiles/oh-my-zsh-custom/themes/agnoster.zsh-theme"
+theme_dst="$HOME/.oh-my-zsh/custom/themes/agnoster.zsh-theme"
+[[ -f "$theme_src" ]] || die "tracked theme missing ($theme_src) — yadm checkout incomplete?"
+if [[ -L "$theme_dst" && "$(readlink "$theme_dst")" == "$theme_src" ]]; then
+    echo "  already linked"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: ln -sf $theme_src \\"
+    echo "                $theme_dst"
+else
+    mkdir -p "${theme_dst%/*}"
+    ln -sf "$theme_src" "$theme_dst"
+fi
+
 # --- 9. login shell ------------------------------------------------------------
 say "Login shell"
 if [[ "${SHELL:-}" == */zsh ]]; then
