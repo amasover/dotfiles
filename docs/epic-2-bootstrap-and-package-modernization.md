@@ -357,7 +357,7 @@ Issue: [#62](https://github.com/amasover/dotfiles/issues/62) · Origin: Story 2.
 
 ---
 
-### Story 2.15: yay removal hook — auto-update group TOMLs on uninstall
+### Story 2.15: package-removal hook — auto-update group TOMLs on uninstall
 
 As the repo owner,
 I want package removals to update my group declarations the way installs update the inbox,
@@ -365,14 +365,21 @@ So that uninstalling doesn't leave landmines (sync reinstalling it, or dead name
 
 Issue: [#63](https://github.com/amasover/dotfiles/issues/63) · Companion to Story 2.9's `PostInstall` capture. Origin: 2.7 close-out — today a removal leaves the declaration behind; tracked groups would get re-synced back in, and stale machine-local entries for AUR-deleted names abort `metapac sync` under ≥0.10 name validation.
 
+**Mechanism (decided 2026-07-07 on #63):** an alpm hook, not a yay Lua hook — yay's
+Lua API has no removal event (verified against v13.0.1 and master `doc/lua.md`).
+`.config/dotfiles/pacman-hooks/metapac-dedeclare.hook`, symlinked into
+`/etc/pacman.d/hooks/` by bootstrap step 6c, runs `tools/metapac-dedeclare`
+PostTransaction on every removal — `yay -R` and raw `pacman -R` alike, so the
+2.9-style bypass caveat disappears for removals.
+
 **Acceptance criteria:**
 
-- Given an explicit removal through yay, when the package is declared in a machine-scoped file (`inbox-<class>`, machine-local), then the hook deletes the line silently
+- Given a package removal (yay or raw pacman), when the package is declared in a machine-scoped file (`inbox-<class>`, machine-local), then the hook deletes the line silently
 - Given it's declared in a tracked purpose group, when removed, then the hook edits the group and the change surfaces as normal yadm/git drift for review at commit time
-- Given raw `pacman -R` bypasses yay hooks, when documented, then the drift report is the named backstop (mirror of the 2.9 caveat)
+- Given the hook file lives in `/etc` (outside yadm), when a machine hasn't run bootstrap step 6c, then the drift report's declared-but-missing section is the documented backstop
 - Given the hook lands, when the drift report runs after a hooked removal, then no declared-but-missing line appears for that package
 
-**Evidence artifact:** Hook addition + a live validation removal (e.g. the gnu-netcat → openbsd-netcat swap).
+**Evidence artifact:** Hook + script + a live validation removal (e.g. the gnu-netcat → openbsd-netcat swap).
 
 ---
 
