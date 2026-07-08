@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# metapac-dedeclare — drop removed packages' declarations from group TOMLs (Story 2.15).
+#
+# Companion to the Story 2.9 install capture, in the other direction: uninstalling
+# a declared package otherwise leaves a landmine — the next `metapac sync` would
+# reinstall it, and a dead AUR name aborts sync under metapac >=0.10 name validation.
+#
+# Invoked by the alpm hook metapac-dedeclare.hook (tracked at
+# ~/.config/dotfiles/pacman-hooks/, symlinked into /etc/pacman.d/hooks/ by
+# bootstrap step 6c). alpm hooks fire on every package removal — `yay -R` and raw
+# `pacman -R` alike (yay has no Lua removal event as of v13; verified on #63) —
+# and run as root, so the script re-execs as this file's owner before touching
+# anything under $HOME.
+#
+# Targets arrive on stdin, one name per line (alpm NeedsTargets), or as arguments
+# for manual repair. Machine-scoped files (inbox-<class>, machine-local) are
+# edited silently — they're per-machine state. Tracked purpose groups are edited
+# too, and the change surfaces as normal yadm/git drift for review at commit time
+# (report-then-human-acts). The drift report's declared-but-missing section stays
+# the backstop for removals that happen with the hook uninstalled.
+set -euo pipefail
+
+# alpm runs hooks as root; the group TOMLs live in the dotfiles owner's $HOME.
+if [[ $EUID -eq 0 ]]; then
+    exec runuser -u "$(stat -c %U "${BASH_SOURCE[0]}")" -- "${BASH_SOURCE[0]}" "$@"
+fi
+
+groups_dir="$HOME/.config/metapac/groups"
+config="$HOME/.config/metapac/config.toml"
+[[ -d "$groups_dir" && -f "$config" ]] && compgen -G "$groups_dir/*.toml" >/dev/null \
+    || exit 0   # no metapac on this machine — nothing to edit
+
+pkgs=("$@")
+if [[ ${#pkgs[@]} -eq 0 && ! -t 0 ]]; then
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && pkgs+=("$line")
+    done
+fi
+[[ ${#pkgs[@]} -gt 0 ]] || exit 0
+
+# Group files = groups dir + absolute-path groups referenced in the rendered
+# config (the machine-local group). Same discovery as metapac-drift-report.
+group_files=("$groups_dir"/*.toml)
+while IFS= read -r abs; do
+    if [[ -f "$abs" ]]; then group_files+=("$abs")
+    elif [[ -f "$abs.toml" ]]; then group_files+=("$abs.toml")
+    fi
+done < <(grep -o '"/[^"]*"' "$config" | tr -d '"')
+
+# Delete a package's declaration line: `  "name",` with optional trailing comma
+# and comment. String comparison, not regex — names like libsigc++ stay literal.
+strip_pkg() {  # strip_pkg <pkg> <file> — writes edited copy to stdout
+    awk -v pkg="$1" '
+        {
+            s = $0
+            sub(/^[[:space:]]+/, "", s)
+            q = "\"" pkg "\""
+            if (index(s, q) == 1) {
+                rest = substr(s, length(q) + 1)
+                sub(/^[[:space:]]*,?[[:space:]]*/, "", rest)
+                if (rest == "" || rest ~ /^#/) next
+            }
+            print
+        }' "$2"
+}
+
+for file in "${group_files[@]}"; do
+    [[ -f "$file" ]] || continue
+    case "$file" in
+        "$groups_dir"/inbox-*.toml) note="" ;;                      # machine-scoped
+        "$groups_dir"/*)            note="   (review via git diff)" ;;  # tracked group
+        *)                          note="" ;;                      # machine-local
+    esac
+    for pkg in "${pkgs[@]}"; do
+        edited=$(strip_pkg "$pkg" "$file")
+        if [[ "$edited" != "$(cat "$file")" ]]; then
+            printf '%s\n' "$edited" > "$file"
+            echo "metapac-dedeclare: $pkg — removed from ${file##*/}$note"
+        fi
+    done
+done

@@ -241,6 +241,22 @@ else
     done < <(metapac unmanaged 2>/dev/null | sed -n 's/^\s*"\([^"]*\)".*/\1/p')
 fi
 
+# --- 6c. package-removal hook (Story 2.15) -------------------------------------
+# Uninstalls de-declare themselves: an alpm hook (not yay — its Lua API has no
+# removal event) runs tools/metapac-dedeclare on every removal, `yay -R` and raw
+# `pacman -R` alike. Symlinked, not copied: content stays current with yadm pulls.
+say "Package-removal hook"
+hook_src="$HOME/.config/dotfiles/pacman-hooks/metapac-dedeclare.hook"
+hook_dst="/etc/pacman.d/hooks/metapac-dedeclare.hook"
+if [[ "$(readlink "$hook_dst" 2>/dev/null)" == "$hook_src" ]]; then
+    echo "  already installed"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: symlink $hook_dst -> $hook_src"
+else
+    sudo mkdir -p /etc/pacman.d/hooks
+    sudo ln -sfT "$hook_src" "$hook_dst"
+fi
+
 # --- 7. interim AUR trust baseline (Story 2.10 replaces with a portable one) ---
 say "AUR quarantine baseline"
 if [[ $CHECK -eq 1 ]]; then
