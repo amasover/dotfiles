@@ -449,13 +449,13 @@ Issue: [#70](https://github.com/amasover/dotfiles/issues/70) · Design input: [v
 
 ---
 
-### Story 2.20: Track the patched agnoster theme as an oh-my-zsh custom theme
+### Story 2.20: Track the patched agnoster theme as an oh-my-zsh custom theme ✅
 
 As the repo owner,
 I want my patched agnoster prompt tracked in this repo and placed by the bootstrap,
 So that the wrap fix survives oh-my-zsh updates and lands on a fresh machine automatically.
 
-Issue: [#71](https://github.com/amasover/dotfiles/issues/71) · Origin: the live
+Issue: [#71](https://github.com/amasover/dotfiles/issues/71) (closed, PR #72) · Origin: the live
 `~/.oh-my-zsh/themes/agnoster.zsh-theme` carries a local patch (the segment bar is
 printed by a `precmd` hook instead of living in `PROMPT`, so long input lines wrap
 without smearing segment colors; plus git ahead/behind and hg prompt-latency fixes).
@@ -533,13 +533,13 @@ Issue: [#76](https://github.com/amasover/dotfiles/issues/76) · Captured live by
 
 ---
 
-### Story 2.24: update script — synchronous batch Spacemacs package update
+### Story 2.24: update script — synchronous batch Spacemacs package update ✅
 
 As the repo owner,
 I want the update script to run the Spacemacs package update synchronously and verify the result,
 So that an interrupted update can no longer leave a half-installed package that breaks every emacs startup.
 
-Issue: [#79](https://github.com/amasover/dotfiles/issues/79) · Root cause of the 2026-07-06 `lsp-mode` "Cannot open load file" breakage; see [knowledge/errors/spacemacs-half-installed-package.md](../knowledge/errors/spacemacs-half-installed-package.md).
+Issue: [#79](https://github.com/amasover/dotfiles/issues/79) (closed, PR #80) · Root cause of the 2026-07-06 `lsp-mode` "Cannot open load file" breakage; see [knowledge/errors/spacemacs-half-installed-package.md](../knowledge/errors/spacemacs-half-installed-package.md).
 
 **Acceptance criteria:**
 
