@@ -91,6 +91,70 @@ so resume-by-hand already works, and acceptance evidence wants the fresh path
 anyway. The failure message names the phase, the rc, and the options
 (inspect / resume manually / destroy and re-run).
 
+## Implementation deltas (2026-07-05, found while building/first live run)
+
+- **D4 refined:** the raw/scrubbed split happens only when stdout is a
+  terminal — a raw tee into a redirected file re-opens the target, truncating
+  it and writing at an independent offset (reproduced in a scratch test).
+  Pipes and files get the scrubbed stream; colors only render on terminals
+  anyway.
+- **D6 upgraded (Aaron's ask, first live `up`):** `install` streams the serial
+  console to the terminal and into the install phase log, instead of leaving
+  the phase dark and copying at the end. The serial file is root:0600
+  (virtlogd re-creates it; a 0666 pre-create does not survive — verified
+  live), so the stream is `sudo -n tail --pid`, with a `sudo -v` refresh at
+  phase start when attended. The `-install-serial.log` copy is now only the
+  fallback when sudo wasn't available (e.g. detached without cached
+  credentials).
+- **Full boot on serial (Aaron's ask, watching the stream):** the ISO's own
+  kernel cmdline has no `console=ttyS0`, so serial went dark between the boot
+  menu (firmware output, mirrored by OVMF) and the install driver's explicit
+  redirect. `install` now boots the archiso kernel directly via fw_cfg —
+  kernel, initrd(s) and cmdline read from the ISO's default loader entry,
+  `console=ttyS0` appended — which also removes the boot menu and its
+  stray-keypress stall. The installed system gets the same console params plus
+  `serial-getty@ttyS0` via archinstall `custom_commands`. Terminal-resize
+  garbling during full-screen phases stays: a serial line has no resize
+  back-channel — documented as inherent, not fixed.
+- **Post-boot dead time cut (Aaron: "it seems to hang for a bit"):** the wait
+  between boot-done and archinstall was cloud-init's staging, gated on NTP
+  sync — pointless in a KVM guest (clock comes from the host RTC). The install
+  cmdline now masks `systemd-time-wait-sync` (also turning the wedged-bridge
+  silent hang into loud archinstall errors), and a `bootcmd` prints
+  `HARNESS-CLOUDINIT-UP` early so the remaining quiet is attributable.
+  Removing that gate exposed a SECOND one: archinstall's own sync check,
+  which previously always found the clock already synced — and timesyncd may
+  never sync inside the NAT guest, so it warned forever ("Time
+  synchronization not completing"). Fixed with `--skip-ntp`, the documented
+  flag for a known-correct clock (Aaron found it); the config's `ntp: true`
+  still enables NTP on the installed system.
+- **First direct-boot run failed — getty vs installer:** `console=ttyS0` made
+  systemd auto-spawn `serial-getty@ttyS0` on the live ISO, and agetty's
+  `vhangup()` invalidated archinstall's open serial fds — instant
+  BrokenPipeError, ~200KB on disk, caught by the alloc check. Fixed by masking
+  that getty on the install boot (the installed system keeps its getty —
+  nothing there holds the line open). Same round: poweroff moved from `runcmd`
+  to cloud-init's `power_state` (a runcmd poweroff races the remaining final
+  modules; every log ended in a scary traceback) with a delayed `shutdown -P
+  +2` fallback; `streamed` no longer inferred from tail's exit code (GNU tail
+  exits 1 if its first open failed, even after `-F` recovers); scrub widened
+  to CSI-with-intermediates, ST-terminated OSC, and DCS sequences (agetty and
+  systemd's console service markers emit all three).
+- **Spinner spam (Aaron's ask):** with archinstall inside cloud-init's final
+  stage, that job stayed "activating" for the whole install and systemd redrew
+  "A start job is running for Cloud-init: Final Stage" onto the serial console
+  every few seconds. `runcmd` now launches the driver as its own transient
+  unit (`systemd-run --collect --unit=harness-install`) — cloud-init completes
+  in seconds and the spinner stops, while every `[ OK ]` boot line stays
+  (`systemd.show_status=no` was the blunt alternative). This also let the
+  poweroff move back into the driver script and `power_state` go: cloud-init
+  is fully finished before the install ends, so there is nothing left to race.
+- **`boot` streams the installed system's boot (Aaron's ask):** same serial
+  file, followed with `-n 0` (the install capture precedes it) by a foreground
+  `tail --pid` watching a backgrounded lease poll — a backgrounded sudo tail
+  can't be killed by the non-root harness and holds the logging pipeline open
+  (caught in a scratch test before it shipped).
+
 ## Parked
 
 - Log retention: none initially; revisit if the directory ever annoys.
