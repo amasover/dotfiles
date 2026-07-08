@@ -37,9 +37,9 @@ Facts:
   hasn't completed a run yet). Detail: epic spec, [observability notes](./vm-harness-observability-notes.md)
   (grill D1–D11 + implementation deltas), [VM runbook](./runbook-vm-validation.md).
 - **2.15 package-removal hook** ([#63](https://github.com/amasover/dotfiles/issues/63)):
-  [PR #81](https://github.com/amasover/dotfiles/pull/81) open. Mechanism switched to an alpm hook —
-  yay's Lua API has no removal event (decision on #63). Remaining: live hook install (symlink into
-  `/etc/pacman.d/hooks/`) + a validation removal (gnu-netcat), then close.
+  [PR #81](https://github.com/amasover/dotfiles/pull/81) open, live-validated (evidence on #63) —
+  alpm hook (yay Lua has no removal event), /etc symlink installed, gnu-netcat removal exercised it.
+  ⚠️ Live yadm is on the story branch for validation: after merge, `yadm checkout main && yadm pull`.
 - **1.8 privacy scrub** ([#55](https://github.com/amasover/dotfiles/issues/55)): rewrite executed and
   verified; open only for the work-machine steps — its `~/.gitconfig-local` and `~/.zshrc.local` must
   exist **before** it pulls anything, then hard-reset its clones. Full wrap-up record: comment on #55.
