@@ -200,9 +200,15 @@ elif [[ $UNATTENDED -eq 1 ]]; then
     # The AUR throttles clone bursts (connection resets when yay pre-fetches ~100
     # PKGBUILDs; seen in 2.7 VM validation). Retries are incremental: fetched
     # clones persist in yay's cache, so each attempt shrinks the remainder.
+    # Resolver failures are different: they repeat identically on every attempt
+    # (the 2026-07-08 dotnet provider conflict burned all 5 retries), so a
+    # known-deterministic pacman error dies immediately instead (Story 2.26).
     sync_ok=0
+    sync_log=$(mktemp)
     for attempt in 1 2 3 4 5; do
-        metapac sync --no-confirm && { sync_ok=1; break; }
+        metapac sync --no-confirm 2>&1 | tee "$sync_log" && { sync_ok=1; break; }
+        fatal=$(grep -m1 -E 'unresolvable package conflicts detected|target not found:' "$sync_log" || true)
+        [[ -z "$fatal" ]] || die "sync failed deterministically — fix the declarations. Decisive line: $fatal"
         echo "bootstrap: sync attempt $attempt failed — retrying in 90s"
         # Purge corrupt built archives (e.g. truncated by a disk-full episode):
         # yay reuses cached builds, so one bad .pkg.tar.zst poisons every retry.

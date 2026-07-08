@@ -5,6 +5,8 @@
 # nodejs/npm are managed by nvm (update loop), not pacman — not declared.
 # dotnet/aspnet: official extra packages (Story 2.25) — the AUR -bin family
 # conflicted with repo dotnet-runtime that storageexplorer's dep pulls in.
+# runc pins podman's `oci-runtime` provider (Story 2.26; host runs runc, unattended
+# default was crun).
 [arch]
 packages = [
   "ansible",
@@ -35,6 +37,7 @@ packages = [
   "nuget",
   "podman",
   "powershell-bin",
+  "runc",
   "pyenv",
   "python-pip",
   "python-pipx",
