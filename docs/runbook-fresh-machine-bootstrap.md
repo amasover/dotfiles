@@ -56,7 +56,9 @@ shows its own plan and prompts (makepkg, metapac sync, chsh). What it does, in o
 8. **AUR trust baseline** — `aur-quarantine seed` (trust-first-seen, announced;
    interim until 2.10's portable baseline).
 9. **oh-my-zsh** — official installer, `KEEP_ZSHRC=yes` so yadm's `.zshrc` survives
-   (replaces the deleted vendored `install_oh_my_zsh`).
+   (replaces the deleted vendored `install_oh_my_zsh`); then symlinks the tracked
+   patched agnoster theme (`~/.config/dotfiles/oh-my-zsh-custom/themes/`) into
+   `~/.oh-my-zsh/custom/themes/`, where it shadows the bundled one (Story 2.20).
 10. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
 
 ## Class table
