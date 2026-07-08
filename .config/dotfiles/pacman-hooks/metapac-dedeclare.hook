@@ -1,0 +1,20 @@
+# metapac de-declare on removal (Story 2.15) — companion to the yay PostInstall
+# inbox capture (Story 2.9). alpm hook, not a yay hook: yay's Lua API has no
+# removal event (verified v13.0.1 + master), and alpm catches raw `pacman -R` too.
+#
+# Tracked here; installed as a symlink (content stays current with yadm pulls):
+#   sudo ln -sfT ~/.config/dotfiles/pacman-hooks/metapac-dedeclare.hook \
+#       /etc/pacman.d/hooks/metapac-dedeclare.hook
+# Bootstrap step 6c does this on a fresh machine. Exec must be an absolute path
+# (alpm expands nothing), hence the literal home below.
+
+[Trigger]
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = metapac: de-declaring removed packages from group TOMLs
+When = PostTransaction
+NeedsTargets
+Exec = /home/aaron/.local/bin/tools/metapac-dedeclare
