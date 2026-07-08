@@ -357,13 +357,13 @@ Issue: [#62](https://github.com/amasover/dotfiles/issues/62) · Origin: Story 2.
 
 ---
 
-### Story 2.15: package-removal hook — auto-update group TOMLs on uninstall
+### Story 2.15: package-removal hook — auto-update group TOMLs on uninstall ✅
 
 As the repo owner,
 I want package removals to update my group declarations the way installs update the inbox,
 So that uninstalling doesn't leave landmines (sync reinstalling it, or dead names aborting validation).
 
-Issue: [#63](https://github.com/amasover/dotfiles/issues/63) · Companion to Story 2.9's `PostInstall` capture. Origin: 2.7 close-out — today a removal leaves the declaration behind; tracked groups would get re-synced back in, and stale machine-local entries for AUR-deleted names abort `metapac sync` under ≥0.10 name validation.
+Issue: [#63](https://github.com/amasover/dotfiles/issues/63) (closed, PR #81) · Companion to Story 2.9's `PostInstall` capture. Origin: 2.7 close-out — today a removal leaves the declaration behind; tracked groups would get re-synced back in, and stale machine-local entries for AUR-deleted names abort `metapac sync` under ≥0.10 name validation.
 
 **Mechanism (decided 2026-07-07 on #63):** an alpm hook, not a yay Lua hook — yay's
 Lua API has no removal event (verified against v13.0.1 and master `doc/lua.md`).
