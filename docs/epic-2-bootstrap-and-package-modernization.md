@@ -555,7 +555,42 @@ Issue: [#79](https://github.com/amasover/dotfiles/issues/79) (closed, PR #80) ·
 - Given a clean update, GUI emacs is relaunched automatically
 
 **Evidence artifact:** script diff + a dry-run of the autoloads scan over the live elpa tree.
->>>>>>> main
+
+---
+
+### Story 2.25: dotnet — repo stack replaces the AUR -bin family
+
+As the repo owner,
+I want the .NET packages declared from the official repos instead of the AUR -bin family,
+So that unattended bootstrap can't deadlock on a repo-vs-AUR provider conflict (and installs stop building 200MB AUR tarballs).
+
+Issue: [#82](https://github.com/amasover/dotfiles/issues/82) · Origin: the 2026-07-05 and 07-08 VM bootstrap runs both died at `metapac sync` — `storageexplorer`'s generic `dotnet-runtime` dep resolves to repo `dotnet-runtime` (extra now ships official .NET), which conflicts the AUR `dotnet-runtime-bin` pulled by the declared `-bin` packages; `--noconfirm` answers the removal prompt N → unresolvable. Same pattern as 2.7's rust swap.
+
+**Acceptance criteria:**
+
+- Given development.toml, the four AUR declarations (`dotnet-sdk-bin`, `dotnet-sdk-9.0-bin`, `aspnet-runtime-bin`, `aspnet-runtime-9.0-bin`) are replaced by their extra equivalents (`dotnet-sdk`, `dotnet-sdk-9.0`, `aspnet-runtime`, `aspnet-runtime-9.0`)
+- Given an unattended VM bootstrap from the merged branch, `metapac sync` passes the dotnet layer with no conflict prompt
+- Given the host still runs the -bin family, when the gated live swap runs, then `metapac unmanaged` stays exactly empty afterward and the EOL `dotnet-runtime-2.1`/`2.2` relics get an explicit keep/drop decision from Aaron
+
+**Evidence artifact:** Group diff + a passing VM sync + the host-swap record on #82.
+
+---
+
+### Story 2.26: unattended bootstrap determinism — fail fast, pin providers
+
+As the repo owner,
+I want unattended bootstrap failures to be fast and its package resolution deterministic,
+So that a broken declaration fails in seconds with the real error, and `--noconfirm` never picks arbitrary providers.
+
+Issue: [#83](https://github.com/amasover/dotfiles/issues/83) · Origin: the 2026-07-08 failure burned 5 sync retries (~minutes each) on a deterministic conflict, and auto-answered provider prompts with option 1 (tessdata → Afrikaans, portal → cosmic).
+
+**Acceptance criteria:**
+
+- Given `metapac sync` output containing a known-deterministic pacman error (unresolvable conflicts, target not found), the unattended retry loop dies immediately quoting the decisive line instead of retrying
+- Given virtual packages the declared set depends on (`tessdata`, `xdg-desktop-portal-impl`, `oci-runtime`, `qt6-multimedia-backend`), the chosen provider is declared in a group, so unattended runs resolve them without prompts and match the host
+- Given transient failures (AUR clone throttling, corrupt cached archives), the existing retry behavior is unchanged
+
+**Evidence artifact:** Bootstrap diff + a VM run log showing either instant deterministic death or a prompt-free sync.
 
 ---
 

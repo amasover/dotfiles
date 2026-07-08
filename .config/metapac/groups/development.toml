@@ -3,20 +3,22 @@
 # docker/docker-compose are decided drops (D5) — intentionally NOT declared here.
 # nodejs-vmd: KEPT per C3 (.spacemacs markdown preview); tied to Story 3.2.
 # nodejs/npm are managed by nvm (update loop), not pacman — not declared.
+# dotnet/aspnet: official extra packages (Story 2.25) — the AUR -bin family
+# conflicted with repo dotnet-runtime that storageexplorer's dep pulls in.
 [arch]
 packages = [
   "ansible",
   "ansible-aur-git",
-  "aspnet-runtime-9.0-bin",
-  "aspnet-runtime-bin",
+  "aspnet-runtime",
+  "aspnet-runtime-9.0",
   "bfg",
   "brew-git",
   "changie",
   "claude-code",
   "cloc",
   "debtap",
-  "dotnet-sdk-9.0-bin",
-  "dotnet-sdk-bin",
+  "dotnet-sdk",
+  "dotnet-sdk-9.0",
   "facter",
   "git",
   "git-credential-manager-bin",
