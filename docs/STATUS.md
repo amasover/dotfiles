@@ -36,10 +36,13 @@ Facts:
   until the evidence lands — one green detached `up` with its full log set (the final fix stack
   hasn't completed a run yet). Detail: epic spec, [observability notes](./vm-harness-observability-notes.md)
   (grill D1–D11 + implementation deltas), [VM runbook](./runbook-vm-validation.md).
-- **2.15 package-removal hook** ([#63](https://github.com/amasover/dotfiles/issues/63)):
-  [PR #81](https://github.com/amasover/dotfiles/pull/81) open, live-validated (evidence on #63) —
-  alpm hook (yay Lua has no removal event), /etc symlink installed, gnu-netcat removal exercised it.
-  ⚠️ Live yadm is on the story branch for validation: after merge, `yadm checkout main && yadm pull`.
+- **2.25 dotnet repo stack** ([#82](https://github.com/amasover/dotfiles/issues/82)):
+  [PR #84](https://github.com/amasover/dotfiles/pull/84) **merged 2026-07-08**; issue open for the
+  gated host live swap (-bin family → repo stack) + the `dotnet-runtime-2.1`/`2.2` relic drop decision.
+  Until the swap, host drift shows the four repo names as declared-but-missing.
+- **2.26 bootstrap determinism** ([#83](https://github.com/amasover/dotfiles/issues/83)): fail fast on
+  deterministic sync errors + pin virtual-package providers (host truth: gtk portal, runc, gstreamer,
+  tesseract-eng). Implementation in progress.
 - **1.8 privacy scrub** ([#55](https://github.com/amasover/dotfiles/issues/55)): rewrite executed and
   verified; open only for the work-machine steps — its `~/.gitconfig-local` and `~/.zshrc.local` must
   exist **before** it pulls anything, then hard-reset its clones. Full wrap-up record: comment on #55.
@@ -52,17 +55,20 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-07-06 → 07)
+## Last session (2026-07-07 → 08)
 
-- **2.24 merged** ([PR #80](https://github.com/amasover/dotfiles/pull/80), closes #79): `setup/update`
-  now runs the Spacemacs package update synchronously in batch mode. Root cause of the lsp-mode
-  breakage recorded in [the error note](../knowledge/errors/spacemacs-half-installed-package.md);
-  live elpa repair was already done in place.
-- **2.20 merged** ([PR #72](https://github.com/amasover/dotfiles/pull/72), closes #71): patched agnoster
-  theme tracked + bootstrap symlink step. This machine already pulled the merge via yadm — collision
-  file handled, tracked theme + `~/.oh-my-zsh/custom/themes` symlink verified live.
-- The #72 merge-conflict resolution had re-added STATUS narrative that PR #78 already rehomed;
-  re-trimmed to the format contract (nothing lost — git history has it).
+- **2.15 merged + live-validated** ([PR #81](https://github.com/amasover/dotfiles/pull/81), closes #63):
+  alpm removal hook (yay Lua has no removal event) de-declares uninstalled packages; /etc symlink
+  installed; raw `pacman -R gnu-netcat` exercised it end-to-end. openbsd-netcat (its replacement)
+  sits in the live inbox awaiting triage.
+- **2.25 merged** (see In flight): unattended VM bootstrap died on repo-vs-AUR dotnet providers;
+  development.toml now declares the official extra stack. `~/code/ness` (the sole .NET 6 pin) deleted
+  by Aaron — no dotnet-sdk-6.0 needed. Decision record on #82.
+- 2.20/2.24 wrapped (✅); STATUS re-trimmed twice after the #72 conflict resolution re-added rehomed
+  narrative; conflict-marker residue dropped from the 2.24 epic section.
+- Ticketed: **2.26** ([#83](https://github.com/amasover/dotfiles/issues/83)) bootstrap determinism,
+  [#85](https://github.com/amasover/dotfiles/issues/85) stale quarantine report reprinted by `update`
+  when yay dies before the hook (root-caused from the 07-07 AUR RPC connection reset).
 
 ## Epics
 
