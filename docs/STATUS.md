@@ -42,7 +42,11 @@ Facts:
   Until the swap, host drift shows the four repo names as declared-but-missing.
 - **2.26 bootstrap determinism** ([#83](https://github.com/amasover/dotfiles/issues/83)):
   [PR #86](https://github.com/amasover/dotfiles/pull/86) **merged 2026-07-08**; issue open until a
-  fresh VM run shows instant deterministic death or a prompt-free sync.
+  fresh VM run shows instant deterministic death or a prompt-free sync. The 2026-07-10 VM run
+  wasn't prompt-free (jack provider): [PR #99](https://github.com/amasover/dotfiles/pull/99)
+  **open** pins pipewire-jack; host jack2→pipewire-jack swap is the follow-on live step. That
+  run died on the displaylink chaotic hold (aged 6.3-1 unbuildable: needs evdi<1.15, gone from
+  repos) — decision pending: `aur-quarantine auto displaylink` in-guest, or wait ~7d age-out.
 - **1.8 privacy scrub** ([#55](https://github.com/amasover/dotfiles/issues/55)): round-2 rewrite
   executed 2026-07-10 (nine work aliases dropped from `.zshrc`, one kept helper moved to
   `~/.zshrc.local`; second BFG pass, clones reset, sweeps clean; dead remote branches pruned —
