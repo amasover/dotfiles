@@ -1,8 +1,12 @@
 # metapac group: virt — QEMU/libvirt stack kept per Story 2.2 decision D6
 # Membership source: docs/package-inventory.md; adopted in Story 2.8.
 # virtualbox + virtualbox-host-modules-arch are decided drops (D6) — intentionally NOT here.
+# python-rich: styles vm-harness's attended status display (Story 2.21, decision
+# on #73 — official extra repo, chosen over AUR-only alive-progress); the
+# display degrades to unstyled text without it.
 [arch]
 packages = [
+  "python-rich",
   "qemu-desktop",
   "virt-manager",
   "virt-viewer",

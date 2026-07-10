@@ -54,6 +54,17 @@
 #   --detach   run under systemd-run --user and return at once: survives closing
 #              the terminal, logs plain output, sends a desktop notification on
 #              completion. Watch with `vm-harness tail`; ask `vm-harness status`.
+#   --progress compact display instead of the stream: one live line (phase ·
+#              stage · elapsed); a failing phase prints its log tail. Needs a
+#              tty; rejects --quiet/--detach (nothing would be watching).
+#   --plain    bare raw stream — no bottom bar.
+#
+# Attended display (Story 2.21): with a tty and python-rich present, phase
+# commands default to the raw firehose plus a pinned bottom status bar (phase ·
+# stage · elapsed) rendered by tools/vm-harness-display; --plain opts out, and
+# non-tty stdout, --quiet, --detach, or a missing python-rich fall back to
+# plain automatically. Stage text comes from anchors already in the stream
+# (bootstrap ==> lines, HARNESS-* markers, pacman :: lines, makepkg builds).
 #
 # Learned from the retired win10 VM: q35/KVM sized 4G/8vcpu worked, but it was
 # legacy-BIOS on a SATA bus — this harness uses OVMF/UEFI (matches the refind
@@ -73,6 +84,10 @@ ISO="$CACHE/archlinux-x86_64.iso"
 INSTALL_LOG="$WORKDIR/install.log"
 MIRROR="https://geo.mirror.pkgbuild.com/iso/latest"
 REPO_URL="${VM_HARNESS_REPO:-https://github.com/amasover/dotfiles.git}"
+REPO_BRANCH="${VM_HARNESS_BRANCH:-}"          # guest clones this branch (default: repo default = main).
+                                              # Set it to validate guest-side bootstrap changes pre-merge —
+                                              # without it the guest always runs main's bootstrap, so a
+                                              # branch's guest-side fixes are invisible to a harness run.
 VM_CLASS="${VM_HARNESS_CLASS:-workstation}"   # which class profile the VM validates
 VM_HOST=archvm
 VM_USER=aaron
@@ -83,6 +98,9 @@ CPUS="${VM_HARNESS_CPUS:-16}"
 LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/bootstrap-harness/logs"   # survives destroy
 RUN_STAMP=$(date +%Y%m%d-%H%M%S)    # one stamp per invocation — an `up` run's phases share it
 RESUME_HEADER=""                    # set by a resuming `up`; run_phase logs it once
+DISPLAY_TOOL="$HOME/.local/bin/tools/vm-harness-display"
+DISPLAY_MODE=plain                  # resolved at dispatch: bar | compact | plain
+PHASES_STATUS=""                    # cmd_up breadcrumb for the display: name:done|current|pending,...
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'vm-harness: FATAL: %s\n' "$*" >&2; exit 1; }
@@ -95,11 +113,21 @@ usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; }   # the
 # service markers use ESC\), DCS (agetty terminfo queries), charset selectors
 # (the ESC(B tput hides in sgr0) — and turn carriage-return redraws (progress
 # bars) into ordinary lines. -u keeps `vm-harness tail` near-live.
+# Last two expressions (2.21): the guest sync now runs under a pty, so
+# pacman/yay draw real progress bars — after the CR→newline conversion a
+# redraw burst is one pattern space with embedded newlines, and every
+# superseded sub-100% frame (bar + percent, another frame following) is
+# dropped; the final 100% line per package survives into the log. And the
+# guest tty echoes terminal REPLIES (cursor-position ...R / window-size ...t
+# reports, answers to systemd's queries) in caret notation — literal '^[['
+# bytes, no ESC — so the \x1b patterns can't see them; strip that shape too.
 scrub() { sed -u -e 's/\x1b\[[0-9;?!<>=]*[a-zA-Z]//g' \
                  -e 's/\x1b\][^\x1b\x07]*\(\x07\|\x1b\\\)//g' \
                  -e 's/\x1bP[^\x1b]*\x1b\\//g' \
                  -e 's/\x1b[()][0-9A-Za-z]//g' -e 's/\x1b[=>]//g' \
-                 -e 's/\r$//' -e 's/\r/\n/g'; }
+                 -e 's/\r$//' -e 's/\r/\n/g' \
+                 -e 's/[^\n]*\[[#-]*\] *[0-9]\{1,2\}%\n//g' \
+                 -e 's/\^\[\[[0-9;]*[Rt]//g'; }
 
 # Run one phase with host-side logging. The terminal (unless --quiet) gets the
 # raw stream — colors and progress bars intact — while the log gets a scrubbed
@@ -120,6 +148,14 @@ run_phase() {
     fi
     if [[ $QUIET -eq 1 ]]; then
         "$@" 2>&1 | scrub >> "$log" || rc=$?
+    elif [[ -t 1 && "$DISPLAY_MODE" != plain ]]; then
+        # a human is watching with a display mode: the tool mirrors the raw
+        # stream to /dev/tty (bar mode) or swallows it (compact), renders the
+        # status row, and passes the bytes through to the scrub->log leg.
+        # It exits 0 no matter what — pipefail carries the phase's real rc.
+        "$@" 2>&1 | "$DISPLAY_TOOL" --mode "$DISPLAY_MODE" --phase "$phase" \
+                ${PHASES_STATUS:+--phases "$PHASES_STATUS"} \
+            | scrub >> "$log" || rc=$?
     elif [[ -t 1 ]]; then
         # a human is watching: raw stream (colors, live progress bars) to the
         # terminal via /dev/tty, scrubbed copy to the log
@@ -132,6 +168,11 @@ run_phase() {
     fi
     echo "=== $phase done rc=$rc" >> "$log"
     [[ $QUIET -eq 1 ]] || echo "=== $phase done rc=$rc"
+    # Compact mode hid the stream — surface the failure before dying (2.21 AC).
+    if (( rc != 0 )) && [[ "$DISPLAY_MODE" == compact ]]; then
+        echo "--- last 40 log lines ($log):"
+        tail -n 40 "$log"
+    fi
     (( rc == 0 )) || die "phase '$phase' failed (rc=$rc) — VM left as-is for inspection. Log: $log. Next: read it (vm-harness tail $phase), fix the cause and re-run: vm-harness up (resumes here), or vm-harness destroy for a clean slate."
 }
 
@@ -545,9 +586,11 @@ cmd_bootstrap() {
     wait_ssh
     inject_trust_baseline
     say "Running repo bootstrap inside the VM (class: $VM_CLASS, unattended; AUR builds take a while)"
+    # shellcheck disable=SC2016  # the inner single quotes are for the REMOTE
+    # shell; $REPO_BRANCH/$REPO_URL expand host-side in this double-quoted string
     vm_ssh "set -e
         sudo pacman -S --needed --noconfirm git base-devel yadm
-        yadm clone --no-bootstrap '$REPO_URL' || true
+        yadm clone --no-bootstrap ${REPO_BRANCH:+-b '$REPO_BRANCH'} '$REPO_URL' || true
         yadm config local.class '$VM_CLASS'
         yadm alt
         ~/.local/bin/setup/bootstrap --check --unattended
@@ -641,9 +684,25 @@ cmd_up() {
     if [[ ! -f "$ISO" && ( " ${todo[*]} " == *" create "* || " ${todo[*]} " == *" install "* ) ]]; then
         run_phase fetch cmd_fetch
     fi
+    # Breadcrumb for the display (2.21): every phase with its status —
+    # probed-complete (resume) and already-run phases show done, the running
+    # one current, the rest pending.
+    local i=0 j q crumb
     for p in "${todo[@]}"; do
+        i=$((i + 1))
+        crumb=""
+        for q in "${skipped[@]}"; do crumb+="$q:done,"; done
+        j=0
+        for q in "${todo[@]}"; do
+            j=$((j + 1))
+            if (( j < i )); then crumb+="$q:done,"
+            elif (( j == i )); then crumb+="$q:current,"
+            else crumb+="$q:pending,"; fi
+        done
+        PHASES_STATUS="${crumb%,}"
         run_phase "$p" "cmd_$p"
     done
+    PHASES_STATUS=""
     say "up complete — installed, bootstrapped, checks green. Logs: $LOG_DIR/$RUN_STAMP-*.log"
 }
 
@@ -692,12 +751,16 @@ cmd_status() {
 QUIET=0
 [[ "${VM_HARNESS_QUIET:-0}" != 0 ]] && QUIET=1
 DETACH=0
+PROGRESS=0
+PLAIN=0
 while [[ "${1:-}" == -* ]]; do
     case "$1" in
-        --quiet)   QUIET=1 ;;
-        --detach)  DETACH=1 ;;
-        -h|--help) usage; exit 0 ;;
-        *)         die "unknown flag: $1   (try: vm-harness -h)" ;;
+        --quiet)    QUIET=1 ;;
+        --detach)   DETACH=1 ;;
+        --progress) PROGRESS=1 ;;
+        --plain)    PLAIN=1 ;;
+        -h|--help)  usage; exit 0 ;;
+        *)          die "unknown flag: $1   (try: vm-harness -h)" ;;
     esac
     shift
 done
@@ -710,6 +773,21 @@ if [[ "${VM_HARNESS_DETACHED:-0}" != 0 ]]; then
     trap notify_done EXIT
 fi
 
+# Resolve the attended display (Story 2.21, decisions on #73). A display flag
+# combined with a mode where nothing watches is a mistake — reject loudly.
+# The bar default degrades to plain when anything it needs is missing; the
+# tool itself renders unstyled if python-rich is absent (styling only).
+if (( PROGRESS )); then
+    (( DETACH ))    && die "--progress needs a watching terminal — it cannot combine with --detach"
+    (( QUIET ))     && die "--progress needs a watching terminal — it cannot combine with --quiet"
+    (( PLAIN ))     && die "--progress and --plain contradict each other"
+    [[ -t 1 ]]      || die "--progress needs a tty (stdout is redirected)"
+    DISPLAY_MODE=compact
+elif (( PLAIN == 0 && QUIET == 0 )) && [[ -t 1 && -x "$DISPLAY_TOOL" ]] \
+        && command -v python3 >/dev/null; then
+    DISPLAY_MODE=bar
+fi
+
 if [[ $DETACH -eq 1 ]]; then
     case "$CMD" in
         fetch|create|install|boot|bootstrap|check|up) ;;
@@ -720,7 +798,7 @@ if [[ $DETACH -eq 1 ]]; then
     # result line is the durable record. Forward the VM_HARNESS_* knobs
     # explicitly; a user unit doesn't inherit this shell's environment.
     setenv_args=()
-    for var in VM_HARNESS_DIR VM_HARNESS_REPO VM_HARNESS_CLASS VM_HARNESS_DISK \
+    for var in VM_HARNESS_DIR VM_HARNESS_REPO VM_HARNESS_BRANCH VM_HARNESS_CLASS VM_HARNESS_DISK \
                VM_HARNESS_RAM VM_HARNESS_CPUS VM_HARNESS_EXEC_TIMEOUT; do
         if [[ -n "${!var:-}" ]]; then setenv_args+=("--setenv=$var=${!var}"); fi
     done
@@ -744,5 +822,6 @@ case "$CMD" in
     tail)      cmd_tail "${2:-}" ;;
     status)    cmd_status ;;
     destroy)   cmd_destroy ;;
+    scrub)     scrub ;;   # stdin -> scrubbed stdout; the tests/ seam for the log filter
     *)         usage; exit 1 ;;
 esac
