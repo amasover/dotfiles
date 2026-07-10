@@ -632,6 +632,28 @@ Issue: [#89](https://github.com/amasover/dotfiles/issues/89) · Chaotic-AUR is a
 
 ---
 
+### Story 2.29: Scripted metal provisioning — partitions, disk encryption, bootloader
+
+As the repo owner,
+I want the pre-bootstrap provisioning of a metal machine (partitions, LUKS disk
+encryption, bootloader, user) driven by a tracked, parameterized recipe the official
+Arch ISO can consume,
+So that a bare-metal install starts from the same declarative recipe philosophy as
+everything else, instead of hand-typed disk commands at an ISO prompt.
+
+Issue: [#95](https://github.com/amasover/dotfiles/issues/95) · The vm-harness already proves the pattern: cloud-init on the official ISO drives unattended `archinstall` from a generated seed (Story 2.7). Metal reuses it with a different disk layout (GPT: ESP + LUKS root), refind, and real credentials. Target: the spare-laptop metal run (months out); until then, layout validated by a VM dry-run of the generated config.
+
+**Acceptance criteria:**
+
+- Given a machine booted from the official Arch ISO, when the recipe runs, then a tracked, parameterized generator produces an archinstall config provisioning GPT partitions (ESP + LUKS-encrypted root sized from the disk), disk encryption, the platform's bootloader, a user, and sshd
+- Given secrets (LUKS passphrase, user password), when the seed is generated, then they are supplied at run time (prompt or env) and never land in tracked files; any generated seed containing them is destroyed after use
+- Given vm-harness's seed generation exists, when the metal generator is built, then shared logic is factored once (harness and metal recipe as two consumers) or the divergence is explicitly recorded with reasons
+- Given no metal hardware is available yet, when the story lands, then the generated config is validated by a VM dry-run (layout + syntax), and the spare-laptop run later supplies the real evidence
+
+**Evidence artifact:** tracked generator + recipe, a VM dry-run log, and (later) the metal run record.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
