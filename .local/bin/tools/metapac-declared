@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# metapac-declared — print this host's declared package set, one per line.
+#
+# metapac has no list command, so this parses the rendered config the same way
+# metapac reads it: [hostname_groups] entry for this host -> group entries
+# (names under <config>/groups/, or absolute paths like machine-local.toml) ->
+# every quoted name inside each file's [arch] packages array. Coupled to the
+# repo's group-file convention (one quoted name per line) the same way the
+# bootstrap 6b sed is coupled to metapac's output shape; the harness's
+# exactly-empty `unmanaged` assert is the backstop for both.
+#
+# Output may include never-publish machine-local names — do not paste it into
+# tracked files, issues, or transcripts (Story 2.11).
+#
+# Flags: --config-dir DIR   (default: ~/.config/metapac)
+#        --hostname NAME    (default: uname -n)
+set -euo pipefail
+
+cfg_dir="$HOME/.config/metapac"
+host="$(uname -n)"
+while (( $# )); do
+    case "$1" in
+        --config-dir) cfg_dir=$2; shift 2 ;;
+        --hostname)   host=$2; shift 2 ;;
+        *) echo "usage: metapac-declared [--config-dir DIR] [--hostname NAME]" >&2; exit 2 ;;
+    esac
+done
+cfg="$cfg_dir/config.toml"
+[[ -f "$cfg" ]] || { echo "metapac-declared: no config at $cfg (yadm alt not run?)" >&2; exit 1; }
+
+# entries of this host's group array: from the "<host>" = [ line to the first ]
+mapfile -t entries < <(awk -v h="\"$host\" = [" '
+    index($0, h) { grab = 1; next }
+    grab && /\]/ { exit }
+    grab && match($0, /"([^"]*)"/, m) { print m[1] }' "$cfg")
+(( ${#entries[@]} )) || { echo "metapac-declared: no [hostname_groups] entry for '$host' in $cfg" >&2; exit 1; }
+
+for e in "${entries[@]}"; do
+    if [[ "$e" == /* ]]; then f="$e"; else f="$cfg_dir/groups/$e.toml"; fi
+    [[ -f "$f" ]] || { echo "metapac-declared: missing group file $f" >&2; exit 1; }
+    awk '/^\[arch\]/ { a = 1; next }
+         /^\[/      { a = 0 }
+         a && match($0, /"([^"]*)"/, m) { print m[1] }' "$f"
+done | sort -u

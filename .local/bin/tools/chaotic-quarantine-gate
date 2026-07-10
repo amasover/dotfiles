@@ -77,6 +77,9 @@ for pkg in "${chaotic[@]}"; do
     [[ -n "$line" ]] || hold "$pkg" rpc "not found in AUR RPC — cannot verify (failing closed)" \
         "transient? retry — or:  aur-quarantine bypass-once   (next transaction only)"
     IFS=$'\t' read -r _ lm mt <<<"$line"
+    # the policy's hold message names the version (2.32 — it printed "version ?"
+    # while the gate withheld it); the sync DB has it, one cheap query per target
+    ver=$(pacman -Si "$pkg" 2>/dev/null | awk -F': *' '/^Version/ { print $2; exit }')
 
     known="@never"
     if [[ -f "$state_dir/maintainers.tsv" ]]; then
@@ -88,7 +91,7 @@ for pkg in "${chaotic[@]}"; do
     age="@nil"
     [[ "$lm" =~ ^[0-9]+$ && "$lm" -gt 0 ]] && age=$(((now - lm) / 86400))
 
-    if ! out=$(lua5.1 "$policy" "$pkg" "${mt:-@orphan}" "$known" "$exempt" "$age" "$days"); then
+    if ! out=$(lua5.1 "$policy" "$pkg" "${mt:-@orphan}" "$known" "$exempt" "$age" "$days" "${ver:-?}"); then
         code=${out%%$'\t'*}
         code=${code%%$'\n'*}
         why=$(head -1 <<<"$out" | cut -f2-)
