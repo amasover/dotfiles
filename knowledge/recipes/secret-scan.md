@@ -26,11 +26,40 @@ If `gitleaks` is not installed, use the manual fallback below and ask Aaron to
 install it (`pacman -S gitleaks` or equivalent). Do not install it
 automatically without approval.
 
+## Enforced automatically: pre-commit hook (Story 4.4, #35)
+
+The staged-changes scan runs automatically on every commit via the tracked hook
+[.githooks/pre-commit](../../.githooks/pre-commit). It runs
+`gitleaks protect --staged --redact --no-banner` and blocks the commit on any
+finding; if `gitleaks` is missing it fails loudly with the install step instead
+of passing silently.
+
+Enable it per repo with a repo-local `core.hooksPath` (never `--global` — that
+would hijack hooks in every other repo under `$HOME`):
+
+```bash
+# working clone (~/code/dotfiles)
+git config core.hooksPath .githooks
+
+# YADM repo — run after a yadm checkout has placed ~/.githooks
+yadm gitconfig core.hooksPath .githooks
+```
+
+Both settings live in each repo's own config, so unrelated home-directory Git
+work is untouched. The relative path resolves against the worktree top: the
+clone finds `.githooks/` at the repo root, YADM finds `~/.githooks/` (the same
+tracked file, checked out by YADM).
+
+Bypass for a single commit with `git commit --no-verify` — only after running
+the scan manually. False positives are dismissed via `.gitleaksignore` (below),
+which the hook respects.
+
 ## Steps
 
 All commands are read-only. Run from the repo checkout (`$DOTFILES_CHECKOUT`).
 
-1. **Before staging a commit — staged changes only:**
+1. **Before staging a commit — staged changes only** (the pre-commit hook runs
+   this for you where enabled):
 
    ```bash
    gitleaks protect --staged --redact --no-banner
@@ -103,6 +132,12 @@ When a finding is a confirmed false positive, dismiss it durably and record why:
 
 Never dismiss a finding without a written reason. If it is unclear whether a
 finding is real, treat it as real until proven otherwise and ask Aaron.
+
+**Testing the hook with a planted secret:** gitleaks' default config allowlists
+values containing `EXAMPLE`, so the canonical AWS docs key
+(`AKIAIOSFODNN7EXAMPLE`) passes clean — a planted test secret must look real
+(e.g. a random-suffix `ghp_…` GitHub PAT pattern). Verified 2026-07-09: the
+hook blocked a realistic planted token and let clean commits through.
 
 ## Scan evidence
 
