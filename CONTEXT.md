@@ -16,14 +16,30 @@ plugins). Sequential and stateful; distinct from reconciling.
 _Avoid_: upgrade flow, maintenance script
 
 **Quarantine**:
-The safety gate that holds suspicious AUR *upgrades* (too new, orphaned, maintainer
-changed) out of an update. Applies to upgrades of already-installed packages only —
-first-time installs are not yet gated.
+The safety gate that holds suspicious AUR-derived packages (too new, orphaned,
+maintainer changed) out of any transaction — upgrades, first-time installs, and
+chaotic-aur binaries alike. One decision ladder, several enforcement points.
 _Avoid_: hold-back, delay list
 
+**Hold**:
+A quarantine verdict that blocks a package, carrying a reason code. Age holds are
+machine-remediable (stepping); identity holds (orphan, maintainer change) demand a
+human decision.
+_Avoid_: block, rejection
+
+**Stepping**:
+Resolving an age hold by installing the newest *aged* version of a package, built
+from its recipe at a pinned historical commit.
+_Avoid_: downgrade (it is usually an upgrade), rollback
+
+**Exemption**:
+A standing per-package judgment that skips the age delay. Never weakens identity
+checks — an exempted package with a changed maintainer still holds.
+_Avoid_: whitelist entry, bypass (that's the one-shot escape hatch)
+
 **Trusted baseline**:
-The per-machine record of which AUR package/maintainer pairs are trusted. Machine-local
-today; a fresh machine starts with none.
+The record of which AUR package/maintainer pairs are trusted. Portable: rides the
+encrypted archive to rebuilt machines; injected by the harness into VMs.
 _Avoid_: whitelist
 
 **Adoption**:
@@ -61,3 +77,23 @@ _Avoid_: manifest (the legacy flat lists), category
 The one-time sequence that takes a fresh OS install to a working workstation by driving
 the reconcile loop for the first time.
 _Avoid_: install script (the dead 2019 artifact), setup
+
+## Eras
+
+**Cleanup era**:
+The bounded project phase this repo is currently in. Done when the daily-driver
+rebuild succeeds AND the work machine has completed its history-rewrite recovery
+steps; everything after is steady state.
+_Avoid_: the project (open-ended), migration
+
+**Daily-driver rebuild**:
+The cleanup era's exit milestone: bootstrapping, from nothing but this repo and
+the encrypted archive, a machine that then gets used daily. The first target is
+a VM on the Windows personal machine; bare metal is a later, optional variant.
+_Avoid_: metal rebuild (first target is a VM), fresh install (any machine, incl.
+disposable harness VMs)
+
+**Steady state**:
+The operating mode after the cleanup era: a continuously converging workstation
+platform — drift observed, triaged, and reconciled as routine, not as a project.
+_Avoid_: maintenance mode, done
