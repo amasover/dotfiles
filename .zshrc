@@ -1,28 +1,7 @@
 # Path to your oh-my-zsh installation.
 export ZSH=$HOME/.oh-my-zsh
-ocep() {
-    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules//odp-customer-env-populate"
-}
-ocei() {
-    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules//odp-customer-env-init"
-}
-tenant() {
-    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules//odp-per-tenant"
-}
-deployment() {
-    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules//deployment"
-}
-browser_auth() {
-    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules/odp-init//browser-authentication"
-}
-metastore() {
-    export TERRAGRUNT_SOURCE="/home/$USER/code/terraform-modules/odp-init//databricks-metastore"
-}
 pager() {
     vim -R -M -c "setl filetype=yaml" -
-}
-orion() {
-    uv run python "/home/$USER/code/gitops-packages/scripts/orion-cli/src/orion-cli/main.py" "$@"
 }
 export TG_LOG_FORMAT="bare"
 
