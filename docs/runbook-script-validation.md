@@ -85,6 +85,30 @@ formatted when their own stories touch them:
 Everything else is `shfmt -i 4 -bn -ci` clean, and new or modified scripts in
 a PR should stay that way.
 
+## Regression tests (clitest) — adopted 2026-07-10
+
+Lint checks that scripts are *written* safely; `tests/*.clitest.txt` checks
+they *behave* correctly, via [clitest](https://github.com/aureliojargas/clitest)
+(host-installed 2026-07-10):
+
+```bash
+# from the repo root
+clitest tests/*.clitest.txt
+```
+
+- **Ship tests with new logic in the same commit/PR** (Aaron's standing
+  preference): pytest-style tests for python-internal logic, clitest for
+  shell seams — sed/awk filters, CLI flag handling, pass-through/pipeline
+  guarantees, pty behavior (via `script(1)` inside a test).
+- Design testable seams while writing — e.g. `vm-harness scrub` exposes the
+  state-log filter as a subcommand precisely so tests can reach it.
+- Tests must not depend on host state (no libvirt, no network); they are the
+  natural payload for Story 4.7's minimal CI ([#94](https://github.com/amasover/dotfiles/issues/94)).
+- Format gotchas (block termination with a lone `$`, one shared shell session
+  per file): [knowledge/reference/clitest-shell-tests.md](../knowledge/reference/clitest-shell-tests.md).
+- First suite: `tests/vm-harness.clitest.txt` (Story 2.21, PR #102) — scrub
+  filters, display-tool pass-through, display-flag rejections.
+
 ## Re-running / updating the baseline
 
 1. Run the shellcheck and shfmt invocations above; compare against the tables.

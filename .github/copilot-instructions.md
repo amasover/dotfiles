@@ -245,6 +245,22 @@ For shell scripts:
 - Run syntax-only validation where safe, for example `bash -n <script>`.
 - Do not execute install/update scripts unless explicitly approved.
 
+For tests (see [docs/runbook-script-validation.md](../docs/runbook-script-validation.md)):
+
+- Ship tests with new logic in the same commit/PR — Aaron prefers code he or
+  agents write to be unit-tested. Python-internal logic gets pytest-style
+  tests; shell seams (sed/awk filters, CLI flag handling, pass-through and
+  pipeline guarantees, pty behavior) get clitest cases.
+- Shell-level regression tests live in `tests/*.clitest.txt`; run from the
+  repo root: `clitest tests/*.clitest.txt`. Run the suite when touching
+  anything it covers, and extend it alongside the change.
+- Design testable seams while writing: expose internal filters/logic as
+  invokable subcommands (example: `vm-harness scrub`) rather than leaving
+  them reachable only through a full run.
+- Tests must not depend on host state (no libvirt, no network) — they are
+  CI candidates (Story 4.7, #94). Format gotchas and conventions:
+  [knowledge/reference/clitest-shell-tests.md](../knowledge/reference/clitest-shell-tests.md).
+
 For shell config:
 
 - Prefer syntax checks where possible.
