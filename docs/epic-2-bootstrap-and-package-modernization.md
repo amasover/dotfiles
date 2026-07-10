@@ -672,6 +672,26 @@ Issue: [#96](https://github.com/amasover/dotfiles/issues/96) · Origin: 2026-07-
 - Given the runbook's class table, when the class lands, then the table documents both classes and their group deltas
 - Given the vm-harness default class is `workstation`, when the split lands, then harness runs still converge (the hardware group installs harmlessly under QEMU, or the harness class choice is revisited — decided in-story)
 
+---
+
+### Story 2.31: vm-harness — resumable `up`
+
+As the repo owner,
+I want a failed `vm-harness up` to be resumable from the first incomplete phase,
+So that a bootstrap failure late in the pipeline costs one re-run command instead
+of manual phase archaeology or a destroy-and-reinstall.
+
+Issue: [#98](https://github.com/amasover/dotfiles/issues/98) · Origin: the 2026-07-10 detached `up` died in `bootstrap` (displaylink quarantine hold); today `up` dies whenever the domain exists, so resuming means reading `status`/logs, deducing the completed phases, and re-running the rest by hand. Phase-completion evidence already exists: the `=== <phase> done rc=N` log trailers and libvirt domain state.
+
+**Acceptance criteria:**
+
+- Given a previous `up` that failed at some phase, when `up` runs again (or `up --resume` — flag vs. default decided in-story), then it detects the completed phases and continues from the first incomplete one instead of dying on "domain already exists"
+- Given resume is impossible from the recorded state (e.g. `install` died partway, leaving a half-provisioned disk), when `up` runs, then it fails fast with the exact next command (`destroy` + fresh `up`) — the never-auto-destroy guarantee stays
+- Given an operator asking "where would it resume?", when `status` runs, then it names the next phase a resume would start from
+- Given a resumed run, when it finishes, then its logs are distinguishable from (but associated with) the original run's set
+
+**Evidence artifact:** a deliberately interrupted `up` plus a resumed run's log set showing continuation from the failed phase.
+
 **Evidence artifact:** groups/template diff, a live no-op dry-run, and the updated class table.
 
 ---
