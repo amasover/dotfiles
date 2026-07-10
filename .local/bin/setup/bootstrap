@@ -208,9 +208,12 @@ fi
 # recipe from source at an aged commit). Identity holds (orphan /
 # maintainer-change) and RPC failures are a human decision — die with the remedy.
 held_install_file="$qstate/held-install.tsv"
-step_age_hold() { # $1 = held package
+step_note=""
+step_age_hold() { # $1 = held package; captures the attempt for die_still_held
     echo "bootstrap: quarantine held $1 (too new) — stepping to newest aged version"
-    "$HOME/.local/bin/tools/aur-quarantine" update "$1" || true
+    # tee keeps the build output live while the capture lets die_still_held
+    # name the actual cause instead of guessing (Story 2.32)
+    step_note=$("$HOME/.local/bin/tools/aur-quarantine" update "$1" 2>&1 | tee /dev/stderr) || true
 }
 die_hold() { # $1 = held package, $2 = reason code
     case "$2" in
@@ -223,7 +226,16 @@ die_hold() { # $1 = held package, $2 = reason code
     esac
 }
 die_still_held() { # $1 = held package that stepping could not satisfy
-    die "quarantine still holds '$1' after stepping — no aged version exists yet.
+    # "no aged version" and "the aged build failed" demand different reactions
+    # — the 2026-07-10 displaylink hold printed the former while the truth was
+    # a dep-dead aged build (evdi<1.15 gone from the repos). Say which (2.32).
+    local why="stepping did not change its verdict"
+    if grep -q 'has no version older' <<<"${step_note:-}"; then
+        why="NO aged version exists yet (nothing in its AUR history is both older than the quarantine window and newer than what is installed)"
+    elif grep -qE 'failed \(deps/build/source/install\)' <<<"${step_note:-}"; then
+        why="an aged version EXISTS but its build FAILED — decisive line: $(grep -m1 -E '==> ERROR|error:' <<<"${step_note:-}" || echo 'see the stepping output above')"
+    fi
+    die "quarantine still holds '$1' after stepping — $why.
     Decide:  aur-quarantine auto $1   (skip its age delay)  — or wait for it to age out"
 }
 
@@ -285,6 +297,122 @@ else
     fi
 fi
 
+# --- 5c. quarantine pre-flight (Story 2.33) ------------------------------------
+# A hold from either install gate aborts the ENTIRE sync (since 2.28 the whole
+# repo transaction too), so discovering holds at install time costs one
+# multi-minute sync attempt per held package (3 attempts for 2 holds,
+# 2026-07-10). The verdicts need nothing from the installer — one batched AUR
+# RPC against the same policy — so compute them for the whole declared
+# non-repo set now: step every age hold in one pass, die listing every
+# identity hold at once. The gates stay in place as enforcement; a package
+# that flips mid-run is still caught (the sync loop below is the backstop).
+say "Quarantine pre-flight"
+aq="$HOME/.local/bin/tools/aur-quarantine"
+candidates=()
+declare -A repo_of=() base_of=()
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: verdict every declared non-repo package (one batched RPC),"
+    echo "         step all age holds, die listing all identity holds / unknown names"
+elif [[ $UNATTENDED -eq 0 ]]; then
+    echo "  attended run — skipped (the gates prompt interactively; pre-flight serves unattended syncs)"
+else
+    declared_out=$("$HOME/.local/bin/tools/metapac-declared") \
+        || die "metapac-declared failed — no declared set to pre-flight (its error is above)"
+    [[ -n "$declared_out" ]] || die "metapac-declared printed nothing — empty declared set cannot be right"
+    mapfile -t declared <<<"$declared_out"
+    # one sync-DB query maps every repo-known name to its repo; anything the
+    # DBs don't know is AUR-sourced, and chaotic-aur hits stay gated (2.28)
+    while IFS=$'\t' read -r r n; do repo_of[$n]=$r; done < <(
+        pacman -Si "${declared[@]}" 2>/dev/null \
+            | awk -F': *' '/^Repository/ { r = $2 } /^Name/ { printf "%s\t%s\n", r, $2 }')
+    for p in "${declared[@]}"; do
+        case "${repo_of[$p]:-}" in
+            "" | chaotic-aur) candidates+=("$p") ;;
+        esac
+    done
+    if (( ${#candidates[@]} == 0 )); then
+        echo "  every declared package is repo-sourced — nothing to pre-flight"
+    else
+        verdicts=$("$aq" preflight "${candidates[@]}") \
+            || die "pre-flight could not verify (AUR RPC unreachable?) — transient: re-run bootstrap"
+        age_holds=()
+        identity=""
+        missing=""
+        while IFS=$'\t' read -r p c b; do
+            [[ -n "$p" ]] || continue
+            base_of[$p]=$b
+            case "$c" in
+                ok) ;;
+                age) age_holds+=("$p") ;;
+                missing) missing+="$p " ;;
+                *) identity+="$p ($c)  " ;;
+            esac
+        done <<<"$verdicts"
+        [[ -z "$missing" ]] \
+            || die "declared packages found in no repo and not in the AUR: $missing— typo, renamed, or AUR-deleted; fix the group files"
+        [[ -z "$identity" ]] || die "quarantine identity holds — human decisions, all of them at once: $identity
+    verify each on https://aur.archlinux.org/packages/<pkg>, then: aur-quarantine accept <pkg>, and re-run bootstrap"
+        if (( ${#age_holds[@]} == 0 )); then
+            echo "  no age holds (${#candidates[@]} non-repo packages checked)"
+        else
+            echo "  age holds (${#age_holds[@]}): ${age_holds[*]} — stepping all to newest aged versions"
+            "$aq" update "${age_holds[@]}" || true
+            # stepping succeeded iff the package is installed now (the gates
+            # allow an installed aged version); anything absent means no aged
+            # version exists or its aged build failed — die BEFORE the sync
+            # burns an attempt, and say which it was (Story 2.32)
+            unstepped=""
+            for p in "${age_holds[@]}"; do
+                pacman -Q "$p" >/dev/null 2>&1 || unstepped+="$p "
+            done
+            [[ -z "$unstepped" ]] || die "still age-held after stepping: $unstepped— per package either NO aged version exists yet, or its aged build FAILED (the decisive error is in the stepping output above).
+    Decide per package:  aur-quarantine auto <pkg>   (skip its age delay)  — or wait for age-out"
+            echo "  stepped and installed: ${age_holds[*]}"
+        fi
+    fi
+fi
+
+# --- 5d. AUR PKGBUILD cache warm (Story 2.22) ----------------------------------
+# yay pre-fetches PKGBUILDs as a parallel clone burst the AUR throttles
+# (connection resets, seen since the 2.7 validation runs). Warm yay's cache
+# one gentle clone at a time first: the sync then reports every PKGBUILD
+# "up to date" and never bursts. PKGBUILDs only — packages still build from
+# source in the sync, so a fresh run keeps proving they build. Best-effort:
+# a failed clone is just retried by yay itself later.
+say "AUR PKGBUILD cache warm"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: git clone each declared AUR pkgbase into ~/.cache/yay, \${AUR_SEED_DELAY:-1}s apart"
+elif [[ $UNATTENDED -eq 0 ]]; then
+    echo "  attended run — skipped (day-to-day yay usage is not throttled; this serves VM bursts)"
+elif (( ${#candidates[@]} == 0 )); then
+    echo "  no AUR-sourced packages — nothing to warm"
+else
+    seed_delay="${AUR_SEED_DELAY:-1}"
+    warmed=0
+    present=0
+    failed=0
+    declare -A seen_base=()
+    for p in "${candidates[@]}"; do
+        [[ -z "${repo_of[$p]:-}" ]] || continue # chaotic binaries need no PKGBUILD
+        b="${base_of[$p]:-}"
+        [[ -n "$b" && "$b" != "-" && -z "${seen_base[$b]+x}" ]] || continue
+        seen_base[$b]=1
+        d="$HOME/.cache/yay/$b"
+        if [[ -d "$d/.git" ]]; then
+            present=$((present + 1))
+            continue
+        fi
+        if git clone --quiet "https://aur.archlinux.org/$b.git" "$d" 2>/dev/null; then
+            warmed=$((warmed + 1))
+        else
+            rm -rf "$d"
+            failed=$((failed + 1))
+        fi
+        sleep "$seed_delay"
+    done
+    echo "  PKGBUILD cache: $warmed cloned (${seed_delay}s apart), $present already present, $failed failed (yay retries those)"
+fi
+
 # --- 6. reconcile: the fresh install is just the first reconcile --------------
 say "Package reconcile (metapac shows its plan and prompts)"
 if [[ $CHECK -eq 1 ]]; then
@@ -331,7 +459,8 @@ elif [[ $UNATTENDED -eq 1 ]]; then
         fi
         fatal=$(grep -m1 -E 'unresolvable package conflicts detected|target not found:' "$sync_log" || true)
         [[ -z "$fatal" ]] || die "sync failed deterministically — fix the declarations. Decisive line: $fatal"
-        echo "bootstrap: sync attempt $attempt failed — retrying in 90s"
+        retry_delay=$((60 + attempt * 30))
+        echo "bootstrap: sync attempt $attempt failed — retrying in ${retry_delay}s"
         # Purge corrupt built archives (e.g. truncated by a disk-full episode):
         # yay reuses cached builds, so one bad .pkg.tar.zst poisons every retry.
         for f in "$HOME"/.cache/yay/*/*.pkg.tar.zst; do
@@ -341,7 +470,7 @@ elif [[ $UNATTENDED -eq 1 ]]; then
                 rm -f "$f"
             }
         done
-        sleep 90
+        sleep "$retry_delay"
     done
     [[ $sync_ok -eq 1 ]] || die "metapac sync failed after 10 attempts"
 else
