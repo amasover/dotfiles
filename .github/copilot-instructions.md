@@ -71,6 +71,7 @@ YADM can encrypt files. This repo already uses that model.
 - Never add raw contents from paths covered by `.yadm/encrypt` into normal repo files.
 - If a new sensitive file is needed, add the path pattern to `.config/yadm/encrypt` and regenerate the encrypted payload with YADM instead of committing plaintext.
 - Run a secret scan before staging commits and before pushing or opening a PR. The standard scanner is `gitleaks`; follow the [secret scan recipe](../knowledge/recipes/secret-scan.md), which also documents the manual fallback and false-positive handling. Keep scanner output redacted.
+- The staged-changes scan is enforced by a tracked pre-commit hook (`.githooks/pre-commit`) in repos where `core.hooksPath .githooks` is set — but do not rely on it: fresh clones don't have it enabled (setup in the recipe), and it covers only the staged diff at commit time. The pre-PR working-tree scan and the privacy pass below stay manual.
 - **`gitleaks` is necessary but never sufficient.** It matches credential-shaped patterns, not privacy leaks. Always pair it with a deliberate **manual privacy pass** — read the actual diff by eye for work/personal email, real names, employer or client names, internal hostnames, local IPs, and paths that reveal a workplace or project. A clean `gitleaks` run does not clear any of these; do not treat scanner output as a substitute for reading the diff.
 
 Known encrypted/sensitive path patterns include:
@@ -254,7 +255,7 @@ For YADM and secrets:
 
 - Review `yadm status` before staging.
 - Review `yadm diff --stat` before detailed diffs.
-- Run a secret scan (`gitleaks`, per `knowledge/recipes/secret-scan.md`) before staging commits and before opening a PR.
+- Run a secret scan (`gitleaks`, per `knowledge/recipes/secret-scan.md`) before staging commits and before opening a PR. The pre-commit hook (`.githooks/pre-commit`) enforces the staged scan where enabled; the pre-PR working-tree scan stays manual.
 - Always pair the scan with a manual privacy pass by eye (see Hard rule 2). `gitleaks` finding nothing does not clear personal, employer, or machine-specific details — read the diff yourself.
 - Do not show diffs for files likely to contain secrets.
 - Run `yadm encrypt` only with explicit approval.
