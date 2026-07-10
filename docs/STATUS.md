@@ -66,9 +66,13 @@ Facts:
   class+hardware split → **2.29** ([#95](https://github.com/amasover/dotfiles/issues/95), amended: daily-VM first) → milestone run;
   **4.7** ([#94](https://github.com/amasover/dotfiles/issues/94)) CI parallel; epic 3 after the VM bring-up.
 - **2.31 resumable `vm-harness up`** ([#98](https://github.com/amasover/dotfiles/issues/98)):
-  design grilled (decisions on the issue), [PR #101](https://github.com/amasover/dotfiles/pull/101)
-  **open**. Evidence run (interrupt + resume) pending the parked VM's quarantine decision —
+  [PR #101](https://github.com/amasover/dotfiles/pull/101) **merged 2026-07-10**; issue open for
+  the evidence run (interrupt + resume), pending the parked VM's quarantine decision —
   its bootstrap is held on evdi-dkms/displaylink (`aur-quarantine auto <pkg>` in-guest, or age-out).
+- **2.21 progress mode** ([#73](https://github.com/amasover/dotfiles/issues/73)): grilled
+  (8 decisions on the issue, incl. the guest pty fix + rich dep),
+  [PR #102](https://github.com/amasover/dotfiles/pull/102) **open**. Attended transcripts
+  pending the same VM unpark.
 - Newly ticketed: **2.32** ([#100](https://github.com/amasover/dotfiles/issues/100))
   quarantine hold messages misdiagnose (split from the #98 grill).
   Everything else lives on the board.
