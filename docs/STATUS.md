@@ -50,6 +50,12 @@ Facts:
   [PR #88](https://github.com/amasover/dotfiles/pull/88) **merged 2026-07-08**; running VM already
   rescued in place (78G/48%); issue open until a fresh create shows `df /` ≈ disk size.
 - One fresh detached VM run (`create` → `up`) supplies the closing evidence for 2.19, 2.26, and 2.27.
+- **4.4 pre-commit secret scan**: [PR #90](https://github.com/amasover/dotfiles/pull/90)
+  **merged 2026-07-09**, #35 closed. Remaining live step for Aaron:
+  `yadm gitconfig core.hooksPath .githooks` (after a yadm checkout places `~/.githooks`).
+- **4.5 shellcheck baseline** ([#36](https://github.com/amasover/dotfiles/issues/36)):
+  [PR #91](https://github.com/amasover/dotfiles/pull/91) open — validation runbook + 65-finding
+  baseline (evidence on #36); shfmt install still pending Aaron's approval.
 - Queue: **2.10** ([#50](https://github.com/amasover/dotfiles/issues/50)) gates any metal bootstrap run;
   everything else lives on the board. Newly ticketed: **2.28** ([#89](https://github.com/amasover/dotfiles/issues/89))
   Chaotic-AUR binaries with the same AUR gating; 2.27's spec retro-added to the epic 2 doc.
