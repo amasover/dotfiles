@@ -13,7 +13,7 @@ findings addressed when its own cleanup story touches it.
 | Tool | Role | Status |
 | --- | --- | --- |
 | `shellcheck` | Lint bash/sh scripts for correctness hazards | Installed (`/usr/bin/shellcheck`) |
-| `shfmt` | Canonical formatting (diff-only in validation, never auto-applied wholesale) | **Not installed yet** — install with `pacman -S shfmt` when approved |
+| `shfmt` | Canonical formatting (diff-only in validation, never auto-applied wholesale) | Installed (v3.13.1, 2026-07-09) |
 
 Validation-time invocations:
 
@@ -21,9 +21,16 @@ Validation-time invocations:
 # lint — all bash/sh scripts under the two script dirs
 shellcheck --format=gcc .local/bin/setup/bootstrap .local/bin/setup/vm-harness .local/bin/tools/*
 
-# formatting drift, once shfmt is installed (read-only diff)
-shfmt -d .local/bin/setup/bootstrap .local/bin/setup/vm-harness .local/bin/tools/*
+# formatting drift (read-only diff) — flags are the repo's canonical style, see below
+shfmt -i 4 -bn -ci -kp -d .local/bin/setup/bootstrap .local/bin/setup/vm-harness .local/bin/tools/*
 ```
+
+**Canonical shfmt style: `-i 4 -bn -ci -kp`** — chosen empirically as the flag
+set with the least drift against the existing scripts (322 changed lines total
+vs 481 for bare `-i 4`), matching how the code is already written rather than
+imposing a new style: 4-space indent (no tabs anywhere in the tree), binary ops
+(`|`, `&&`) at line starts, indented `case` labels, comment-alignment padding
+kept.
 
 **Exclusion:** `.local/bin/setup/update` is a zsh script; shellcheck does not
 support zsh. It stays validated by `zsh -n` only.
@@ -59,10 +66,24 @@ already candidates for archive/replacement (e.g. Story 3.12 replaces the audio
 tooling). That supports classify-then-decide over lint-fixing scripts that may
 not survive cleanup.
 
+## Formatting baseline (shfmt) — 2026-07-09
+
+`shfmt -i 4 -bn -ci -kp -l` over the same 17 scripts: 14 differ, 322 changed
+lines total, almost all concentrated in two files:
+
+| Script | Changed lines / total | What the drift is |
+| --- | --- | --- |
+| `tools/aur-quarantine` | 149 / 199 | deliberate dense style — compact multi-statement one-liner functions that shfmt always expands; reformatting is a rewrite decision for its own story |
+| `setup/vm-harness` | 75 / 642 | mixed 2-/4-space indent pockets |
+| `tools/polybar_alsa_module` | 21 / 157 | misc |
+| remaining 11 files | ≤ 19 each | trivial (blank-line/spacing nits); `lock`, `dot-update`, `quick-git-check-in` already clean |
+
+Same rule as lint findings: formatting is applied when a script's own story
+touches it, never as a wholesale reformat pass. New scripts should be
+`shfmt -i 4 -bn -ci -kp` clean.
+
 ## Re-running / updating the baseline
 
-1. Run the shellcheck invocation above; compare against this table.
+1. Run the shellcheck and shfmt invocations above; compare against the tables.
 2. A story that cleans up a script updates its row (or removes it) in the same
    PR and links the story issue.
-3. Formatting baseline via `shfmt -d` is a follow-up once shfmt is installed
-   (tracked on #36).
