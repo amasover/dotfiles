@@ -801,5 +801,6 @@ case "$CMD" in
     tail)      cmd_tail "${2:-}" ;;
     status)    cmd_status ;;
     destroy)   cmd_destroy ;;
+    scrub)     scrub ;;   # stdin -> scrubbed stdout; the tests/ seam for the log filter
     *)         usage; exit 1 ;;
 esac

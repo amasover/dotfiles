@@ -1,0 +1,83 @@
+vm-harness shell-level tests (clitest — https://github.com/aureliojargas/clitest)
+
+Run from the repo root:   clitest tests/vm-harness.clitest.txt
+CI candidate for Story 4.7 (#94). Python-internal display logic would be
+pytest's job; these cover the shell seams: the scrub log filter (via the
+`vm-harness scrub` subcommand), the display tool's pass-through guarantees,
+and the display-flag rejections. Nothing here talks to libvirt.
+
+clitest format notes: `$ ` lines are commands, following lines are expected
+output, a lone `$` ends a block; prose like this is ignored outside blocks.
+
+--- scrub: superseded pacman progress frames are dropped, final 100% kept ---
+
+$ printf 'pkg-a downloading...\rpkg-a  1.0 MiB  2.0 MiB/s 00:01 [###---------] 25%%\rpkg-a  2.0 MiB  2.0 MiB/s 00:00 [######------] 50%%\rpkg-a  4.0 MiB  2.0 MiB/s 00:00 [############] 100%%\nplain line stays\n(3/5) checking keys [####------] 40%%\r(5/5) checking keys [##########] 100%%\n' | .local/bin/setup/vm-harness scrub
+pkg-a downloading...
+pkg-a  4.0 MiB  2.0 MiB/s 00:00 [############] 100%
+plain line stays
+(5/5) checking keys [##########] 100%
+$
+
+--- scrub: ANSI colors/OSC stripped, CR redraws become plain lines ---
+
+$ printf '\033[1;32mgreen\033[0m text\n\033]0;title\007bare\nredraw1\rredraw2\n' | .local/bin/setup/vm-harness scrub
+green text
+bare
+redraw1
+redraw2
+$
+
+--- display tool: no controlling tty -> silent degradation, byte-faithful ---
+
+setsid drops the controlling terminal, so /dev/tty can't open and the tool
+must become a pure pass-through (exit 0, output identical to input).
+
+$ t=$(mktemp -d) && printf 'raw \033[31mred\033[0m\rframe A\rframe B\n==> Stage one\nHARNESS-CLOUDINIT-UP\n' > "$t/in" && setsid .local/bin/tools/vm-harness-display --mode bar --phase test < "$t/in" > "$t/out" 2> "$t/err"; echo "rc=$?"; cmp -s "$t/in" "$t/out" && echo byte-faithful; cat "$t/err"
+rc=0
+byte-faithful
+$
+
+--- display tool: bar mode under a real pty still passes bytes through ---
+
+script(1) provides the pty; the stdout leg (what scrub/the state log would
+see) must stay byte-identical, and the pty session must contain the bar's
+phase label and a parsed stage anchor.
+
+$ t=$(mktemp -d) && printf '==> Quarantine prerequisites\n:: Retrieving packages...\ndata line\n' > "$t/in" && script -qec "sh -c '.local/bin/tools/vm-harness-display --mode bar --phase boot --num 4 --total 6 < $t/in > $t/out'" "$t/session" > /dev/null 2>&1; echo "rc=$?"; cmp -s "$t/in" "$t/out" && echo stdout-leg-byte-faithful
+rc=0
+stdout-leg-byte-faithful
+$
+
+$ grep -o 'boot (4/6)' "$t/session" | head -n 1
+boot (4/6)
+$
+
+$ grep -o 'downloading packages' "$t/session" | head -n 1
+downloading packages
+$
+
+--- display tool: compact mode passes bytes through, suppresses the firehose ---
+
+The pty session should hold only status-line redraws — far smaller than a
+firehose mirror would be; assert the raw data line never reaches the tty.
+
+$ t=$(mktemp -d) && printf 'unique-firehose-marker-1\n==> Stage two\n' > "$t/in" && script -qec "sh -c '.local/bin/tools/vm-harness-display --mode compact --phase check < $t/in > $t/out'" "$t/session" > /dev/null 2>&1; cmp -s "$t/in" "$t/out" && echo byte-faithful; grep -c 'unique-firehose-marker-1' "$t/session"
+byte-faithful
+0
+$
+
+--- vm-harness: display-flag rejections fire before any libvirt access ---
+
+$ .local/bin/setup/vm-harness --detach --progress status 2>&1 || true
+vm-harness: FATAL: --progress needs a watching terminal — it cannot combine with --detach
+$
+
+$ .local/bin/setup/vm-harness --quiet --progress status 2>&1 || true
+vm-harness: FATAL: --progress needs a watching terminal — it cannot combine with --quiet
+$
+
+$ .local/bin/setup/vm-harness --progress --plain status 2>&1 || true
+vm-harness: FATAL: --progress and --plain contradict each other
+$
+
+End of tests.
