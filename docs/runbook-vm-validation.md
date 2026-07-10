@@ -41,8 +41,14 @@ timestamp so they sort as a set. The terminal keeps the raw colorful stream;
   notification on completion (success or failure). `vm-harness status` shows
   the detached unit, the domain state, and the newest log's tail.
 - **On failure** (any phase, attached or not): the run stops at the failing
-  phase and the VM is left exactly as it died — read the log, fix and re-run
-  the phase, or `destroy` for a clean slate. `up` never auto-destroys.
+  phase and the VM is left exactly as it died — read the log, fix the cause,
+  and re-run `up`: it probes live state (volumes, ejected install media,
+  running + lease), skips the phases that completed, and continues from the
+  first incomplete one (`status` names it: "up would resume at"). bootstrap
+  and check always re-run — bootstrap is idempotent, so a converged guest is
+  a fast no-op. The one unresumable state is a half-finished install (media
+  still attached): `up` dies pointing at `destroy`. It never auto-destroys.
+  (Story 2.31, [#98](https://github.com/amasover/dotfiles/issues/98).)
 
 The VM is a **first-class libvirt domain** — `arch-harness` on `qemu:///system`, visible
 and attachable in **virt-manager** (Aaron's ask, 2026-07-04), with storage as managed

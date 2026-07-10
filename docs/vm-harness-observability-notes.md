@@ -71,7 +71,10 @@ fetch-if-missing → create → install → boot → wait-for-ssh → bootstrap 
 check. `fetch` inside `up` only downloads when no ISO is cached (explicit
 `vm-harness fetch` stays the force-refresh). If a domain already exists, `up`
 dies pointing at `destroy` — it never auto-destroys ("everything but
-destroy"; a `--fresh` opt-in can come later if wanted). Composes with the
+destroy"; a `--fresh` opt-in can come later if wanted). *(Superseded 2026-07-10
+by Story 2.31/[#98](https://github.com/amasover/dotfiles/issues/98): `up` now
+resumes from probed live state instead of dying; never-auto-destroy stands.)*
+Composes with the
 other decisions: `vm-harness --detach up` is the walk-away form, `--quiet`
 works, phases share one run timestamp (D5). "Gold run" stays a separate
 term: an `up` executed on a clean committed tree, used as merge evidence.
