@@ -188,9 +188,11 @@ fi
 say "Quarantine prerequisites"
 qstate="${XDG_STATE_HOME:-$HOME/.local/state}/aur-quarantine"
 if [[ $CHECK -eq 1 ]]; then
-    echo "  would: pacman -S --needed jq; seed exempt.txt with: metapac yay"
+    echo "  would: pacman -S --needed jq lua51; seed exempt.txt with: metapac yay"
 else
-    sudo pacman -S --needed "${NC[@]}" jq
+    # lua51 runs quarantine-policy.lua for the chaotic-aur alpm gate (2.28);
+    # it matches yay's embedded gopher-lua (5.1).
+    sudo pacman -S --needed "${NC[@]}" jq lua51
     mkdir -p "$qstate"
     for p in metapac yay; do
         grep -qxF "$p" "$qstate/exempt.txt" 2>/dev/null || echo "$p" >>"$qstate/exempt.txt"
@@ -198,11 +200,13 @@ else
     echo "  exempt seed: metapac yay (age delay skipped; identity checks unaffected)"
 fi
 
-# Quarantine hold handling for the sync loop (Story 2.10): the AURPreInstall
-# hook aborts and names the hold in held-install.tsv. An "age" hold is stepped
-# to the newest aged version — the same selection model as update's stepping.
-# Identity holds (orphan / maintainer-change) and RPC failures are a human
-# decision — die with the remedy.
+# Quarantine hold handling for the sync loop (Stories 2.10/2.28): a hold —
+# from the AURPreInstall hook (AUR builds) or the chaotic-quarantine-gate alpm
+# hook (chaotic binaries) — aborts the sync and lands in held-install.tsv. An
+# "age" hold is stepped to the newest aged version, the same selection model
+# as update's stepping (for a chaotic package that means building the same
+# recipe from source at an aged commit). Identity holds (orphan /
+# maintainer-change) and RPC failures are a human decision — die with the remedy.
 held_install_file="$qstate/held-install.tsv"
 step_age_hold() { # $1 = held package
     echo "bootstrap: quarantine held $1 (too new) — stepping to newest aged version"
@@ -211,7 +215,8 @@ step_age_hold() { # $1 = held package
 die_hold() { # $1 = held package, $2 = reason code
     case "$2" in
         rpc) die "quarantine could not verify '$1' — AUR RPC unreachable (fail-closed).
-    Transient? re-run bootstrap. Deliberate offline run: AUR_QUARANTINE_BYPASS=1 bootstrap --unattended" ;;
+    Transient? re-run bootstrap. Deliberate: AUR_QUARANTINE_BYPASS=1 bootstrap --unattended
+    (chaotic-gated holds: 'aur-quarantine bypass-once' instead — alpm hooks can't see env)" ;;
         *) die "quarantine held '$1' ($2) — needs a human decision. Remedy:
     verify:  https://aur.archlinux.org/packages/$1
     then:    aur-quarantine accept $1   and re-run bootstrap" ;;
@@ -244,6 +249,40 @@ else
     sudo sed -i '/^#\[multilib\]/,+1 s/^#//' /etc/pacman.conf
     grep -q '^\[multilib\]' /etc/pacman.conf || die "failed to enable [multilib] in /etc/pacman.conf"
     sudo pacman -Sy
+fi
+
+# --- 5b. chaotic-aur (prebuilt AUR binaries; Story 2.28) -----------------------
+# Chaotic-AUR auto-builds AUR packages as signed repo binaries — declared AUR
+# packages it carries then install without local builds. It inherits the AUR's
+# trust model wholesale, so its packages stay quarantine-gated: the
+# chaotic-quarantine-gate alpm hook (installed here, BEFORE the repo goes
+# live) applies the same trust ladder to every chaotic-sourced target. The
+# repo section sits after the official ones, so core/extra always win.
+say "chaotic-aur repo"
+gate_src="$HOME/.config/dotfiles/pacman-hooks/chaotic-quarantine-gate.hook"
+gate_dst="/etc/pacman.d/hooks/chaotic-quarantine-gate.hook"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: symlink the chaotic gate hook, lsign key 3056513887B78AEB,"
+    echo "         install chaotic-keyring + chaotic-mirrorlist, append [chaotic-aur]"
+    echo "         to /etc/pacman.conf, pacman -Sy"
+else
+    if [[ "$(readlink "$gate_dst" 2>/dev/null)" != "$gate_src" ]]; then
+        sudo mkdir -p /etc/pacman.d/hooks
+        sudo ln -sfT "$gate_src" "$gate_dst"
+        echo "  gate hook installed: $gate_dst"
+    fi
+    if grep -q '^\[chaotic-aur\]' /etc/pacman.conf; then
+        echo "  repo already enabled"
+    else
+        sudo pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com
+        sudo pacman-key --lsign-key 3056513887B78AEB
+        sudo pacman -U --needed "${NC[@]}" \
+            'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' \
+            'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst'
+        printf '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' | sudo tee -a /etc/pacman.conf >/dev/null
+        sudo pacman -Sy
+        echo "  repo enabled (after official repos — core/extra always win)"
+    fi
 fi
 
 # --- 6. reconcile: the fresh install is just the first reconcile --------------
