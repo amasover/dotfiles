@@ -179,6 +179,26 @@ So that the stacked-PR mistake cannot recur and an agent always reads the rules.
 
 ---
 
+### Story 4.7: Minimal CI — lint, tests, secret scan
+
+As the repo owner,
+I want every PR checked by CI against the repo's documented validation standards,
+So that validation is enforced instead of remembered — the 4.4 move (automate the scan), applied to the rest of the validation expectations, across parallel human/agent sessions.
+
+Issue: [#94](https://github.com/amasover/dotfiles/issues/94) · One GitHub Actions workflow on an `archlinux:latest` container (matches the real tooling; pacman-native). Origin: 2026-07-10 discussion after 2.28 landed 43 tracked test cases with only conventions enforcing that they run.
+
+**Acceptance criteria:**
+
+- Given a PR (and pushes to `main`), when CI runs, then a lint job covers the tracked scripts: `shellcheck`, `shfmt -i 4 -bn -ci -d` (the canonical flags from [runbook-script-validation.md](./runbook-script-validation.md)), `bash -n`, and `luac -p`
+- Given the tracked suites (`.config/yay/hook-harness.lua`, `.config/dotfiles/tests/chaotic-quarantine-gate-test`), when CI runs, then both execute and any case failure fails the check
+- Given the local pre-commit hook (4.4) can be absent (another machine, GitHub web edits), when CI runs, then gitleaks scans the pushed range as the second net
+- Given CI's scope, nothing in it installs to or mutates a live system, and no bootstrap/VM execution happens in CI — `vm-harness` remains the home for behavior validation
+- Given the runbook documents validation, when CI lands, then the runbook points to the workflow as the enforced form of the same checks
+
+**Evidence artifact:** the workflow file + a green run on a real PR.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - The GitHub board is the status source of truth, with issues linked from epic `.md` files.
