@@ -71,6 +71,25 @@ New machine ≈ new class: add a branch to `config.toml##template` with its grou
 and an `inbox-<class>.toml`, set `yadm config local.class`, `yadm alt`. Classes are
 public-safe labels; one per machine (see CONTEXT.md).
 
+## Daily-drivable acceptance (the cleanup-era milestone bar)
+
+The rebuild milestone (see CONTEXT.md **Daily-driver rebuild** and
+[decision-daily-driver-vm.md](./decision-daily-driver-vm.md)) is claimed only when
+every item passes on the rebuilt machine, executed by hand during the run:
+
+1. Boots via the intended boot path to a login (VM: VMware boot; metal: refind).
+2. Graphical session works: i3 + terminal + rofi compose a usable desktop.
+3. Network up (wifi included where the hardware has it).
+4. `yadm decrypt` restores secrets — one real ssh connection and one AWS call succeed.
+5. Browser and Spacemacs open and are usable (emacs packages installed via
+   `setup/update`'s batch step).
+6. Audio plays.
+7. `metapac unmanaged` is exactly empty and the drift report is clean — the machine
+   is converged, not merely running.
+
+Anything not listed (gaming, media tuning, polybar cosmetics, screenlayout) is
+steady-state work and does not block the milestone.
+
 ## After first boot
 
 - `yay -Syu` is quarantine-gated from the start (holds are normal for a young

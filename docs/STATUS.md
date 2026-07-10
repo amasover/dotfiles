@@ -58,9 +58,12 @@ Facts:
   `yadm encrypt` (baseline files joined the encrypt manifest).
 - **2.28 Chaotic-AUR**: [PR #93](https://github.com/amasover/dotfiles/pull/93) **merged
   2026-07-10**, #89 closed. Live adoption = next attended bootstrap run (after yadm pull).
-- Newly ticketed: **4.7** ([#94](https://github.com/amasover/dotfiles/issues/94)) minimal CI,
-  **2.29** ([#95](https://github.com/amasover/dotfiles/issues/95)) scripted metal provisioning.
-  A repo-direction grill is in progress (CONTEXT.md gaining era terms; PRD refresh likely).
+- **Direction (2026-07-10 grill)**: cleanup era ends at the daily-driver rebuild (a VMware VM
+  on the Windows machine, not metal first) + the 1.8 work-machine steps. Record:
+  [decision-daily-driver-vm.md](./decision-daily-driver-vm.md), PRD §4 eras, runbook checklist.
+  Sequence: evidence VM run → Aaron's live steps (pull/encrypt/hooksPath) → **2.30** ([#96](https://github.com/amasover/dotfiles/issues/96))
+  class+hardware split → **2.29** ([#95](https://github.com/amasover/dotfiles/issues/95), amended: daily-VM first) → milestone run;
+  **4.7** ([#94](https://github.com/amasover/dotfiles/issues/94)) CI parallel; epic 3 after the VM bring-up.
   Everything else lives on the board.
 
 ## Standing warnings
