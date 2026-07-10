@@ -21,6 +21,8 @@
 #                     in the package's AUR git history that is itself older than
 #                     the threshold — built at that pinned commit. Use when the
 #                     hook holds a fast-moving package (latest always too new).
+#   bypass-once       arm a one-transaction bypass of the chaotic-aur install
+#                     gate (alpm hooks can't see user env, so no env bypass).
 #   build BASE SHA    (internal) build+install pkgbase BASE at AUR git commit SHA.
 #
 # Config (env):
@@ -187,13 +189,20 @@ cmd_update() {                  # manual: step PKG(s) to the newest vetted (aged
     done
 }
 
+cmd_bypass_once() {
+    mkdir -p "$state_dir"
+    : > "$state_dir/bypass-once"
+    echo "aur-quarantine: chaotic install gate will be bypassed for the NEXT pacman transaction only." >&2
+}
+
 case "${1:-}" in
     seed)         shift; cmd_seed "$@" ;;
     accept)       shift; cmd_accept "$@" ;;
     auto)         shift; cmd_auto "$@" ;;
     auto-off)     shift; cmd_auto_off "$@" ;;
     update)       shift; cmd_update "$@" ;;
+    bypass-once)  shift; cmd_bypass_once "$@" ;;
     build)        shift; cmd_build "$@" ;;
     -h|--help|"") grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//' ;;
-    *)            echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|build)" >&2; exit 2 ;;
+    *)            echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|bypass-once|build)" >&2; exit 2 ;;
 esac

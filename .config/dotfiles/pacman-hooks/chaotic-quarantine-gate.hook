@@ -1,0 +1,24 @@
+# chaotic-aur install gate (Story 2.28) — companion to the yay Lua hooks.
+# alpm hook, not a yay hook: chaotic-aur binaries are ordinary repo packages,
+# so yay's AUR-side events never fire for them; PreTransaction + AbortOnFail
+# catches every path (metapac sync, yay -S, raw pacman) and cancels the whole
+# transaction on a hold, before anything installs.
+#
+# Tracked here; installed as a symlink (content stays current with yadm pulls):
+#   sudo ln -sfT ~/.config/dotfiles/pacman-hooks/chaotic-quarantine-gate.hook \
+#       /etc/pacman.d/hooks/chaotic-quarantine-gate.hook
+# Bootstrap's chaotic-aur step does this on a fresh machine. Exec must be an
+# absolute path (alpm expands nothing), hence the literal home below.
+
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = aur-quarantine: gating chaotic-aur packages
+When = PreTransaction
+Exec = /home/aaron/.local/bin/tools/chaotic-quarantine-gate
+NeedsTargets
+AbortOnFail
