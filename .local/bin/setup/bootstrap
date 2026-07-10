@@ -311,7 +311,13 @@ elif [[ $UNATTENDED -eq 1 ]]; then
     last_held=""
     for attempt in 1 2 3 4 5 6 7 8 9 10; do
         rm -f "$held_install_file"
-        metapac sync --no-confirm 2>&1 | tee "$sync_log" && {
+        # script(1) gives the sync a pty despite the tee: without it pacman
+        # drops its progress bars (tty-only) AND libc block-buffers the plain
+        # fallback lines, so an attended watcher sees nothing during a
+        # multi-GB download, then everything at once (2026-07-10 run, #73).
+        # -e propagates metapac's exit code; typescript goes to /dev/null —
+        # tee still owns the log copy.
+        script -qefc "metapac sync --no-confirm" /dev/null | tee "$sync_log" && {
             sync_ok=1
             break
         }
