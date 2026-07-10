@@ -4,7 +4,10 @@
 # byzanz removed 2026-07-04 (dead upstream — AUR-deleted; 2.7 VM validation finding).
 # Provider pins (Story 2.26 — unattended --noconfirm picks option 1 otherwise):
 #   tesseract-data-eng pins tesseract's `tessdata` (default was Afrikaans);
-#   xdg-desktop-portal-gtk pins kooha's `xdg-desktop-portal-impl` (default was cosmic).
+#   xdg-desktop-portal-gtk pins kooha's `xdg-desktop-portal-impl` (default was cosmic);
+#   pipewire-jack pins `jack` for ffmpeg/mpv/qemu-audio-jack etc. (default was jack2 —
+#   wrong on a pipewire host; conflicts jack2, so adopting on a jack2 machine means
+#   approving the jack2 removal prompt once — seen 2026-07-10 VM run).
 [arch]
 packages = [
   "alsa-utils",
@@ -21,6 +24,7 @@ packages = [
   "pamixer",
   "pavucontrol",
   "perl-image-exiftool",
+  "pipewire-jack",
   "pipewire-pulse",
   "playerctl",
   "simplescreenrecorder",
