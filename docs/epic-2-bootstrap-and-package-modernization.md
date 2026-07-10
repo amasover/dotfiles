@@ -227,13 +227,13 @@ Issue: [#49](https://github.com/amasover/dotfiles/issues/49) (closed, PR [#57](h
 
 ---
 
-### Story 2.10: AUR install-time gating + portable trust baseline
+### Story 2.10: AUR install-time gating + portable trust baseline ✅
 
 As the repo owner,
 I want fresh AUR installs gated like upgrades and the trust baseline portable across machines,
 So that a fresh-machine bootstrap doesn't install freshly-weaponized AUR packages ungated.
 
-Issue: [#50](https://github.com/amasover/dotfiles/issues/50) · Prerequisite for the first real-metal `bootstrap` run (Story 2.3); disposable 2.7 VM runs are exempt. Promotes the un-ticketed Story 2.6 follow-up (`AURPostDownload` gating); origin: 2026-07-02 grill of the 2.5 decision. Design input: [aur-malware-mitigation.md](../knowledge/reference/aur-malware-mitigation.md).
+Issue: [#50](https://github.com/amasover/dotfiles/issues/50) (closed, PR #92) · Prerequisite for the first real-metal `bootstrap` run (Story 2.3); disposable 2.7 VM runs are exempt. Promotes the un-ticketed Story 2.6 follow-up (`AURPostDownload` gating); origin: 2026-07-02 grill of the 2.5 decision. Design input: [aur-malware-mitigation.md](../knowledge/reference/aur-malware-mitigation.md).
 
 **Acceptance criteria:**
 
