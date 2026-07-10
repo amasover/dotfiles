@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Pre-commit secret scan (Story 4.4, #35).
+#
+# Blocks the commit when gitleaks finds a secret in the staged diff.
+# Enabled per-repo via `core.hooksPath .githooks` — see
+# knowledge/recipes/secret-scan.md for setup (working clone and YADM),
+# false-positive handling (.gitleaksignore), and the --no-verify bypass.
+set -u
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed — refusing to commit unscanned." >&2
+  echo "  install:  pacman -S gitleaks" >&2
+  echo "  details:  knowledge/recipes/secret-scan.md" >&2
+  echo "  bypass this once (scan manually!):  git commit --no-verify" >&2
+  exit 1
+fi
+
+exec gitleaks protect --staged --redact --no-banner
