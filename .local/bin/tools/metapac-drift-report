@@ -25,9 +25,9 @@ fi
 group_files=("$groups_dir"/*.toml)
 while IFS= read -r abs; do
     if [[ -f "$abs" ]]; then
-                             group_files+=("$abs")
+        group_files+=("$abs")
     elif [[ -f "$abs.toml" ]]; then
-                                    group_files+=("$abs.toml")
+        group_files+=("$abs.toml")
     fi
 done < <(grep -o '"/[^"]*"' "$config" | tr -d '"')
 

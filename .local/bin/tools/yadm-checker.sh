@@ -55,7 +55,7 @@ nord14="#A3BE8C"
 # purple
 nord15="#B48EAD"
 
-yadm fetch >/dev/null  2>&1
+yadm fetch >/dev/null 2>&1
 
 staged=$(yadm diff --cached --numstat | wc -l)
 modified=$(yadm ls-files -m | wc -l)

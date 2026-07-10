@@ -22,11 +22,11 @@ while test $# -gt 0; do
         -h | --help | -\?)
             echo "$usage" >&2
             exit
-                ;;
+            ;;
         -n | --name)
             name=$2
             shift
-                 ;;
+            ;;
         -p | --path)
             if [[ "${2}" == "." ]]; then
                 path=$PWD
@@ -34,11 +34,11 @@ while test $# -gt 0; do
                 path=$2
             fi
             shift
-                 ;;
+            ;;
         \?)
             echo "Invalid option: -$OPTARG" >&2
             exit 1
-                  ;;
+            ;;
         *)
             break
             ;;

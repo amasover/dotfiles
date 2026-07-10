@@ -101,7 +101,7 @@ switch() {
     current_port=$(dot sound port)
     if [[ $current_port == $speakers ]]; then
         vol=$(pamixer --get-volume)
-        pacmd set-sink-port $sink_id $headphones >/dev/null  2>&1
+        pacmd set-sink-port $sink_id $headphones >/dev/null 2>&1
         dot sound port $headphones
         pamixer --set-volume $vol
         #amixer sset Front 0 1&2>/dev/null
@@ -109,7 +109,7 @@ switch() {
         # annoying bug with alsa..
     elif [[ $current_port == $headphones ]]; then
         vol=$(pamixer --get-volume)
-        pacmd set-sink-port $sink_id $speakers >/dev/null  2>&1
+        pacmd set-sink-port $sink_id $speakers >/dev/null 2>&1
         dot sound port $speakers
         pamixer --set-volume $vol
     else
@@ -126,34 +126,34 @@ while test $# -gt 0; do
     case "$1" in
         --switch)
             switch
-                  ;;
+            ;;
         --mutefg)
             mute_fg=$2
             shift
-                 ;;
+            ;;
         --mutebg)
             mute_bg=$2
             shift
-                 ;;
+            ;;
         --bg)
             bg=$2
             shift
-                 ;;
+            ;;
         --fg)
             fg=$2
             shift
-                 ;;
+            ;;
         --padleft)
             padleft=$2
             shift
-                 ;;
+            ;;
         \?)
             echo "Invalid option: -$OPTARG" >&2
             exit 1
-                  ;;
+            ;;
         *)
             break
-                 ;;
+            ;;
     esac
     shift
 done

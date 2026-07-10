@@ -22,15 +22,19 @@ Validation-time invocations:
 shellcheck --format=gcc .local/bin/setup/bootstrap .local/bin/setup/vm-harness .local/bin/tools/*
 
 # formatting drift (read-only diff) — flags are the repo's canonical style, see below
-shfmt -i 4 -bn -ci -kp -d .local/bin/setup/bootstrap .local/bin/setup/vm-harness .local/bin/tools/*
+shfmt -i 4 -bn -ci -d .local/bin/setup/bootstrap .local/bin/setup/vm-harness .local/bin/tools/*
 ```
 
-**Canonical shfmt style: `-i 4 -bn -ci -kp`** — chosen empirically as the flag
-set with the least drift against the existing scripts (322 changed lines total
-vs 481 for bare `-i 4`), matching how the code is already written rather than
-imposing a new style: 4-space indent (no tabs anywhere in the tree), binary ops
-(`|`, `&&`) at line starts, indented `case` labels, comment-alignment padding
-kept.
+**Canonical shfmt style: `-i 4 -bn -ci`** — the flag set closest to how the
+code is already written: 4-space indent (no tabs anywhere in the tree), binary
+ops (`|`, `&&`) at line starts, indented `case` labels.
+
+**Do not use `-kp` (keep-padding).** It initially looked attractive (kept
+aligned trailing comments, smallest raw diff), but it is deprecated upstream
+(removal planned — mvdan/sh#658) and it mangles one-liner blocks: shfmt always
+expands `cmd && { a; b; }` onto multiple lines, and `-kp` then "aligns" the
+statements to their old columns, producing absurd deep indentation. Caught in
+PR #91's first formatting pass.
 
 **Exclusion:** `.local/bin/setup/update` is a zsh script; shellcheck does not
 support zsh. It stays validated by `zsh -n` only.
@@ -68,19 +72,18 @@ not survive cleanup.
 
 ## Formatting baseline (shfmt) — 2026-07-09
 
-Initial `shfmt -i 4 -bn -ci -kp -l` over the same 17 scripts found 14 differing
-(322 changed lines). The 12 small-drift files (spacing/blank-line nits, ≤ 21
-lines each) were formatted in PR #91 itself — validated by `bash -n` and an
-identical shellcheck finding set before/after. Two deliberate exclusions
-remain, to be formatted when their own stories touch them:
+The 13 small-drift files (spacing/blank-line nits) were formatted in PR #91
+itself with the canonical flags — validated by `bash -n` and an identical
+shellcheck finding set before/after. Two deliberate exclusions remain, to be
+formatted when their own stories touch them:
 
 | Script | Changed lines / total | Why deferred |
 | --- | --- | --- |
-| `tools/aur-quarantine` | 149 / 199 | deliberate dense style — compact multi-statement one-liner functions that shfmt always expands; reformatting is a rewrite decision for its own story |
-| `setup/vm-harness` | 75 / 642 | mixed 2-/4-space indent pockets; actively developed (2.21/2.22) — format inside the next story that touches it to avoid blame noise |
+| `tools/aur-quarantine` | 160 / 199 | deliberate dense style — compact multi-statement one-liner functions that shfmt always expands; reformatting is a rewrite decision for its own story |
+| `setup/vm-harness` | 102 / 642 | mixed 2-/4-space indent pockets; actively developed (2.21/2.22) — format inside the next story that touches it to avoid blame noise |
 
-Everything else is `shfmt -i 4 -bn -ci -kp` clean, and new or modified scripts
-in a PR should stay that way.
+Everything else is `shfmt -i 4 -bn -ci` clean, and new or modified scripts in
+a PR should stay that way.
 
 ## Re-running / updating the baseline
 
