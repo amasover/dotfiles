@@ -1,3 +1,5 @@
 .ssh/**
 .zshenv
 .config/Code/User/settings.json
+.local/state/aur-quarantine/maintainers.tsv
+.local/state/aur-quarantine/exempt.txt
