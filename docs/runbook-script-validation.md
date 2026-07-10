@@ -68,19 +68,19 @@ not survive cleanup.
 
 ## Formatting baseline (shfmt) — 2026-07-09
 
-`shfmt -i 4 -bn -ci -kp -l` over the same 17 scripts: 14 differ, 322 changed
-lines total, almost all concentrated in two files:
+Initial `shfmt -i 4 -bn -ci -kp -l` over the same 17 scripts found 14 differing
+(322 changed lines). The 12 small-drift files (spacing/blank-line nits, ≤ 21
+lines each) were formatted in PR #91 itself — validated by `bash -n` and an
+identical shellcheck finding set before/after. Two deliberate exclusions
+remain, to be formatted when their own stories touch them:
 
-| Script | Changed lines / total | What the drift is |
+| Script | Changed lines / total | Why deferred |
 | --- | --- | --- |
 | `tools/aur-quarantine` | 149 / 199 | deliberate dense style — compact multi-statement one-liner functions that shfmt always expands; reformatting is a rewrite decision for its own story |
-| `setup/vm-harness` | 75 / 642 | mixed 2-/4-space indent pockets |
-| `tools/polybar_alsa_module` | 21 / 157 | misc |
-| remaining 11 files | ≤ 19 each | trivial (blank-line/spacing nits); `lock`, `dot-update`, `quick-git-check-in` already clean |
+| `setup/vm-harness` | 75 / 642 | mixed 2-/4-space indent pockets; actively developed (2.21/2.22) — format inside the next story that touches it to avoid blame noise |
 
-Same rule as lint findings: formatting is applied when a script's own story
-touches it, never as a wholesale reformat pass. New scripts should be
-`shfmt -i 4 -bn -ci -kp` clean.
+Everything else is `shfmt -i 4 -bn -ci -kp` clean, and new or modified scripts
+in a PR should stay that way.
 
 ## Re-running / updating the baseline
 
