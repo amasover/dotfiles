@@ -297,6 +297,21 @@ else
     fi
 fi
 
+# Chaotic provider blocklist — packages chaotic offers only as a 'provides'
+# substitute for a declared release package. Letting the resolver take one
+# silently swaps a source release for an untagged -git binary AND breaks the
+# declared-name model (installed name != declared name -> unmanaged noise,
+# red harness check). Ignored here, the resolver can't pick it and yay falls
+# back to building the declared name from the AUR. Decision 2026-07-10
+# (flashfocus-git vs declared flashfocus); extend deliberately, not casually.
+chaotic_provider_block="flashfocus-git"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: add IgnorePkg for the chaotic provider blocklist ($chaotic_provider_block)"
+elif ! grep -q 'chaotic provider blocklist' /etc/pacman.conf; then
+    sudo sed -i "/^\[options\]/a IgnorePkg = $chaotic_provider_block # chaotic provider blocklist (bootstrap 5b)" /etc/pacman.conf
+    echo "  IgnorePkg (chaotic provider blocklist): $chaotic_provider_block"
+fi
+
 # --- 5c. quarantine pre-flight (Story 2.33) ------------------------------------
 # A hold from either install gate aborts the ENTIRE sync (since 2.28 the whole
 # repo transaction too), so discovering holds at install time costs one
@@ -330,6 +345,21 @@ else
             "" | chaotic-aur) candidates+=("$p") ;;
         esac
     done
+    # Provider substitution check: a declared name with no exact repo match
+    # can still be satisfied by a repo package that 'provides' it (chaotic's
+    # flashfocus-git for flashfocus, 2026-07-10) — the gate then holds a name
+    # preflight never saw, and even a gated install breaks the declared-name
+    # model. -Spdd resolves just the target (no deps): a different name back
+    # means substitution — die with the two remedies.
+    substituted=""
+    for p in "${candidates[@]}"; do
+        [[ -z "${repo_of[$p]:-}" ]] || continue # exact chaotic names are fine
+        prov=$(pacman --noconfirm -Spdd --print-format '%n' "$p" 2>/dev/null | tail -1)
+        [[ -n "$prov" && "$prov" != "$p" ]] && substituted+="$p->$prov  "
+    done
+    [[ -z "$substituted" ]] || die "repo providers would silently replace declared packages: $substituted
+    Per package: declare the provider name instead, or add it to chaotic_provider_block
+    (bootstrap step 5b IgnorePkg) to force the AUR source build of the declared name"
     if (( ${#candidates[@]} == 0 )); then
         echo "  every declared package is repo-sourced — nothing to pre-flight"
     else
