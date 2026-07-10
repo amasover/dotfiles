@@ -25,9 +25,10 @@
 #   2. sudo pacman -S --needed git base-devel yadm
 #   3. yadm clone <repo-url>            # places dotfiles, incl. this script
 #
-# METAL GATE: until Story 2.10 lands (install-time AUR gating + portable trust
-# baseline), run this only in disposable VMs (setup/vm-harness) — a fresh
-# machine installs its AUR set ungated against freshly-weaponized packages.
+# METAL GATE: with Story 2.10 landed, fresh installs are quarantine-gated
+# (age / orphan / maintainer-vs-baseline via the AURPreInstall hook), so a
+# metal run is no longer categorically blocked — but the first one should
+# still be attended: the gate is one typed confirmation, not a hard stop.
 set -euo pipefail
 
 say() { printf '\n==> %s\n' "$*"; }
@@ -63,13 +64,13 @@ yadm rev-parse --git-dir >/dev/null 2>&1 \
 # (binary missing) also gates conservatively.
 virt=$(systemd-detect-virt 2>/dev/null || true)
 if [[ -z "$virt" || "$virt" == "none" ]]; then
-    say "WARNING: bare metal detected — Story 2.10 (install-time AUR gating) has not landed."
+    say "Bare metal detected — installs are quarantine-gated, but confirm this is intentional."
     if [[ $CHECK -eq 1 ]]; then
         echo "  (--check: would require typing 'metal' to continue)"
     elif [[ $UNATTENDED -eq 1 ]]; then
-        die "unattended runs are VM-only until Story 2.10 lands (and there's no TTY to type 'metal')"
+        die "unattended runs are VM-only — a first metal run should be attended (no TTY to type 'metal')"
     else
-        read -r -p "  Type 'metal' to continue anyway, anything else aborts: " ans
+        read -r -p "  Type 'metal' to continue, anything else aborts: " ans
         [[ "$ans" == "metal" ]] || die "aborted at the metal gate"
     fi
 fi
@@ -176,7 +177,54 @@ else
     rm -rf "$tmp"
 fi
 
+# --- 4b. quarantine prerequisites (Story 2.10) --------------------------------
+# Two things the install gate needs before the first yay install:
+#  * jq — aur-quarantine's RPC parsing; must exist before any hold remediation,
+#    because the sync that would have installed it is exactly what a hold aborts.
+#  * exemption seed — metapac and yay skip the age delay everywhere, mirroring
+#    the live machines' standing judgment (trusted infrastructure that releases
+#    faster than the 14d window). Maintainer changes are still held wherever a
+#    baseline exists. Idempotent: dedupes against a decrypt-restored exempt.txt.
+say "Quarantine prerequisites"
+qstate="${XDG_STATE_HOME:-$HOME/.local/state}/aur-quarantine"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: pacman -S --needed jq; seed exempt.txt with: metapac yay"
+else
+    sudo pacman -S --needed "${NC[@]}" jq
+    mkdir -p "$qstate"
+    for p in metapac yay; do
+        grep -qxF "$p" "$qstate/exempt.txt" 2>/dev/null || echo "$p" >>"$qstate/exempt.txt"
+    done
+    echo "  exempt seed: metapac yay (age delay skipped; identity checks unaffected)"
+fi
+
+# Quarantine hold handling for the sync loop (Story 2.10): the AURPreInstall
+# hook aborts and names the hold in held-install.tsv. An "age" hold is stepped
+# to the newest aged version — the same selection model as update's stepping.
+# Identity holds (orphan / maintainer-change) and RPC failures are a human
+# decision — die with the remedy.
+held_install_file="$qstate/held-install.tsv"
+step_age_hold() { # $1 = held package
+    echo "bootstrap: quarantine held $1 (too new) — stepping to newest aged version"
+    "$HOME/.local/bin/tools/aur-quarantine" update "$1" || true
+}
+die_hold() { # $1 = held package, $2 = reason code
+    case "$2" in
+        rpc) die "quarantine could not verify '$1' — AUR RPC unreachable (fail-closed).
+    Transient? re-run bootstrap. Deliberate offline run: AUR_QUARANTINE_BYPASS=1 bootstrap --unattended" ;;
+        *) die "quarantine held '$1' ($2) — needs a human decision. Remedy:
+    verify:  https://aur.archlinux.org/packages/$1
+    then:    aur-quarantine accept $1   and re-run bootstrap" ;;
+    esac
+}
+die_still_held() { # $1 = held package that stepping could not satisfy
+    die "quarantine still holds '$1' after stepping — no aged version exists yet.
+    Decide:  aur-quarantine auto $1   (skip its age delay)  — or wait for it to age out"
+}
+
 # --- 5. metapac (itself an AUR package) --------------------------------------
+# Gated like every AUR install (Story 2.10), but exempt from the age delay via
+# the 4b seed, so it passes on baseline-less machines (fresh VMs) too.
 say "metapac"
 if command -v metapac >/dev/null; then
     echo "  already installed"
@@ -210,13 +258,32 @@ elif [[ $UNATTENDED -eq 1 ]]; then
     # Resolver failures are different: they repeat identically on every attempt
     # (the 2026-07-08 dotnet provider conflict burned all 5 retries), so a
     # known-deterministic pacman error dies immediately instead (Story 2.26).
+    #
+    # Quarantine holds (Story 2.10): the AURPreInstall gate aborts the sync
+    # before any build and names the held package in held-install.tsv. An
+    # "age" hold is auto-remediated the same way `update` steps fast movers:
+    # aur-quarantine update installs the newest *aged* version at a pinned AUR
+    # commit, then the resync sees it installed. Identity holds (orphan /
+    # maintainer-change / rpc) are a human decision — die with the remedy.
+    # Each remediation consumes one attempt; the same package held twice means
+    # stepping failed (e.g. no aged version exists) — die decisive.
     sync_ok=0
     sync_log=$(mktemp)
-    for attempt in 1 2 3 4 5; do
+    last_held=""
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        rm -f "$held_install_file"
         metapac sync --no-confirm 2>&1 | tee "$sync_log" && {
             sync_ok=1
             break
         }
+        if [[ -s "$held_install_file" ]]; then
+            IFS=$'\t' read -r held_pkg held_code <"$held_install_file"
+            [[ "$held_pkg" != "$last_held" ]] || die_still_held "$held_pkg"
+            [[ "$held_code" == "age" ]] || die_hold "$held_pkg" "$held_code"
+            step_age_hold "$held_pkg"
+            last_held="$held_pkg"
+            continue
+        fi
         fatal=$(grep -m1 -E 'unresolvable package conflicts detected|target not found:' "$sync_log" || true)
         [[ -z "$fatal" ]] || die "sync failed deterministically — fix the declarations. Decisive line: $fatal"
         echo "bootstrap: sync attempt $attempt failed — retrying in 90s"
@@ -231,7 +298,7 @@ elif [[ $UNATTENDED -eq 1 ]]; then
         done
         sleep 90
     done
-    [[ $sync_ok -eq 1 ]] || die "metapac sync failed after 5 attempts"
+    [[ $sync_ok -eq 1 ]] || die "metapac sync failed after 10 attempts"
 else
     metapac sync
 fi
@@ -276,10 +343,15 @@ else
     sudo ln -sfT "$hook_src" "$hook_dst"
 fi
 
-# --- 7. interim AUR trust baseline (Story 2.10 replaces with a portable one) ---
+# --- 7. AUR trust baseline (Story 2.10) ----------------------------------------
+# The portable baseline (maintainers.tsv + exempt.txt) rides the encrypted
+# archive: step 1's decrypt restores this machine's trust state *before* the
+# first sync, so the install gate checks maintainers against it. Seed here
+# only records packages the baseline doesn't know yet (TOFU, announced).
+# Unattended runs skip decrypt, so a VM builds a fresh baseline instead.
 say "AUR quarantine baseline"
 if [[ $CHECK -eq 1 ]]; then
-    echo "  would: aur-quarantine seed   (trust-first-seen; interim until 2.10)"
+    echo "  would: aur-quarantine seed   (record first-seen packages into the baseline)"
 else
     "$HOME/.local/bin/tools/aur-quarantine" seed || true
 fi

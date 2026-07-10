@@ -1,14 +1,28 @@
--- AUR quarantine (Story 2.6) — yay UpgradeSelect hook.
+-- AUR quarantine (Stories 2.6 + 2.10) — yay UpgradeSelect + AURPreInstall hooks.
 --
 -- Defense against freshly-weaponized AUR packages (June 2026 AUR malware):
--- holds AUR upgrades that are too new, orphaned, or whose maintainer changed,
--- by excluding them from every `yay -Syu`. Runs in-flow — yay's payload already
--- carries maintainer + last_modified, so no AUR RPC calls are made here.
 --
--- Held packages are reported inline (yay.log.warn) with the AUR link and the
+--  * UpgradeSelect (2.6): holds AUR *upgrades* that are too new, orphaned, or
+--    maintainer-changed, by excluding them from every `yay -Syu`. Runs in-flow —
+--    yay's payload already carries maintainer + last_modified, no RPC here.
+--  * AURPreInstall (2.10): applies the same policy to every AUR package base
+--    reaching a build — fresh installs (`yay -S`, bootstrap's metapac sync) and
+--    targeted upgrades that never pass through UpgradeSelect. This event can
+--    only allow or abort (no exclusion), so a violation aborts the whole
+--    transaction *before any source download or build*. The payload carries
+--    last_modified but not maintainer, so this hook makes one AUR RPC call per
+--    base (curl; JSON parsed with Lua patterns — no jq on a fresh machine).
+--    RPC failure fails closed. TOFU is preserved: a never-seen, maintained,
+--    aged package passes and is recorded by the next `seed`.
+--
+-- Held upgrades are reported inline (yay.log.warn) with the AUR link and the
 -- exact copy-paste command, and the same report is written to
 --   ${XDG_STATE_HOME:-~/.local/state}/aur-quarantine/last-report.txt
--- which `setup/update` prints at the end of an unattended run.
+-- which `setup/update` prints at the end of an unattended run. An install-time
+-- abort additionally writes the held package to
+--   ${XDG_STATE_HOME:-~/.local/state}/aur-quarantine/held-install.tsv
+-- ("pkg<TAB>reason" — one line, overwritten per abort) which bootstrap's
+-- unattended sync loop reads to auto-step age holds via `aur-quarantine update`.
 --
 -- Companion CLI: ~/.local/bin/tools/aur-quarantine
 --   seed / accept PKG / auto PKG / auto-off PKG / update PKG (manual stepping)
@@ -52,6 +66,37 @@ local function read_set(path)
   return t
 end
 
+-- The shared trust policy — one decision ladder for both hooks (2.6 upgrades,
+-- 2.10 installs). Precedence: maintainer-change (hard stop, even if exempted)
+-- > unaccepted orphan > exempt > age. Returns nil to allow, or a hold table
+-- { code, why, remedies }. `known` is the baseline entry: nil = never seen
+-- (TOFU: allowed unless orphaned/young), "" = trusted-as-orphan via accept.
+local function classify(pkg, mt, known, is_exempt, age_days, days, version)
+  if known ~= nil and known ~= mt then
+    return { code = "maintainer-change",
+      why = string.format("MAINTAINER CHANGED ('%s' -> '%s'); possible takeover",
+        known ~= "" and known or "ORPHANED", mt ~= "" and mt or "ORPHANED"),
+      remedies = { "trust:  aur-quarantine accept " .. pkg .. "   (after verifying on the AUR)" } }
+  end
+  if mt == "" and known == nil then
+    return { code = "orphan", why = "ORPHANED (no maintainer); adoption-attack risk",
+      remedies = { "trust:  aur-quarantine accept " .. pkg .. "   (after verifying on the AUR)" } }
+  end
+  if is_exempt then
+    yay.log.info("aur-quarantine: " .. pkg .. " is auto-exempt; allowing latest")
+    return nil
+  end
+  if days > 0 and (age_days == nil or age_days < days) then
+    return { code = "age",
+      why = string.format("version %s is %s old (< %dd quarantine)",
+        version or "?", age_days and (age_days .. "d") or "of unknown age", days),
+      remedies = {
+        "step:   aur-quarantine update " .. pkg .. "   (newest vetted older version, if any)",
+        "auto:   aur-quarantine auto "   .. pkg .. "   (always take immediately; maintainer changes still held)" } }
+  end
+  return nil
+end
+
 yay.create_autocmd("UpgradeSelect", {
   desc = "AUR quarantine: hold too-new / orphaned / maintainer-changed AUR upgrades",
   callback = function(event)
@@ -89,35 +134,13 @@ yay.create_autocmd("UpgradeSelect", {
 
     for _, up in ipairs(event.data.upgrades or {}) do
       if up.repository == "aur" then
-        local pkg = up.name
-        local mt = up.maintainer or ""
-        local known = trusted[pkg]  -- nil = never seeded (fresh install); "" = trusted-as-orphan
         local age_days = nil
         if up.last_modified and up.last_modified > 0 then
           age_days = math.floor((now - up.last_modified) / 86400)
         end
-
-        if known ~= nil and known ~= mt then
-          -- Maintainer changed vs the trusted baseline: hard stop, even if exempted.
-          hold(pkg,
-            string.format("MAINTAINER CHANGED ('%s' -> '%s'); possible takeover",
-              known ~= "" and known or "ORPHANED", mt ~= "" and mt or "ORPHANED"),
-            { "trust:  aur-quarantine accept " .. pkg .. "   (after verifying on the AUR)" })
-        elseif mt == "" and known == nil then
-          -- Orphaned and never explicitly trusted (an accept records the orphan
-          -- state as "", which clears this hold): adoption-attack vector.
-          hold(pkg, "ORPHANED (no maintainer); adoption-attack risk",
-            { "trust:  aur-quarantine accept " .. pkg .. "   (after verifying on the AUR)" })
-        elseif exempt[pkg] then
-          yay.log.info("aur-quarantine: " .. pkg .. " is auto-exempt; taking latest")
-        elseif days > 0 and (age_days == nil or age_days < days) then
-          hold(pkg,
-            string.format("version %s is %s old (< %dd quarantine)",
-              up.remote_version or "?",
-              age_days and (age_days .. "d") or "of unknown age", days),
-            { "step:   aur-quarantine update " .. pkg .. "   (newest vetted older version, if any)",
-              "auto:   aur-quarantine auto "   .. pkg .. "   (always take immediately; maintainer changes still held)" })
-        end
+        local verdict = classify(up.name, up.maintainer or "", trusted[up.name],
+          exempt[up.name], age_days, days, up.remote_version)
+        if verdict then hold(up.name, verdict.why, verdict.remedies) end
       end
     end
 
@@ -137,6 +160,98 @@ yay.create_autocmd("UpgradeSelect", {
     end
 
     return { exclude = exclude }
+  end,
+})
+
+-- Install-time gate (Story 2.10) — yay AURPreInstall hook.
+--
+-- Fires once per AUR package base after PKGBUILDs are downloaded, before the
+-- clean/diff/edit menus and before any source download or build. It cannot
+-- exclude a single base (upstream design) — a policy violation aborts the
+-- whole transaction via yay.abort(), so nothing partial happens. Bootstrap's
+-- unattended sync loop reads held-install.tsv and auto-steps age holds.
+
+-- One batched RPC call for every pkgname in the base. Returns
+-- { [name] = maintainer } ("" = orphaned) or nil on any failure (fail-closed).
+-- AUR pkgnames are [a-z0-9@._+-] only; anything shell-unsafe is refused.
+local function rpc_maintainers(names)
+  local args = {}
+  for _, n in ipairs(names) do
+    if n:match("[^%w@._+-]") then return nil end
+    table.insert(args, "--data-urlencode 'arg[]=" .. n .. "'")
+  end
+  local p = io.popen("curl -fsG --max-time 20 " .. table.concat(args, " ")
+    .. " 'https://aur.archlinux.org/rpc/v5/info' 2>/dev/null")
+  if not p then return nil end
+  local resp = p:read("*a") or ""
+  p:close()
+  -- v5 info results are flat objects (inner arrays use [], never {}), so
+  -- %b{} splits the results array cleanly. Greedy (.*)%] is anchored by the
+  -- results array's own closing bracket — no later field is an array.
+  local body = resp:match('"results":%s*%[(.*)%]')
+  if not body then return nil end
+  local by_name = {}
+  for obj in body:gmatch("%b{}") do
+    local name = obj:match('"Name":"([^"]+)"')
+    if name then
+      by_name[name] = obj:match('"Maintainer":"([^"]*)"') or ""
+    end
+  end
+  return by_name
+end
+
+yay.create_autocmd("AURPreInstall", {
+  desc = "AUR quarantine: gate installs on age / orphan / maintainer vs baseline",
+  callback = function(event)
+    if os.getenv("AUR_QUARANTINE_BYPASS") == "1" then
+      yay.log.warn("aur-quarantine: install gate BYPASSED for " .. event.match
+        .. " (AUR_QUARANTINE_BYPASS=1)")
+      return
+    end
+
+    local sdir = state_dir()
+    local days = tonumber(os.getenv("AUR_QUARANTINE_DAYS") or "") or 14
+    local trusted = read_baseline(sdir .. "/maintainers.tsv") or {}
+    local exempt = read_set(sdir .. "/exempt.txt")
+
+    -- Reason codes are machine-read by bootstrap: only "age" is auto-steppable.
+    local function hold(pkg, code, why, remedies)
+      os.execute("mkdir -p '" .. sdir .. "'")
+      local hf = io.open(sdir .. "/held-install.tsv", "w")
+      if hf then hf:write(pkg, "\t", code, "\n") hf:close() end
+      local msg = string.format(
+        "aur-quarantine: HOLD %s — %s\n     check:  https://aur.archlinux.org/packages/%s\n     %s",
+        pkg, why, pkg, table.concat(remedies, "\n     "))
+      yay.log.warn(msg)
+      yay.abort(msg)
+    end
+
+    local names = {}
+    for _, p in ipairs(event.data.packages or {}) do table.insert(names, p.name) end
+    if #names == 0 then return end
+
+    local maint = rpc_maintainers(names)
+    if maint == nil then
+      hold(names[1], "rpc",
+        "AUR RPC unreachable — cannot verify maintainer/orphan state (failing closed)",
+        { "retry, or bypass this run:  AUR_QUARANTINE_BYPASS=1 yay ..." })
+    end
+
+    local age_days = nil
+    if event.data.last_modified and event.data.last_modified > 0 then
+      age_days = math.floor((os.time() - event.data.last_modified) / 86400)
+    end
+
+    for _, pkg in ipairs(names) do
+      local mt = maint[pkg]
+      if mt == nil then
+        hold(pkg, "rpc", "not found in AUR RPC — cannot verify (failing closed)",
+          { "retry, or bypass this run:  AUR_QUARANTINE_BYPASS=1 yay ..." })
+      end
+      local verdict = classify(pkg, mt, trusted[pkg], exempt[pkg], age_days, days,
+        event.data.version)
+      if verdict then hold(pkg, verdict.code, verdict.why, verdict.remedies) end
+    end
   end,
 })
 

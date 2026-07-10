@@ -28,7 +28,9 @@
 #   ip         print the VM's current IPv4
 #   exec CMD   run a command in the guest as root via the qemu agent (works in
 #              the live ISO too, where ssh isn't up yet — great for debugging)
-#   bootstrap  ssh in and run the repo bootstrap (waits for ssh; AUR builds take a while)
+#   bootstrap  ssh in and run the repo bootstrap (waits for ssh; AUR builds take
+#              a while). Injects the host's AUR trust baseline first — see
+#              inject_trust_baseline; VM_HARNESS_FRESH_TRUST=1 skips it
 #   check      ssh in and assert: metapac unmanaged empty, services, session target
 #   tail [P]   follow the newest log live (or phase P's newest); `tail install`
 #              follows the guest serial log in the workdir instead (sudo)
@@ -499,8 +501,36 @@ wait_ssh() {
     die "no ssh after ~2 minutes — check: vm-harness ip, or the virt-manager console"
 }
 
+# Copy the host's AUR trust state (maintainers.tsv + exempt.txt) into the VM
+# before bootstrap, so the install gate checks identity against the same
+# baseline a decrypt-restored machine would have (Story 2.10). These are not
+# secrets — no yadm passphrase or credential enters the harness (VM runbook).
+# VM_HARNESS_FRESH_TRUST=1 skips the copy to exercise the fresh-TOFU path.
+inject_trust_baseline() {
+    local sdir="${XDG_STATE_HOME:-$HOME/.local/state}/aur-quarantine" ip f
+    local -a have=()
+    if [[ "${VM_HARNESS_FRESH_TRUST:-0}" == "1" ]]; then
+        say "Trust baseline: skipped (VM_HARNESS_FRESH_TRUST=1 — fresh TOFU run)"
+        return 0
+    fi
+    for f in maintainers.tsv exempt.txt; do
+        [[ -f "$sdir/$f" ]] && have+=("$sdir/$f")
+    done
+    if (( ${#have[@]} == 0 )); then
+        say "Trust baseline: none on host ($sdir) — VM runs fresh (TOFU)"
+        return 0
+    fi
+    ip=$(vm_ip)
+    [[ -n "$ip" ]] || die "VM has no IP (is it booted?)"
+    say "Trust baseline: injecting ${have[*]##*/} into the VM"
+    vm_ssh "mkdir -p ~/.local/state/aur-quarantine"
+    scp -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "${have[@]}" "$VM_USER@$ip:.local/state/aur-quarantine/"
+}
+
 cmd_bootstrap() {
     wait_ssh
+    inject_trust_baseline
     say "Running repo bootstrap inside the VM (class: $VM_CLASS, unattended; AUR builds take a while)"
     vm_ssh "set -e
         sudo pacman -S --needed --noconfirm git base-devel yadm
