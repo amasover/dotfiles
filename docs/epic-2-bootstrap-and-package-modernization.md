@@ -672,6 +672,8 @@ Issue: [#96](https://github.com/amasover/dotfiles/issues/96) · Origin: 2026-07-
 - Given the runbook's class table, when the class lands, then the table documents both classes and their group deltas
 - Given the vm-harness default class is `workstation`, when the split lands, then harness runs still converge (the hardware group installs harmlessly under QEMU, or the harness class choice is revisited — decided in-story)
 
+**Evidence artifact:** groups/template diff, a live no-op dry-run, and the updated class table.
+
 ---
 
 ### Story 2.31: vm-harness — resumable `up`
@@ -692,7 +694,23 @@ Issue: [#98](https://github.com/amasover/dotfiles/issues/98) · Origin: the 2026
 
 **Evidence artifact:** a deliberately interrupted `up` plus a resumed run's log set showing continuation from the failed phase.
 
-**Evidence artifact:** groups/template diff, a live no-op dry-run, and the updated class table.
+---
+
+### Story 2.32: quarantine hold messages misdiagnose the failure
+
+As the repo owner,
+I want quarantine hold output to name the actual failure,
+So that a held package's remedy can be chosen from the message instead of
+re-deriving the cause from raw logs.
+
+Issue: [#100](https://github.com/amasover/dotfiles/issues/100) · Split from #98's grill (decision 7). Observed 2026-07-10: bootstrap's `die_still_held` printed "no aged version exists yet" when the aged displaylink 6.3-1 build actually failed on `evdi<1.15` (gone from repos); the chaotic gate's hold printed `version ?` because the gate never passes the version to the policy.
+
+**Acceptance criteria:**
+
+- Given a second consecutive hold of the same package, when bootstrap dies, then the message distinguishes "stepping found no aged version" from "the aged build failed" and names the decisive error line in the latter case
+- Given a chaotic gate hold, when the message prints, then it names the held package's version (or omits the placeholder entirely) instead of `version ?`
+
+**Evidence artifact:** message diff + a reproduced hold showing the corrected output.
 
 ---
 
