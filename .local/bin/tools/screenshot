@@ -40,8 +40,6 @@ ARGUMENTS
 #                                                                  #
 ####################################################################
 
-
-
 ####################################################################
 #                                                                  #
 #                     Globals & Defaults                           #
@@ -50,7 +48,6 @@ ARGUMENTS
 
 quiet=false
 
-
 ####################################################################
 #                                                                  #
 #                     Parse Command Args                           #
@@ -58,22 +55,22 @@ quiet=false
 ####################################################################
 
 while test $# -gt 0; do
-	  case "$1" in
-        -h|--help|-\?)
+    case "$1" in
+        -h | --help | -\?)
             echo "$usage" >&2
             exit 1
             ;;
-        -q|--quiet)
+        -q | --quiet)
             quiet=true
             ;;
-        -s|--selected)
+        -s | --selected)
             #notify-send "Screenshot" "Select an area to capture in screenshot."
             args=" -s"
             ;;
-        -f|--focused)
+        -f | --focused)
             args=$args" -u"
             ;;
-        -b|--border)
+        -b | --border)
             args=$args" -b"
             ;;
         \?)
@@ -87,7 +84,6 @@ while test $# -gt 0; do
     esac
     shift
 done
-
 
 ####################################################################
 #                                                                  #

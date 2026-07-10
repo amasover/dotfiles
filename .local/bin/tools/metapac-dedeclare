@@ -28,7 +28,7 @@ fi
 groups_dir="$HOME/.config/metapac/groups"
 config="$HOME/.config/metapac/config.toml"
 [[ -d "$groups_dir" && -f "$config" ]] && compgen -G "$groups_dir/*.toml" >/dev/null \
-    || exit 0   # no metapac on this machine — nothing to edit
+    || exit 0 # no metapac on this machine — nothing to edit
 
 pkgs=("$@")
 if [[ ${#pkgs[@]} -eq 0 && ! -t 0 ]]; then
@@ -42,14 +42,16 @@ fi
 # config (the machine-local group). Same discovery as metapac-drift-report.
 group_files=("$groups_dir"/*.toml)
 while IFS= read -r abs; do
-    if [[ -f "$abs" ]]; then group_files+=("$abs")
-    elif [[ -f "$abs.toml" ]]; then group_files+=("$abs.toml")
+    if [[ -f "$abs" ]]; then
+        group_files+=("$abs")
+    elif [[ -f "$abs.toml" ]]; then
+        group_files+=("$abs.toml")
     fi
 done < <(grep -o '"/[^"]*"' "$config" | tr -d '"')
 
 # Delete a package's declaration line: `  "name",` with optional trailing comma
 # and comment. String comparison, not regex — names like libsigc++ stay literal.
-strip_pkg() {  # strip_pkg <pkg> <file> — writes edited copy to stdout
+strip_pkg() { # strip_pkg <pkg> <file> — writes edited copy to stdout
     awk -v pkg="$1" '
         {
             s = $0
@@ -67,14 +69,14 @@ strip_pkg() {  # strip_pkg <pkg> <file> — writes edited copy to stdout
 for file in "${group_files[@]}"; do
     [[ -f "$file" ]] || continue
     case "$file" in
-        "$groups_dir"/inbox-*.toml) note="" ;;                      # machine-scoped
-        "$groups_dir"/*)            note="   (review via git diff)" ;;  # tracked group
-        *)                          note="" ;;                      # machine-local
+        "$groups_dir"/inbox-*.toml) note="" ;;              # machine-scoped
+        "$groups_dir"/*) note="   (review via git diff)" ;; # tracked group
+        *) note="" ;;                                       # machine-local
     esac
     for pkg in "${pkgs[@]}"; do
         edited=$(strip_pkg "$pkg" "$file")
         if [[ "$edited" != "$(cat "$file")" ]]; then
-            printf '%s\n' "$edited" > "$file"
+            printf '%s\n' "$edited" >"$file"
             echo "metapac-dedeclare: $pkg — removed from ${file##*/}$note"
         fi
     done

@@ -18,25 +18,30 @@ ARGUMENTS
 "
 
 while test $# -gt 0; do
-	  case "$1" in
-        -h|--help|-\?)
+    case "$1" in
+        -h | --help | -\?)
             echo "$usage" >&2
-            exit;;
-        -n|--name)
+            exit
+            ;;
+        -n | --name)
             name=$2
-            shift;;
-        -p|--path)
+            shift
+            ;;
+        -p | --path)
             if [[ "${2}" == "." ]]; then
                 path=$PWD
             else
                 path=$2
             fi
-            shift;;
+            shift
+            ;;
         \?)
             echo "Invalid option: -$OPTARG" >&2
-            exit 1;;
+            exit 1
+            ;;
         *)
             break
+            ;;
     esac
     shift
 done
@@ -61,7 +66,7 @@ if [[ -f "${full}" ]]; then
     exit 0
 fi
 
-echo "#!/usr/bin/env bash" > "${full}"
+echo "#!/usr/bin/env bash" >"${full}"
 
 chmod +x "${full}"
 
