@@ -612,13 +612,13 @@ Issue: [#87](https://github.com/amasover/dotfiles/issues/87) · Origin: the 2026
 
 ---
 
-### Story 2.28: Chaotic-AUR binaries for supported packages — same gating as AUR
+### Story 2.28: Chaotic-AUR binaries for supported packages — same gating as AUR ✅
 
 As the repo owner,
 I want declared AUR packages that [Chaotic-AUR](https://aur.chaotic.cx/) pre-builds installed as binaries from that repo,
 So that installs and VM bootstraps skip long local builds without loosening the AUR trust gates.
 
-Issue: [#89](https://github.com/amasover/dotfiles/issues/89) · Chaotic-AUR is an automated build farm for AUR packages (GitLab CI since infra 4.0, GPG-signed, `chaotic-keyring` + `chaotic-mirrorlist` + a `[chaotic-aur]` pacman.conf entry). Trust notes: it auto-builds the same PKGBUILDs, so it inherits AUR's trust model wholesale — a weaponized package ships from chaotic as fast as from AUR, minus even the local build-time inspection moment; it sometimes patches builds ("interferes"), adding the chaotic team as a trusted party; and because pacman/yay prefer a repo hit over AUR, its packages silently stop flowing through the yay Lua quarantine hook. The gate has to follow the packages. Design input: [aur-malware-mitigation.md](../knowledge/reference/aur-malware-mitigation.md); related: 2.22 (AUR clone-burst throttling), 2.10 (install-time gating).
+Issue: [#89](https://github.com/amasover/dotfiles/issues/89) (closed, PR #93) · Chaotic-AUR is an automated build farm for AUR packages (GitLab CI since infra 4.0, GPG-signed, `chaotic-keyring` + `chaotic-mirrorlist` + a `[chaotic-aur]` pacman.conf entry). Trust notes: it auto-builds the same PKGBUILDs, so it inherits AUR's trust model wholesale — a weaponized package ships from chaotic as fast as from AUR, minus even the local build-time inspection moment; it sometimes patches builds ("interferes"), adding the chaotic team as a trusted party; and because pacman/yay prefer a repo hit over AUR, its packages silently stop flowing through the yay Lua quarantine hook. The gate has to follow the packages. Design input: [aur-malware-mitigation.md](../knowledge/reference/aur-malware-mitigation.md); related: 2.22 (AUR clone-burst throttling), 2.10 (install-time gating).
 
 **Acceptance criteria:**
 
