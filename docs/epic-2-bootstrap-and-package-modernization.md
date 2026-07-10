@@ -641,16 +641,38 @@ Arch ISO can consume,
 So that a bare-metal install starts from the same declarative recipe philosophy as
 everything else, instead of hand-typed disk commands at an ISO prompt.
 
-Issue: [#95](https://github.com/amasover/dotfiles/issues/95) · The vm-harness already proves the pattern: cloud-init on the official ISO drives unattended `archinstall` from a generated seed (Story 2.7). Metal reuses it with a different disk layout (GPT: ESP + LUKS root), refind, and real credentials. Target: the spare-laptop metal run (months out); until then, layout validated by a VM dry-run of the generated config.
+Issue: [#95](https://github.com/amasover/dotfiles/issues/95) · The vm-harness already proves the pattern: cloud-init on the official ISO drives unattended `archinstall` from a generated seed (Story 2.7). **Primary consumer (amended 2026-07-10, [decision-daily-driver-vm.md](./decision-daily-driver-vm.md)): the daily-driver VM on the Windows machine** — same recipe, LUKS root inside the guest; the spare-laptop metal run (months out) is the later variant and inherits it.
 
 **Acceptance criteria:**
 
-- Given a machine booted from the official Arch ISO, when the recipe runs, then a tracked, parameterized generator produces an archinstall config provisioning GPT partitions (ESP + LUKS-encrypted root sized from the disk), disk encryption, the platform's bootloader, a user, and sshd
+- Given a machine booted from the official Arch ISO (VMware guest or metal), when the recipe runs, then a tracked, parameterized generator produces an archinstall config provisioning GPT partitions (ESP + LUKS-encrypted root sized from the disk), disk encryption, the boot path fitting the target (VM vs refind metal), a user, and sshd
 - Given secrets (LUKS passphrase, user password), when the seed is generated, then they are supplied at run time (prompt or env) and never land in tracked files; any generated seed containing them is destroyed after use
-- Given vm-harness's seed generation exists, when the metal generator is built, then shared logic is factored once (harness and metal recipe as two consumers) or the divergence is explicitly recorded with reasons
-- Given no metal hardware is available yet, when the story lands, then the generated config is validated by a VM dry-run (layout + syntax), and the spare-laptop run later supplies the real evidence
+- Given vm-harness's seed generation exists, when the generator is built, then shared logic is factored once (harness, daily-VM, metal as consumers) or the divergence is explicitly recorded with reasons
+- Given the daily-driver VM is the first real consumer, when the story lands, then its creation run is the primary evidence; the spare-laptop run later revalidates the metal variant
 
-**Evidence artifact:** tracked generator + recipe, a VM dry-run log, and (later) the metal run record.
+**Evidence artifact:** tracked generator + recipe, the daily-VM creation record, and (later) the metal run record.
+
+---
+
+### Story 2.30: `daily-vm` class — hardware group split + guest tools
+
+As the repo owner,
+I want a machine class for the daily-driver VM, with hardware-bound packages split
+out of the shared groups,
+So that the Windows-hosted VM (the cleanup era's rebuild milestone target —
+[decision-daily-driver-vm.md](./decision-daily-driver-vm.md)) reconciles from the
+same purpose groups as metal machines instead of forked variants.
+
+Issue: [#96](https://github.com/amasover/dotfiles/issues/96) · Origin: 2026-07-10 repo-direction grill Q4/Q5. Class name `daily-vm` is a working name — finalize in-story (public-safe, lands in the tracked template).
+
+**Acceptance criteria:**
+
+- Given the nine hardware-bound packages (`acpi`, `acpid`, `intel-ucode`, `linux-firmware`, `refind`, `refind-theme-nord`, `xf86-video-{amdgpu,intel,vesa}`), when the split lands, then they move from `base`/`desktop` into a new `hardware` purpose group, and the `workstation` class activates it — a dry-run reconcile on the live machine shows a no-op
+- Given the new class, when its template branch renders, then it activates every purpose group except `work` and `hardware`, plus a new guest-tools group (`open-vm-tools`, `xf86-video-vmware`) and its own `inbox-<class>.toml`
+- Given the runbook's class table, when the class lands, then the table documents both classes and their group deltas
+- Given the vm-harness default class is `workstation`, when the split lands, then harness runs still converge (the hardware group installs harmlessly under QEMU, or the harness class choice is revisited — decided in-story)
+
+**Evidence artifact:** groups/template diff, a live no-op dry-run, and the updated class table.
 
 ---
 

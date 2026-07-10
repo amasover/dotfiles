@@ -100,6 +100,24 @@ In practical terms, the repo should help Aaron:
 - Preserve desktop customizations without letting stale assets dominate the repo
 - Use AI assistance safely through explicit repo instructions and validation rules
 
+### The two eras (added 2026-07-10)
+
+The work divides into a bounded **cleanup era** and an open-ended **steady state**
+(terms: [CONTEXT.md](../CONTEXT.md); decision:
+[decision-daily-driver-vm.md](./decision-daily-driver-vm.md)). The cleanup era is
+done when both hold:
+
+1. **A daily-driver rebuild succeeds** — a machine bootstrapped from nothing but this
+   repo and the encrypted archive, then actually used daily, passing the
+   [daily-drivable acceptance checklist](./runbook-fresh-machine-bootstrap.md). The
+   first target is a VM under VMware Workstation on the Windows personal machine;
+   bare metal (spare laptop) is a later variant.
+2. **The work machine completes its Story 1.8 recovery steps** after the history rewrite.
+
+After that, the repo operates as a continuously converging workstation platform —
+drift observed, triaged, and reconciled as routine (the reconcile and update loops),
+rather than as a project with an end.
+
 ---
 
 ## 5. Goals
