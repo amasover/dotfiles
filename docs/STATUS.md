@@ -65,9 +65,11 @@ Facts:
   Sequence: evidence VM run → Aaron's live steps (pull/encrypt/hooksPath) → **2.30** ([#96](https://github.com/amasover/dotfiles/issues/96))
   class+hardware split → **2.29** ([#95](https://github.com/amasover/dotfiles/issues/95), amended: daily-VM first) → milestone run;
   **4.7** ([#94](https://github.com/amasover/dotfiles/issues/94)) CI parallel; epic 3 after the VM bring-up.
-- Newly ticketed: **2.31** ([#98](https://github.com/amasover/dotfiles/issues/98)) resumable `vm-harness up`
-  (from the 2026-07-10 bootstrap failure on the displaylink quarantine hold; design grilled,
-  decisions on the issue — in progress), **2.32** ([#100](https://github.com/amasover/dotfiles/issues/100))
+- **2.31 resumable `vm-harness up`** ([#98](https://github.com/amasover/dotfiles/issues/98)):
+  design grilled (decisions on the issue), [PR #101](https://github.com/amasover/dotfiles/pull/101)
+  **open**. Evidence run (interrupt + resume) pending the parked VM's quarantine decision —
+  its bootstrap is held on evdi-dkms/displaylink (`aur-quarantine auto <pkg>` in-guest, or age-out).
+- Newly ticketed: **2.32** ([#100](https://github.com/amasover/dotfiles/issues/100))
   quarantine hold messages misdiagnose (split from the #98 grill).
   Everything else lives on the board.
 
