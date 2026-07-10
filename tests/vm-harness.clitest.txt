@@ -27,6 +27,18 @@ redraw1
 redraw2
 $
 
+--- scrub: caret-notation terminal replies (guest tty echoctl) stripped ---
+
+The guest tty echoes terminal replies — cursor-position (...R) and
+window-size (...t) reports answering systemd's queries — as literal '^[['
+bytes with NO ESC, so the \x1b patterns never match them (seen live
+2026-07-10 in the boot serial stream).
+
+$ printf '%s\n' '^[[56;192R^[[56;192R[  OK  ] Finished Initial Setup.' '^[[8;25;94t^[[25;94Rplain tail' | .local/bin/setup/vm-harness scrub
+[  OK  ] Finished Initial Setup.
+plain tail
+$
+
 --- display tool: no controlling tty -> silent degradation, byte-faithful ---
 
 setsid drops the controlling terminal, so /dev/tty can't open and the tool

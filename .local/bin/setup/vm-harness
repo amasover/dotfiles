@@ -109,17 +109,21 @@ usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; }   # the
 # service markers use ESC\), DCS (agetty terminfo queries), charset selectors
 # (the ESC(B tput hides in sgr0) — and turn carriage-return redraws (progress
 # bars) into ordinary lines. -u keeps `vm-harness tail` near-live.
-# Last expression (2.21): the guest sync now runs under a pty, so pacman/yay
-# draw real progress bars — after the CR→newline conversion a redraw burst is
-# one pattern space with embedded newlines, and every superseded sub-100%
-# frame (bar + percent, another frame following) is dropped; the final 100%
-# line per package survives into the log.
+# Last two expressions (2.21): the guest sync now runs under a pty, so
+# pacman/yay draw real progress bars — after the CR→newline conversion a
+# redraw burst is one pattern space with embedded newlines, and every
+# superseded sub-100% frame (bar + percent, another frame following) is
+# dropped; the final 100% line per package survives into the log. And the
+# guest tty echoes terminal REPLIES (cursor-position ...R / window-size ...t
+# reports, answers to systemd's queries) in caret notation — literal '^[['
+# bytes, no ESC — so the \x1b patterns can't see them; strip that shape too.
 scrub() { sed -u -e 's/\x1b\[[0-9;?!<>=]*[a-zA-Z]//g' \
                  -e 's/\x1b\][^\x1b\x07]*\(\x07\|\x1b\\\)//g' \
                  -e 's/\x1bP[^\x1b]*\x1b\\//g' \
                  -e 's/\x1b[()][0-9A-Za-z]//g' -e 's/\x1b[=>]//g' \
                  -e 's/\r$//' -e 's/\r/\n/g' \
-                 -e 's/[^\n]*\[[#-]*\] *[0-9]\{1,2\}%\n//g'; }
+                 -e 's/[^\n]*\[[#-]*\] *[0-9]\{1,2\}%\n//g' \
+                 -e 's/\^\[\[[0-9;]*[Rt]//g'; }
 
 # Run one phase with host-side logging. The terminal (unless --quiet) gets the
 # raw stream — colors and progress bars intact — while the log gets a scrubbed
