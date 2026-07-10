@@ -84,6 +84,10 @@ ISO="$CACHE/archlinux-x86_64.iso"
 INSTALL_LOG="$WORKDIR/install.log"
 MIRROR="https://geo.mirror.pkgbuild.com/iso/latest"
 REPO_URL="${VM_HARNESS_REPO:-https://github.com/amasover/dotfiles.git}"
+REPO_BRANCH="${VM_HARNESS_BRANCH:-}"          # guest clones this branch (default: repo default = main).
+                                              # Set it to validate guest-side bootstrap changes pre-merge —
+                                              # without it the guest always runs main's bootstrap, so a
+                                              # branch's guest-side fixes are invisible to a harness run.
 VM_CLASS="${VM_HARNESS_CLASS:-workstation}"   # which class profile the VM validates
 VM_HOST=archvm
 VM_USER=aaron
@@ -582,9 +586,11 @@ cmd_bootstrap() {
     wait_ssh
     inject_trust_baseline
     say "Running repo bootstrap inside the VM (class: $VM_CLASS, unattended; AUR builds take a while)"
+    # shellcheck disable=SC2016  # the inner single quotes are for the REMOTE
+    # shell; $REPO_BRANCH/$REPO_URL expand host-side in this double-quoted string
     vm_ssh "set -e
         sudo pacman -S --needed --noconfirm git base-devel yadm
-        yadm clone --no-bootstrap '$REPO_URL' || true
+        yadm clone --no-bootstrap ${REPO_BRANCH:+-b '$REPO_BRANCH'} '$REPO_URL' || true
         yadm config local.class '$VM_CLASS'
         yadm alt
         ~/.local/bin/setup/bootstrap --check --unattended
@@ -792,7 +798,7 @@ if [[ $DETACH -eq 1 ]]; then
     # result line is the durable record. Forward the VM_HARNESS_* knobs
     # explicitly; a user unit doesn't inherit this shell's environment.
     setenv_args=()
-    for var in VM_HARNESS_DIR VM_HARNESS_REPO VM_HARNESS_CLASS VM_HARNESS_DISK \
+    for var in VM_HARNESS_DIR VM_HARNESS_REPO VM_HARNESS_BRANCH VM_HARNESS_CLASS VM_HARNESS_DISK \
                VM_HARNESS_RAM VM_HARNESS_CPUS VM_HARNESS_EXEC_TIMEOUT; do
         if [[ -n "${!var:-}" ]]; then setenv_args+=("--setenv=$var=${!var}"); fi
     done
