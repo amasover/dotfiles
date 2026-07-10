@@ -56,11 +56,12 @@ Facts:
 - **2.10 AUR install gating**: [PR #92](https://github.com/amasover/dotfiles/pull/92)
   **merged 2026-07-10**, #50 closed. Remaining live steps for Aaron: yadm pull +
   `yadm encrypt` (baseline files joined the encrypt manifest).
-- **2.28 Chaotic-AUR** ([#89](https://github.com/amasover/dotfiles/issues/89)):
-  [PR #93](https://github.com/amasover/dotfiles/pull/93) open — repo + gate end to end:
-  quarantine-policy.lua single policy source, alpm PreTransaction gate (all install paths),
-  UpgradeSelect classifies chaotic upgrades; 43 tracked test cases. 29/102 foreign packages
-  go binary. Live adoption = next attended bootstrap run. Everything else lives on the board.
+- **2.28 Chaotic-AUR**: [PR #93](https://github.com/amasover/dotfiles/pull/93) **merged
+  2026-07-10**, #89 closed. Live adoption = next attended bootstrap run (after yadm pull).
+- Newly ticketed: **4.7** ([#94](https://github.com/amasover/dotfiles/issues/94)) minimal CI,
+  **2.29** ([#95](https://github.com/amasover/dotfiles/issues/95)) scripted metal provisioning.
+  A repo-direction grill is in progress (CONTEXT.md gaining era terms; PRD refresh likely).
+  Everything else lives on the board.
 
 ## Standing warnings
 
