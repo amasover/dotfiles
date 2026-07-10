@@ -53,8 +53,10 @@ $
 
 script(1) provides the pty; the stdout leg (what scrub/the state log would
 see) must stay byte-identical, and the pty session must contain the phase
-breadcrumb (done tick, CURRENT uppercase, pending plain), the opinionated
-bootstrap stage mapped from the say-line, and the parsed detail anchor.
+breadcrumb (done tick, CURRENT uppercase, pending plain), the bootstrap step
+strip position mapped from the say-line (current step uppercase — rendered
+as full names on wide terminals, dot meter on narrow), and the parsed
+detail anchor.
 
 $ t=$(mktemp -d) && printf '==> Package reconcile (metapac shows its plan and prompts)\n:: Retrieving packages...\ndata line\n' > "$t/in" && script -qec "sh -c '.local/bin/tools/vm-harness-display --mode bar --phase bootstrap --phases create:done,install:done,boot:done,bootstrap:current,check:pending < $t/in > $t/out'" "$t/session" > /dev/null 2>&1; echo "rc=$?"; cmp -s "$t/in" "$t/out" && echo stdout-leg-byte-faithful
 rc=0
@@ -69,8 +71,8 @@ $ grep -o 'BOOTSTRAP' "$t/session" | head -n 1
 BOOTSTRAP
 $
 
-$ grep -o '3/5 reconcile' "$t/session" | head -n 1
-3/5 reconcile
+$ grep -o 'RECONCILE' "$t/session" | head -n 1
+RECONCILE
 $
 
 $ grep -o 'downloading packages' "$t/session" | head -n 1
