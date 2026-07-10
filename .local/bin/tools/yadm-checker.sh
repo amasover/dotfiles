@@ -6,7 +6,7 @@ function delay() {
     f=$(date +"%S")
     j=$((10#$f % 3))
 
-    if (( 10#$j == 0 )); then
+    if ((10#$j == 0)); then
         # notify-send $f "$j loading"
         echo true
     else
@@ -33,7 +33,7 @@ nord5="#E5E9F0"
 nord6="#ECEFF4"
 
 # ===================== #
-# blues 
+# blues
 # seafoam
 nord7="#8FBCBB"
 # turquoise
@@ -55,7 +55,7 @@ nord14="#A3BE8C"
 # purple
 nord15="#B48EAD"
 
-yadm fetch > /dev/null 2>&1
+yadm fetch >/dev/null  2>&1
 
 staged=$(yadm diff --cached --numstat | wc -l)
 modified=$(yadm ls-files -m | wc -l)
@@ -67,7 +67,6 @@ behind=$(echo $ahead_behind_count | cut -d ' ' -f2)
 ahead_icon=
 behind_icon=
 yadm_icon=
-
 
 no=
 yes=
@@ -81,8 +80,6 @@ if [[ $1 == true ]]; then
 else
     arrow=""
 fi
-
-
 
 function color {
     echo "%{B${1}}%{F${2}}${3}%{B-}%{F-}"
@@ -98,7 +95,6 @@ else
     fg=$nord14
     commits_prompt=$(color "${nord14}" "${nord1}" "${commits_prompt}")
 fi
-
 
 if [[ $staged != "0" || $modified != "0" ]]; then
 

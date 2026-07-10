@@ -20,10 +20,8 @@ volume_mute() {
     wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
 }
 
-
 listen() {
-    while true
-    do
+    while true; do
         # the extra space on the right acts like a 'pad-right: 1'
         #vol=$(wpctl get-volume @DEFAULT_AUDIO_SINK@)
         #echo "${vol#*.}$padright"
@@ -33,21 +31,26 @@ listen() {
     done
 }
 while test $# -gt -1; do
-	  case "$1" in
+    case "$1" in
         --up)
-            volume_up;;
+            volume_up
+                     ;;
         --down)
-            volume_down;;
+            volume_down
+                       ;;
         --mute)
-            volume_mute;;
+            volume_mute
+                       ;;
         --padright)
             padright=$2
-            shift;;
+            shift
+                 ;;
         *)
             if [[ -z $padright ]]; then
                 padright=""
             fi
-            listen;;
+            listen
+                  ;;
     esac
     shift
 done

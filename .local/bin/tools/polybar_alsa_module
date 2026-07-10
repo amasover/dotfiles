@@ -30,7 +30,6 @@
 # headphones="analog-output-headphones"
 # speakers="analog-output-lineout"
 
-
 # Although it's not completely relevant, if you'd like to see what your
 # default port is:
 # pacmd stat | awk -F": " '/^Default sink name: /{print $2}' | awk -F"." '{print $NF}'
@@ -102,7 +101,7 @@ switch() {
     current_port=$(dot sound port)
     if [[ $current_port == $speakers ]]; then
         vol=$(pamixer --get-volume)
-        pacmd set-sink-port $sink_id $headphones > /dev/null 2>&1
+        pacmd set-sink-port $sink_id $headphones >/dev/null  2>&1
         dot sound port $headphones
         pamixer --set-volume $vol
         #amixer sset Front 0 1&2>/dev/null
@@ -110,12 +109,12 @@ switch() {
         # annoying bug with alsa..
     elif [[ $current_port == $headphones ]]; then
         vol=$(pamixer --get-volume)
-        pacmd set-sink-port $sink_id $speakers > /dev/null 2>&1
+        pacmd set-sink-port $sink_id $speakers >/dev/null  2>&1
         dot sound port $speakers
         pamixer --set-volume $vol
     else
-       echo 'ERROR: $current_port is '$current_port" expected either $headphones or $speakers"
-       exit 1
+        echo 'ERROR: $current_port is '$current_port" expected either $headphones or $speakers"
+        exit 1
     fi
 
     exit 0
@@ -124,29 +123,37 @@ sink_id=0
 t=0
 
 while test $# -gt 0; do
-	  case "$1" in
+    case "$1" in
         --switch)
-            switch;;
+            switch
+                  ;;
         --mutefg)
             mute_fg=$2
-            shift;;
+            shift
+                 ;;
         --mutebg)
             mute_bg=$2
-            shift;;
+            shift
+                 ;;
         --bg)
             bg=$2
-            shift;;
+            shift
+                 ;;
         --fg)
             fg=$2
-            shift;;
+            shift
+                 ;;
         --padleft)
             padleft=$2
-            shift;;
+            shift
+                 ;;
         \?)
             echo "Invalid option: -$OPTARG" >&2
-            exit 1;;
+            exit 1
+                  ;;
         *)
-            break;;
+            break
+                 ;;
     esac
     shift
 done
