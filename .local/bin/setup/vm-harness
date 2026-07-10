@@ -96,7 +96,7 @@ RUN_STAMP=$(date +%Y%m%d-%H%M%S)    # one stamp per invocation — an `up` run's
 RESUME_HEADER=""                    # set by a resuming `up`; run_phase logs it once
 DISPLAY_TOOL="$HOME/.local/bin/tools/vm-harness-display"
 DISPLAY_MODE=plain                  # resolved at dispatch: bar | compact | plain
-PHASE_NUM=""; PHASE_TOTAL=""        # set by cmd_up so the display shows n/m
+PHASES_STATUS=""                    # cmd_up breadcrumb for the display: name:done|current|pending,...
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'vm-harness: FATAL: %s\n' "$*" >&2; exit 1; }
@@ -150,7 +150,7 @@ run_phase() {
         # status row, and passes the bytes through to the scrub->log leg.
         # It exits 0 no matter what — pipefail carries the phase's real rc.
         "$@" 2>&1 | "$DISPLAY_TOOL" --mode "$DISPLAY_MODE" --phase "$phase" \
-                ${PHASE_NUM:+--num "$PHASE_NUM"} ${PHASE_TOTAL:+--total "$PHASE_TOTAL"} \
+                ${PHASES_STATUS:+--phases "$PHASES_STATUS"} \
             | scrub >> "$log" || rc=$?
     elif [[ -t 1 ]]; then
         # a human is watching: raw stream (colors, live progress bars) to the
@@ -678,14 +678,25 @@ cmd_up() {
     if [[ ! -f "$ISO" && ( " ${todo[*]} " == *" create "* || " ${todo[*]} " == *" install "* ) ]]; then
         run_phase fetch cmd_fetch
     fi
-    local i=0
-    PHASE_TOTAL=${#todo[@]}
+    # Breadcrumb for the display (2.21): every phase with its status —
+    # probed-complete (resume) and already-run phases show done, the running
+    # one current, the rest pending.
+    local i=0 j q crumb
     for p in "${todo[@]}"; do
         i=$((i + 1))
-        PHASE_NUM=$i
+        crumb=""
+        for q in "${skipped[@]}"; do crumb+="$q:done,"; done
+        j=0
+        for q in "${todo[@]}"; do
+            j=$((j + 1))
+            if (( j < i )); then crumb+="$q:done,"
+            elif (( j == i )); then crumb+="$q:current,"
+            else crumb+="$q:pending,"; fi
+        done
+        PHASES_STATUS="${crumb%,}"
         run_phase "$p" "cmd_$p"
     done
-    PHASE_NUM=""; PHASE_TOTAL=""
+    PHASES_STATUS=""
     say "up complete — installed, bootstrapped, checks green. Logs: $LOG_DIR/$RUN_STAMP-*.log"
 }
 

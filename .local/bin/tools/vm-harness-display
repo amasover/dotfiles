@@ -3,26 +3,29 @@
 
 Sits in run_phase's attended pipeline:
 
-    phase-cmd 2>&1 | vm-harness-display --mode bar --phase boot [--num 4 --total 6] | scrub >> log
+    phase-cmd 2>&1 | vm-harness-display --mode bar --phase boot \
+        [--phases create:done,install:done,boot:current,check:pending] | scrub >> log
 
 Reads the raw stream on stdin and forwards it byte-faithfully to stdout (the
-scrub -> state-log leg). All rendering happens on /dev/tty:
+scrub -> state-log leg). All rendering happens on /dev/tty, two rows:
 
-  bar:      the raw stream is mirrored to the tty (full firehose) while the
-            terminal's bottom row is pinned as a status bar — phase, latest
-            stage anchor, elapsed, spinner. A DECSTBM scroll region keeps the
-            firehose from scrolling the bar away; rich (if present) styles the
-            bar text. rich can't own a terminal shared with a raw pty stream,
-            hence the manual region instead of rich.Live (decisions on #73).
-  compact:  nothing raw reaches the tty — one in-place status line. run_phase
-            prints the failing log's tail on nonzero rc, so errors stay visible.
+  row 1: spinner + phase breadcrumb (done ✓ / CURRENT / pending, from
+         --phases; falls back to the bare --phase name) + elapsed, right-aligned
+  row 2: opinionated stage — bootstrap's `==>` say-lines are ours, so they map
+         onto a curated 5-stage model (setup → package tooling → reconcile →
+         cleanup → shell) that moves slowly — plus the latest parsed anchor as
+         dim trailing detail (the fast-moving part, kept but demoted)
 
-Stage detection parses anchors already present in the stream (no new
-protocol): bootstrap's `==>` say-lines, HARNESS-* serial markers, pacman's
-`::` transaction lines, yay/makepkg build lines. Unknown output leaves the
-stage as-is. The pass-through must never break: any rendering failure
-disables rendering and the pump keeps going; exit code is always 0 (the
-pipeline's failure signal is the phase command itself, via pipefail).
+  bar mode:     raw stream mirrored to the tty (full firehose) above the two
+                pinned rows; a DECSTBM scroll region protects them. rich (if
+                present) styles the text — rich can't own a terminal shared
+                with a raw pty stream, hence the manual region (#73).
+  compact mode: nothing raw reaches the tty — just the two live rows. run_phase
+                prints the failing log's tail on nonzero rc.
+
+The pass-through must never break: any rendering failure disables rendering
+and the pump keeps going; exit code is always 0 (the pipeline's failure
+signal is the phase command itself, via pipefail).
 """
 
 import argparse
@@ -39,7 +42,7 @@ import time
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
-# (pattern, stage text builder) — first match per line wins, most specific first.
+# Fast-moving detail: (pattern, text builder) — first match per line wins.
 ANCHORS = [
     (re.compile(r"==> Making package: (\S+)"), lambda m: f"building {m.group(1)}"),
     (re.compile(r"HARNESS-CLOUDINIT-UP"), lambda m: "live ISO up (cloud-init)"),
@@ -55,61 +58,139 @@ ANCHORS = [
     (re.compile(r"==> (.{1,80})"), lambda m: m.group(1).rstrip()),
 ]
 
+# Slow-moving stage: bootstrap's own `==>` say-lines (stable — we write them)
+# grouped into an opinionated model. Prefix match against the say text.
+BOOTSTRAP_STAGES = [
+    ("setup", ("Waiting for ssh", "Trust baseline", "Running repo bootstrap",
+               "Secrets", "Profile guard", "Machine-local group", "Pacman mirrors")),
+    ("package tooling", ("yay", "Quarantine prerequisites", "metapac",
+                         "multilib repo", "chaotic-aur repo")),
+    ("reconcile", ("Package reconcile",)),
+    ("cleanup", ("Normalizing install reasons", "Package-removal hook",
+                 "AUR quarantine baseline")),
+    ("shell", ("oh-my-zsh", "Login shell")),
+]
 
-def make_render(cols_hint):
-    """Return a callable rendering the bar line to an ANSI string.
 
-    rich when importable (styled), plain text otherwise — never a hard dep."""
+def stage_for(say_text):
+    """Map a `==>` say-line onto (index, name, total) — None when unmapped."""
+    for i, (name, prefixes) in enumerate(BOOTSTRAP_STAGES, 1):
+        if any(say_text.startswith(p) for p in prefixes):
+            return i, name, len(BOOTSTRAP_STAGES)
+    return None
+
+
+def parse_phases(spec):
+    """'create:done,boot:current,check:pending' -> [(name, status), ...]"""
+    out = []
+    for part in spec.split(","):
+        name, _, status = part.partition(":")
+        if name:
+            out.append((name, status or "pending"))
+    return out
+
+
+def make_render():
+    """Return (row1, row2) renderers producing ANSI strings; rich when
+    importable (styled), plain otherwise — never a hard dependency."""
     try:
         from rich.console import Console
         from rich.text import Text
 
-        def render(label, stage, spin, elapsed, cols):
-            text = Text()
-            text.append(f" {spin} ", style="bold cyan")
-            text.append(label, style="bold")
-            if stage:
-                text.append("  ·  ")
-                text.append(stage, style="yellow")
-            text.append("  ·  ")
-            text.append(elapsed, style="dim")
+        def to_ansi(text, cols):
             text.truncate(max(cols - 1, 8), overflow="ellipsis")
             console = Console(file=io.StringIO(), force_terminal=True, width=cols)
             console.print(text, end="")
             return console.file.getvalue()
 
-        return render
-    except Exception:
-        def render(label, stage, spin, elapsed, cols):
-            line = f" {spin} {label}"
-            if stage:
-                line += f"  ·  {stage}"
-            line += f"  ·  {elapsed}"
-            return line[: max(cols - 1, 8)]
+        def row1(spin, phases, label, elapsed, cols):
+            text = Text()
+            text.append(f" {spin} ", style="bold cyan")
+            if phases:
+                first = True
+                for name, status in phases:
+                    if not first:
+                        text.append(" · ", style="dim")
+                    first = False
+                    if status == "done":
+                        text.append(f"{name} ✓", style="green")
+                    elif status == "current":
+                        text.append(name.upper(), style="bold cyan")
+                    else:
+                        text.append(name, style="dim")
+            else:
+                text.append(label, style="bold")
+            pad = cols - text.cell_len - len(elapsed) - 2
+            text.append(" " * max(pad, 1))
+            text.append(elapsed, style="dim")
+            return to_ansi(text, cols)
 
-        return render
+        def row2(stage, detail, cols):
+            text = Text()
+            if stage:
+                idx, name, total = stage
+                text.append("   stage ", style="dim")
+                text.append(f"{idx}/{total} {name}", style="bold yellow")
+            if detail:
+                text.append("  ‧  " if stage else "   ", style="dim")
+                text.append(detail, style="dim")
+            return to_ansi(text, cols)
+
+        return row1, row2
+    except Exception:
+        def row1(spin, phases, label, elapsed, cols):
+            if phases:
+                crumbs = []
+                for name, status in phases:
+                    if status == "done":
+                        crumbs.append(f"{name} ✓")
+                    elif status == "current":
+                        crumbs.append(name.upper())
+                    else:
+                        crumbs.append(name)
+                left = f" {spin} " + " · ".join(crumbs)
+            else:
+                left = f" {spin} {label}"
+            pad = max(cols - len(left) - len(elapsed) - 2, 1)
+            return (left + " " * pad + elapsed)[: max(cols - 1, 8)]
+
+        def row2(stage, detail, cols):
+            parts = []
+            if stage:
+                idx, name, total = stage
+                parts.append(f"   stage {idx}/{total} {name}")
+            if detail:
+                parts.append(detail)
+            return "  ‧  ".join(parts)[: max(cols - 1, 8)]
+
+        return row1, row2
 
 
 class Renderer:
-    """Owns /dev/tty: firehose mirroring (bar mode) + the status display.
+    """Owns /dev/tty: firehose mirroring (bar mode) + the two status rows.
 
-    One lock covers every tty write so bar redraws never interleave with a
+    One lock covers every tty write so row redraws never interleave with a
     mirrored chunk's escape sequences. The SIGWINCH handler only sets a flag —
     taking the lock in a signal handler could deadlock against the main
     thread's own write — and the ticker applies the resize."""
 
-    def __init__(self, tty, mode, label):
+    RESERVED = 2  # pinned rows at the bottom
+
+    def __init__(self, tty, mode, label, phases):
         self.tty = tty
         self.mode = mode
         self.label = label
-        self.stage = ""
+        self.phases = phases
+        self.stage = None          # (idx, name, total) — opinionated, slow
+        self.detail = ""           # parsed anchor — fast, demoted
         self.t0 = time.monotonic()
         self.lock = threading.Lock()
         self.resized = False
         self.dead = False
+        self.compact_drawn = False
         self.spin_i = 0
         self.rows, self.cols = self._size()
-        self.render = make_render(self.cols)
+        self.row1, self.row2 = make_render()
         if self.mode == "bar":
             self._set_region()
         self.draw()
@@ -124,14 +205,18 @@ class Renderer:
             return 24, 80
 
     def _set_region(self):
-        # Reserve the bottom row: scroll region = rows 1..N-1, then park the
+        # Reserve the bottom rows: scroll region = rows 1..N-2, then park the
         # cursor inside the region so the next output can't land on the bar.
-        self.tty.write(b"\x1b7" + f"\x1b[1;{self.rows - 1}r".encode() + b"\x1b8"
-                       + f"\x1b[{self.rows - 1};1H".encode())
+        top = self.rows - self.RESERVED
+        self.tty.write(b"\x1b7" + f"\x1b[1;{top}r".encode() + b"\x1b8"
+                       + f"\x1b[{top};1H".encode())
         self.tty.flush()
 
     def _reset_region(self):
-        self.tty.write(b"\x1b[r" + f"\x1b[{self.rows};1H\x1b[2K".encode())
+        self.tty.write(b"\x1b[r")
+        for r in range(self.rows - self.RESERVED + 1, self.rows + 1):
+            self.tty.write(f"\x1b[{r};1H\x1b[2K".encode())
+        self.tty.write(f"\x1b[{self.rows - self.RESERVED};1H".encode())
         self.tty.flush()
 
     def mirror(self, chunk):
@@ -144,13 +229,14 @@ class Renderer:
         except Exception:
             self.dead = True
 
-    def _bar_bytes(self):
+    def _row_bytes(self):
         elapsed = int(time.monotonic() - self.t0)
         h, rem = divmod(elapsed, 3600)
         m, s = divmod(rem, 60)
         stamp = f"{h}:{m:02}:{s:02}" if h else f"{m:02}:{s:02}"
         spin = SPINNER[self.spin_i % len(SPINNER)]
-        return self.render(self.label, self.stage, spin, stamp, self.cols).encode()
+        return (self.row1(spin, self.phases, self.label, stamp, self.cols).encode(),
+                self.row2(self.stage, self.detail, self.cols).encode())
 
     def draw(self):
         if self.dead:
@@ -162,11 +248,19 @@ class Renderer:
                     self.rows, self.cols = self._size()
                     if self.mode == "bar":
                         self._set_region()
+                r1, r2 = self._row_bytes()
                 if self.mode == "bar":
-                    self.tty.write(b"\x1b7" + f"\x1b[{self.rows};1H\x1b[2K".encode()
-                                   + self._bar_bytes() + b"\x1b8")
+                    self.tty.write(b"\x1b7"
+                                   + f"\x1b[{self.rows - 1};1H\x1b[2K".encode() + r1
+                                   + f"\x1b[{self.rows};1H\x1b[2K".encode() + r2
+                                   + b"\x1b8")
                 else:
-                    self.tty.write(b"\r\x1b[2K" + self._bar_bytes())
+                    # compact: a two-line in-place block (no firehose to share
+                    # the terminal with) — move back up over the previous draw
+                    if self.compact_drawn:
+                        self.tty.write(b"\r\x1b[1A")
+                    self.tty.write(b"\x1b[2K" + r1 + b"\n\x1b[2K" + r2)
+                    self.compact_drawn = True
                 self.tty.flush()
         except Exception:
             self.dead = True
@@ -178,12 +272,23 @@ class Renderer:
             self.draw()
 
     def on_line(self, line):
+        say = re.search(r"==> (.{1,80})", line)
+        if say:
+            new_stage = stage_for(say.group(1).rstrip())
+            if new_stage:
+                # A stage-mapped say-line starts a fresh stage: clearing the
+                # detail here keeps the slow row from echoing itself — detail
+                # repopulates from the fast anchors (pacman, builds, markers).
+                self.stage = new_stage
+                self.detail = ""
+                self.draw()
+                return
         for pattern, build in ANCHORS:
             m = pattern.search(line)
             if m:
-                stage = build(m)
-                if stage != self.stage:
-                    self.stage = stage
+                detail = build(m)
+                if detail != self.detail:
+                    self.detail = detail
                     self.draw()
                 return
 
@@ -197,6 +302,8 @@ class Renderer:
                     self._reset_region()
                 else:
                     self.tty.write(b"\r\x1b[2K")
+                    if self.compact_drawn:
+                        self.tty.write(b"\x1b[1A\x1b[2K")
                 self.tty.flush()
         except Exception:
             pass
@@ -206,19 +313,17 @@ def main():
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--mode", choices=["bar", "compact"], required=True)
     ap.add_argument("--phase", required=True)
-    ap.add_argument("--num", type=int)
-    ap.add_argument("--total", type=int)
+    ap.add_argument("--phases", default="",
+                    help="breadcrumb: name:status[,name:status...] (done|current|pending)")
     args = ap.parse_args()
 
-    label = args.phase
-    if args.num and args.total:
-        label = f"{args.phase} ({args.num}/{args.total})"
+    phases = parse_phases(args.phases)
 
     out = sys.stdout.buffer
     renderer = None
     try:
         tty = open("/dev/tty", "r+b", buffering=0)
-        renderer = Renderer(tty, args.mode, label)
+        renderer = Renderer(tty, args.mode, args.phase, phases)
         signal.signal(signal.SIGWINCH,
                       lambda *_: setattr(renderer, "resized", True))
     except Exception:
