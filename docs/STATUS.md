@@ -69,14 +69,17 @@ Facts:
   [PR #101](https://github.com/amasover/dotfiles/pull/101) **merged 2026-07-10**; issue open for
   the evidence run (interrupt + resume), pending the parked VM's quarantine decision —
   its bootstrap is held on evdi-dkms/displaylink (`aur-quarantine auto <pkg>` in-guest, or age-out).
-- **2.21 progress mode** ([#73](https://github.com/amasover/dotfiles/issues/73)): grilled
-  (8 decisions on the issue, incl. the guest pty fix + rich dep),
-  [PR #102](https://github.com/amasover/dotfiles/pull/102) **open**. Attended transcripts
-  pending the same VM unpark.
-- Newly ticketed: **2.32** ([#100](https://github.com/amasover/dotfiles/issues/100))
-  quarantine hold messages misdiagnose (split from the #98 grill); **2.33**
-  ([#103](https://github.com/amasover/dotfiles/issues/103)) pre-flight quarantine holds —
-  the 10:53 run burned 3 sync attempts discovering 2 age-holds one crash at a time.
+- **2.21 progress mode** ([#73](https://github.com/amasover/dotfiles/issues/73)):
+  [PR #102](https://github.com/amasover/dotfiles/pull/102) **merged 2026-07-10** (grill decisions
+  on the issue; iterated live: 3-row bar, responsive step strip, VM_HARNESS_BRANCH for pre-merge
+  guest testing). Issue open for attended transcripts from a green run.
+- **2.32 + 2.33 + 2.22** ([#100](https://github.com/amasover/dotfiles/issues/100),
+  [#103](https://github.com/amasover/dotfiles/issues/103), [#75](https://github.com/amasover/dotfiles/issues/75)):
+  [PR #104](https://github.com/amasover/dotfiles/pull/104) **open**, one PR by Aaron's call —
+  pre-flight verdicts the whole non-repo set before the first sync (no more one-crash-per-hold),
+  gentle PKGBUILD cache warm kills the AUR clone burst, hold deaths name the real cause.
+  Evidence for all three (+ 2.21/2.31): one fresh unattended VM run
+  (`VM_HARNESS_BRANCH=story/2.33-preflight-holds` until merge).
   Everything else lives on the board.
 
 ## Standing warnings
