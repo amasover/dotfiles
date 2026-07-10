@@ -124,13 +124,13 @@ Issue: [#34](https://github.com/amasover/dotfiles/issues/34)
 
 ---
 
-### Story 4.4: Enforce secret scanning with a pre-commit hook
+### Story 4.4: Enforce secret scanning with a pre-commit hook ✅
 
 As the repo owner,
 I want the Story 1.4 secret scan to run automatically before each commit,
 So that secret hygiene does not depend on anyone remembering to run it.
 
-Issue: [#35](https://github.com/amasover/dotfiles/issues/35)
+Issue: [#35](https://github.com/amasover/dotfiles/issues/35) (closed, PR #90)
 
 **Acceptance criteria:**
 
