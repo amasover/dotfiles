@@ -1,28 +1,7 @@
 # Path to your oh-my-zsh installation.
 export ZSH=$HOME/.oh-my-zsh
-[work-alias]() {
-    export TERRAGRUNT_SOURCE="[work-ref]"
-}
-[work-alias]() {
-    export TERRAGRUNT_SOURCE="[work-ref]"
-}
-tenant() {
-    export TERRAGRUNT_SOURCE="[work-ref]"
-}
-deployment() {
-    export TERRAGRUNT_SOURCE="[work-ref]"
-}
-browser_auth() {
-    export TERRAGRUNT_SOURCE="[work-ref]"
-}
-metastore() {
-    export TERRAGRUNT_SOURCE="[work-ref]"
-}
 pager() {
     vim -R -M -c "setl filetype=yaml" -
-}
-[work-alias]() {
-    uv run python "/home/$USER/code/[work-repo]/scripts/[work-alias]-cli/src/[work-alias]-cli/main.py" "$@"
 }
 export TG_LOG_FORMAT="bare"
 
