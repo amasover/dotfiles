@@ -66,35 +66,54 @@ local function read_set(path)
   return t
 end
 
--- The shared trust policy — one decision ladder for both hooks (2.6 upgrades,
--- 2.10 installs). Precedence: maintainer-change (hard stop, even if exempted)
--- > unaccepted orphan > exempt > age. Returns nil to allow, or a hold table
--- { code, why, remedies }. `known` is the baseline entry: nil = never seen
--- (TOFU: allowed unless orphaned/young), "" = trusted-as-orphan via accept.
+-- The shared trust policy lives in quarantine-policy.lua (Story 2.28), so the
+-- chaotic-aur PreTransaction gate applies the identical ladder. Thin wrapper
+-- keeps the exempt-pass log line (the module is yay-global-free by design).
+-- yay prepends this file's directory to package.path (>= 13.0.1).
+local policy = require("quarantine-policy")
 local function classify(pkg, mt, known, is_exempt, age_days, days, version)
-  if known ~= nil and known ~= mt then
-    return { code = "maintainer-change",
-      why = string.format("MAINTAINER CHANGED ('%s' -> '%s'); possible takeover",
-        known ~= "" and known or "ORPHANED", mt ~= "" and mt or "ORPHANED"),
-      remedies = { "trust:  aur-quarantine accept " .. pkg .. "   (after verifying on the AUR)" } }
-  end
-  if mt == "" and known == nil then
-    return { code = "orphan", why = "ORPHANED (no maintainer); adoption-attack risk",
-      remedies = { "trust:  aur-quarantine accept " .. pkg .. "   (after verifying on the AUR)" } }
-  end
-  if is_exempt then
+  local hold, pass = policy.classify(pkg, mt, known, is_exempt, age_days, days, version)
+  if pass == "exempt" then
     yay.log.info("aur-quarantine: " .. pkg .. " is auto-exempt; allowing latest")
-    return nil
   end
-  if days > 0 and (age_days == nil or age_days < days) then
-    return { code = "age",
-      why = string.format("version %s is %s old (< %dd quarantine)",
-        version or "?", age_days and (age_days .. "d") or "of unknown age", days),
-      remedies = {
-        "step:   aur-quarantine update " .. pkg .. "   (newest vetted older version, if any)",
-        "auto:   aur-quarantine auto "   .. pkg .. "   (always take immediately; maintainer changes still held)" } }
+  return hold
+end
+
+-- Chaotic-AUR ships the repo's own two infra packages that never exist in the
+-- AUR — identity checks can't apply; they are vouched for by the lsigned repo
+-- key instead (Story 2.28).
+local chaotic_infra = { ["chaotic-keyring"] = true, ["chaotic-mirrorlist"] = true }
+
+-- One batched AUR RPC call. Returns { [name] = { mt = maintainer ("" = orphan),
+-- lm = last_modified or nil } } or nil on any failure (callers fail closed).
+-- AUR pkgnames are [a-z0-9@._+-] only; anything shell-unsafe is refused.
+local function rpc_info(names)
+  local args = {}
+  for _, n in ipairs(names) do
+    if n:match("[^%w@._+-]") then return nil end
+    table.insert(args, "--data-urlencode 'arg[]=" .. n .. "'")
   end
-  return nil
+  local p = io.popen("curl -fsG --max-time 20 " .. table.concat(args, " ")
+    .. " 'https://aur.archlinux.org/rpc/v5/info' 2>/dev/null")
+  if not p then return nil end
+  local resp = p:read("*a") or ""
+  p:close()
+  -- v5 info results are flat objects (inner arrays use [], never {}), so
+  -- %b{} splits the results array cleanly. Greedy (.*)%] is anchored by the
+  -- results array's own closing bracket — no later field is an array.
+  local body = resp:match('"results":%s*%[(.*)%]')
+  if not body then return nil end
+  local by_name = {}
+  for obj in body:gmatch("%b{}") do
+    local name = obj:match('"Name":"([^"]+)"')
+    if name then
+      by_name[name] = {
+        mt = obj:match('"Maintainer":"([^"]*)"') or "",
+        lm = tonumber(obj:match('"LastModified":(%d+)')),
+      }
+    end
+  end
+  return by_name
 end
 
 yay.create_autocmd("UpgradeSelect", {
@@ -132,6 +151,23 @@ yay.create_autocmd("UpgradeSelect", {
       table.insert(report, " [!] " .. block)
     end
 
+    -- chaotic-aur candidates first (Story 2.28): repo payloads carry no AUR
+    -- metadata, so one batched RPC supplies maintainer + age for all of them.
+    local chaotic_names = {}
+    for _, up in ipairs(event.data.upgrades or {}) do
+      if up.repository == "chaotic-aur" and not chaotic_infra[up.name] then
+        table.insert(chaotic_names, up.name)
+      end
+    end
+    local cinfo = {}
+    if #chaotic_names > 0 then
+      cinfo = rpc_info(chaotic_names)
+      if cinfo == nil then
+        cinfo = {}
+        yay.log.warn("aur-quarantine: AUR RPC unreachable — holding all chaotic-aur upgrades (fail-closed)")
+      end
+    end
+
     for _, up in ipairs(event.data.upgrades or {}) do
       if up.repository == "aur" then
         local age_days = nil
@@ -141,6 +177,17 @@ yay.create_autocmd("UpgradeSelect", {
         local verdict = classify(up.name, up.maintainer or "", trusted[up.name],
           exempt[up.name], age_days, days, up.remote_version)
         if verdict then hold(up.name, verdict.why, verdict.remedies) end
+      elseif up.repository == "chaotic-aur" and not chaotic_infra[up.name] then
+        local info = cinfo[up.name]
+        if info == nil then
+          hold(up.name, "chaotic-aur binary not verifiable via AUR RPC (failing closed)",
+            { "transient? retry later — or bypass this run:  AUR_QUARANTINE_BYPASS=1 yay ..." })
+        else
+          local age_days = info.lm and math.floor((now - info.lm) / 86400) or nil
+          local verdict = classify(up.name, info.mt, trusted[up.name],
+            exempt[up.name], age_days, days, up.remote_version)
+          if verdict then hold(up.name, verdict.why, verdict.remedies) end
+        end
       end
     end
 
@@ -170,35 +217,6 @@ yay.create_autocmd("UpgradeSelect", {
 -- exclude a single base (upstream design) — a policy violation aborts the
 -- whole transaction via yay.abort(), so nothing partial happens. Bootstrap's
 -- unattended sync loop reads held-install.tsv and auto-steps age holds.
-
--- One batched RPC call for every pkgname in the base. Returns
--- { [name] = maintainer } ("" = orphaned) or nil on any failure (fail-closed).
--- AUR pkgnames are [a-z0-9@._+-] only; anything shell-unsafe is refused.
-local function rpc_maintainers(names)
-  local args = {}
-  for _, n in ipairs(names) do
-    if n:match("[^%w@._+-]") then return nil end
-    table.insert(args, "--data-urlencode 'arg[]=" .. n .. "'")
-  end
-  local p = io.popen("curl -fsG --max-time 20 " .. table.concat(args, " ")
-    .. " 'https://aur.archlinux.org/rpc/v5/info' 2>/dev/null")
-  if not p then return nil end
-  local resp = p:read("*a") or ""
-  p:close()
-  -- v5 info results are flat objects (inner arrays use [], never {}), so
-  -- %b{} splits the results array cleanly. Greedy (.*)%] is anchored by the
-  -- results array's own closing bracket — no later field is an array.
-  local body = resp:match('"results":%s*%[(.*)%]')
-  if not body then return nil end
-  local by_name = {}
-  for obj in body:gmatch("%b{}") do
-    local name = obj:match('"Name":"([^"]+)"')
-    if name then
-      by_name[name] = obj:match('"Maintainer":"([^"]*)"') or ""
-    end
-  end
-  return by_name
-end
 
 yay.create_autocmd("AURPreInstall", {
   desc = "AUR quarantine: gate installs on age / orphan / maintainer vs baseline",
@@ -230,7 +248,7 @@ yay.create_autocmd("AURPreInstall", {
     for _, p in ipairs(event.data.packages or {}) do table.insert(names, p.name) end
     if #names == 0 then return end
 
-    local maint = rpc_maintainers(names)
+    local maint = rpc_info(names)
     if maint == nil then
       hold(names[1], "rpc",
         "AUR RPC unreachable — cannot verify maintainer/orphan state (failing closed)",
@@ -243,12 +261,12 @@ yay.create_autocmd("AURPreInstall", {
     end
 
     for _, pkg in ipairs(names) do
-      local mt = maint[pkg]
-      if mt == nil then
+      local info = maint[pkg]
+      if info == nil then
         hold(pkg, "rpc", "not found in AUR RPC — cannot verify (failing closed)",
           { "retry, or bypass this run:  AUR_QUARANTINE_BYPASS=1 yay ..." })
       end
-      local verdict = classify(pkg, mt, trusted[pkg], exempt[pkg], age_days, days,
+      local verdict = classify(pkg, info.mt, trusted[pkg], exempt[pkg], age_days, days,
         event.data.version)
       if verdict then hold(pkg, verdict.code, verdict.why, verdict.remedies) end
     end
