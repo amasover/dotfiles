@@ -594,6 +594,44 @@ Issue: [#83](https://github.com/amasover/dotfiles/issues/83) · Origin: the 2026
 
 ---
 
+### Story 2.27: vm-harness — root partition must fill the disk
+
+As the repo owner,
+I want the VM's root partition sized from `DISK_SIZE` instead of a hard-coded 38 GiB,
+So that the disk the harness allocates is actually usable and full-profile bootstraps stop dying on ENOSPC.
+
+Issue: [#87](https://github.com/amasover/dotfiles/issues/87) · Origin: the 2026-07-08 unattended bootstrap died mid-AUR-builds with ENOSPC — 2.7's disk-sizing fix bumped the volume to `$DISK_SIZE` (default 80G) but the archinstall seed-config layout still pinned root at 38 GiB, leaving half the disk unallocated; the workstation set's caches (12G yay + 4.8G pacman at death) fill 38G before the sync finishes.
+
+**Acceptance criteria:**
+
+- Given the seed-config heredoc, the root partition size is computed from `DISK_SIZE` (disk minus ESP and tail slack), so `VM_HARNESS_DISK` overrides propagate to the layout
+- Given a fresh `create → install`, `df /` reports roughly the full disk size
+- Given the already-running VM, an in-place grow (`sfdisk -N 2` expand + `resize2fs`) rescues it without a recreate
+
+**Evidence artifact:** fresh-create `df /` output + the interrupted bootstrap resuming past the ENOSPC point.
+
+---
+
+### Story 2.28: Chaotic-AUR binaries for supported packages — same gating as AUR
+
+As the repo owner,
+I want declared AUR packages that [Chaotic-AUR](https://aur.chaotic.cx/) pre-builds installed as binaries from that repo,
+So that installs and VM bootstraps skip long local builds without loosening the AUR trust gates.
+
+Issue: [#89](https://github.com/amasover/dotfiles/issues/89) · Chaotic-AUR is an automated build farm for AUR packages (GitLab CI since infra 4.0, GPG-signed, `chaotic-keyring` + `chaotic-mirrorlist` + a `[chaotic-aur]` pacman.conf entry). Trust notes: it auto-builds the same PKGBUILDs, so it inherits AUR's trust model wholesale — a weaponized package ships from chaotic as fast as from AUR, minus even the local build-time inspection moment; it sometimes patches builds ("interferes"), adding the chaotic team as a trusted party; and because pacman/yay prefer a repo hit over AUR, its packages silently stop flowing through the yay Lua quarantine hook. The gate has to follow the packages. Design input: [aur-malware-mitigation.md](../knowledge/reference/aur-malware-mitigation.md); related: 2.22 (AUR clone-burst throttling), 2.10 (install-time gating).
+
+**Acceptance criteria:**
+
+- Given the bootstrap, the chaotic-aur repo is configured (key `3056513887B78AEB` lsigned, keyring + mirrorlist installed, pacman.conf entry after the official repos so core/extra always win) and declared packages chaotic carries install as prebuilt binaries; packages it doesn't carry (its banished list includes e.g. `gst-plugins-bad/ugly`) still build from AUR as today
+- Given a chaotic-sourced package, the same quarantine protections apply as for AUR builds (age-out delay, maintainer-change/orphan checks against the trust baseline) even though installs bypass yay — mechanism decided in-story (pacman hook, pre-sync check, or keeping gated packages yay-built)
+- Given a package Aaron wants built locally anyway, there is a deliberate opt-out that keeps it on the AUR path
+- Given the gate ships, `aur-malware-mitigation.md` documents how chaotic-sourced packages are covered
+- Given a fresh VM `up`, the chaotic-provided set installs without local builds and the log shows the gating intact
+
+**Evidence artifact:** bootstrap + pacman.conf diff, updated threat-model doc, and a VM run log showing binary installs with gating applied.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
