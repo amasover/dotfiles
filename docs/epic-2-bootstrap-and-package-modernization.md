@@ -236,7 +236,7 @@ So that a fresh-machine bootstrap doesn't install freshly-weaponized AUR package
 Issue: [#50](https://github.com/amasover/dotfiles/issues/50) (closed, PR #92) · Prerequisite for the first real-metal `bootstrap` run (Story 2.3); disposable 2.7 VM runs are exempt. Promotes the un-ticketed Story 2.6 follow-up (`AURPostDownload` gating); origin: 2026-07-02 grill of the 2.5 decision. Design input: [aur-malware-mitigation.md](../knowledge/reference/aur-malware-mitigation.md).
 
 **Acceptance criteria:**
-
+how do you recommend making it portable
 - Given an AUR package is being installed for the first time, when it is too new / orphaned / maintainer-changed vs the baseline, then an `AURPostDownload` hook warns and aborts, with an explicit bypass
 - Given the trusted-maintainer baseline is machine-local state today, when this story lands, then the baseline is portable to a new machine (mechanism decided in-story: YADM-tracked, encrypted, or seeded from the repo) so the bootstrap can restore trust state before first use
 - Given the 2.7 harness exists, when a fresh VM bootstrap installs the AUR set, then install-time holds behave as designed
@@ -624,7 +624,7 @@ Issue: [#89](https://github.com/amasover/dotfiles/issues/89) · Chaotic-AUR is a
 
 - Given the bootstrap, the chaotic-aur repo is configured (key `3056513887B78AEB` lsigned, keyring + mirrorlist installed, pacman.conf entry after the official repos so core/extra always win) and declared packages chaotic carries install as prebuilt binaries; packages it doesn't carry (its banished list includes e.g. `gst-plugins-bad/ugly`) still build from AUR as today
 - Given a chaotic-sourced package, the same quarantine protections apply as for AUR builds (age-out delay, maintainer-change/orphan checks against the trust baseline) even though installs bypass yay — mechanism decided in-story (pacman hook, pre-sync check, or keeping gated packages yay-built)
-- Given a package Aaron wants built locally anyway, there is a deliberate opt-out that keeps it on the AUR path
+- Given a package Aaron wants built locally for a given install, `yay -S aur/<pkg>` forces the AUR path, and the threat-model doc records that pacman/yay have no persistent per-package repo pin (a declared package chaotic carries installs as the chaotic binary)
 - Given the gate ships, `aur-malware-mitigation.md` documents how chaotic-sourced packages are covered
 - Given a fresh VM `up`, the chaotic-provided set installs without local builds and the log shows the gating intact
 
