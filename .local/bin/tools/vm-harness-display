@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""vm-harness-display — attended-terminal renderer for vm-harness phases (Story 2.21).
+
+Sits in run_phase's attended pipeline:
+
+    phase-cmd 2>&1 | vm-harness-display --mode bar --phase boot [--num 4 --total 6] | scrub >> log
+
+Reads the raw stream on stdin and forwards it byte-faithfully to stdout (the
+scrub -> state-log leg). All rendering happens on /dev/tty:
+
+  bar:      the raw stream is mirrored to the tty (full firehose) while the
+            terminal's bottom row is pinned as a status bar — phase, latest
+            stage anchor, elapsed, spinner. A DECSTBM scroll region keeps the
+            firehose from scrolling the bar away; rich (if present) styles the
+            bar text. rich can't own a terminal shared with a raw pty stream,
+            hence the manual region instead of rich.Live (decisions on #73).
+  compact:  nothing raw reaches the tty — one in-place status line. run_phase
+            prints the failing log's tail on nonzero rc, so errors stay visible.
+
+Stage detection parses anchors already present in the stream (no new
+protocol): bootstrap's `==>` say-lines, HARNESS-* serial markers, pacman's
+`::` transaction lines, yay/makepkg build lines. Unknown output leaves the
+stage as-is. The pass-through must never break: any rendering failure
+disables rendering and the pump keeps going; exit code is always 0 (the
+pipeline's failure signal is the phase command itself, via pipefail).
+"""
+
+import argparse
+import fcntl
+import io
+import os
+import re
+import signal
+import struct
+import sys
+import termios
+import threading
+import time
+
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+# (pattern, stage text builder) — first match per line wins, most specific first.
+ANCHORS = [
+    (re.compile(r"==> Making package: (\S+)"), lambda m: f"building {m.group(1)}"),
+    (re.compile(r"HARNESS-CLOUDINIT-UP"), lambda m: "live ISO up (cloud-init)"),
+    (re.compile(r"HARNESS-ARCHINSTALL-EXIT:(\d+)"),
+     lambda m: f"archinstall exited rc={m.group(1)}"),
+    (re.compile(r":: Retrieving packages"), lambda m: "downloading packages"),
+    (re.compile(r":: Processing package changes"), lambda m: "installing packages"),
+    (re.compile(r":: Running pre-transaction hooks"), lambda m: "pre-transaction hooks"),
+    (re.compile(r":: Running post-transaction hooks"), lambda m: "post-transaction hooks"),
+    (re.compile(r"bootstrap: sync attempt (\d+) failed"),
+     lambda m: f"sync attempt {m.group(1)} failed — retrying"),
+    (re.compile(r"aur-quarantine: HOLD (\S+)"), lambda m: f"quarantine hold: {m.group(1)}"),
+    (re.compile(r"==> (.{1,80})"), lambda m: m.group(1).rstrip()),
+]
+
+
+def make_render(cols_hint):
+    """Return a callable rendering the bar line to an ANSI string.
+
+    rich when importable (styled), plain text otherwise — never a hard dep."""
+    try:
+        from rich.console import Console
+        from rich.text import Text
+
+        def render(label, stage, spin, elapsed, cols):
+            text = Text()
+            text.append(f" {spin} ", style="bold cyan")
+            text.append(label, style="bold")
+            if stage:
+                text.append("  ·  ")
+                text.append(stage, style="yellow")
+            text.append("  ·  ")
+            text.append(elapsed, style="dim")
+            text.truncate(max(cols - 1, 8), overflow="ellipsis")
+            console = Console(file=io.StringIO(), force_terminal=True, width=cols)
+            console.print(text, end="")
+            return console.file.getvalue()
+
+        return render
+    except Exception:
+        def render(label, stage, spin, elapsed, cols):
+            line = f" {spin} {label}"
+            if stage:
+                line += f"  ·  {stage}"
+            line += f"  ·  {elapsed}"
+            return line[: max(cols - 1, 8)]
+
+        return render
+
+
+class Renderer:
+    """Owns /dev/tty: firehose mirroring (bar mode) + the status display.
+
+    One lock covers every tty write so bar redraws never interleave with a
+    mirrored chunk's escape sequences. The SIGWINCH handler only sets a flag —
+    taking the lock in a signal handler could deadlock against the main
+    thread's own write — and the ticker applies the resize."""
+
+    def __init__(self, tty, mode, label):
+        self.tty = tty
+        self.mode = mode
+        self.label = label
+        self.stage = ""
+        self.t0 = time.monotonic()
+        self.lock = threading.Lock()
+        self.resized = False
+        self.dead = False
+        self.spin_i = 0
+        self.rows, self.cols = self._size()
+        self.render = make_render(self.cols)
+        if self.mode == "bar":
+            self._set_region()
+        self.draw()
+        self.ticker = threading.Thread(target=self._tick, daemon=True)
+        self.ticker.start()
+
+    def _size(self):
+        try:
+            r, c = struct.unpack("HHHH", fcntl.ioctl(self.tty, termios.TIOCGWINSZ, b"\0" * 8))[:2]
+            return (r or 24), (c or 80)
+        except Exception:
+            return 24, 80
+
+    def _set_region(self):
+        # Reserve the bottom row: scroll region = rows 1..N-1, then park the
+        # cursor inside the region so the next output can't land on the bar.
+        self.tty.write(b"\x1b7" + f"\x1b[1;{self.rows - 1}r".encode() + b"\x1b8"
+                       + f"\x1b[{self.rows - 1};1H".encode())
+        self.tty.flush()
+
+    def _reset_region(self):
+        self.tty.write(b"\x1b[r" + f"\x1b[{self.rows};1H\x1b[2K".encode())
+        self.tty.flush()
+
+    def mirror(self, chunk):
+        if self.dead or self.mode != "bar":
+            return
+        try:
+            with self.lock:
+                self.tty.write(chunk)
+                self.tty.flush()
+        except Exception:
+            self.dead = True
+
+    def _bar_bytes(self):
+        elapsed = int(time.monotonic() - self.t0)
+        h, rem = divmod(elapsed, 3600)
+        m, s = divmod(rem, 60)
+        stamp = f"{h}:{m:02}:{s:02}" if h else f"{m:02}:{s:02}"
+        spin = SPINNER[self.spin_i % len(SPINNER)]
+        return self.render(self.label, self.stage, spin, stamp, self.cols).encode()
+
+    def draw(self):
+        if self.dead:
+            return
+        try:
+            with self.lock:
+                if self.resized:
+                    self.resized = False
+                    self.rows, self.cols = self._size()
+                    if self.mode == "bar":
+                        self._set_region()
+                if self.mode == "bar":
+                    self.tty.write(b"\x1b7" + f"\x1b[{self.rows};1H\x1b[2K".encode()
+                                   + self._bar_bytes() + b"\x1b8")
+                else:
+                    self.tty.write(b"\r\x1b[2K" + self._bar_bytes())
+                self.tty.flush()
+        except Exception:
+            self.dead = True
+
+    def _tick(self):
+        while not self.dead:
+            time.sleep(0.5)
+            self.spin_i += 1
+            self.draw()
+
+    def on_line(self, line):
+        for pattern, build in ANCHORS:
+            m = pattern.search(line)
+            if m:
+                stage = build(m)
+                if stage != self.stage:
+                    self.stage = stage
+                    self.draw()
+                return
+
+    def close(self):
+        # Always try to undo the scroll region — even after a render error
+        # (dead=True): leaving DECSTBM set would wedge the caller's terminal.
+        self.dead = True
+        try:
+            with self.lock:
+                if self.mode == "bar":
+                    self._reset_region()
+                else:
+                    self.tty.write(b"\r\x1b[2K")
+                self.tty.flush()
+        except Exception:
+            pass
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=True)
+    ap.add_argument("--mode", choices=["bar", "compact"], required=True)
+    ap.add_argument("--phase", required=True)
+    ap.add_argument("--num", type=int)
+    ap.add_argument("--total", type=int)
+    args = ap.parse_args()
+
+    label = args.phase
+    if args.num and args.total:
+        label = f"{args.phase} ({args.num}/{args.total})"
+
+    out = sys.stdout.buffer
+    renderer = None
+    try:
+        tty = open("/dev/tty", "r+b", buffering=0)
+        renderer = Renderer(tty, args.mode, label)
+        signal.signal(signal.SIGWINCH,
+                      lambda *_: setattr(renderer, "resized", True))
+    except Exception:
+        renderer = None  # no tty / setup failure: plain pass-through
+
+    tail = b""
+    try:
+        while True:
+            chunk = os.read(0, 65536)
+            if not chunk:
+                break
+            try:
+                out.write(chunk)
+                out.flush()
+            except BrokenPipeError:
+                # Downstream (scrub/log leg) is gone; pipefail carries the real
+                # rc. Point fd 1 at /dev/null so interpreter teardown doesn't
+                # print a second BrokenPipeError to the terminal.
+                os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
+                break
+            if renderer:
+                renderer.mirror(chunk)
+                # Anchor scan: \r and \n both end a "line" (progress redraws).
+                tail += chunk
+                *lines, tail = re.split(rb"[\r\n]", tail)
+                if len(tail) > 8192:  # runaway unterminated line — keep the end
+                    tail = tail[-1024:]
+                for raw in lines:
+                    if raw:
+                        renderer.on_line(raw.decode("utf-8", "replace"))
+    finally:
+        if renderer:
+            renderer.close()
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

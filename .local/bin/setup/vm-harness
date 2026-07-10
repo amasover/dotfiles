@@ -54,6 +54,17 @@
 #   --detach   run under systemd-run --user and return at once: survives closing
 #              the terminal, logs plain output, sends a desktop notification on
 #              completion. Watch with `vm-harness tail`; ask `vm-harness status`.
+#   --progress compact display instead of the stream: one live line (phase ·
+#              stage · elapsed); a failing phase prints its log tail. Needs a
+#              tty; rejects --quiet/--detach (nothing would be watching).
+#   --plain    bare raw stream — no bottom bar.
+#
+# Attended display (Story 2.21): with a tty and python-rich present, phase
+# commands default to the raw firehose plus a pinned bottom status bar (phase ·
+# stage · elapsed) rendered by tools/vm-harness-display; --plain opts out, and
+# non-tty stdout, --quiet, --detach, or a missing python-rich fall back to
+# plain automatically. Stage text comes from anchors already in the stream
+# (bootstrap ==> lines, HARNESS-* markers, pacman :: lines, makepkg builds).
 #
 # Learned from the retired win10 VM: q35/KVM sized 4G/8vcpu worked, but it was
 # legacy-BIOS on a SATA bus — this harness uses OVMF/UEFI (matches the refind
@@ -83,6 +94,9 @@ CPUS="${VM_HARNESS_CPUS:-16}"
 LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/bootstrap-harness/logs"   # survives destroy
 RUN_STAMP=$(date +%Y%m%d-%H%M%S)    # one stamp per invocation — an `up` run's phases share it
 RESUME_HEADER=""                    # set by a resuming `up`; run_phase logs it once
+DISPLAY_TOOL="$HOME/.local/bin/tools/vm-harness-display"
+DISPLAY_MODE=plain                  # resolved at dispatch: bar | compact | plain
+PHASE_NUM=""; PHASE_TOTAL=""        # set by cmd_up so the display shows n/m
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'vm-harness: FATAL: %s\n' "$*" >&2; exit 1; }
@@ -126,6 +140,14 @@ run_phase() {
     fi
     if [[ $QUIET -eq 1 ]]; then
         "$@" 2>&1 | scrub >> "$log" || rc=$?
+    elif [[ -t 1 && "$DISPLAY_MODE" != plain ]]; then
+        # a human is watching with a display mode: the tool mirrors the raw
+        # stream to /dev/tty (bar mode) or swallows it (compact), renders the
+        # status row, and passes the bytes through to the scrub->log leg.
+        # It exits 0 no matter what — pipefail carries the phase's real rc.
+        "$@" 2>&1 | "$DISPLAY_TOOL" --mode "$DISPLAY_MODE" --phase "$phase" \
+                ${PHASE_NUM:+--num "$PHASE_NUM"} ${PHASE_TOTAL:+--total "$PHASE_TOTAL"} \
+            | scrub >> "$log" || rc=$?
     elif [[ -t 1 ]]; then
         # a human is watching: raw stream (colors, live progress bars) to the
         # terminal via /dev/tty, scrubbed copy to the log
@@ -138,6 +160,11 @@ run_phase() {
     fi
     echo "=== $phase done rc=$rc" >> "$log"
     [[ $QUIET -eq 1 ]] || echo "=== $phase done rc=$rc"
+    # Compact mode hid the stream — surface the failure before dying (2.21 AC).
+    if (( rc != 0 )) && [[ "$DISPLAY_MODE" == compact ]]; then
+        echo "--- last 40 log lines ($log):"
+        tail -n 40 "$log"
+    fi
     (( rc == 0 )) || die "phase '$phase' failed (rc=$rc) — VM left as-is for inspection. Log: $log. Next: read it (vm-harness tail $phase), fix the cause and re-run: vm-harness up (resumes here), or vm-harness destroy for a clean slate."
 }
 
@@ -647,9 +674,14 @@ cmd_up() {
     if [[ ! -f "$ISO" && ( " ${todo[*]} " == *" create "* || " ${todo[*]} " == *" install "* ) ]]; then
         run_phase fetch cmd_fetch
     fi
+    local i=0
+    PHASE_TOTAL=${#todo[@]}
     for p in "${todo[@]}"; do
+        i=$((i + 1))
+        PHASE_NUM=$i
         run_phase "$p" "cmd_$p"
     done
+    PHASE_NUM=""; PHASE_TOTAL=""
     say "up complete — installed, bootstrapped, checks green. Logs: $LOG_DIR/$RUN_STAMP-*.log"
 }
 
@@ -698,12 +730,16 @@ cmd_status() {
 QUIET=0
 [[ "${VM_HARNESS_QUIET:-0}" != 0 ]] && QUIET=1
 DETACH=0
+PROGRESS=0
+PLAIN=0
 while [[ "${1:-}" == -* ]]; do
     case "$1" in
-        --quiet)   QUIET=1 ;;
-        --detach)  DETACH=1 ;;
-        -h|--help) usage; exit 0 ;;
-        *)         die "unknown flag: $1   (try: vm-harness -h)" ;;
+        --quiet)    QUIET=1 ;;
+        --detach)   DETACH=1 ;;
+        --progress) PROGRESS=1 ;;
+        --plain)    PLAIN=1 ;;
+        -h|--help)  usage; exit 0 ;;
+        *)          die "unknown flag: $1   (try: vm-harness -h)" ;;
     esac
     shift
 done
@@ -714,6 +750,21 @@ CMD="${1:-}"
 if [[ "${VM_HARNESS_DETACHED:-0}" != 0 ]]; then
     QUIET=1
     trap notify_done EXIT
+fi
+
+# Resolve the attended display (Story 2.21, decisions on #73). A display flag
+# combined with a mode where nothing watches is a mistake — reject loudly.
+# The bar default degrades to plain when anything it needs is missing; the
+# tool itself renders unstyled if python-rich is absent (styling only).
+if (( PROGRESS )); then
+    (( DETACH ))    && die "--progress needs a watching terminal — it cannot combine with --detach"
+    (( QUIET ))     && die "--progress needs a watching terminal — it cannot combine with --quiet"
+    (( PLAIN ))     && die "--progress and --plain contradict each other"
+    [[ -t 1 ]]      || die "--progress needs a tty (stdout is redirected)"
+    DISPLAY_MODE=compact
+elif (( PLAIN == 0 && QUIET == 0 )) && [[ -t 1 && -x "$DISPLAY_TOOL" ]] \
+        && command -v python3 >/dev/null; then
+    DISPLAY_MODE=bar
 fi
 
 if [[ $DETACH -eq 1 ]]; then

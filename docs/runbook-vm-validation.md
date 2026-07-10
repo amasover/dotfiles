@@ -36,6 +36,15 @@ timestamp so they sort as a set. The terminal keeps the raw colorful stream;
   phase as an `up` run advances — including `install`, whose serial console is
   streamed into its phase log (when sudo was available). `vm-harness tail
   install` follows the raw serial file itself (sudo — root-owned in the workdir).
+- **Attended display** (Story 2.21, decisions on [#73](https://github.com/amasover/dotfiles/issues/73)):
+  with a tty, phase commands show the raw firehose plus a pinned bottom status
+  bar — phase n/m · stage · elapsed, rendered by `tools/vm-harness-display`
+  (python-rich styles it; unstyled without). `--progress` swaps to a compact
+  one-line status instead of the stream (a failing phase prints its log's last
+  40 lines); `--plain` restores the bare stream. `--quiet`/`--detach`/non-tty
+  fall back to plain automatically and reject `--progress` loudly. The guest
+  sync runs under a pty (script(1)) so pacman's own download bars render live;
+  state logs keep one final 100% line per package instead of every redraw.
 - **Walk away:** `vm-harness --detach up` runs under `systemd-run --user` — it
   survives the closed terminal, logs plain output, and sends a desktop
   notification on completion (success or failure). `vm-harness status` shows
