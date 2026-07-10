@@ -45,6 +45,13 @@ import time
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
+# The guest tty echoes terminal replies (cursor-position ...R / window-size
+# ...t reports) as literal '^[[' bytes — printable noise on the mirrored
+# firehose. scrub already drops them from the state logs; this pair cleans
+# the tty mirror only (the stdout leg stays byte-faithful for the log).
+CARET_REPLY = re.compile(rb"\^\[\[[0-9;]*[Rt]")
+CARET_PARTIAL = re.compile(rb"\^(\[(\[[0-9;]{0,24})?)?$")
+
 # Fast-moving detail: (pattern, text builder) — first match per line wins.
 ANCHORS = [
     (re.compile(r"==> Making package: (\S+)"), lambda m: f"building {m.group(1)}"),
@@ -140,32 +147,48 @@ def make_render():
             text.append(elapsed, style="dim")
             return to_ansi(text, cols)
 
+        def _step_name(text, i, step_idx):
+            name = BOOTSTRAP_STEPS[i][0]
+            if i < step_idx:
+                text.append(name, style="green")
+            elif i == step_idx:
+                text.append(name.upper(), style="bold yellow")
+            else:
+                text.append(name, style="dim")
+
         def row2(step_idx, cols):
+            # Responsive: full names when they fit; otherwise dot meter (global
+            # position) + a window of names around the current step, shrinking
+            # the window until it fits; last resort is meter + counter + name.
             if step_idx is None:
                 return ""
-            text = Text()
-            text.append("   ")
-            for i, (name, _) in enumerate(BOOTSTRAP_STEPS):
-                if i:
-                    text.append(" · ", style="dim")
-                if i < step_idx:
-                    text.append(name, style="green")
-                elif i == step_idx:
-                    text.append(name.upper(), style="bold yellow")
-                else:
-                    text.append(name, style="dim")
-            if text.cell_len <= cols - 1:
-                return to_ansi(text, cols)
-            # narrow terminal: dot meter + counter + current step name
             n = len(BOOTSTRAP_STEPS)
             text = Text()
             text.append("   ")
-            text.append("●" * step_idx, style="green")
-            text.append("▶", style="bold yellow")
-            text.append("○" * (n - step_idx - 1), style="dim")
-            text.append(f" {step_idx + 1}/{n} ", style="dim")
-            text.append(BOOTSTRAP_STEPS[step_idx][0].upper(), style="bold yellow")
-            return to_ansi(text, cols)
+            for i in range(n):
+                if i:
+                    text.append(" · ", style="dim")
+                _step_name(text, i, step_idx)
+            if text.cell_len <= cols - 1:
+                return to_ansi(text, cols)
+            for win in (3, 2, 1, 0):
+                text = Text()
+                text.append("   ")
+                text.append("●" * step_idx, style="green")
+                text.append("▶", style="bold yellow")
+                text.append("○" * (n - step_idx - 1), style="dim")
+                text.append(f" {step_idx + 1}/{n}  ", style="dim")
+                lo, hi = max(0, step_idx - win), min(n, step_idx + win + 1)
+                if lo > 0:
+                    text.append("… ", style="dim")
+                for i in range(lo, hi):
+                    if i > lo:
+                        text.append(" · ", style="dim")
+                    _step_name(text, i, step_idx)
+                if hi < n:
+                    text.append(" …", style="dim")
+                if text.cell_len <= cols - 1 or win == 0:
+                    return to_ansi(text, cols)
 
         def row3(detail, cols):
             if not detail:
@@ -196,16 +219,20 @@ def make_render():
         def row2(step_idx, cols):
             if step_idx is None:
                 return ""
-            names = []
-            for i, (name, _) in enumerate(BOOTSTRAP_STEPS):
-                names.append(name.upper() if i == step_idx else name)
+            n = len(BOOTSTRAP_STEPS)
+            names = [name.upper() if i == step_idx else name
+                     for i, (name, _) in enumerate(BOOTSTRAP_STEPS)]
             line = "   " + " · ".join(names)
             if len(line) <= cols - 1:
                 return line
-            n = len(BOOTSTRAP_STEPS)
-            return ("   " + "●" * step_idx + "▶" + "○" * (n - step_idx - 1)
-                    + f" {step_idx + 1}/{n} "
-                    + BOOTSTRAP_STEPS[step_idx][0].upper())[: max(cols - 1, 8)]
+            meter = "●" * step_idx + "▶" + "○" * (n - step_idx - 1) + f" {step_idx + 1}/{n}  "
+            for win in (3, 2, 1, 0):
+                lo, hi = max(0, step_idx - win), min(n, step_idx + win + 1)
+                window = " · ".join(names[lo:hi])
+                line = ("   " + meter + ("… " if lo > 0 else "")
+                        + window + (" …" if hi < n else ""))
+                if len(line) <= cols - 1 or win == 0:
+                    return line[: max(cols - 1, 8)]
 
         def row3(detail, cols):
             return ("   " + detail)[: max(cols - 1, 8)] if detail else ""
@@ -234,6 +261,7 @@ class Renderer:
         self.lock = threading.Lock()
         self.resized = False
         self.dead = False
+        self.mirror_carry = b""
         self.compact_drawn = False
         self.spin_i = 0
         self.rows, self.cols = self._size()
@@ -266,12 +294,23 @@ class Renderer:
         self.tty.write(f"\x1b[{self.rows - self.RESERVED};1H".encode())
         self.tty.flush()
 
-    def mirror(self, chunk):
+    def mirror(self, chunk, final=False):
         if self.dead or self.mode != "bar":
             return
         try:
+            data = CARET_REPLY.sub(b"", self.mirror_carry + chunk)
+            self.mirror_carry = b""
+            if not final:
+                # hold back a trailing partial reply so it can't slip through
+                # split across two chunks; flushed on the next call or at close
+                m = CARET_PARTIAL.search(data)
+                if m and m.start() < len(data):
+                    self.mirror_carry = data[m.start():]
+                    data = data[: m.start()]
+            if not data:
+                return
             with self.lock:
-                self.tty.write(chunk)
+                self.tty.write(data)
                 self.tty.flush()
         except Exception:
             self.dead = True
@@ -342,6 +381,7 @@ class Renderer:
                 return
 
     def close(self):
+        self.mirror(b"", final=True)   # flush any held-back partial reply
         # Always try to undo the scroll region — even after a render error
         # (dead=True): leaving DECSTBM set would wedge the caller's terminal.
         self.dead = True

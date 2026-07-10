@@ -89,6 +89,17 @@ byte-faithful
 0
 $
 
+--- display tool: caret-notation replies stripped from the tty mirror only ---
+
+The stdout (log) leg stays byte-faithful — scrub owns log cleaning — but the
+mirrored firehose on the tty drops the literal '^[[..R' reply noise.
+
+$ t=$(mktemp -d) && printf '%s\n' '^[[56;192R^[[56;192R[  OK  ] Reached target.' > "$t/in" && script -qec "sh -c '.local/bin/tools/vm-harness-display --mode bar --phase boot < $t/in > $t/out'" "$t/session" > /dev/null 2>&1; cmp -s "$t/in" "$t/out" && echo stdout-leg-byte-faithful; grep -c '56;192R' "$t/session" || true; grep -o 'Reached target.' "$t/session" | head -n 1
+stdout-leg-byte-faithful
+0
+Reached target.
+$
+
 --- vm-harness: display-flag rejections fire before any libvirt access ---
 
 $ .local/bin/setup/vm-harness --detach --progress status 2>&1 || true
