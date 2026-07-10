@@ -23,8 +23,12 @@
 #   boot       start the domain; streams the boot's serial console (sudo) and
 #              prints the NAT IP when the lease appears
 #   up         everything but destroy: fetch (only if no ISO is cached) → create →
-#              install → boot → bootstrap → check. Dies if the domain already
-#              exists — it never auto-destroys.
+#              install → boot → bootstrap → check. Resumable: completed phases are
+#              probed from live state (volumes exist, install media ejected, domain
+#              running with a lease) and skipped; bootstrap + check always re-run
+#              (bootstrap is idempotent — a converged guest is a fast no-op). A
+#              half-finished install (media still attached) is NOT resumable: up
+#              dies with the destroy remedy. It never auto-destroys.
 #   ip         print the VM's current IPv4
 #   exec CMD   run a command in the guest as root via the qemu agent (works in
 #              the live ISO too, where ssh isn't up yet — great for debugging)
@@ -34,7 +38,8 @@
 #   check      ssh in and assert: metapac unmanaged empty, services, session target
 #   tail [P]   follow the newest log live (or phase P's newest); `tail install`
 #              follows the guest serial log in the workdir instead (sudo)
-#   status     what's going on: detached units, domain state, newest log tail
+#   status     what's going on: detached units, domain state, where `up` would
+#              resume, newest log tail
 #   destroy    undefine domain + delete disk/seed volumes (cached ISO volume kept;
 #              logs kept too — they live outside the workdir)
 #
@@ -77,6 +82,7 @@ RAM="${VM_HARNESS_RAM:-12288}"      # MiB
 CPUS="${VM_HARNESS_CPUS:-16}"
 LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/bootstrap-harness/logs"   # survives destroy
 RUN_STAMP=$(date +%Y%m%d-%H%M%S)    # one stamp per invocation — an `up` run's phases share it
+RESUME_HEADER=""                    # set by a resuming `up`; run_phase logs it once
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'vm-harness: FATAL: %s\n' "$*" >&2; exit 1; }
@@ -105,6 +111,13 @@ run_phase() {
     mkdir -p "$LOG_DIR"
     ln -sfn "$log" "$LOG_DIR/latest-$phase.log"
     ln -sfn "$log" "$LOG_DIR/latest.log"
+    # A resumed `up` stamps its first log with what it skipped (association with
+    # the earlier run's set is this header plus timestamp order — no cross-run
+    # bookkeeping). Consumed on first use; cmd_up already said it on the terminal.
+    if [[ -n "$RESUME_HEADER" ]]; then
+        echo "$RESUME_HEADER" >> "$log"
+        RESUME_HEADER=""
+    fi
     if [[ $QUIET -eq 1 ]]; then
         "$@" 2>&1 | scrub >> "$log" || rc=$?
     elif [[ -t 1 ]]; then
@@ -119,7 +132,7 @@ run_phase() {
     fi
     echo "=== $phase done rc=$rc" >> "$log"
     [[ $QUIET -eq 1 ]] || echo "=== $phase done rc=$rc"
-    (( rc == 0 )) || die "phase '$phase' failed (rc=$rc) — VM left as-is for inspection. Log: $log. Next: read it (vm-harness tail $phase), fix and re-run the phase, or vm-harness destroy for a clean slate."
+    (( rc == 0 )) || die "phase '$phase' failed (rc=$rc) — VM left as-is for inspection. Log: $log. Next: read it (vm-harness tail $phase), fix the cause and re-run: vm-harness up (resumes here), or vm-harness destroy for a clean slate."
 }
 
 # Detached-run completion ping (best effort — no notification daemon, no harm).
@@ -564,19 +577,73 @@ cmd_destroy() {
     echo "  gone: domain '$VM_NAME', volumes, $WORKDIR   (logs kept: $LOG_DIR)"
 }
 
+# Where would `up` (re)start? Probes live state only — no logs (they outlive
+# destroy) and no state file (a second thing that can lie). Design: #98.
+#   create:  disk or seed volume missing (create re-deletes partials, so it's
+#            safe to re-enter after a mid-create death)
+#   install: volumes exist but no domain (virt-install defines the domain at
+#            start, so "no domain" means it never began)
+#   boot:    domain defined with media ejected (install's last act is the
+#            persistent eject) but not running / no lease yet
+#   bootstrap: domain running with a lease. bootstrap + check always re-run —
+#            bootstrap is idempotent (guarded steps, declarative sync) and a
+#            fresh green check is the evidence an `up` promises, so there is
+#            deliberately no "already up" answer.
+#   dead-install: domain defined but install media still attached — virt-install
+#            died partway; a half-provisioned disk is not resumable. Callers die
+#            with the destroy remedy (never auto-destroy).
+resume_point() {
+    if ! v dominfo "$VM_NAME" >/dev/null 2>&1; then
+        if [[ -z "$(vol_path "$VOL_DISK")" || -z "$(vol_path "$VOL_SEED")" ]]; then
+            echo create
+        else
+            echo install
+        fi
+        return 0
+    fi
+    if v domblklist "$VM_NAME" --details 2>/dev/null \
+            | awk '$2=="cdrom" && $4!="-" && $4!="" {n++} END{exit n?0:1}'; then
+        echo dead-install
+        return 0
+    fi
+    if [[ "$(v domstate "$VM_NAME" 2>/dev/null)" == "running" && -n "$(vm_ip)" ]]; then
+        echo bootstrap
+    else
+        echo boot
+    fi
+}
+
+die_dead_install() {
+    die "domain '$VM_NAME' still has install media attached — virt-install never finished, and a half-provisioned disk is not resumable (up never auto-destroys).
+    Next:  vm-harness destroy   then:  vm-harness up"
+}
+
 # The all-in-one: everything but destroy. Fetch only when no ISO is cached
-# (an explicit `fetch` stays the force-refresh); dies rather than clobber an
-# existing domain. Stops at the first failing phase (run_phase reports it) and
-# leaves the VM exactly as it died — inspect or destroy, your call.
+# (an explicit `fetch` stays the force-refresh). Resumes an interrupted run:
+# phases resume_point proves complete are skipped, the rest run in order.
+# Stops at the first failing phase (run_phase reports it) and leaves the VM
+# exactly as it died — re-run `up` to resume, or destroy.
 cmd_up() {
-    v dominfo "$VM_NAME" >/dev/null 2>&1 \
-        && die "domain '$VM_NAME' already exists — up never auto-destroys; run: vm-harness destroy first"
-    [[ -f "$ISO" ]] || run_phase fetch cmd_fetch
-    run_phase create cmd_create
-    run_phase install cmd_install
-    run_phase boot cmd_boot
-    run_phase bootstrap cmd_bootstrap
-    run_phase check cmd_check
+    local from p seen=0
+    local -a skipped=() todo=()
+    from=$(resume_point)
+    [[ "$from" == dead-install ]] && die_dead_install
+    for p in create install boot bootstrap check; do
+        [[ "$p" == "$from" ]] && seen=1
+        if (( seen )); then todo+=("$p"); else skipped+=("$p"); fi
+    done
+    if (( ${#skipped[@]} > 0 )); then
+        RESUME_HEADER="resume: skipped ${skipped[*]} (probed complete) — starting at $from"
+        say "$RESUME_HEADER"
+    fi
+    # create boots nothing, but install boots the ISO's kernel straight from
+    # the cache file — both need it present.
+    if [[ ! -f "$ISO" && ( " ${todo[*]} " == *" create "* || " ${todo[*]} " == *" install "* ) ]]; then
+        run_phase fetch cmd_fetch
+    fi
+    for p in "${todo[@]}"; do
+        run_phase "$p" "cmd_$p"
+    done
     say "up complete — installed, bootstrapped, checks green. Logs: $LOG_DIR/$RUN_STAMP-*.log"
 }
 
@@ -603,6 +670,15 @@ cmd_status() {
     if [[ -n "$units" ]]; then printf '%s\n' "$units" | sed 's/^/  /'; else echo "  none"; fi
     say "Domain '$VM_NAME'"
     echo "  $(v domstate "$VM_NAME" 2>/dev/null || echo 'not defined')"
+    say "Resume"
+    local rp
+    rp=$(resume_point)
+    if [[ "$rp" == dead-install ]]; then
+        echo "  not resumable: install media still attached (virt-install died partway)"
+        echo "  next: vm-harness destroy, then vm-harness up"
+    else
+        echo "  up would resume at: $rp"
+    fi
     say "Newest log"
     if [[ -e "$LOG_DIR/latest.log" ]]; then
         echo "  $(readlink -f "$LOG_DIR/latest.log")"
