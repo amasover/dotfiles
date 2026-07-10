@@ -143,13 +143,13 @@ Issue: [#35](https://github.com/amasover/dotfiles/issues/35) (closed, PR #90)
 
 ---
 
-### Story 4.5: Adopt shellcheck and shfmt for script validation
+### Story 4.5: Adopt shellcheck and shfmt for script validation ✅
 
 As the repo owner,
 I want shell scripts linted and formatted with standard tools,
 So that Epic 2/3 script cleanup has an objective validation signal.
 
-Issue: [#36](https://github.com/amasover/dotfiles/issues/36)
+Issue: [#36](https://github.com/amasover/dotfiles/issues/36) (closed, PR #91)
 
 **Acceptance criteria:**
 
