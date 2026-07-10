@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Functional test for chaotic-quarantine-gate: PATH-shims pacman + curl,
+# isolates state under a fake home (CHAOTIC_GATE_HOME test seam).
+set -uo pipefail
+S=$(mktemp -d)
+GATE="$(cd "$(dirname "$0")/../../.." && pwd)/.local/bin/tools/chaotic-quarantine-gate"
+FAKE="$S/gate-fake"
+trap 'rm -rf "$S"' EXIT
+rm -rf "$FAKE"
+mkdir -p "$FAKE/bin" "$FAKE/home/.config/yay" "$FAKE/home/.local/state/aur-quarantine"
+cp "$(dirname "$GATE")/../../../.config/yay/quarantine-policy.lua" "$FAKE/home/.config/yay/"
+
+cat >"$FAKE/bin/pacman" <<'EOF'
+#!/usr/bin/env bash
+# fake pacman -Si: packages named c-* live in chaotic-aur, everything else in extra
+pkg="${!#}"
+if [[ "$pkg" == c-* || "$pkg" == chaotic-* ]]; then
+  echo "Repository      : chaotic-aur"
+else
+  echo "Repository      : extra"
+fi
+EOF
+cat >"$FAKE/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+[[ "${FAKE_CURL_RC:-0}" != "0" ]] && exit "$FAKE_CURL_RC"
+printf '%s' "$FAKE_RPC_JSON"
+EOF
+chmod +x "$FAKE/bin/pacman" "$FAKE/bin/curl"
+
+export PATH="$FAKE/bin:$PATH" CHAOTIC_GATE_HOME="$FAKE/home"
+sdir="$FAKE/home/.local/state/aur-quarantine"
+now=$(date +%s)
+aged=$((now - 30 * 86400))
+young=$((now - 3 * 86400))
+
+json() { # name lm maint(or empty)
+    local m="null"
+    [[ -n "$3" ]] && m="\"$3\""
+    printf '{"resultcount":1,"results":[{"Name":"%s","LastModified":%s,"Maintainer":%s}],"version":5}' "$1" "$2" "$m"
+}
+
+fails=0
+check() { # label want got heldcode-or-'-'
+    local label="$1" want="$2" got="$3" wantcode="${4:--}"
+    local code="-"
+    [[ -s "$sdir/held-install.tssv" ]] 2>/dev/null || true
+    [[ -s "$sdir/held-install.tsv" ]] && code=$(cut -f2 "$sdir/held-install.tsv")
+    if [[ "$got" == "$want" && ("$wantcode" == "-" || "$code" == "$wantcode") ]]; then
+        echo "ok   $label (exit=$got code=$code)"
+    else
+        echo "FAIL $label: exit got=$got want=$want, code got=$code want=$wantcode"
+        fails=1
+    fi
+}
+run() {
+    rm -f "$sdir/held-install.tsv"
+    echo "$1" | "$GATE" >/dev/null 2>&1
+    echo $?
+}
+
+export FAKE_CURL_RC=0
+
+FAKE_RPC_JSON=$(json ignored 0 "")
+export FAKE_RPC_JSON
+check "non-chaotic target passes" 0 "$(run firefox)"
+
+FAKE_RPC_JSON=$(json c-young "$young" alice)
+export FAKE_RPC_JSON
+check "chaotic young held" 1 "$(run c-young)" age
+
+FAKE_RPC_JSON=$(json c-good "$aged" alice)
+export FAKE_RPC_JSON
+printf 'c-good\talice\n' >"$sdir/maintainers.tsv"
+check "chaotic aged trusted passes" 0 "$(run c-good)"
+
+FAKE_RPC_JSON=$(json c-good "$aged" mallory)
+export FAKE_RPC_JSON
+check "chaotic maintainer change held" 1 "$(run c-good)" maintainer-change
+rm -f "$sdir/maintainers.tsv"
+
+FAKE_RPC_JSON=$(json c-orph "$aged" "")
+export FAKE_RPC_JSON
+check "chaotic orphan held" 1 "$(run c-orph)" orphan
+
+FAKE_RPC_JSON=$(json c-young "$young" alice)
+export FAKE_RPC_JSON
+echo "c-young" >"$sdir/exempt.txt"
+check "chaotic young exempt passes" 0 "$(run c-young)"
+rm -f "$sdir/exempt.txt"
+
+export FAKE_CURL_RC=22
+export FAKE_RPC_JSON=""
+check "rpc failure held (fail closed)" 1 "$(run c-young)" rpc
+export FAKE_CURL_RC=0
+
+FAKE_RPC_JSON=$(json c-young "$young" alice)
+export FAKE_RPC_JSON
+touch "$sdir/bypass-once"
+check "bypass-once passes + consumed" 0 "$(run c-young)"
+[[ -f "$sdir/bypass-once" ]] && {
+    echo "FAIL bypass flag not consumed"
+    fails=1
+} || echo "ok   bypass flag consumed"
+
+check "chaotic infra skipped, no rpc" 0 "$(FAKE_CURL_RC=22 run chaotic-keyring)"
+
+rm -rf "$FAKE"
+((fails == 0)) && echo "ALL GATE CASES PASS" || exit 1
