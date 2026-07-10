@@ -31,7 +31,10 @@
 set -euo pipefail
 
 say() { printf '\n==> %s\n' "$*"; }
-die() { printf '\nbootstrap: FATAL: %s\n' "$*" >&2; exit 1; }
+die() {
+        printf '\nbootstrap: FATAL: %s\n' "$*" >&2
+                                                    exit 1
+}
 usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; }   # the header is the help
 
 CHECK=0
@@ -40,11 +43,15 @@ for arg in "$@"; do
     case "$arg" in
         --check)      CHECK=1 ;;
         --unattended) UNATTENDED=1 ;;   # harness/VM runs: pass tools their no-confirm flags
-        -h|--help)    usage; exit 0 ;;
+        -h | --help)
+                      usage
+                             exit 0
+                                    ;;
         *)            die "unknown argument: $arg   (try: bootstrap -h)" ;;
     esac
 done
-NC=(); [[ $UNATTENDED -eq 1 ]] && NC=(--noconfirm)
+NC=()
+       [[ $UNATTENDED -eq 1 ]] && NC=(--noconfirm)
 
 [[ $EUID -ne 0 ]] || die "run as your normal user, not root (sudo is invoked where needed)"
 command -v pacman >/dev/null || die "pacman not found — this bootstrap is Arch-only"
@@ -135,7 +142,7 @@ elif [[ $CHECK -eq 1 ]]; then
     echo "  would: create empty $ml"
 else
     mkdir -p "$(dirname "$ml")"
-    printf '# machine-local metapac group — untracked, never published\n[arch]\npackages = [\n]\n' > "$ml"
+    printf '# machine-local metapac group — untracked, never published\n[arch]\npackages = [\n]\n' >"$ml"
     echo "  created empty: $ml"
 fi
 
@@ -206,7 +213,10 @@ elif [[ $UNATTENDED -eq 1 ]]; then
     sync_ok=0
     sync_log=$(mktemp)
     for attempt in 1 2 3 4 5; do
-        metapac sync --no-confirm 2>&1 | tee "$sync_log" && { sync_ok=1; break; }
+        metapac sync --no-confirm 2>&1 | tee "$sync_log" && {
+                                                              sync_ok=1
+                                                                         break
+        }
         fatal=$(grep -m1 -E 'unresolvable package conflicts detected|target not found:' "$sync_log" || true)
         [[ -z "$fatal" ]] || die "sync failed deterministically — fix the declarations. Decisive line: $fatal"
         echo "bootstrap: sync attempt $attempt failed — retrying in 90s"
@@ -214,7 +224,10 @@ elif [[ $UNATTENDED -eq 1 ]]; then
         # yay reuses cached builds, so one bad .pkg.tar.zst poisons every retry.
         for f in "$HOME"/.cache/yay/*/*.pkg.tar.zst; do
             [[ -f "$f" ]] || continue
-            pacman -Qp "$f" >/dev/null 2>&1 || { echo "  purging corrupt $(basename "$f")"; rm -f "$f"; }
+            pacman -Qp "$f" >/dev/null 2>&1 || {
+                                                 echo "  purging corrupt $(basename "$f")"
+                                                                                            rm -f "$f"
+            }
         done
         sleep 90
     done

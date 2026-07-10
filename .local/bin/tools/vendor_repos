@@ -7,7 +7,7 @@ vendor_repos=(
 
 install_vendor() {
     for repo in "${vendor_repos[@]}"; do
-        (
+        (   
             repo_url=$(echo $repo | cut -d ' ' -f1)
             install_dir=~/$(echo $repo | cut -d ' ' -f2)
             repo_name=$(echo $repo_url | rev | cut -d '/' -f 1 | rev)

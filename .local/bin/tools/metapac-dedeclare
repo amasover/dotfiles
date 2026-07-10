@@ -42,8 +42,10 @@ fi
 # config (the machine-local group). Same discovery as metapac-drift-report.
 group_files=("$groups_dir"/*.toml)
 while IFS= read -r abs; do
-    if [[ -f "$abs" ]]; then group_files+=("$abs")
-    elif [[ -f "$abs.toml" ]]; then group_files+=("$abs.toml")
+    if [[ -f "$abs" ]]; then
+                             group_files+=("$abs")
+    elif [[ -f "$abs.toml" ]]; then
+                                    group_files+=("$abs.toml")
     fi
 done < <(grep -o '"/[^"]*"' "$config" | tr -d '"')
 
@@ -74,7 +76,7 @@ for file in "${group_files[@]}"; do
     for pkg in "${pkgs[@]}"; do
         edited=$(strip_pkg "$pkg" "$file")
         if [[ "$edited" != "$(cat "$file")" ]]; then
-            printf '%s\n' "$edited" > "$file"
+            printf '%s\n' "$edited" >"$file"
             echo "metapac-dedeclare: $pkg — removed from ${file##*/}$note"
         fi
     done

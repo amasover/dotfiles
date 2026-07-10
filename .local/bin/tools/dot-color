@@ -39,11 +39,8 @@ function color {
     printf "$1$2$Nocolor"
 }
 
-
-
-
 if [[ $1 == "-h" ]]; then
-    cat << EOF
+    cat <<EOF
     # Reset
     Nocolor='\033[0m'       # Text Reset
 
