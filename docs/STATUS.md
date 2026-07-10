@@ -53,12 +53,13 @@ Facts:
 - **4.4 pre-commit secret scan**: [PR #90](https://github.com/amasover/dotfiles/pull/90)
   **merged 2026-07-09**, #35 closed. Remaining live step for Aaron:
   `yadm gitconfig core.hooksPath .githooks` (after a yadm checkout places `~/.githooks`).
-- **4.5 shellcheck baseline** ([#36](https://github.com/amasover/dotfiles/issues/36)):
-  [PR #91](https://github.com/amasover/dotfiles/pull/91) open — validation runbook + 65-finding
-  baseline (evidence on #36); shfmt install still pending Aaron's approval.
-- Queue: **2.10** ([#50](https://github.com/amasover/dotfiles/issues/50)) gates any metal bootstrap run;
-  everything else lives on the board. Newly ticketed: **2.28** ([#89](https://github.com/amasover/dotfiles/issues/89))
-  Chaotic-AUR binaries with the same AUR gating; 2.27's spec retro-added to the epic 2 doc.
+- **2.10 AUR install gating** ([#50](https://github.com/amasover/dotfiles/issues/50)):
+  [PR #92](https://github.com/amasover/dotfiles/pull/92) open — AURPreInstall gate (shared
+  classify() with the upgrade hook; 19-case tracked harness at `.config/yay/hook-harness.lua`),
+  bootstrap auto-steps age holds, baseline rides the encrypted archive. After merge:
+  yadm pull + `yadm encrypt` (Aaron). Metal gate now confirmation-only.
+- Next: **2.28** ([#89](https://github.com/amasover/dotfiles/issues/89)) Chaotic-AUR binaries
+  with the same gating. Everything else lives on the board.
 
 ## Standing warnings
 
