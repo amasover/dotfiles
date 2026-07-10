@@ -381,13 +381,13 @@ fi
 # a failed clone is just retried by yay itself later.
 say "AUR PKGBUILD cache warm"
 if [[ $CHECK -eq 1 ]]; then
-    echo "  would: git clone each declared AUR pkgbase into ~/.cache/yay, \${AUR_SEED_DELAY:-1}s apart"
+    echo "  would: git clone each declared AUR pkgbase into ~/.cache/yay, \${AUR_SEED_DELAY:-0.1}s apart"
 elif [[ $UNATTENDED -eq 0 ]]; then
     echo "  attended run — skipped (day-to-day yay usage is not throttled; this serves VM bursts)"
 elif (( ${#candidates[@]} == 0 )); then
     echo "  no AUR-sourced packages — nothing to warm"
 else
-    seed_delay="${AUR_SEED_DELAY:-1}"
+    seed_delay="${AUR_SEED_DELAY:-0.1}"
     warmed=0
     present=0
     failed=0
