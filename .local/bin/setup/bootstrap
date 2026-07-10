@@ -177,13 +177,33 @@ else
     rm -rf "$tmp"
 fi
 
-# --- 5. metapac (itself an AUR package) --------------------------------------
-# Quarantine hold handling (Story 2.10), shared by this step and the sync loop:
-# the AURPreInstall hook aborts and names the hold in held-install.tsv. An
-# "age" hold is stepped to the newest aged version — the same selection model
-# as update's stepping. Identity holds (orphan / maintainer-change) and RPC
-# failures are a human decision — die with the remedy.
-held_install_file="${XDG_STATE_HOME:-$HOME/.local/state}/aur-quarantine/held-install.tsv"
+# --- 4b. quarantine prerequisites (Story 2.10) --------------------------------
+# Two things the install gate needs before the first yay install:
+#  * jq — aur-quarantine's RPC parsing; must exist before any hold remediation,
+#    because the sync that would have installed it is exactly what a hold aborts.
+#  * exemption seed — metapac and yay skip the age delay everywhere, mirroring
+#    the live machines' standing judgment (trusted infrastructure that releases
+#    faster than the 14d window). Maintainer changes are still held wherever a
+#    baseline exists. Idempotent: dedupes against a decrypt-restored exempt.txt.
+say "Quarantine prerequisites"
+qstate="${XDG_STATE_HOME:-$HOME/.local/state}/aur-quarantine"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: pacman -S --needed jq; seed exempt.txt with: metapac yay"
+else
+    sudo pacman -S --needed "${NC[@]}" jq
+    mkdir -p "$qstate"
+    for p in metapac yay; do
+        grep -qxF "$p" "$qstate/exempt.txt" 2>/dev/null || echo "$p" >>"$qstate/exempt.txt"
+    done
+    echo "  exempt seed: metapac yay (age delay skipped; identity checks unaffected)"
+fi
+
+# Quarantine hold handling for the sync loop (Story 2.10): the AURPreInstall
+# hook aborts and names the hold in held-install.tsv. An "age" hold is stepped
+# to the newest aged version — the same selection model as update's stepping.
+# Identity holds (orphan / maintainer-change) and RPC failures are a human
+# decision — die with the remedy.
+held_install_file="$qstate/held-install.tsv"
 step_age_hold() { # $1 = held package
     echo "bootstrap: quarantine held $1 (too new) — stepping to newest aged version"
     "$HOME/.local/bin/tools/aur-quarantine" update "$1" || true
@@ -201,29 +221,17 @@ die_still_held() { # $1 = held package that stepping could not satisfy
     die "quarantine still holds '$1' after stepping — no aged version exists yet.
     Decide:  aur-quarantine auto $1   (skip its age delay)  — or wait for it to age out"
 }
-gated_yay_install() { # $1 = package; installs via yay, stepping age holds
-    local held_pkg held_code
-    for _ in 1 2; do
-        rm -f "$held_install_file"
-        yay -S --needed "${NC[@]}" "$1" && return 0
-        # A stepped (aged) install satisfies us even though yay then holds the
-        # newer upgrade it wanted to make on the re-attempt:
-        pacman -Qq "$1" >/dev/null 2>&1 && return 0
-        [[ -s "$held_install_file" ]] || die "yay failed installing $1 (not a quarantine hold — see output above)"
-        IFS=$'\t' read -r held_pkg held_code <"$held_install_file"
-        [[ "$held_code" == "age" ]] || die_hold "$held_pkg" "$held_code"
-        step_age_hold "$held_pkg"
-        pacman -Qq "$1" >/dev/null 2>&1 && return 0
-    done
-    die_still_held "$held_pkg"
-}
+
+# --- 5. metapac (itself an AUR package) --------------------------------------
+# Gated like every AUR install (Story 2.10), but exempt from the age delay via
+# the 4b seed, so it passes on baseline-less machines (fresh VMs) too.
 say "metapac"
 if command -v metapac >/dev/null; then
     echo "  already installed"
 elif [[ $CHECK -eq 1 ]]; then
-    echo "  would: yay -S --needed metapac   (quarantine-gated; age holds auto-step)"
+    echo "  would: yay -S --needed metapac"
 else
-    gated_yay_install metapac
+    yay -S --needed "${NC[@]}" metapac
 fi
 
 # --- 5a. multilib (lib32-* packages in the desktop group need it) -------------
