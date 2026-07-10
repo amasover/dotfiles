@@ -43,9 +43,12 @@ Facts:
 - **2.26 bootstrap determinism** ([#83](https://github.com/amasover/dotfiles/issues/83)):
   [PR #86](https://github.com/amasover/dotfiles/pull/86) **merged 2026-07-08**; issue open until a
   fresh VM run shows instant deterministic death or a prompt-free sync.
-- **1.8 privacy scrub** ([#55](https://github.com/amasover/dotfiles/issues/55)): rewrite executed and
-  verified; open only for the work-machine steps — its `~/.gitconfig-local` and `~/.zshrc.local` must
-  exist **before** it pulls anything, then hard-reset its clones. Full wrap-up record: comment on #55.
+- **1.8 privacy scrub** ([#55](https://github.com/amasover/dotfiles/issues/55)): round-2 rewrite
+  executed 2026-07-10 (nine work aliases dropped from `.zshrc`, one kept helper moved to
+  `~/.zshrc.local`; second BFG pass, clones reset, sweeps clean). Still open only for the
+  work-machine steps — its `~/.gitconfig-local` and `~/.zshrc.local` must exist **before** it
+  pulls, then hard-reset its clones. Records: comments on #55 + the
+  [BFG recipe](../knowledge/recipes/bfg-history-rewrite.md) round-2 lessons.
 - **2.27 vm root fills disk** ([#87](https://github.com/amasover/dotfiles/issues/87)):
   [PR #88](https://github.com/amasover/dotfiles/pull/88) **merged 2026-07-08**; running VM already
   rescued in place (78G/48%); issue open until a fresh create shows `df /` ≈ disk size.

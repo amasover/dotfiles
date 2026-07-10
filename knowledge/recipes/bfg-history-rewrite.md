@@ -54,6 +54,34 @@ Executed for Story 1.8 ([#55](https://github.com/amasover/dotfiles/issues/55)),
    repos with `--git-dir=…`; the `pacman`→sudo alias trap's cousin: run sweeps from a
    shell function, not an unquoted command variable.
 
+## Round-2 lessons (2026-07-10, second scrub under #55)
+
+- **Sweep the current tree for the sensitive *fragments*, not just the items you were
+  asked to remove.** Round 2 removed six named helpers, but three other aliases embedded
+  the same internal repo name via a different path form. BFG's
+  `WARNING: The dirty content above may be removed from other commits` means a literal
+  survives in protected HEAD — treat it as a verification failure, find the file, clean
+  HEAD, re-run. Also probe history for *shorter historical variants* of each URL (older
+  commits held a 44-char form of a 6-value family) and re-derive literals from what the
+  mirror actually contains, not from the current blob.
+- **Validate the replacements file:** a line with an empty left side (`==>[x]`) is
+  silently useless and hides a missing literal. Check every rule has a non-empty literal.
+- **Clone residue goes beyond branches/tags/stashes:** stale *remote-tracking* refs
+  (branches deleted on GitHub long ago but never pruned locally) and `ORIG_HEAD` both pin
+  entire pre-rewrite chains through gc. `git remote prune origin` + remove
+  `ORIG_HEAD`/`FETCH_HEAD` before the reflog-expire/gc/sweep step, in the working repo
+  *and* the yadm repo.
+- **Don't pipe push/verification commands into `| tail`** in a `&&` chain — the pipe
+  masks the exit code, so a rejected push reads as success and the chain keeps going.
+- **Removal diffs re-leak through PRs.** A PR whose diff deletes sensitive lines renders
+  them forever via `refs/pull/…` even after the branch is deleted and history rewritten.
+  Land removal commits directly on the trunk (with approval) and let the immediate
+  rewrite clean the parent blobs — no PR refs get minted.
+- **Shared checkout + concurrent agent sessions:** never `git commit --amend`; another
+  session may have committed on the branch in between, and the amend silently squashes
+  their commit into yours. Build the fixed commit with `git commit-tree` + `update-ref`
+  instead, and re-check `git log` right before any push.
+
 ## Residue that survives a scrub (documented, not fixable locally)
 
 - **GitHub refs/pull/**: old PR diffs (19 refs at execution) keep pre-rewrite blobs
