@@ -296,6 +296,7 @@ export PATH=~/.local/bin/work:$PATH
 export PATH=~/.local/bin:$PATH
 export PATH=~/.bin:$PATH
 export PATH=~/.local/bin/tools:$PATH
+export PATH=~/.local/bin/setup:$PATH
 export PATH=~/.nuget/plugins:$PATH
 export PATH=/opt/idea-IC-171.4424.56/bin:$PATH
 export PATH=/opt/teams-for-linux:$PATH

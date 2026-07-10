@@ -56,7 +56,8 @@
 [pager]
 	branch = false
 [credential]
-	helper = store
+    credentialStore = secretservice
+	helper = /usr/bin/git-credential-manager
 [url "https://user@hostname"]
 	insteadOf = ssh://git@hostname
 [pull]
@@ -66,8 +67,8 @@
 [init]
 	defaultBranch = main
 [credential "https://github.com"]
-	helper = 
 	helper = !/usr/bin/gh auth git-credential
 [credential "https://gist.github.com"]
-	helper = 
 	helper = !/usr/bin/gh auth git-credential
+[credential "https://dev.azure.com"]
+	useHttpPath = true
