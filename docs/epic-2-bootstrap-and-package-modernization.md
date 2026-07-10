@@ -714,6 +714,27 @@ Issue: [#100](https://github.com/amasover/dotfiles/issues/100) · Split from #98
 
 ---
 
+### Story 2.33: pre-flight quarantine holds — step aged packages before the sync
+
+As the repo owner,
+I want bootstrap to evaluate the quarantine policy across the whole declared
+non-repo set before the first sync,
+So that every hold is known and remediated up front instead of being
+discovered one full sync crash at a time.
+
+Issue: [#103](https://github.com/amasover/dotfiles/issues/103) · Origin: Aaron's live 2026-07-10 observation — the sync loop crashes, steps one held package, re-runs the entire multi-minute sync, and crashes on the next hold (that run burned 3 sync attempts to discover 2 age-holds: terraform-ls-bin, wstunnel-bin; earlier runs did the same for evdi-dkms and displaylink). The hold set is computable from one batched AUR RPC call — the pass/fail verdict for every package is knowable before the installer starts.
+
+**Acceptance criteria:**
+
+- Given the declared set contains N age-held packages, when unattended bootstrap runs, then all N are identified before the first sync and stepped in one pass — a hold no longer costs a full sync attempt to discover
+- Given identity holds (orphan / maintainer-change / RPC failure), when pre-flight runs, then bootstrap dies listing ALL of them with their remedies at once, not one per crash
+- Given pre-flight exists, when a package flips to held mid-run anyway, then the install-time gates still catch it — pre-flight is an optimization, the gates stay the enforcement
+- Given the sync retry loop, when pre-flight lands, then hold remediation no longer consumes retry-budget attempts (retries are for transient AUR throttling again)
+
+**Evidence artifact:** an unattended run log with ≥2 aged packages showing one pre-flight step pass and a first sync with zero hold-triggered crashes.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

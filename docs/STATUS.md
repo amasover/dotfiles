@@ -74,7 +74,9 @@ Facts:
   [PR #102](https://github.com/amasover/dotfiles/pull/102) **open**. Attended transcripts
   pending the same VM unpark.
 - Newly ticketed: **2.32** ([#100](https://github.com/amasover/dotfiles/issues/100))
-  quarantine hold messages misdiagnose (split from the #98 grill).
+  quarantine hold messages misdiagnose (split from the #98 grill); **2.33**
+  ([#103](https://github.com/amasover/dotfiles/issues/103)) pre-flight quarantine holds —
+  the 10:53 run burned 3 sync attempts discovering 2 age-holds one crash at a time.
   Everything else lives on the board.
 
 ## Standing warnings
