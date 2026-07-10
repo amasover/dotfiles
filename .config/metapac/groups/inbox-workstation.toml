@@ -7,4 +7,5 @@ packages = [
   "openbsd-netcat",
   "podman-compose",
   "shfmt",
+  "clitest",
 ]
