@@ -34,23 +34,23 @@ while test $# -gt -1; do
     case "$1" in
         --up)
             volume_up
-                     ;;
+            ;;
         --down)
             volume_down
-                       ;;
+            ;;
         --mute)
             volume_mute
-                       ;;
+            ;;
         --padright)
             padright=$2
             shift
-                 ;;
+            ;;
         *)
             if [[ -z $padright ]]; then
                 padright=""
             fi
             listen
-                  ;;
+            ;;
     esac
     shift
 done
