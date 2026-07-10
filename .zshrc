@@ -212,9 +212,6 @@ alias tam="terragrunt apply --terragrunt-source ~/Documents/repos/terraform-modu
 alias tdm="terragrunt destroy --terragrunt-source ~/Documents/repos/terraform-modules//odp"
 alias trm="terragrunt refresh --terragrunt-source ~/Documents/repos/terraform-modules//odp"
 
-alias tai="terragrunt apply --terragrunt-source ~/Documents/repos/terraform-modules/[work-repo]"
-alias tdi="terragrunt destroy --terragrunt-source ~/Documents/repos/terraform-modules/[work-repo]"
-alias tri="terragrunt refresh --terragrunt-source ~/Documents/repos/terraform-modules/[work-repo]"
 
 export GO111MODULE=on
 
