@@ -185,9 +185,21 @@ cmd_update() {                  # manual: step PKG(s) to the newest vetted (aged
         if res=$(target_at_or_before "$repo" "$cutoff" "$inst"); then
             sha=${res%%$'\t'*}; ver=${res#*$'\t'}
             echo "aur-quarantine: building $p $ver (pinned ${sha:0:8}; installed: ${inst:-none})..." >&2
+            # chaotic-carried packages: the gate would abort makepkg's own
+            # pacman -U of this vetted aged build (it only sees the name and
+            # the too-new AUR latest — 2026-07-10 ngrok). Pre-approve exactly
+            # this package for one transaction; the gate consumes the entry.
+            mkdir -p "$state_dir"
+            grep -qxF "$p" "$state_dir/stepping.txt" 2>/dev/null || echo "$p" >>"$state_dir/stepping.txt"
             if cmd_build "$base" "$sha"; then
                 trusted[$p]=$mt; save_baseline
                 echo "aur-quarantine: $p updated to $ver." >&2
+            fi
+            # normally consumed by the gate mid-build; scrub any leftover so a
+            # failed build can't leave a standing one-shot approval around
+            if [[ -f "$state_dir/stepping.txt" ]]; then
+                grep -vxF "$p" "$state_dir/stepping.txt" >"$state_dir/stepping.txt.new" || true
+                mv "$state_dir/stepping.txt.new" "$state_dir/stepping.txt"
             fi
         else
             echo "aur-quarantine: $p has no version older than ${threshold_days}d that is newer than ${inst:-none} — nothing to step to yet." >&2
