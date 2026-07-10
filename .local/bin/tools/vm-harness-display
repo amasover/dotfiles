@@ -82,6 +82,8 @@ BOOTSTRAP_STEPS = [
     ("metapac", ("metapac",)),
     ("multilib", ("multilib repo",)),
     ("chaotic", ("chaotic-aur repo",)),
+    ("preflight", ("Quarantine pre-flight",)),
+    ("cache-warm", ("AUR PKGBUILD cache warm",)),
     ("reconcile", ("Package reconcile",)),
     ("retag", ("Normalizing install reasons",)),
     ("removal-hook", ("Package-removal hook",)),

@@ -1,0 +1,47 @@
+Quarantine tooling shell-level tests (clitest — see tests/vm-harness.clitest.txt
+header and knowledge/reference/clitest-shell-tests.md for format notes).
+
+Run from the repo root:   clitest tests/quarantine.clitest.txt
+Covers Stories 2.32/2.33 (#100/#103): the metapac-declared parser, the
+aur-quarantine preflight CLI surface, and the policy's version rendering.
+Network-dependent behavior (live RPC verdicts) is deliberately untested here.
+
+--- metapac-declared: hostname_groups -> group files -> sorted union ---
+
+$ t=$(mktemp -d) && mkdir -p "$t/groups" && printf '[hostname_groups]\n"testhost" = [\n  "alpha",\n  "%s/local.toml",\n]\n' "$t" > "$t/config.toml" && printf '[arch]\npackages = [\n  "zeta-pkg",\n  "alpha-pkg",\n]\n' > "$t/groups/alpha.toml" && printf '[arch]\npackages = [\n  "local-pkg",\n  "alpha-pkg",\n]\n' > "$t/local.toml" && .local/bin/tools/metapac-declared --config-dir "$t" --hostname testhost
+alpha-pkg
+local-pkg
+zeta-pkg
+$
+
+--- metapac-declared: unknown hostname fails with the config path ---
+
+$ .local/bin/tools/metapac-declared --config-dir "$t" --hostname nosuchhost 2>&1 | sed "s|$t|CFG|" || true
+metapac-declared: no [hostname_groups] entry for 'nosuchhost' in CFG/config.toml
+$
+
+--- metapac-declared: missing group file fails loudly ---
+
+$ printf '[hostname_groups]\n"testhost" = [\n  "ghost",\n]\n' > "$t/config.toml" && .local/bin/tools/metapac-declared --config-dir "$t" --hostname testhost 2>&1 | sed "s|$t|CFG|" || true
+metapac-declared: missing group file CFG/groups/ghost.toml
+$
+
+--- aur-quarantine preflight: usage error without packages ---
+
+$ .local/bin/tools/aur-quarantine preflight 2>&1 || true
+usage: aur-quarantine preflight PKG...
+$
+
+--- quarantine-policy: age hold names the version when given one (2.32) ---
+
+$ lua5.1 .config/yay/quarantine-policy.lua somepkg someone @never 0 3 14 1.2-1 | head -n 1 || true
+age	version 1.2-1 is 3d old (< 14d quarantine)
+$
+
+--- quarantine-policy: without a version the placeholder stays (gate now passes it) ---
+
+$ lua5.1 .config/yay/quarantine-policy.lua somepkg someone @never 0 3 14 | head -n 1 || true
+age	version ? is 3d old (< 14d quarantine)
+$
+
+End of tests.
