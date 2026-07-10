@@ -177,13 +177,13 @@ Issue: [#17](https://github.com/amasover/dotfiles/issues/17)
 
 ---
 
-### Story 1.8: Privacy scrub — de-work the tracked configs and rewrite history
+### Story 1.8: Privacy scrub — de-work the tracked configs and rewrite history ✅
 
 As the repo owner,
 I want work identifiers removed from tracked files and from git history,
 So that the public repo stops naming my employer, work email domain, and internal paths.
 
-Issue: [#55](https://github.com/amasover/dotfiles/issues/55) · Promotes the long-standing "privacy pass / BFG scrub" backlog item
+Issue: [#55](https://github.com/amasover/dotfiles/issues/55) (closed, PR #56; round-2 commits direct on main) · Promotes the long-standing "privacy pass / BFG scrub" backlog item
 (STATUS known follow-ups). Literal target strings live only in the gitignored private
 note (`docs/private/`); tracked files and this spec use neutral placeholders.
 
