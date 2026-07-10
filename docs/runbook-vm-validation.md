@@ -79,6 +79,12 @@ archinstall's TUI errors show on the virt-manager console.
   passphrase prompt can't run without a TTY, so no yadm passphrase or secret
   contents ever enter the harness. If a test needs real secrets, run `yadm decrypt`
   in the guest manually.
+- **AUR trust baseline (Story 2.10):** the bootstrap phase injects the host's
+  `~/.local/state/aur-quarantine/{maintainers.tsv,exempt.txt}` into the VM over
+  ssh before running bootstrap, so install-gate identity checks see the same
+  baseline a decrypt-restored machine would. These are identity judgments, not
+  secrets — the no-secrets rule above is unaffected. `VM_HARNESS_FRESH_TRUST=1`
+  skips the copy to exercise the fresh-TOFU path.
 - **Profile guard in the VM:** `yadm config local.class workstation` + `yadm alt`
   renders the VM's own hostname into `config.toml` — the guard passes without any
   repo change; `machine-local.toml` is auto-created empty by bootstrap step 3.
