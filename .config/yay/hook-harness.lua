@@ -1,9 +1,14 @@
--- Harness for the AURPreInstall install gate (Story 2.10).
+-- Harness for the quarantine hooks (Stories 2.10/2.28).
 -- Stubs the yay API, fakes the AUR RPC via io.popen monkey-patch, and drives
--- the hook through the policy matrix. Run: lua5.1 hook-harness.lua <init.lua>
--- Exit 0 = all cases pass.
+-- both hooks through the policy matrix — AUR and chaotic-aur candidates.
+-- Run: lua5.1 hook-harness.lua <init.lua>   Exit 0 = all cases pass.
 
 local init_path = arg[1] or error("usage: lua5.1 hook-harness.lua <path-to-init.lua>")
+
+-- init.lua require()s quarantine-policy from its own directory (yay prepends
+-- it to package.path at runtime; the harness must do the same).
+local init_dir = init_path:match("^(.*)/[^/]+$") or "."
+package.path = init_dir .. "/?.lua;" .. package.path
 
 -- --- stub state ------------------------------------------------------------
 local state_home = os.getenv("PWD") and (os.getenv("PWD") .. "/harness-state") or "harness-state"
@@ -54,13 +59,13 @@ local gate = hooks["AURPreInstall"]
 local now = os.time()
 local function days_ago(d) return now - d * 86400 end
 
-local function rpc_json(entries) -- { {name=, maint=|nil} }
+local function rpc_json(entries) -- { {name=, maint=|nil, age=days|nil (default 30)} }
   local objs = {}
   for _, e in ipairs(entries) do
     local m = e.maint and ('"' .. e.maint .. '"') or "null"
     table.insert(objs, string.format(
       '{"Name":"%s","PackageBase":"%s","Maintainer":%s,"LastModified":%d,"License":["MIT"]}',
-      e.name, e.name, m, days_ago(30)))
+      e.name, e.name, m, days_ago(e.age or 30)))
   end
   return '{"resultcount":' .. #entries .. ',"results":[' .. table.concat(objs, ",") .. '],"type":"multiinfo","version":5}'
 end
@@ -205,6 +210,7 @@ local function run_upsel(label, opts, expect_excluded)
   if opts.exempt then write_file(sdir .. "/exempt.txt", opts.exempt) end
   env_override.AUR_QUARANTINE_BYPASS = opts.bypass and "1" or false
   env_override.AUR_QUARANTINE_DAYS = false
+  rpc_response = opts.rpc or ""
   local ok, res = pcall(upsel, { event = "UpgradeSelect", data = { upgrades = opts.upgrades } })
   if not ok then print("FAIL " .. label .. " (lua error: " .. tostring(res) .. ")"); return false end
   local excluded = {}
@@ -257,6 +263,70 @@ ucase("upsel: bypass excludes nothing", {
   bypass = true,
   upgrades = { up_entry("youngpkg", "aur", "alice", days_ago(1)) },
 }, {})
+
+-- chaotic-aur upgrades (Story 2.28): repo payload carries no AUR metadata
+-- (maintainer "", last_modified 0) — identity/age come from the RPC.
+ucase("chaotic: aged trusted kept", {
+  baseline = "goodpkg\talice\n",
+  upgrades = { up_entry("goodpkg", "chaotic-aur", "", 0) },
+  rpc = rpc_json({ { name = "goodpkg", maint = "alice", age = 30 } }),
+}, {})
+
+ucase("chaotic: young excluded", {
+  upgrades = { up_entry("youngpkg", "chaotic-aur", "", 0) },
+  rpc = rpc_json({ { name = "youngpkg", maint = "alice", age = 3 } }),
+}, { "youngpkg" })
+
+ucase("chaotic: young + exempt kept", {
+  exempt = "fastpkg\n",
+  upgrades = { up_entry("fastpkg", "chaotic-aur", "", 0) },
+  rpc = rpc_json({ { name = "fastpkg", maint = "alice", age = 3 } }),
+}, {})
+
+ucase("chaotic: maintainer change excluded", {
+  baseline = "takenpkg\talice\n",
+  upgrades = { up_entry("takenpkg", "chaotic-aur", "", 0) },
+  rpc = rpc_json({ { name = "takenpkg", maint = "mallory", age = 30 } }),
+}, { "takenpkg" })
+
+ucase("chaotic: rpc failure excludes (fail closed)", {
+  upgrades = { up_entry("anypkg", "chaotic-aur", "", 0) },
+  rpc = "",
+}, { "anypkg" })
+
+ucase("chaotic: infra packages skipped", {
+  upgrades = { up_entry("chaotic-keyring", "chaotic-aur", "", 0) },
+  rpc = "",
+}, {})
+
+ucase("chaotic: mixed with aur candidate", {
+  upgrades = {
+    up_entry("youngchaotic", "chaotic-aur", "", 0),
+    up_entry("youngaur", "aur", "alice", days_ago(2)),
+  },
+  rpc = rpc_json({ { name = "youngchaotic", maint = "alice", age = 2 } }),
+}, { "youngchaotic", "youngaur" })
+
+-- --- policy CLI adapter (the bash consumers' entry point) --------------------
+local policy_path = init_dir .. "/quarantine-policy.lua"
+local function acase(label, argstr, want)
+  local rc = os.execute("lua5.1 '" .. policy_path .. "' " .. argstr .. " >/dev/null 2>&1")
+  local code = (rc and rc >= 256) and math.floor(rc / 256) or rc  -- 5.1 wait status
+  if code == want then
+    print(string.format("ok   adapter: %-31s exit=%d", label, code))
+  else
+    print(string.format("FAIL adapter: %-31s exit=%s want %d", label, tostring(code), want))
+    all = false
+  end
+end
+
+acase("aged maintained (TOFU)", "pkg alice @never 0 30 14", 0)
+acase("young", "pkg alice @never 0 3 14", 1)
+acase("orphan never-seen", "pkg @orphan @never 0 30 14", 1)
+acase("maintainer change (exempt too)", "pkg mallory alice 1 30 14", 1)
+acase("exempt young", "pkg alice @never 1 3 14", 0)
+acase("accepted orphan", "pkg @orphan @orphan 0 30 14", 0)
+acase("unknown age", "pkg alice @never 0 @nil 14", 1)
 
 os.getenv = real_getenv
 io.popen = real_popen
