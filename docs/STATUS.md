@@ -53,13 +53,14 @@ Facts:
 - **4.4 pre-commit secret scan**: [PR #90](https://github.com/amasover/dotfiles/pull/90)
   **merged 2026-07-09**, #35 closed. Remaining live step for Aaron:
   `yadm gitconfig core.hooksPath .githooks` (after a yadm checkout places `~/.githooks`).
-- **2.10 AUR install gating** ([#50](https://github.com/amasover/dotfiles/issues/50)):
-  [PR #92](https://github.com/amasover/dotfiles/pull/92) open — AURPreInstall gate (shared
-  classify() with the upgrade hook; 19-case tracked harness at `.config/yay/hook-harness.lua`),
-  bootstrap auto-steps age holds, baseline rides the encrypted archive. After merge:
-  yadm pull + `yadm encrypt` (Aaron). Metal gate now confirmation-only.
-- Next: **2.28** ([#89](https://github.com/amasover/dotfiles/issues/89)) Chaotic-AUR binaries
-  with the same gating. Everything else lives on the board.
+- **2.10 AUR install gating**: [PR #92](https://github.com/amasover/dotfiles/pull/92)
+  **merged 2026-07-10**, #50 closed. Remaining live steps for Aaron: yadm pull +
+  `yadm encrypt` (baseline files joined the encrypt manifest).
+- **2.28 Chaotic-AUR** ([#89](https://github.com/amasover/dotfiles/issues/89)):
+  [PR #93](https://github.com/amasover/dotfiles/pull/93) open — repo + gate end to end:
+  quarantine-policy.lua single policy source, alpm PreTransaction gate (all install paths),
+  UpgradeSelect classifies chaotic upgrades; 43 tracked test cases. 29/102 foreign packages
+  go binary. Live adoption = next attended bootstrap run. Everything else lives on the board.
 
 ## Standing warnings
 
