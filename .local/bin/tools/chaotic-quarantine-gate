@@ -43,6 +43,28 @@ if [[ -f "$state_dir/bypass-once" ]]; then
     exit 0
 fi
 
+# --- stepping allowlist (consumed per package) ---------------------------------
+# `aur-quarantine update` installs a vetted aged build via makepkg/pacman -U;
+# without this the gate aborts that very install — it only sees the package
+# NAME plus the too-new AUR latest (2026-07-10: aged ngrok 3.39.8 blocked
+# while chaotic carried 3.39.9). Each entry approves exactly one transaction
+# for exactly that package; everything else in the transaction stays gated.
+if [[ -f "$state_dir/stepping.txt" ]]; then
+    remaining=()
+    for pkg in "${chaotic[@]}"; do
+        if grep -qxF "$pkg" "$state_dir/stepping.txt" 2>/dev/null; then
+            grep -vxF "$pkg" "$state_dir/stepping.txt" >"$state_dir/stepping.txt.new" 2>/dev/null || : >"$state_dir/stepping.txt.new"
+            mv "$state_dir/stepping.txt.new" "$state_dir/stepping.txt"
+            chown --reference="$user_home" "$state_dir/stepping.txt" 2>/dev/null || true
+            echo "aur-quarantine: $pkg — vetted aged build being stepped in; allowing this transaction"
+        else
+            remaining+=("$pkg")
+        fi
+    done
+    chaotic=("${remaining[@]}")
+    ((${#chaotic[@]} == 0)) && exit 0
+fi
+
 hold() { # $1=pkg $2=code $3=why (remedies follow on stdin of caller-built msg)
     mkdir -p "$state_dir"
     printf '%s\t%s\n' "$1" "$2" >"$state_dir/held-install.tsv"
@@ -77,6 +99,9 @@ for pkg in "${chaotic[@]}"; do
     [[ -n "$line" ]] || hold "$pkg" rpc "not found in AUR RPC — cannot verify (failing closed)" \
         "transient? retry — or:  aur-quarantine bypass-once   (next transaction only)"
     IFS=$'\t' read -r _ lm mt <<<"$line"
+    # the policy's hold message names the version (2.32 — it printed "version ?"
+    # while the gate withheld it); the sync DB has it, one cheap query per target
+    ver=$(pacman -Si "$pkg" 2>/dev/null | awk -F': *' '/^Version/ { print $2; exit }')
 
     known="@never"
     if [[ -f "$state_dir/maintainers.tsv" ]]; then
@@ -88,7 +113,7 @@ for pkg in "${chaotic[@]}"; do
     age="@nil"
     [[ "$lm" =~ ^[0-9]+$ && "$lm" -gt 0 ]] && age=$(((now - lm) / 86400))
 
-    if ! out=$(lua5.1 "$policy" "$pkg" "${mt:-@orphan}" "$known" "$exempt" "$age" "$days"); then
+    if ! out=$(lua5.1 "$policy" "$pkg" "${mt:-@orphan}" "$known" "$exempt" "$age" "$days" "${ver:-?}"); then
         code=${out%%$'\t'*}
         code=${code%%$'\n'*}
         why=$(head -1 <<<"$out" | cut -f2-)

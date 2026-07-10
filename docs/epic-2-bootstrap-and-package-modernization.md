@@ -516,7 +516,7 @@ Issue: [#75](https://github.com/amasover/dotfiles/issues/75) · Options recorded
 **Acceptance criteria:**
 
 - Given a fresh VM `up`, when the AUR set installs, then a normal run completes without throttling-induced retries
-- Given any cache seeding, it is opt-in and excludes built packages — the default `up` still proves that every AUR package builds from source on a fresh machine
+- Given cache warming (decided 2026-07-10 at pickup: unattended bootstrap pre-clones each declared AUR pkgbase into yay's cache, one gentle clone at a time, before the first sync), it seeds **PKGBUILDs only, from the AUR itself** — never built packages or host copies, so the default `up` still proves every AUR package builds from source on a fresh machine
 - Given bootstrap's sync retry loop, backoff grows between attempts instead of retrying hot
 
 **Evidence artifact:** a fresh `up` log set showing the AUR phase with no throttle retries.

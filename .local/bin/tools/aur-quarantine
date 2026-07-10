@@ -21,6 +21,12 @@
 #                     in the package's AUR git history that is itself older than
 #                     the threshold — built at that pinned commit. Use when the
 #                     hook holds a fast-moving package (latest always too new).
+#   preflight PKG...  evaluate the policy for PKGs in one batched RPC pass and
+#                     print TSV verdicts: "pkg<TAB>code<TAB>pkgbase" with code
+#                     ok | age | orphan | maintainer-change | missing (not in
+#                     the AUR RPC). Installs nothing (Story 2.33 — bootstrap
+#                     remediates every hold before the first sync instead of
+#                     discovering them one aborted sync at a time).
 #   bypass-once       arm a one-transaction bypass of the chaotic-aur install
 #                     gate (alpm hooks can't see user env, so no env bypass).
 #   build BASE SHA    (internal) build+install pkgbase BASE at AUR git commit SHA.
@@ -179,14 +185,55 @@ cmd_update() {                  # manual: step PKG(s) to the newest vetted (aged
         if res=$(target_at_or_before "$repo" "$cutoff" "$inst"); then
             sha=${res%%$'\t'*}; ver=${res#*$'\t'}
             echo "aur-quarantine: building $p $ver (pinned ${sha:0:8}; installed: ${inst:-none})..." >&2
+            # chaotic-carried packages: the gate would abort makepkg's own
+            # pacman -U of this vetted aged build (it only sees the name and
+            # the too-new AUR latest — 2026-07-10 ngrok). Pre-approve exactly
+            # this package for one transaction; the gate consumes the entry.
+            mkdir -p "$state_dir"
+            grep -qxF "$p" "$state_dir/stepping.txt" 2>/dev/null || echo "$p" >>"$state_dir/stepping.txt"
             if cmd_build "$base" "$sha"; then
                 trusted[$p]=$mt; save_baseline
                 echo "aur-quarantine: $p updated to $ver." >&2
+            fi
+            # normally consumed by the gate mid-build; scrub any leftover so a
+            # failed build can't leave a standing one-shot approval around
+            if [[ -f "$state_dir/stepping.txt" ]]; then
+                grep -vxF "$p" "$state_dir/stepping.txt" >"$state_dir/stepping.txt.new" || true
+                mv "$state_dir/stepping.txt.new" "$state_dir/stepping.txt"
             fi
         else
             echo "aur-quarantine: $p has no version older than ${threshold_days}d that is newer than ${inst:-none} — nothing to step to yet." >&2
         fi
     done
+}
+
+cmd_preflight() {              # PKG... -> TSV pkg<TAB>code<TAB>pkgbase; installs nothing
+    (( $# )) || { echo "usage: aur-quarantine preflight PKG..." >&2; return 2; }
+    local days="${AUR_QUARANTINE_DAYS:-14}" policy="$HOME/.config/yay/quarantine-policy.lua"
+    command -v lua5.1 >/dev/null || { echo "aur-quarantine: preflight needs lua5.1 (bootstrap step 4b installs it)" >&2; return 1; }
+    [[ -f $policy ]] || { echo "aur-quarantine: policy module missing ($policy) — yadm checkout it" >&2; return 1; }
+    load_baseline; load_exempt
+    local rpc_out
+    if ! rpc_out=$(rpc_info "$@") ; then
+        echo "aur-quarantine: AUR RPC unreachable — cannot pre-flight." >&2; return 1
+    fi
+    local now p line base lm mt known ex age out code
+    now=$(date +%s)
+    for p in "$@"; do
+        line=$(grep -m1 -P "^\Q$p\E\t" <<<"$rpc_out" || true)
+        if [[ -z $line ]]; then printf '%s\tmissing\t-\n' "$p"; continue; fi
+        IFS=$'\t' read -r _ base lm mt <<<"$line"
+        known="@never"; [[ -n ${trusted[$p]+x} ]] && known="${trusted[$p]:-@orphan}"
+        ex=0; [[ -n ${exempt[$p]+x} ]] && ex=1
+        age="@nil"; [[ $lm =~ ^[0-9]+$ && $lm -gt 0 ]] && age=$(( (now - lm) / 86400 ))
+        if out=$(lua5.1 "$policy" "$p" "${mt:-@orphan}" "$known" "$ex" "$age" "$days"); then
+            printf '%s\tok\t%s\n' "$p" "$base"
+        else
+            code=${out%%$'\t'*}; code=${code%%$'\n'*}
+            printf '%s\t%s\t%s\n' "$p" "$code" "$base"
+        fi
+    done
+    return 0
 }
 
 cmd_bypass_once() {
@@ -201,8 +248,9 @@ case "${1:-}" in
     auto)         shift; cmd_auto "$@" ;;
     auto-off)     shift; cmd_auto_off "$@" ;;
     update)       shift; cmd_update "$@" ;;
+    preflight)    shift; cmd_preflight "$@" ;;
     bypass-once)  shift; cmd_bypass_once "$@" ;;
     build)        shift; cmd_build "$@" ;;
     -h|--help|"") grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//' ;;
-    *)            echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|bypass-once|build)" >&2; exit 2 ;;
+    *)            echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|preflight|bypass-once|build)" >&2; exit 2 ;;
 esac
