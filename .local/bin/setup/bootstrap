@@ -190,6 +190,22 @@ else
         --sort rate --protocol https --age 6 --save "$mirrorlist"
 fi
 
+# --- 3c. system sync (Story 2.34) ----------------------------------------------
+# Sync DBs age between runs — a resumed VM days later, or a machine restored
+# from an old snapshot — and Arch mirrors purge superseded package files, so a
+# stale DB 404s everywhere no matter how good the mirrorlist is (2026-07-19:
+# mesa/svt-av1 rebuilt between runs killed the pre-build's dep install). One
+# full -Syu here aligns DB and installed set with what mirrors actually carry.
+# Never bare -Sy: installing against a fresh DB on old system libs is the
+# classic Arch partial-upgrade trap. Fresh installs pay ~nothing (pacstrap
+# DBs are minutes old, nothing to upgrade).
+say "System sync"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: pacman -Syu   (refresh DBs + full upgrade — mirrors purge superseded files)"
+else
+    sudo pacman -Syu "${NC[@]}"
+fi
+
 # --- 4. yay (AUR helper; one manual makepkg, everything else goes through it) ---
 say "yay"
 if command -v yay >/dev/null; then

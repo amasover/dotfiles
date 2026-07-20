@@ -735,6 +735,27 @@ Issue: [#103](https://github.com/amasover/dotfiles/issues/103) · Origin: Aaron'
 
 ---
 
+### Story 2.34: bootstrap syncs the system before package work
+
+As the repo owner,
+I want bootstrap to run one full system sync (`pacman -Syu`) before any
+package installs or AUR builds,
+So that a run whose sync DBs have aged — a resumed VM days later, or a real
+machine bootstrapped from an old snapshot — doesn't 404 on package files the
+mirrors have already purged.
+
+Issue: [#107](https://github.com/amasover/dotfiles/issues/107) · Origin: the 2026-07-19 resumed VM run — DBs dated from Jul 15 (`pacman -Sy` only runs inside the chaotic-enable step, which a resume skips), mesa/svt-av1 had been rebuilt since, every mirror 404'd the superseded filenames, and the pre-build died on missing deps. Reflector considered and rejected: mirror ranking can't resurrect purged files.
+
+**Acceptance criteria:**
+
+- Given any bootstrap run, when the mirror step completes, then a full `pacman -Syu` runs before yay, pre-build, or reconcile — the same step on fresh and resumed runs (no divergence)
+- Given `--check`, when the step is reached, then it prints its plan and mutates nothing
+- Given the sync, then it is `-Syu`, never bare `-Sy` — no partial-upgrade state
+
+**Evidence artifact:** a resumed unattended run (DBs ≥1 day old) whose package phase completes without `failed retrieving file` errors.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
