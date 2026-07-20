@@ -671,6 +671,7 @@ Issue: [#96](https://github.com/amasover/dotfiles/issues/96) · Origin: 2026-07-
 - Given the new class, when its template branch renders, then it activates every purpose group except `work` and `hardware`, plus a new guest-tools group (`open-vm-tools`, `xf86-video-vmware`) and its own `inbox-<class>.toml`
 - Given the runbook's class table, when the class lands, then the table documents both classes and their group deltas
 - Given the vm-harness default class is `workstation`, when the split lands, then harness runs still converge (the hardware group installs harmlessly under QEMU, or the harness class choice is revisited — decided in-story)
+- Given harness guests boot with NetworkManager disabled (archinstall's default networking — observed in the 2026-07-19 check-phase service sample), when the daily-vm class lands, then the guest's network stack is decided deliberately: enable NetworkManager to match the declared NM applet/dispatcher stack, or document the alternative
 
 **Evidence artifact:** groups/template diff, a live no-op dry-run, and the updated class table.
 
@@ -756,7 +757,7 @@ Issue: [#107](https://github.com/amasover/dotfiles/issues/107) · Origin: the 20
 
 ---
 
-### Story 2.35: every package bootstrap installs is declared
+### Story 2.35: every package bootstrap installs is declared ✅
 
 As the repo owner,
 I want every package that bootstrap or the harness installs to be declared in
@@ -764,7 +765,7 @@ a metapac group,
 So that the exactly-empty `unmanaged` check stays a strict drift backstop
 instead of being weakened with allowlists.
 
-Issue: [#112](https://github.com/amasover/dotfiles/issues/112) · Origin: the first run to finish bootstrap green (2026-07-19) died at check with four unmanaged packages — chaotic-keyring/chaotic-mirrorlist (installed by the 2.28 enable step, declared nowhere) and qemu-guest-agent/zram-generator (harness guest install; real home is the 2.30 class split, #96).
+Issue: [#112](https://github.com/amasover/dotfiles/issues/112) (closed, PRs #113/#114) · Origin: the first run to finish bootstrap green (2026-07-19) died at check with four unmanaged packages — chaotic-keyring/chaotic-mirrorlist (installed by the 2.28 enable step, declared nowhere) and qemu-guest-agent/zram-generator (harness guest install; real home is the 2.30 class split, #96).
 
 **Acceptance criteria:**
 
