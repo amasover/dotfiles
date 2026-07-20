@@ -593,6 +593,14 @@ cmd_bootstrap() {
         yadm clone --no-bootstrap ${REPO_BRANCH:+-b '$REPO_BRANCH'} '$REPO_URL' || true
         yadm config local.class '$VM_CLASS'
         yadm alt
+        mkdir -p ~/.local/share/metapac
+        { printf '# machine-local metapac group — untracked, never published\n'
+          printf '# harness-owned guest hardware set, rewritten every bootstrap\n'
+          printf '# (interim home until the Story 2.30 class/hardware split, #96)\n'
+          printf '[arch]\npackages = [\n'
+          printf '  \"%s\",\n' qemu-guest-agent zram-generator
+          printf ']\n'
+        } > ~/.local/share/metapac/machine-local.toml
         ~/.local/bin/setup/bootstrap --check --unattended
         ~/.local/bin/setup/bootstrap --unattended"
 }
