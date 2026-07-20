@@ -460,29 +460,41 @@ elif (( ${#candidates[@]} == 0 )); then
     echo "  no AUR-sourced packages — nothing to warm"
 else
     seed_delay="${AUR_SEED_DELAY:-0.1}"
-    warmed=0
+    # collect the pkgbases still needing a clone up front, so the progress
+    # lines below can say [i/total] and the intro can say how many
     present=0
-    failed=0
+    bases=()
     declare -A seen_base=()
     for p in "${candidates[@]}"; do
         [[ -z "${repo_of[$p]:-}" ]] || continue # chaotic binaries need no PKGBUILD
         b="${base_of[$p]:-}"
         [[ -n "$b" && "$b" != "-" && -z "${seen_base[$b]+x}" ]] || continue
         seen_base[$b]=1
-        d="$HOME/.cache/yay/$b"
-        if [[ -d "$d/.git" ]]; then
+        if [[ -d "$HOME/.cache/yay/$b/.git" ]]; then
             present=$((present + 1))
-            continue
+        else
+            bases+=("$b")
         fi
+    done
+    echo "  pre-cloning ${#bases[@]} AUR PKGBUILD repos into ~/.cache/yay, one every ${seed_delay}s"
+    echo "  ($present already cached; warmed this way, yay's sync skips its parallel fetch burst the AUR throttles)"
+    warmed=0
+    failed=0
+    i=0
+    for b in "${bases[@]}"; do
+        i=$((i + 1))
+        d="$HOME/.cache/yay/$b"
         if git clone --quiet "https://aur.archlinux.org/$b.git" "$d" 2>/dev/null; then
+            echo "  [$i/${#bases[@]}] $b"
             warmed=$((warmed + 1))
         else
+            echo "  [$i/${#bases[@]}] $b — clone failed (yay retries it at sync)"
             rm -rf "$d"
             failed=$((failed + 1))
         fi
         sleep "$seed_delay"
     done
-    echo "  PKGBUILD cache: $warmed cloned (${seed_delay}s apart), $present already present, $failed failed (yay retries those)"
+    echo "  PKGBUILD cache: $warmed cloned, $present already present, $failed failed (yay retries those)"
 fi
 
 # --- 6. reconcile: the fresh install is just the first reconcile --------------
