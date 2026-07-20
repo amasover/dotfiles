@@ -206,6 +206,28 @@ else
     sudo pacman -Syu "${NC[@]}"
 fi
 
+# --- 3d. provider pins (Story 2.26) ---------------------------------------------
+# Declaring a provider in a group (#99: pipewire-jack for jack) stopped being
+# enough when 2.33 moved AUR pre-builds ahead of the sync: dep resolution runs
+# before the declared set is installed, and --noconfirm pacman picks the
+# alphabetically-first provider (jack2, 2026-07-19 — the sync then dies on the
+# conflict with the declared choice). Install the pins first so no dependency
+# resolution ever gets to choose a provider. Every pin must also be declared
+# in a group — the harness's exactly-empty unmanaged check flags one that
+# isn't. Unattended, --ask=4 (libalpm's conflict question) defaults the
+# "remove the conflicting provider?" prompt to yes, so a wrong provider
+# already on the system is replaced instead of killing the run; unattended is
+# VM-only (the metal gate above), so that auto-removal never touches metal.
+PROVIDER_PINS=(pipewire-jack) # extend when a new pre-build provider collision appears
+say "Provider pins"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: pacman -S --needed ${PROVIDER_PINS[*]}   (declared providers install first, before any dep resolution picks one)"
+elif [[ $UNATTENDED -eq 1 ]]; then
+    sudo pacman -S --needed --noconfirm --ask=4 "${PROVIDER_PINS[@]}"
+else
+    sudo pacman -S --needed "${PROVIDER_PINS[@]}"
+fi
+
 # --- 4. yay (AUR helper; one manual makepkg, everything else goes through it) ---
 say "yay"
 if command -v yay >/dev/null; then

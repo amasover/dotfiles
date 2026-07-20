@@ -41,12 +41,12 @@ Facts:
   gated host live swap (-bin family → repo stack) + the `dotnet-runtime-2.1`/`2.2` relic drop decision.
   Until the swap, host drift shows the four repo names as declared-but-missing.
 - **2.26 bootstrap determinism** ([#83](https://github.com/amasover/dotfiles/issues/83)):
-  [PR #86](https://github.com/amasover/dotfiles/pull/86) **merged 2026-07-08**; issue open until a
-  fresh VM run shows instant deterministic death or a prompt-free sync. The 2026-07-10 VM run
-  wasn't prompt-free (jack provider): [PR #99](https://github.com/amasover/dotfiles/pull/99)
-  **open** pins pipewire-jack; host jack2→pipewire-jack swap is the follow-on live step. That
-  run died on the displaylink chaotic hold (aged 6.3-1 unbuildable: needs evdi<1.15, gone from
-  repos) — decision pending: `aur-quarantine auto displaylink` in-guest, or wait ~7d age-out.
+  [PR #86](https://github.com/amasover/dotfiles/pull/86) **merged 2026-07-08**,
+  [PR #99](https://github.com/amasover/dotfiles/pull/99) (pipewire-jack declared) **merged 2026-07-10**;
+  jack returned 2026-07-19 — the 2.33 pre-build resolves deps before the sync, pacman picked jack2 —
+  so [PR #110](https://github.com/amasover/dotfiles/pull/110) **open** installs PROVIDER_PINS as
+  step 3d before any dep resolution (grill decisions on the PR; gap recorded on #83). Issue open
+  until a fresh run shows a prompt-free sync. Host jack2→pipewire-jack swap stays a live step.
 - **2.27 vm root fills disk** ([#87](https://github.com/amasover/dotfiles/issues/87)):
   [PR #88](https://github.com/amasover/dotfiles/pull/88) **merged 2026-07-08**; running VM already
   rescued in place (78G/48%); issue open until a fresh create shows `df /` ≈ disk size.
