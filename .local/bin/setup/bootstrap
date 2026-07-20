@@ -38,6 +38,32 @@ die() {
 }
 usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; } # the header is the help
 
+# One provider-substitution probe (step 5c): -Spdd resolves just the named
+# target (no deps); a different name back means a repo package 'provides' the
+# declared one and the resolver would swap it in. Prints the provider, or
+# nothing when the name resolves to itself or no repo knows it — pacman's
+# nonzero exit IS that latter verdict, not an error. The || true matters:
+# without it set -e/pipefail kills bootstrap silently on the first AUR-only
+# name (2026-07-15 VM run died here).
+probe_provider() {
+    local prov
+    prov=$(pacman --noconfirm -Spdd --print-format '%n' "$1" 2>/dev/null | tail -1) || true
+    if [[ -n "$prov" && "$prov" != "$1" ]]; then echo "$prov"; fi
+    return 0
+}
+
+# Hidden test seam (tests/quarantine.clitest.txt): probe each named package
+# and print "<declared>\t<provider>" per substitution, nothing otherwise.
+# Dispatches before the arg loop and preconditions — it needs only pacman.
+if [[ "${1:-}" == "--probe-provider" ]]; then
+    shift
+    for p in "$@"; do
+        prov=$(probe_provider "$p")
+        if [[ -n "$prov" ]]; then printf '%s\t%s\n' "$p" "$prov"; fi
+    done
+    exit 0
+fi
+
 CHECK=0
 UNATTENDED=0
 for arg in "$@"; do
@@ -343,8 +369,8 @@ else
     presolve=()
     for p in "${candidates[@]}"; do
         [[ -z "${repo_of[$p]:-}" ]] || continue # exact chaotic names are fine
-        prov=$(pacman --noconfirm -Spdd --print-format '%n' "$p" 2>/dev/null | tail -1)
-        if [[ -n "$prov" && "$prov" != "$p" ]]; then
+        prov=$(probe_provider "$p")
+        if [[ -n "$prov" ]]; then
             echo "  provider substitution: $p would resolve to $prov — pre-building $p from the AUR instead"
             presolve+=("$p")
         fi
