@@ -679,23 +679,6 @@ before packages are loaded."
         maximum-scroll-margin 0.5
         scroll-margin 99999)
 
-  ;; Workaround for evil search buffer bug. See:
-  ;; https://github.com/syl20bnr/spacemacs/issues/10410
-  (defun kill-minibuffer ()
-    (interactive)
-    (when (windowp (active-minibuffer-window))
-      (evil-ex-search-exit)))
-  (add-hook 'mouse-leave-buffer-hook #'kill-minibuffer)
-
-  ;; Workaround for neotree/helm bug. See:
-  ;; https://github.com/syl20bnr/spacemacs/issues/7446
-  (with-eval-after-load "helm"
-    (defun helm-persistent-action-display-window (&optional split-onewindow)
-      "Return the window that will be used for persistent action.
-If SPLIT-ONEWINDOW is non-`nil' window is split in persistent action."
-      (with-helm-window
-        (setq helm-persistent-action-display-window (get-mru-window)))))
-
   ;; Workaround for helm-ag propertizing a read-only Helm buffer.
   (with-eval-after-load 'helm-ag
     (defun dotfiles/helm-ag--do-ag-propertize-inhibit-read-only (orig-fun input)
