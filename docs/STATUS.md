@@ -93,8 +93,10 @@ Facts:
   (interim until 2.30). That declaration then hit pre-flight's AUR verdicts (chaotic-native
   packages have no AUR entry): [PR #114](https://github.com/amasover/dotfiles/pull/114) **open**
   buckets AUR-missing + chaotic-repo as installable (verdict_bucket seam + clitest).
-  Evidence: `bootstrap done rc=0` + `check done rc=0` in one run. Triage note: redis now
-  provider-substitutes to valkey (Arch swap) — consider declaring valkey instead.
+  Evidence: `bootstrap done rc=0` + `check done rc=0` in one run.
+- **2.23 redis→valkey** ([#76](https://github.com/amasover/dotfiles/issues/76)): Aaron's call
+  2026-07-19 — valkey. [PR #115](https://github.com/amasover/dotfiles/pull/115) **open** swaps the
+  declaration; issue open until the host live swap (AUR redis → repo valkey) + clean drift report.
 - Resume gap noted on [#98](https://github.com/amasover/dotfiles/issues/98): a resumed `up` never
   updates the guest's yadm checkout (`yadm clone || true` is a no-op on an existing repo), so fixes
   merged after the first attempt don't reach the guest — manual in-guest `yadm pull` for now.

@@ -42,10 +42,10 @@ packages = [
   "python-pip",
   "python-pipx",
   "python-pymssql",
-  "redis",
   "rust",  # repo rust, not rustup: satisfies AUR makedeps, updates via pacman; no Rust dev here (2.7 review)
   "shellcheck",
   "strace",
   "unixodbc",
   "uv",
+  "valkey",  # redis replaced in the repos (2.23, Aaron's call 2026-07-19); provides redis
 ]
