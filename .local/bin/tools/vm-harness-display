@@ -298,6 +298,25 @@ class Renderer:
         self.tty.write(f"\x1b[{self.rows - self.RESERVED};1H".encode())
         self.tty.flush()
 
+    def _apply_resize_locked(self):
+        # Caller holds self.lock. Applied before ANY tty write, not just on
+        # the ticker: between SIGWINCH and the next tick every mirrored chunk
+        # would otherwise scroll with stale margins (some terminals also reset
+        # DECSTBM on resize), dragging the pinned rows into the log.
+        self.resized = False
+        self.rows, self.cols = self._size()
+        if self.mode == "bar":
+            self._set_region()
+            self._paint_rows_locked()
+
+    def _paint_rows_locked(self):
+        r1, r2, r3 = self._row_bytes()
+        self.tty.write(b"\x1b7"
+                       + f"\x1b[{self.rows - 2};1H\x1b[2K".encode() + r1
+                       + f"\x1b[{self.rows - 1};1H\x1b[2K".encode() + r2
+                       + f"\x1b[{self.rows};1H\x1b[2K".encode() + r3
+                       + b"\x1b8")
+
     def mirror(self, chunk, final=False):
         if self.dead or self.mode != "bar":
             return
@@ -314,6 +333,8 @@ class Renderer:
             if not data:
                 return
             with self.lock:
+                if self.resized:
+                    self._apply_resize_locked()
                 self.tty.write(data)
                 self.tty.flush()
         except Exception:
@@ -335,18 +356,11 @@ class Renderer:
         try:
             with self.lock:
                 if self.resized:
-                    self.resized = False
-                    self.rows, self.cols = self._size()
-                    if self.mode == "bar":
-                        self._set_region()
-                r1, r2, r3 = self._row_bytes()
+                    self._apply_resize_locked()
                 if self.mode == "bar":
-                    self.tty.write(b"\x1b7"
-                                   + f"\x1b[{self.rows - 2};1H\x1b[2K".encode() + r1
-                                   + f"\x1b[{self.rows - 1};1H\x1b[2K".encode() + r2
-                                   + f"\x1b[{self.rows};1H\x1b[2K".encode() + r3
-                                   + b"\x1b8")
+                    self._paint_rows_locked()
                 else:
+                    r1, r2, r3 = self._row_bytes()
                     # compact: a three-line in-place block (no firehose to share
                     # the terminal with) — move back up over the previous draw
                     if self.compact_drawn:
