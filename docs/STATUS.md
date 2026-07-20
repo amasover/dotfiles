@@ -89,8 +89,12 @@ Facts:
 - **2.35 declare everything bootstrap installs** ([#112](https://github.com/amasover/dotfiles/issues/112)):
   first green bootstrap (2026-07-19) died at check — 4 unmanaged packages (chaotic pair undeclared
   since 2.28; qemu-guest-agent/zram-generator from the guest install). [PR #113](https://github.com/amasover/dotfiles/pull/113)
-  **open**: chaotic pair into base.toml, guest set harness-written into guest machine-local
-  (interim until 2.30). Evidence: `bootstrap done rc=0` + `check done rc=0` in one run.
+  **merged**: chaotic pair into base.toml, guest set harness-written into guest machine-local
+  (interim until 2.30). That declaration then hit pre-flight's AUR verdicts (chaotic-native
+  packages have no AUR entry): [PR #114](https://github.com/amasover/dotfiles/pull/114) **open**
+  buckets AUR-missing + chaotic-repo as installable (verdict_bucket seam + clitest).
+  Evidence: `bootstrap done rc=0` + `check done rc=0` in one run. Triage note: redis now
+  provider-substitutes to valkey (Arch swap) — consider declaring valkey instead.
 - Resume gap noted on [#98](https://github.com/amasover/dotfiles/issues/98): a resumed `up` never
   updates the guest's yadm checkout (`yadm clone || true` is a no-op on an existing repo), so fixes
   merged after the first attempt don't reach the guest — manual in-guest `yadm pull` for now.

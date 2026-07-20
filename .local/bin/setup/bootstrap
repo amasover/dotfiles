@@ -52,15 +52,33 @@ probe_provider() {
     return 0
 }
 
-# Hidden test seam (tests/quarantine.clitest.txt): probe each named package
-# and print "<declared>\t<provider>" per substitution, nothing otherwise.
-# Dispatches before the arg loop and preconditions — it needs only pacman.
+# Bucket one pre-flight verdict (step 5c, Story 2.35): AUR-missing but present
+# in the chaotic repo = chaotic-native infrastructure (keyring/mirrorlist) —
+# repo-signed and installable, with no AUR metadata to gate on, so it is not a
+# declaration error. Every other class passes through unchanged.
+verdict_bucket() { # $1 = aur-quarantine verdict class, $2 = package's sync-DB repo ("" if none)
+    if [[ "$1" == missing && "$2" == chaotic-aur ]]; then
+        echo native
+    else
+        echo "$1"
+    fi
+}
+
+# Hidden test seams (tests/quarantine.clitest.txt), dispatched before the arg
+# loop and preconditions:
+#   --probe-provider PKG...        print "<declared>\t<provider>" per substitution
+#                                  (needs only pacman)
+#   --verdict-bucket CLASS REPO    print the pre-flight bucket for one verdict
 if [[ "${1:-}" == "--probe-provider" ]]; then
     shift
     for p in "$@"; do
         prov=$(probe_provider "$p")
         if [[ -n "$prov" ]]; then printf '%s\t%s\n' "$p" "$prov"; fi
     done
+    exit 0
+fi
+if [[ "${1:-}" == "--verdict-bucket" ]]; then
+    verdict_bucket "${2:-}" "${3:-}"
     exit 0
 fi
 
@@ -421,16 +439,20 @@ else
         age_holds=()
         identity=""
         missing=""
+        chaotic_native=""
         while IFS=$'\t' read -r p c b; do
             [[ -n "$p" ]] || continue
             base_of[$p]=$b
-            case "$c" in
+            case "$(verdict_bucket "$c" "${repo_of[$p]:-}")" in
                 ok) ;;
                 age) age_holds+=("$p") ;;
+                native) chaotic_native+="$p " ;;
                 missing) missing+="$p " ;;
                 *) identity+="$p ($c)  " ;;
             esac
         done <<<"$verdicts"
+        [[ -z "$chaotic_native" ]] \
+            || echo "  chaotic-native (no AUR entry, repo-signed): $chaotic_native— the sync installs them from the chaotic repo"
         [[ -z "$missing" ]] \
             || die "declared packages found in no repo and not in the AUR: $missing— typo, renamed, or AUR-deleted; fix the group files"
         [[ -z "$identity" ]] || die "quarantine identity holds — human decisions, all of them at once: $identity
