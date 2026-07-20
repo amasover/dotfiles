@@ -114,4 +114,15 @@ $ .local/bin/setup/vm-harness --progress --plain status 2>&1 || true
 vm-harness: FATAL: --progress and --plain contradict each other
 $
 
+--- display bar mode: resize re-sets the scroll region before the next mirrored chunk (2.21) ---
+
+tests/display-resize-check.py drives the tool on its own pty, shrinks/grows
+it mid-stream (real SIGWINCH), and asserts the region re-set for the new
+geometry reaches the tty before the next mirrored chunk — otherwise stream
+output scrolls with stale margins and drags the pinned bar rows into the log.
+
+$ python3 tests/display-resize-check.py .local/bin/tools/vm-harness-display
+GREEN: region re-set preceded the stream on every resize cycle
+$
+
 End of tests.
