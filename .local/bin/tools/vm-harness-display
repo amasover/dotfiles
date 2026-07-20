@@ -78,6 +78,7 @@ BOOTSTRAP_STEPS = [
     ("local-group", ("Machine-local group",)),
     ("mirrors", ("Pacman mirrors",)),
     ("sync", ("System sync",)),
+    ("pins", ("Provider pins",)),
     ("yay", ("yay",)),
     ("quarantine", ("Quarantine prerequisites",)),
     ("metapac", ("metapac",)),
