@@ -72,7 +72,9 @@ Facts:
 - **2.21 progress mode** ([#73](https://github.com/amasover/dotfiles/issues/73)):
   [PR #102](https://github.com/amasover/dotfiles/pull/102) **merged 2026-07-10** (grill decisions
   on the issue; iterated live: 3-row bar, responsive step strip, VM_HARNESS_BRANCH for pre-merge
-  guest testing). Issue open for attended transcripts from a green run.
+  guest testing). Issue open for attended transcripts from a green run. Resize bug (bar rows
+  merged into the log on SIGWINCH — resize applied only on the 0.5s ticker) fixed with a pty
+  regression test: [PR #111](https://github.com/amasover/dotfiles/pull/111) **open**.
 - **2.32 + 2.33 + 2.22** ([#100](https://github.com/amasover/dotfiles/issues/100),
   [#103](https://github.com/amasover/dotfiles/issues/103), [#75](https://github.com/amasover/dotfiles/issues/75)):
   [PR #104](https://github.com/amasover/dotfiles/pull/104) **merged 2026-07-10**,
