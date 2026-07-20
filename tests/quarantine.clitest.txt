@@ -2,9 +2,10 @@ Quarantine tooling shell-level tests (clitest — see tests/vm-harness.clitest.t
 header and knowledge/reference/clitest-shell-tests.md for format notes).
 
 Run from the repo root:   clitest tests/quarantine.clitest.txt
-Covers Stories 2.32/2.33 (#100/#103): the metapac-declared parser, the
-aur-quarantine preflight CLI surface, the policy's version rendering, and
-the bootstrap provider-substitution probe seam (stubbed pacman).
+Covers Stories 2.32/2.33/2.35 (#100/#103/#112): the metapac-declared parser,
+the aur-quarantine preflight CLI surface, the policy's version rendering, and
+the bootstrap seams — provider-substitution probe (stubbed pacman) and the
+pre-flight verdict bucketing.
 Network-dependent behavior (live RPC verdicts) is deliberately untested here.
 
 --- metapac-declared: hostname_groups -> group files -> sorted union ---
@@ -63,6 +64,20 @@ $
 
 $ PATH="$stub:$PATH" .local/bin/setup/bootstrap --probe-provider aur-only-pkg; echo "rc=$?"
 rc=0
+$
+
+--- bootstrap --verdict-bucket: AUR-missing + chaotic repo = chaotic-native, not fatal (2.35) ---
+
+chaotic-keyring/chaotic-mirrorlist exist only in the chaotic repo (no AUR
+entry); pre-flight must bucket them as installable, while a true unknown
+name (no repo at all) stays a fatal declaration error.
+
+$ .local/bin/setup/bootstrap --verdict-bucket missing chaotic-aur
+native
+$ .local/bin/setup/bootstrap --verdict-bucket missing ""
+missing
+$ .local/bin/setup/bootstrap --verdict-bucket age chaotic-aur
+age
 $
 
 End of tests.

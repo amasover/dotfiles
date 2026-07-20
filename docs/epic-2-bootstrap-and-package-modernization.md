@@ -769,6 +769,7 @@ Issue: [#112](https://github.com/amasover/dotfiles/issues/112) · Origin: the fi
 **Acceptance criteria:**
 
 - Given the chaotic-enable step installs its keyring and mirrorlist, then both are declared in `base.toml` (host drifts as declared-but-missing until chaotic adoption — documented pattern)
+- Given a declared package that is AUR-missing but present in the chaotic repo (chaotic-native infrastructure), when pre-flight verdicts it, then it buckets as installable — not a fatal declaration error; true unknown names still die
 - Given a harness-created guest, when `cmd_bootstrap` runs, then the guest's `machine-local.toml` is harness-written with the guest hardware set (rewritten every bootstrap; rehomed by 2.30)
 - Given both changes, when the check phase runs after a green bootstrap, then `metapac unmanaged` is exactly empty
 
