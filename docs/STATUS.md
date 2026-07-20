@@ -79,9 +79,16 @@ Facts:
   [PR #105](https://github.com/amasover/dotfiles/pull/105) (provider-substitution pre-build)
   **merged 2026-07-15**. The 2026-07-15 evidence run died silently at pre-flight — the new
   probe's bare `pacman -Spdd` assignment under `set -e`/pipefail; fix + stubbed-pacman clitest:
-  [PR #106](https://github.com/amasover/dotfiles/pull/106) **open**. Evidence for all three
-  (+ 2.21/2.31): fresh unattended VM run off `main` after #106 merges (no VM_HARNESS_BRANCH needed).
-  Everything else lives on the board.
+  [PR #106](https://github.com/amasover/dotfiles/pull/106) **merged 2026-07-19**. Evidence for
+  all three (+ 2.21/2.31): the parked VM's resumed run off `main`. Everything else lives on the board.
+- **2.34 system sync before package work** ([#107](https://github.com/amasover/dotfiles/issues/107)):
+  [PR #108](https://github.com/amasover/dotfiles/pull/108) **open** — resumed runs kept Jul-15 DBs
+  (the only `-Sy` lives in the chaotic-enable step, skipped on resume) and mirrors purge superseded
+  files, so mesa/svt-av1 404'd everywhere; one full `-Syu` after mirrors, identical fresh/resumed.
+  Evidence: a resumed run with day-old DBs, package phase free of retrieval failures.
+- Resume gap noted on [#98](https://github.com/amasover/dotfiles/issues/98): a resumed `up` never
+  updates the guest's yadm checkout (`yadm clone || true` is a no-op on an existing repo), so fixes
+  merged after the first attempt don't reach the guest — manual in-guest `yadm pull` for now.
 
 ## Standing warnings
 
