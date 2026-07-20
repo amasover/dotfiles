@@ -421,16 +421,27 @@ else
         age_holds=()
         identity=""
         missing=""
+        chaotic_native=""
         while IFS=$'\t' read -r p c b; do
             [[ -n "$p" ]] || continue
             base_of[$p]=$b
             case "$c" in
                 ok) ;;
                 age) age_holds+=("$p") ;;
-                missing) missing+="$p " ;;
+                missing)
+                    # AUR-missing but present in the chaotic repo = chaotic-native
+                    # infrastructure (keyring/mirrorlist, 2.35): repo-signed, no AUR
+                    # metadata to gate on — installable, not a declaration error.
+                    if [[ "${repo_of[$p]:-}" == chaotic-aur ]]; then
+                        chaotic_native+="$p "
+                    else
+                        missing+="$p "
+                    fi ;;
                 *) identity+="$p ($c)  " ;;
             esac
         done <<<"$verdicts"
+        [[ -z "$chaotic_native" ]] \
+            || echo "  chaotic-native (no AUR entry, repo-signed): $chaotic_native— the sync installs them from the chaotic repo"
         [[ -z "$missing" ]] \
             || die "declared packages found in no repo and not in the AUR: $missing— typo, renamed, or AUR-deleted; fix the group files"
         [[ -z "$identity" ]] || die "quarantine identity holds — human decisions, all of them at once: $identity
