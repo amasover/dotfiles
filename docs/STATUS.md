@@ -75,11 +75,12 @@ Facts:
   guest testing). Issue open for attended transcripts from a green run.
 - **2.32 + 2.33 + 2.22** ([#100](https://github.com/amasover/dotfiles/issues/100),
   [#103](https://github.com/amasover/dotfiles/issues/103), [#75](https://github.com/amasover/dotfiles/issues/75)):
-  [PR #104](https://github.com/amasover/dotfiles/pull/104) **open**, one PR by Aaron's call —
-  pre-flight verdicts the whole non-repo set before the first sync (no more one-crash-per-hold),
-  gentle PKGBUILD cache warm kills the AUR clone burst, hold deaths name the real cause.
-  Evidence for all three (+ 2.21/2.31): one fresh unattended VM run
-  (`VM_HARNESS_BRANCH=story/2.33-preflight-holds` until merge).
+  [PR #104](https://github.com/amasover/dotfiles/pull/104) **merged 2026-07-10**,
+  [PR #105](https://github.com/amasover/dotfiles/pull/105) (provider-substitution pre-build)
+  **merged 2026-07-15**. The 2026-07-15 evidence run died silently at pre-flight — the new
+  probe's bare `pacman -Spdd` assignment under `set -e`/pipefail; fix + stubbed-pacman clitest:
+  [PR #106](https://github.com/amasover/dotfiles/pull/106) **open**. Evidence for all three
+  (+ 2.21/2.31): fresh unattended VM run off `main` after #106 merges (no VM_HARNESS_BRANCH needed).
   Everything else lives on the board.
 
 ## Standing warnings
