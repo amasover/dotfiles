@@ -84,10 +84,13 @@ Facts:
   [PR #106](https://github.com/amasover/dotfiles/pull/106) **merged 2026-07-19**. Evidence for
   all three (+ 2.21/2.31): the parked VM's resumed run off `main`. Everything else lives on the board.
 - **2.34 system sync before package work** ([#107](https://github.com/amasover/dotfiles/issues/107)):
-  [PR #108](https://github.com/amasover/dotfiles/pull/108) **open** — resumed runs kept Jul-15 DBs
-  (the only `-Sy` lives in the chaotic-enable step, skipped on resume) and mirrors purge superseded
-  files, so mesa/svt-av1 404'd everywhere; one full `-Syu` after mirrors, identical fresh/resumed.
-  Evidence: a resumed run with day-old DBs, package phase free of retrieval failures.
+  [PR #108](https://github.com/amasover/dotfiles/pull/108) **merged 2026-07-19**. Evidence: a resumed
+  run with day-old DBs, package phase free of retrieval failures.
+- **2.35 declare everything bootstrap installs** ([#112](https://github.com/amasover/dotfiles/issues/112)):
+  first green bootstrap (2026-07-19) died at check — 4 unmanaged packages (chaotic pair undeclared
+  since 2.28; qemu-guest-agent/zram-generator from the guest install). [PR #113](https://github.com/amasover/dotfiles/pull/113)
+  **open**: chaotic pair into base.toml, guest set harness-written into guest machine-local
+  (interim until 2.30). Evidence: `bootstrap done rc=0` + `check done rc=0` in one run.
 - Resume gap noted on [#98](https://github.com/amasover/dotfiles/issues/98): a resumed `up` never
   updates the guest's yadm checkout (`yadm clone || true` is a no-op on an existing repo), so fixes
   merged after the first attempt don't reach the guest — manual in-guest `yadm pull` for now.
