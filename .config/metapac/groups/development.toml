@@ -17,6 +17,7 @@ packages = [
   "brew-git",
   "changie",
   "claude-code",
+  "clitest",  # shell-test runner — this repo's own tests/*.clitest.txt suites
   "cloc",
   "debtap",
   "dotnet-sdk",
@@ -36,6 +37,7 @@ packages = [
   "nodejs-vmd",
   "nuget",
   "podman",
+  "podman-compose",
   "powershell-bin",
   "runc",
   "pyenv",
@@ -44,6 +46,7 @@ packages = [
   "python-pymssql",
   "rust",  # repo rust, not rustup: satisfies AUR makedeps, updates via pacman; no Rust dev here (2.7 review)
   "shellcheck",
+  "shfmt",
   "strace",
   "unixodbc",
   "uv",
