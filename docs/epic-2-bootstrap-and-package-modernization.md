@@ -756,6 +756,26 @@ Issue: [#107](https://github.com/amasover/dotfiles/issues/107) · Origin: the 20
 
 ---
 
+### Story 2.35: every package bootstrap installs is declared
+
+As the repo owner,
+I want every package that bootstrap or the harness installs to be declared in
+a metapac group,
+So that the exactly-empty `unmanaged` check stays a strict drift backstop
+instead of being weakened with allowlists.
+
+Issue: [#112](https://github.com/amasover/dotfiles/issues/112) · Origin: the first run to finish bootstrap green (2026-07-19) died at check with four unmanaged packages — chaotic-keyring/chaotic-mirrorlist (installed by the 2.28 enable step, declared nowhere) and qemu-guest-agent/zram-generator (harness guest install; real home is the 2.30 class split, #96).
+
+**Acceptance criteria:**
+
+- Given the chaotic-enable step installs its keyring and mirrorlist, then both are declared in `base.toml` (host drifts as declared-but-missing until chaotic adoption — documented pattern)
+- Given a harness-created guest, when `cmd_bootstrap` runs, then the guest's `machine-local.toml` is harness-written with the guest hardware set (rewritten every bootstrap; rehomed by 2.30)
+- Given both changes, when the check phase runs after a green bootstrap, then `metapac unmanaged` is exactly empty
+
+**Evidence artifact:** a run log with `=== bootstrap done rc=0` followed by `=== check done rc=0`.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
