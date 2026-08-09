@@ -10,29 +10,42 @@ tokens, SSH material, or private machine data. This repo maps into `$HOME`
 through YADM and stores local secrets in an encrypted payload, so secret hygiene
 is a release gate.
 
-## Standard scanner: `gitleaks`
+## Standard scanner: `betterleaks` (fallback: `gitleaks`)
 
-`gitleaks` is the standard secret scanner for this repo. Rationale:
+`betterleaks` is the standard secret scanner for this repo (Story 4.8, #117;
+it replaced `gitleaks`, which resolved OQ-5 and remains the accepted fallback).
+Rationale:
 
-- Already installed on the current workstation; no new dependency for Release 1.
+- Successor to gitleaks from the same maintainers, including the original
+  author; gitleaks itself is no longer where detection improvements land.
+- Drop-in compatible where it matters here: reads gitleaks config files and
+  `.gitleaksignore`, same `dir`/`git` scan syntax, redacted output
+  (`--redact`).
 - Scans both working tree and full Git history — the real risk here is
   historical exposure across ~1000 commits, not just the current diff.
-- Redacted output (`--redact`) lets findings be reviewed and reported without
-  printing the secret itself.
-- In-repo allowlist (`.gitleaksignore`) keeps documented false positives
-  dismissed across runs and machines.
 
-If `gitleaks` is not installed, use the manual fallback below and ask Aaron to
-install it (`pacman -S gitleaks` or equivalent). Do not install it
-automatically without approval.
+Known divergence: betterleaks has **no `protect` subcommand**, so the staged
+scan is `git diff --staged | betterleaks stdin` (the hook's form, below). A
+`stdin` scan reports different fingerprints than `protect` did — when
+dismissing a false positive, take the fingerprint from a `dir`/`git` JSON
+report, not from hook output.
 
-## Enforced automatically: pre-commit hook (Story 4.4, #35)
+Install: `winget install Betterleaks.Betterleaks` (Windows). Not yet in the
+official Arch repos (checked 2026-08-09), so the Linux workstation keeps
+`gitleaks` (`pacman -S gitleaks`) as its scanner until betterleaks is packaged;
+`security.toml` still declares gitleaks for that reason. If neither scanner is
+installed, use the manual fallback below and ask Aaron to install one. Do not
+install automatically without approval.
+
+## Enforced automatically: pre-commit hook (Story 4.4, #35; betterleaks-first since 4.8, #117)
 
 The staged-changes scan runs automatically on every commit via the tracked hook
-[.githooks/pre-commit](../../.githooks/pre-commit). It runs
-`gitleaks protect --staged --redact --no-banner` and blocks the commit on any
-finding; if `gitleaks` is missing it fails loudly with the install step instead
-of passing silently.
+[.githooks/pre-commit](../../.githooks/pre-commit). It prefers
+`git diff --staged | betterleaks stdin --redact --no-banner`, falls back to
+`gitleaks protect --staged --redact --no-banner` where only gitleaks exists,
+and blocks the commit on any finding; with no scanner installed it fails loudly
+with the install steps instead of passing silently. Scanner selection is
+covered by [tests/pre-commit-hook.clitest.txt](../../tests/pre-commit-hook.clitest.txt).
 
 Enable it per repo with a repo-local `core.hooksPath` (never `--global` — that
 would hijack hooks in every other repo under `$HOME`):
@@ -62,19 +75,22 @@ All commands are read-only. Run from the repo checkout (`$DOTFILES_CHECKOUT`).
    this for you where enabled):
 
    ```bash
-   gitleaks protect --staged --redact --no-banner
+   git diff --staged | betterleaks stdin --redact --no-banner
+   # fallback: gitleaks protect --staged --redact --no-banner
    ```
 
 2. **Before pushing or opening a PR — working tree:**
 
    ```bash
-   gitleaks dir . --redact --no-banner
+   betterleaks dir . --redact --no-banner
+   # fallback: gitleaks dir . --redact --no-banner
    ```
 
 3. **Periodically or before publishing history — full Git history:**
 
    ```bash
-   gitleaks git . --redact --no-banner
+   betterleaks git . --redact --no-banner
+   # fallback: gitleaks git . --redact --no-banner
    ```
 
 Exit code `0` means no findings. Non-zero means findings exist — review before
@@ -121,7 +137,9 @@ YADM instead.
 When a finding is a confirmed false positive, dismiss it durably and record why:
 
 1. Get the fingerprint from a JSON report
-   (`gitleaks dir . --redact --report-format json --report-path /tmp/gl.json`).
+   (`betterleaks dir . --redact --report-format json --report-path /tmp/bl.json`).
+   Use a `dir`/`git` report, not hook output — `stdin` scans carry different
+   fingerprints.
 2. Add the fingerprint to `.gitleaksignore` at the repo root, with a comment
    stating the reason and date:
 
@@ -133,11 +151,13 @@ When a finding is a confirmed false positive, dismiss it durably and record why:
 Never dismiss a finding without a written reason. If it is unclear whether a
 finding is real, treat it as real until proven otherwise and ask Aaron.
 
-**Testing the hook with a planted secret:** gitleaks' default config allowlists
+**Testing the hook with a planted secret:** the default config allowlists
 values containing `EXAMPLE`, so the canonical AWS docs key
 (`AKIAIOSFODNN7EXAMPLE`) passes clean — a planted test secret must look real
-(e.g. a random-suffix `ghp_…` GitHub PAT pattern). Verified 2026-07-09: the
-hook blocked a realistic planted token and let clean commits through.
+(e.g. a random-suffix `ghp_…` GitHub PAT pattern). Verified 2026-07-09 against
+the gitleaks-era hook: it blocked a realistic planted token and let clean
+commits through. The betterleaks stdin path has not yet had a planted-secret
+run — re-verify on the next convenient occasion.
 
 ## Scan evidence
 
@@ -145,6 +165,7 @@ hook blocked a realistic planted token and let clean commits through.
 | --- | --- | --- | --- | --- |
 | 2026-06-23 | Working tree | `gitleaks dir . --redact --no-banner` | n/a | No leaks found |
 | 2026-06-23 | Full history | `gitleaks git . --redact --no-banner` | 1002 | No leaks found |
+| 2026-08-09 | Working tree | `betterleaks dir . --redact --no-banner` (1.7.1, Windows clone) | n/a | No leaks found |
 
 No findings, so no false-positive dismissals were needed and no `.gitleaksignore`
 file exists yet. Re-run the working-tree and staged scans before each commit

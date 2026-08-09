@@ -1,0 +1,6 @@
+# Files that must stay LF even on Windows checkouts (autocrlf=true would
+# otherwise CRLF them): bash executed by Git Bash, and clitest files whose
+# expected-output matching is byte-exact. (Story 4.8, #117 — the Windows
+# clone now runs the pre-commit hook.)
+.githooks/* text eol=lf
+tests/*.clitest.txt text eol=lf

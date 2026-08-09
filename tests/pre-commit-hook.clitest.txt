@@ -1,0 +1,61 @@
+Pre-commit hook scanner selection (Story 4.8, #117).
+
+Stub scanners shadow the real ones via a fully-controlled PATH (the only real
+binary reachable is git, through an absolute-path wrapper), and a throwaway
+git repo supplies the staged diff — no network, no host scanner dependency.
+
+$ T=$(mktemp -d)
+$ HOOK=$PWD/.githooks/pre-commit
+$ REALGIT=$(command -v git)
+$ REALBASH=$(command -v bash)
+$ REALCAT=$(command -v cat)
+$ mkdir -p "$T/bin-bl" "$T/bin-gl" "$T/bin-both" "$T/bin-none"
+$ for d in bl gl both none; do printf '#!/bin/sh\nexec "%s" "$@"\n' "$REALGIT" > "$T/bin-$d/git"; chmod +x "$T/bin-$d/git"; done
+$ printf '#!/bin/sh\n"%s" > "${STUB_CAPTURE:-/dev/null}"\necho "betterleaks called: $*"\nexit "${STUB_RC:-0}"\n' "$REALCAT" > "$T/bin-bl/betterleaks"
+$ printf '#!/bin/sh\necho "gitleaks called: $*"\nexit "${STUB_RC:-0}"\n' > "$T/bin-gl/gitleaks"
+$ chmod +x "$T/bin-bl/betterleaks" "$T/bin-gl/gitleaks"
+$ cp "$T/bin-bl/betterleaks" "$T/bin-both/betterleaks" && cp "$T/bin-gl/gitleaks" "$T/bin-both/gitleaks"
+$ R=$T/repo && git init -q "$R" && git -C "$R" config user.email t@example.invalid && git -C "$R" config user.name t && git -C "$R" config core.autocrlf false
+$ echo "MARKER-staged-content" > "$R/f.txt" && git -C "$R" add f.txt
+$
+
+betterleaks present: the staged diff is piped to `betterleaks stdin`.
+
+$ (cd "$R" && STUB_CAPTURE=$T/cap PATH="$T/bin-bl" "$REALBASH" "$HOOK" 2>&1); echo rc=$?
+betterleaks called: stdin --redact --no-banner
+rc=0
+$ grep -c MARKER-staged-content "$T/cap"
+1
+$
+
+Fallback: only gitleaks installed — protect --staged, flags unchanged.
+
+$ (cd "$R" && PATH="$T/bin-gl" "$REALBASH" "$HOOK" 2>&1); echo rc=$?
+gitleaks called: protect --staged --redact --no-banner
+rc=0
+$
+
+Both installed: betterleaks is preferred.
+
+$ (cd "$R" && PATH="$T/bin-both" "$REALBASH" "$HOOK" 2>&1); echo rc=$?
+betterleaks called: stdin --redact --no-banner
+rc=0
+$
+
+A finding (non-zero scanner exit) blocks the commit with the scanner's code.
+
+$ (cd "$R" && STUB_RC=9 STUB_CAPTURE=$T/cap PATH="$T/bin-bl" "$REALBASH" "$HOOK" 2>&1); echo rc=$?
+betterleaks called: stdin --redact --no-banner
+rc=9
+$
+
+Neither scanner: refuse loudly, naming both install routes.
+
+$ (cd "$R" && PATH="$T/bin-none" "$REALBASH" "$HOOK" 2>&1); echo rc=$?
+pre-commit: no secret scanner installed — refusing to commit unscanned.
+  install:  winget install Betterleaks.Betterleaks   (Windows)
+  install:  pacman -S gitleaks   (Arch, until betterleaks is packaged)
+  details:  knowledge/recipes/secret-scan.md
+  bypass this once (scan manually!):  git commit --no-verify
+rc=1
+$
