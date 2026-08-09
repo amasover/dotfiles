@@ -778,6 +778,78 @@ Issue: [#112](https://github.com/amasover/dotfiles/issues/112) (closed, PRs #113
 
 ---
 
+### Story 2.36: vm-harness for the Windows machine — VMware Workstation sibling
+
+As the repo owner,
+I want a PowerShell sibling of vm-harness that runs on the Windows personal
+machine and drives throwaway Arch VMs under VMware Workstation,
+So that bootstrap changes can be validated from the Windows host on the
+hypervisor the daily-driver rebuild targets
+([decision-daily-driver-vm.md](./decision-daily-driver-vm.md)), and the daily
+target (Story 2.37) has a harness to build on.
+
+Issue: *(open when the story starts)* · Origin: the existing harness (Story 2.7)
+is libvirt/QEMU on the Linux workstation. Decided at the 2026-08-09 grill:
+**PowerShell sibling script**, not a backend abstraction retrofitted into the
+bash harness and not Git Bash — sibling-level reuse is too thin to outweigh the
+native fit (a later PowerShell-vs-bash revisit is off the table; this *is* the
+PowerShell try). **Three-layer shape:** thin PowerShell driver (`vmrun`/ssh
+orchestration only); logic in Python — seed/recipe generation written as the
+seam Story 2.29 will consume, log filters, and the reused python-rich progress
+display (`tools/vm-harness-display`); bash survives only in the guest-side
+scripts (bootstrap invocation, check assertions), extracted from the libvirt
+harness and shared. Pester is permitted opportunistically where PowerShell
+logic is unavoidable; the default is moving logic to Python. **Decoupled from
+Story 2.30:** runs use the `workstation` class (`qemu-guest-agent` is inert
+under VMware, mirroring 2.30's "harmless under QEMU" note); the
+`daily-vm`-class-under-VMware proof belongs to Story 2.37. Install
+observability is seed-driven — installer output redirected to serial (VMware
+serial-port-to-file), sshd enabled in the live ISO by the seed, IP from the
+vmnet DHCP leases file; details in-story.
+
+**Acceptance criteria:**
+
+- Given the Windows machine with VMware Workstation installed, when `up` runs, then it fresh-installs Arch unattended in a throwaway VMware VM (official ISO + cloud-init–driven `archinstall`, same pattern as the QEMU harness), runs the repo bootstrap inside it, and asserts the check-phase result (metapac unmanaged exactly empty, services, session target)
+- Given the pipeline contract, when phases run, then per-phase logs carry the `=== <phase> done rc=N` trailers, `up` resumes by probing live state (VM files present, `vmrun list`, media state), `destroy` removes the whole VM, and never-auto-destroy holds
+- Given the subcommand surface, then `fetch`/`create`/`install`/`boot`/`up`/`ip`/`bootstrap`/`check`/`tail`/`status`/`destroy` port; `exec` is ssh-backed (works in the live ISO via the seed's sshd — replaces the qemu agent); `--progress` and the default bottom bar reuse the shared display; `--detach` is deferred (no systemd on the host; follow-up story if wanted)
+- Given throwaway guests, when seeds/credentials are generated, then they are fresh per run and never land in tracked files (same posture as the QEMU harness)
+- Given the shared seams, when they land, then the guest-side bash is factored once and consumed by both harnesses (or the divergence recorded with reasons), and the Python seed/recipe generation is shaped for Story 2.29 to consume
+- Given the test contract ([runbook-script-validation.md](./runbook-script-validation.md)), then Python logic ships with pytest coverage and guest-side bash seams with clitest coverage, none of it needing VMware or network; nontrivial logic accreting in the `.ps1` moves to Python (or gains Pester coverage) instead of staying untested
+
+**Evidence artifact:** a Windows-host run's log set ending `=== bootstrap done rc=0` + `=== check done rc=0` (`workstation` class) under VMware Workstation.
+
+---
+
+### Story 2.37: vm-harness daily target — iterate toward graduation
+
+As the repo owner,
+I want the Windows harness to manage a *daily target* — a VM shaped like the
+daily driver (LUKS, `daily-vm` class, eventually real secrets) that I destroy
+and recreate until one run is worth keeping,
+So that the daily-driver rebuild is reached by cheap harness-driven iteration
+instead of one attended big-bang install.
+
+Issue: *(open when the story starts)* · Origin: 2026-08-09 grill; terms
+*harness target* and *graduation* defined in [CONTEXT.md](../CONTEXT.md).
+Depends on 2.36 (the Windows harness), 2.29 (recipe: LUKS root, sized disk, VM
+boot path), and 2.30 (`daily-vm` class + guest tools). **Capability bar,
+decided at the grill:** this story closes when the tool and process are proven
+end-to-end including real-secrets handling; the actual graduation run and the
+era-exit milestone stay owned by the decision record and the runbook's
+daily-drivable checklist — a story checkbox can't own "I live in it now".
+
+**Acceptance criteria:**
+
+- Given the daily target, when it provisions, then it consumes Story 2.29's recipe (LUKS-encrypted root sized from the disk, VM boot path) and bootstraps the `daily-vm` class, with the guest-tools group coming up under VMware — the milestone stack proven in a pre-graduation iteration
+- Given secrets rehearsal, when iterating, then early runs use throwaway stand-ins (LUKS passphrase, user password) and a proving run decrypts the real encrypted archive attended and in-guest; secrets never land in seeds, logs, tracked files, or harness state, and generated material containing them is destroyed after use
+- Given the daily target, when `destroy` is invoked on it, then it demands typed confirmation of the VM name; disposable-target destroy semantics stay unchanged
+- Given graduation, then the harness's role ends at acceptance — nothing in the harness treats the graduated VM as a target afterward; the machine reconciles itself from inside like any other
+- Given the runbook, when the story lands, then the daily-drivable acceptance checklist documents the graduation procedure: what to verify before keeping a run
+
+**Evidence artifact:** a daily-target run log set going green end-to-end (LUKS + `daily-vm` class + attended real-archive decrypt) plus a guarded-destroy transcript.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

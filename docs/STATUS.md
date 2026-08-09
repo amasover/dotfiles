@@ -66,6 +66,10 @@ Facts:
 - **metapac reinstall churn** (from the 07-19 log review): `yay --sync --asexplicit` without
   `--needed` reinstalls every installed declared package each sync (37–50 per run) — investigation
   in progress, story TBD.
+- **2.36/2.37 drafted** (2026-08-09 grill): Windows vm-harness — PowerShell sibling driving
+  VMware Workstation (2.36, decoupled from 2.30, startable now) and the daily target +
+  graduation capability (2.37, after 2.29/2.30). Specs in epic 2; *harness target* /
+  *graduation* added to CONTEXT.md; issues open when work starts.
 
 ## Standing warnings
 

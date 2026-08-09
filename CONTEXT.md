@@ -78,6 +78,19 @@ The one-time sequence that takes a fresh OS install to a working workstation by 
 the reconcile loop for the first time.
 _Avoid_: install script (the dead 2019 artifact), setup
 
+**Harness target**:
+A named VM a validation harness manages through its pipeline. Two kinds: a
+*disposable* target (throwaway fresh installs proving bootstrap changes; destroyed
+freely) and the *daily* target (the one VM being iterated toward the daily-driver
+rebuild; destruction guarded).
+_Avoid_: instance, test VM (the daily target isn't one)
+
+**Graduation**:
+The acceptance moment when the daily target stops being disposable and becomes the
+daily driver. After graduation the machine owns its own reconcile loop; no harness
+targets it again.
+_Avoid_: handoff, go-live, milestone (that's the era-exit event it contributes to)
+
 ## Eras
 
 **Cleanup era**:
