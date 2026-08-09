@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
-# Pre-commit secret scan (Story 4.4, #35).
+# Pre-commit secret scan (Story 4.4, #35; betterleaks-first since Story 4.8, #117).
 #
-# Blocks the commit when gitleaks finds a secret in the staged diff.
+# Blocks the commit when the scanner finds a secret in the staged diff.
+# Prefers betterleaks; it has no `protect` subcommand, so the staged diff is
+# piped to `betterleaks stdin`. Falls back to gitleaks while the Linux
+# workstation transitions (betterleaks is not packaged for Arch yet).
 # Enabled per-repo via `core.hooksPath .githooks` — see
 # knowledge/recipes/secret-scan.md for setup (working clone and YADM),
 # false-positive handling (.gitleaksignore), and the --no-verify bypass.
-set -u
+set -u -o pipefail
 
-if ! command -v gitleaks >/dev/null 2>&1; then
-  echo "pre-commit: gitleaks is not installed — refusing to commit unscanned." >&2
-  echo "  install:  pacman -S gitleaks" >&2
+if command -v betterleaks >/dev/null 2>&1; then
+  git diff --staged | betterleaks stdin --redact --no-banner
+elif command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact --no-banner
+else
+  echo "pre-commit: no secret scanner installed — refusing to commit unscanned." >&2
+  echo "  install:  winget install Betterleaks.Betterleaks   (Windows)" >&2
+  echo "  install:  pacman -S gitleaks   (Arch, until betterleaks is packaged)" >&2
   echo "  details:  knowledge/recipes/secret-scan.md" >&2
   echo "  bypass this once (scan manually!):  git commit --no-verify" >&2
   exit 1
 fi
-
-exec gitleaks protect --staged --redact --no-banner
