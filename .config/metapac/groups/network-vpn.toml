@@ -30,6 +30,7 @@ packages = [
   "nmap",
   "nss-mdns",
   "ntp",
+  "openbsd-netcat",  # gnu-netcat's replacement (2.15 removal validation, 2026-07-07)
   "openssh",
   "openvpn",
   "openvpn-update-systemd-resolved",
