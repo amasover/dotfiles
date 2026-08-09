@@ -35,6 +35,6 @@ yadm --yadm-data $HOME/.config/yadm --yadm-archive $HOME/.config/yadm/files.gpg 
 ## Secret scanning
 
 - Aaron is open to being asked to install local tooling or packages when validation would benefit from it.
-- For secret scanning, prefer an installed scanner such as `gitleaks`; if no scanner is present, ask before installing one.
+- For secret scanning, prefer the standard scanner `betterleaks` (or the `gitleaks` fallback); if neither is present, ask before installing one.
 - Run a secret scan before committing docs or config changes.
 - Keep scanner output redacted and avoid printing decrypted secret material.

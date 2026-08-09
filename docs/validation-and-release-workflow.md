@@ -98,13 +98,14 @@ Before staging commits:
 - Do not run `yadm decrypt` unless explicitly approved.
 - Do not run `yadm encrypt` unless an intentional encrypted-file change is ready.
 
-The standard scanner is `gitleaks` (resolving OQ-5). Run before staging and
-before PR:
+The standard scanner is `betterleaks` (Story 4.8, #117; successor to
+`gitleaks`, which resolved OQ-5 and remains the fallback on machines without
+betterleaks). Run before staging and before PR:
 
 ```bash
-gitleaks protect --staged --redact --no-banner   # staged changes
-gitleaks dir . --redact --no-banner              # working tree, before PR
-gitleaks git . --redact --no-banner              # full history, periodically
+git diff --staged | betterleaks stdin --redact --no-banner   # staged changes (the hook's form)
+betterleaks dir . --redact --no-banner                       # working tree, before PR
+betterleaks git . --redact --no-banner                       # full history, periodically
 ```
 
 Do not install a scanner automatically as part of validation; ask Aaron first.
@@ -296,7 +297,7 @@ Before any commit:
 Before pushing a story branch or opening a PR:
 
 - [ ] Confirm Git author and committer use Aaron's personal email for new commits
-- [ ] Run a secret scan with redacted output, for example `gitleaks protect --staged --redact --no-banner` before commit and `gitleaks dir . --redact --no-banner` before PR
+- [ ] Run a secret scan with redacted output, for example `git diff --staged | betterleaks stdin --redact --no-banner` before commit and `betterleaks dir . --redact --no-banner` before PR (gitleaks equivalents as fallback)
 - [ ] Search for plaintext credentials, tokens, private keys, internal hostnames, local IPs, private URLs, and company-specific internal details
 - [ ] Review docs and knowledge files for unnecessary personal, employer, client, or workstation-identifying details
 - [ ] Move sensitive local-only material to ignored paths or YADM-encrypted paths instead of publishing it as plaintext

@@ -199,6 +199,37 @@ Issue: [#94](https://github.com/amasover/dotfiles/issues/94) · One GitHub Actio
 
 ---
 
+### Story 4.8: betterleaks replaces gitleaks as the standard secret scanner
+
+As the repo owner,
+I want the secret-scan gate to run betterleaks — gitleaks' successor from the
+same maintainers — with gitleaks kept as a transition fallback,
+So that the scan standard follows the maintained tool and works on the Windows
+machine, without breaking the Linux workstation's existing gitleaks setup.
+
+Issue: [#117](https://github.com/amasover/dotfiles/issues/117) · Origin:
+2026-08-09 — gitleaks was absent on the Windows machine during the 2.36/2.37
+docs push; Aaron installed betterleaks (winget, 1.7.1) and called the swap.
+Compat: betterleaks reads gitleaks configs and `.gitleaksignore`; same
+`dir`/`git` scan syntax. Parity gap: no `protect` subcommand, so the staged
+scan becomes `git diff --staged | betterleaks stdin`. **Out of scope:**
+`security.toml` keeps declaring gitleaks — betterleaks is not in the official
+Arch repos (checked 2026-08-09; AUR unverified), so the Linux package swap
+waits for confirmed packaging; the hook's fallback keeps that machine green
+meanwhile, and Story 2.9's drift loop will surface the swap when it happens.
+
+**Acceptance criteria:**
+
+- Given betterleaks is installed, when a commit is attempted with the hook enabled, then the staged diff is scanned via `betterleaks stdin` (redacted, no banner) and findings block the commit
+- Given betterleaks is absent but gitleaks present (the Linux workstation today), when a commit is attempted, then the hook falls back to `gitleaks protect --staged` unchanged; given neither scanner, it fails loudly naming both install routes
+- Given the hook now contains selection logic, when the story lands, then clitest cases cover scanner preference, fallback, and the neither-installed failure using stubbed scanners on PATH (no host-state dependency)
+- Given docs name a standard scanner, when the story lands, then [knowledge/recipes/secret-scan.md](../knowledge/recipes/secret-scan.md), the copilot-instructions/CLAUDE.md, [validation-and-release-workflow.md](./validation-and-release-workflow.md), and STATUS facts say betterleaks first with gitleaks as the documented fallback (historical docs stay untouched)
+- Given the Windows clone had no hook enabled, when the story lands, then `core.hooksPath .githooks` is set there and the story's own commits pass through the new hook
+
+**Evidence artifact:** the reworked hook, a green clitest run of its cases, and this story's commits made with the hook enabled.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - The GitHub board is the status source of truth, with issues linked from epic `.md` files.

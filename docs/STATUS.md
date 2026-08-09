@@ -19,8 +19,9 @@ Facts:
 - **Trunk branch:** `main` (`master` is retired and deleted; never diff/PR against it).
 - **Tracking source of truth:** [GitHub Projects board](https://github.com/users/amasover/projects/1/views/1)
   (status) + issues (discussion). Epic `.md` files hold specs only; ✅ on a story heading = issue closed.
-- **Secret scanning:** `gitleaks` before every commit/PR ([recipe](../knowledge/recipes/secret-scan.md)),
-  always paired with a manual privacy pass by eye — gitleaks misses employer/personal/host details.
+- **Secret scanning:** `betterleaks` (gitleaks fallback on the Linux machine) before every
+  commit/PR ([recipe](../knowledge/recipes/secret-scan.md)), always paired with a manual
+  privacy pass by eye — the scanner misses employer/personal/host details.
 
 ## How to start a session
 
@@ -70,6 +71,10 @@ Facts:
   VMware Workstation (2.36, decoupled from 2.30, startable now) and the daily target +
   graduation capability (2.37, after 2.29/2.30). Specs in epic 2; *harness target* /
   *graduation* added to CONTEXT.md; issues open when work starts.
+- **4.8 betterleaks swap** ([#117](https://github.com/amasover/dotfiles/issues/117)): PR open —
+  hook, docs, clitest coverage. Board add pending (gh token lacks `project` scope — Aaron:
+  `gh auth refresh -s project`); Arch package swap in `security.toml` deferred until
+  betterleaks is packaged for Arch.
 
 ## Standing warnings
 
