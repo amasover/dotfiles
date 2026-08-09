@@ -71,10 +71,6 @@ Facts:
   VMware Workstation (2.36, decoupled from 2.30, startable now) and the daily target +
   graduation capability (2.37, after 2.29/2.30). Specs in epic 2; *harness target* /
   *graduation* added to CONTEXT.md; issues open when work starts.
-- **4.8 betterleaks swap** ([#117](https://github.com/amasover/dotfiles/issues/117)): PR open —
-  hook, docs, clitest coverage. Board add pending (gh token lacks `project` scope — Aaron:
-  `gh auth refresh -s project`); Arch package swap in `security.toml` deferred until
-  betterleaks is packaged for Arch.
 
 ## Standing warnings
 
@@ -82,17 +78,17 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-07-19)
+## Last session (2026-08-09, Windows machine)
 
-- Marathon fix chain, each failure surfacing the next: silent pre-flight probe death under
-  `set -e`/pipefail (#106) → stale sync DBs 404ing purged mirror files (2.34, #108) → jack2
-  provider race from the pre-build (2.26 pins, #110, grilled) → check-phase unmanaged gap
-  (2.35, #113) → chaotic-native false-missing (#114). Plus: cache-warm progress logging (#109),
-  display SIGWINCH resize fix with a pty regression test (#111), redis→valkey decided (2.23, #115).
-- **First fully green `up`** 23:07: bootstrap + check both rc=0 — closes **2.35** (#112 ✅).
-  displaylink hold self-resolved (chaotic 6.3-2.1). Full-log review found: metapac reinstall churn
-  (investigating), guest NetworkManager disabled (AC added to 2.30), inbox 4 triaged, mono
-  cert-sync warnings dismissed as cosmetic.
+- Grilled the Windows vm-harness plan into **2.36** (PowerShell sibling driving VMware
+  Workstation via `vmrun`; thin driver / logic-in-Python / guest bash shared; startable now)
+  and **2.37** (daily target iterated to *graduation* — capability bar, after 2.29/2.30);
+  *harness target* / *graduation* added to CONTEXT.md.
+- **4.8 betterleaks swap** (#117, PR #118 merged ✅): hook is betterleaks-first
+  (`stdin` staged scan) with gitleaks fallback, clitest-covered (19 cases, PATH-stubbed);
+  `.gitattributes` pins LF for hooks/tests; docs swept. This Windows clone now runs the
+  hook (`core.hooksPath` set, betterleaks 1.7.1 via winget). Left open: planted-secret
+  re-verify of the stdin path; `security.toml` swap waits on Arch packaging.
 
 ## Epics
 

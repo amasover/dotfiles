@@ -199,7 +199,7 @@ Issue: [#94](https://github.com/amasover/dotfiles/issues/94) · One GitHub Actio
 
 ---
 
-### Story 4.8: betterleaks replaces gitleaks as the standard secret scanner
+### Story 4.8: betterleaks replaces gitleaks as the standard secret scanner ✅
 
 As the repo owner,
 I want the secret-scan gate to run betterleaks — gitleaks' successor from the
@@ -207,7 +207,7 @@ same maintainers — with gitleaks kept as a transition fallback,
 So that the scan standard follows the maintained tool and works on the Windows
 machine, without breaking the Linux workstation's existing gitleaks setup.
 
-Issue: [#117](https://github.com/amasover/dotfiles/issues/117) · Origin:
+Issue: [#117](https://github.com/amasover/dotfiles/issues/117) (closed, PR #118) · Origin:
 2026-08-09 — gitleaks was absent on the Windows machine during the 2.36/2.37
 docs push; Aaron installed betterleaks (winget, 1.7.1) and called the swap.
 Compat: betterleaks reads gitleaks configs and `.gitleaksignore`; same
