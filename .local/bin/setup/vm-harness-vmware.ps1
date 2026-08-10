@@ -4,14 +4,24 @@
 # installs Arch unattended in a throwaway VMware Workstation VM, runs the repo
 # bootstrap inside it, and asserts the result. Same pipeline vocabulary and
 # logging contract as the bash harness; hypervisor plumbing differs. Thin
-# driver by design — logic lives in Python (vm-harness-seed and friends),
+# driver by design — logic lives in Python (vm-harness-seed / -vmx / -leases),
 # guest-side bash is shared with the libvirt harness.
 #
-# Subcommands (foundation slice — install/boot/bootstrap/check/up arrive next):
+# Subcommands (bootstrap/check/up arrive in the next slice):
 #   fetch      download + sha256-verify the latest Arch ISO into the local cache
 #   seed       generate the cloud-init NoCloud seed (vm-harness-seed, hypervisor
 #              vmware: NVMe device path, open-vm-tools, live-ISO ssh for exec)
-#   status     what exists: cache, seed, VM dir, vmrun's running list, newest log
+#   create     VM directory: fresh seed, growable NVMe disk (vdiskmanager),
+#              .vmx via vm-harness-vmx (UEFI, serial-to-file, NAT). Dies if the
+#              VM already exists — destroy is always explicit
+#   install    power on headless; archinstall runs via cloud-init and streams
+#              to the serial log, mirrored here live; VM powers itself off;
+#              media is then ejected so later boots hit the disk
+#   boot       start the installed VM headless; wait for and print the NAT IP
+#   ip         print the VM's IPv4 (vmrun guest-tools query, falling back to
+#              the vmnet DHCP leases via vm-harness-leases — works for the
+#              live ISO too)
+#   status     what exists: cache, seed, VM state, vmrun list, newest log
 #   destroy    stop the VM if running and delete the VM directory (cached ISO
 #              and logs survive — logs live outside the VM dir)
 #   tail [P]   print the newest log's tail (or phase P's newest)
@@ -19,10 +29,12 @@
 # Logging: every phase writes an append-only log to  $LogDir\<stamp>-<phase>.log
 # ending with "=== <phase> done rc=N" — the same trailer contract the bash
 # harness's tooling (status/tail/resume probes, progress display) keys on.
+# Serial output is logged raw this slice (the bash harness's ANSI scrub ports
+# with the progress-display work).
 #
 # Env overrides mirror the bash harness where they apply:
-#   VM_HARNESS_DIR, VM_HARNESS_DISK (GiB, bare number), VM_HARNESS_CLASS,
-#   VM_HARNESS_REPO, VM_HARNESS_BRANCH.
+#   VM_HARNESS_DIR, VM_HARNESS_DISK (GiB, bare number), VM_HARNESS_RAM (MiB),
+#   VM_HARNESS_CPUS, VM_HARNESS_CLASS, VM_HARNESS_REPO, VM_HARNESS_BRANCH.
 
 $ErrorActionPreference = 'Stop'
 
@@ -35,12 +47,22 @@ $LogDir = Join-Path $WorkDir 'logs'
 $Iso = Join-Path $CacheDir 'archlinux-x86_64.iso'
 $Mirror = 'https://geo.mirror.pkgbuild.com/iso/latest'
 $DiskGib = if ($env:VM_HARNESS_DISK) { [int]$env:VM_HARNESS_DISK } else { 80 }
+$RamMib = if ($env:VM_HARNESS_RAM) { [int]$env:VM_HARNESS_RAM } else { 12288 }
+$Cpus = if ($env:VM_HARNESS_CPUS) { [int]$env:VM_HARNESS_CPUS } else { 16 }
 $VmUser = 'aaron'
 $VmPass = 'vm'    # throwaway VM only; reachable only from this host's NAT
+$Vmx = Join-Path $VmDir "$VmName.vmx"
+$DiskVmdk = Join-Path $VmDir 'disk.vmdk'
+$SerialLog = Join-Path $VmDir 'install-serial.log'
 $RunStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $Python = 'C:\Python314\python.exe'
 $SeedTool = Join-Path $PSScriptRoot 'vm-harness-seed'
-$VmRun = "$env:ProgramFiles\VMware\VMware Workstation\vmrun.exe"
+$VmxTool = Join-Path $PSScriptRoot 'vm-harness-vmx'
+$LeasesTool = Join-Path $PSScriptRoot 'vm-harness-leases'
+$VmwareDir = "$env:ProgramFiles\VMware\VMware Workstation"
+$VmRun = Join-Path $VmwareDir 'vmrun.exe'
+$VdiskMgr = Join-Path $VmwareDir 'vmware-vdiskmanager.exe'
+$InstallTimeoutMin = 60
 
 function Say([string]$msg) { Write-Host "`n==> $msg" }
 function Die([string]$msg) { Write-Host "vm-harness-vmware: FATAL: $msg" -ForegroundColor Red; exit 1 }
@@ -80,6 +102,48 @@ function Get-HostPubkey {
     }
 }
 
+function Test-VmRunning {
+    if (-not (Test-Path $Vmx)) { return $false }
+    ((& $VmRun -T ws list) -join "`n") -match [regex]::Escape($Vmx)
+}
+
+# Read the serial log past $Offset without fighting VMware's open handle.
+function Read-NewSerial([ref]$Offset) {
+    if (-not (Test-Path $SerialLog)) { return '' }
+    $fs = [System.IO.File]::Open($SerialLog, 'Open', 'Read', 'ReadWrite')
+    try {
+        if ($fs.Length -le $Offset.Value) { return '' }
+        $fs.Position = $Offset.Value
+        $buf = New-Object byte[] ($fs.Length - $Offset.Value)
+        [void]$fs.Read($buf, 0, $buf.Length)
+        $Offset.Value = $fs.Length
+        [System.Text.Encoding]::UTF8.GetString($buf)
+    } finally { $fs.Close() }
+}
+
+function New-Seed {
+    Say 'Generating cloud-init seed (fresh answers each time)'
+    if (Test-Path $SeedDir) { Remove-Item -Recurse -Force $SeedDir }
+    $pk = Get-HostPubkey
+    $seedArgs = @('--out', $SeedDir, '--hypervisor', 'vmware',
+                  '--disk-size', $DiskGib, '--password', $VmPass, '--user', $VmUser)
+    if ($pk) { $seedArgs += @('--pubkey', $pk, '--live-ssh') }
+    & $Python $SeedTool @seedArgs
+    if ($LASTEXITCODE -ne 0) { throw "vm-harness-seed failed (rc=$LASTEXITCODE)" }
+}
+
+function Get-GuestIp {
+    # Tools answer once the installed system is up; the live ISO has no tools,
+    # so fall back to the vmnet DHCP lease for the VM's generated MAC.
+    $ip = & $VmRun -T ws getGuestIPAddress $Vmx 2>$null
+    if ($LASTEXITCODE -eq 0 -and $ip -match '^\d+\.\d+\.\d+\.\d+$') { return $ip }
+    $mac = & $Python $VmxTool mac --vmx $Vmx 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+    $ip = & $Python $LeasesTool --mac $mac 2>$null
+    if ($LASTEXITCODE -eq 0) { return $ip }
+    $null
+}
+
 function Cmd-Fetch {
     Invoke-Phase 'fetch' {
         New-Item -ItemType Directory -Force $CacheDir | Out-Null
@@ -101,30 +165,99 @@ function Cmd-Fetch {
     }
 }
 
-function Cmd-Seed {
-    Invoke-Phase 'seed' {
-        Say 'Generating cloud-init seed (fresh answers each time)'
-        if (Test-Path $SeedDir) { Remove-Item -Recurse -Force $SeedDir }
-        $pk = Get-HostPubkey
-        $seedArgs = @('--out', $SeedDir, '--hypervisor', 'vmware',
-                      '--disk-size', $DiskGib, '--password', $VmPass, '--user', $VmUser)
-        if ($pk) { $seedArgs += @('--pubkey', $pk, '--live-ssh') }
-        & $Python $SeedTool @seedArgs
-        if ($LASTEXITCODE -ne 0) { throw "vm-harness-seed failed (rc=$LASTEXITCODE)" }
+function Cmd-Seed { Invoke-Phase 'seed' { New-Seed } }
+
+function Cmd-Create {
+    Invoke-Phase 'create' {
+        if (-not (Test-Path $Iso)) { throw 'no cached ISO — run: fetch' }
+        if (Test-Path $Vmx) { throw "VM '$VmName' exists — run: destroy first" }
+        New-Item -ItemType Directory -Force $VmDir | Out-Null
+        New-Seed
+        Say "Creating VM (disk ${DiskGib}G, ram ${RamMib}M, $Cpus vcpus)"
+        & $VdiskMgr -c -s "${DiskGib}GB" -a lsilogic -t 0 $DiskVmdk 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "vdiskmanager failed (rc=$LASTEXITCODE)" }
+        & $Python $VmxTool generate --out $Vmx --name $VmName --disk $DiskVmdk `
+            --iso $Iso --seed-iso (Join-Path $SeedDir 'seed.iso') `
+            --serial-log $SerialLog --ram $RamMib --cpus $Cpus
+        if ($LASTEXITCODE -ne 0) { throw "vm-harness-vmx failed (rc=$LASTEXITCODE)" }
+        Say 'Ready. Next: install'
     }
+}
+
+function Cmd-Install {
+    Invoke-Phase 'install' {
+        if (-not (Test-Path $Vmx)) { throw 'run: create first' }
+        if ((Get-Content $Vmx -Raw) -match 'sata0:0\.present = "FALSE"') {
+            throw 'media already ejected — installed. Next: boot (or destroy for a fresh install)'
+        }
+        Say 'Unattended install — serial console streams below (also: tail install)'
+        & $VmRun -T ws start $Vmx nogui 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "vmrun start failed (rc=$LASTEXITCODE)" }
+        $offset = [long]0
+        $deadline = (Get-Date).AddMinutes($InstallTimeoutMin)
+        do {
+            Start-Sleep -Seconds 5
+            $new = Read-NewSerial ([ref]$offset)
+            if ($new) { Write-Host $new -NoNewline }
+            if ((Get-Date) -gt $deadline) {
+                throw "install still running after $InstallTimeoutMin min — inspect: tail install, or vmrun stop + destroy"
+            }
+        } while (Test-VmRunning)
+        $new = Read-NewSerial ([ref]$offset)
+        if ($new) { Write-Host $new -NoNewline }
+        $serial = if (Test-Path $SerialLog) { Get-Content $SerialLog -Raw } else { '' }
+        if ($serial -notmatch 'HARNESS-ARCHINSTALL-EXIT:0') {
+            throw 'VM powered off without a clean archinstall exit — read the serial output above'
+        }
+        Say 'Install done — ejecting media so later boots hit the disk'
+        & $Python $VmxTool eject --vmx $Vmx
+        if ($LASTEXITCODE -ne 0) { throw "media eject failed (rc=$LASTEXITCODE)" }
+        Say 'Next: boot'
+    }
+}
+
+function Cmd-Boot {
+    Invoke-Phase 'boot' {
+        if (-not (Test-Path $Vmx)) { throw 'run: create first' }
+        if ((Get-Content $Vmx -Raw) -notmatch 'sata0:0\.present = "FALSE"') {
+            throw 'not installed yet — run: install'
+        }
+        if (Test-VmRunning) { Say 'Already running' }
+        else {
+            & $VmRun -T ws start $Vmx nogui 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "vmrun start failed (rc=$LASTEXITCODE)" }
+        }
+        Say 'Waiting for the NAT lease'
+        $deadline = (Get-Date).AddMinutes(3)
+        do {
+            Start-Sleep -Seconds 5
+            $ip = Get-GuestIp
+        } until ($ip -or (Get-Date) -gt $deadline)
+        if (-not $ip) { throw 'no IP after 3 min — vmnet DHCP lease missing; check: status' }
+        Say "Up. ssh $VmUser@$ip   (password: $VmPass, or the seeded host key)"
+    }
+}
+
+function Cmd-Ip {
+    if (-not (Test-Path $Vmx)) { Die 'no VM — run: create' }
+    $ip = Get-GuestIp
+    if (-not $ip) { Die 'no IP known (VM off, or no lease yet)' }
+    $ip
 }
 
 function Cmd-Status {
     Say 'vm-harness-vmware status'
     "  cached ISO:  " + $(if (Test-Path $Iso) { "yes ({0:N0} MB)" -f ((Get-Item $Iso).Length / 1MB) } else { 'no — run: fetch' })
     "  seed:        " + $(if (Test-Path (Join-Path $SeedDir 'seed.iso')) { 'yes' } else { 'no — run: seed' })
-    "  VM dir:      " + $(if (Test-Path $VmDir) { $VmDir } else { 'none' })
-    if (Test-Path $VmRun) {
-        "  running VMs: "
-        & $VmRun list 2>&1 | ForEach-Object { "    $_" }
+    if (Test-Path $Vmx) {
+        $installed = (Get-Content $Vmx -Raw) -match 'sata0:0\.present = "FALSE"'
+        "  VM:          $Vmx"
+        "  installed:   " + $(if ($installed) { 'yes (media ejected)' } else { 'no — next: install' })
+        "  running:     " + $(if (Test-VmRunning) { "yes (ip: $(Get-GuestIp))" } else { 'no' })
     } else {
-        "  vmrun:       not found at $VmRun"
+        "  VM:          none — next: create"
     }
+    if (-not (Test-Path $VmRun)) { "  vmrun:       NOT FOUND at $VmRun" }
     $newest = Get-ChildItem $LogDir -Filter '*.log' -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -Last 1
     if ($newest) {
         "  newest log:  $($newest.FullName)"
@@ -134,13 +267,9 @@ function Cmd-Status {
 
 function Cmd-Destroy {
     if (-not (Test-Path $VmDir)) { Say 'Nothing to destroy (no VM dir)'; return }
-    $vmx = Get-ChildItem $VmDir -Filter '*.vmx' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($vmx -and (Test-Path $VmRun)) {
-        $running = & $VmRun list 2>$null
-        if ($running -match [regex]::Escape($vmx.FullName)) {
-            Say "Stopping $VmName"
-            & $VmRun stop $vmx.FullName hard 2>&1 | Out-Null
-        }
+    if ((Test-Path $Vmx) -and (Test-VmRunning)) {
+        Say "Stopping $VmName"
+        & $VmRun -T ws stop $Vmx hard 2>&1 | Out-Null
     }
     Say 'Destroying VM directory (cached ISO + logs kept)'
     Remove-Item -Recurse -Force $VmDir -Confirm:$false
@@ -158,6 +287,10 @@ function Cmd-Tail([string]$Phase) {
 switch ($args[0]) {
     'fetch'   { Cmd-Fetch }
     'seed'    { Cmd-Seed }
+    'create'  { Cmd-Create }
+    'install' { Cmd-Install }
+    'boot'    { Cmd-Boot }
+    'ip'      { Cmd-Ip }
     'status'  { Cmd-Status }
     'destroy' { Cmd-Destroy }
     'tail'    { Cmd-Tail $args[1] }

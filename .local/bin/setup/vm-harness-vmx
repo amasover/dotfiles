@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""vm-harness-vmx — .vmx authoring for the VMware Workstation harness (2.36, #119).
+
+Generates the VM definition the way the libvirt harness's virt-install call
+does, translated to Workstation: UEFI firmware (systemd-boot needs it — the
+bash harness learned this from the retired legacy-BIOS win10 VM), NVMe disk
+(the seed's archinstall config targets /dev/nvme0n1), two SATA CD drives
+(arch ISO + NoCloud seed), NAT nic, and a serial port logging to a file — the
+install phase's observability channel, since VMware has no direct-kernel-boot
+serial trick.
+
+`eject` rewrites the vmx so later boots hit the disk: with the ISO still
+attached, the EFI firmware would boot the installer again instead of the
+installed system — the Workstation equivalent of the bash harness's
+"media ejected so later boots hit the disk".
+
+Logic is pure (text in/text out); only main() touches files. Tests:
+tests/test_vm_harness_vmx.py.
+"""
+
+import argparse
+import re
+import sys
+from pathlib import Path
+
+
+def build_vmx(
+    *, name: str, disk: str, iso: str, seed_iso: str, serial_log: str,
+    ram_mib: int, cpus: int,
+) -> str:
+    entries = [
+        (".encoding", "UTF-8"),
+        ("config.version", "8"),
+        ("virtualHW.version", "21"),
+        ("displayName", name),
+        ("guestOS", "other6xlinux-64"),
+        ("firmware", "efi"),
+        ("memsize", str(ram_mib)),
+        ("numvcpus", str(cpus)),
+        ("nvme0.present", "TRUE"),
+        ("nvme0:0.present", "TRUE"),
+        ("nvme0:0.fileName", disk),
+        ("sata0.present", "TRUE"),
+        ("sata0:0.present", "TRUE"),
+        ("sata0:0.deviceType", "cdrom-image"),
+        ("sata0:0.fileName", iso),
+        ("sata0:1.present", "TRUE"),
+        ("sata0:1.deviceType", "cdrom-image"),
+        ("sata0:1.fileName", seed_iso),
+        ("ethernet0.present", "TRUE"),
+        ("ethernet0.connectionType", "nat"),
+        # vmxnet3: paravirtual nic, driver in mainline (archiso has it) — the
+        # virtio-net analog; e1000e emulation is the slow fallback.
+        ("ethernet0.virtualDev", "vmxnet3"),
+        ("ethernet0.addressType", "generated"),
+        ("serial0.present", "TRUE"),
+        ("serial0.fileType", "file"),
+        ("serial0.fileName", serial_log),
+        ("serial0.tryNoRxLoss", "TRUE"),
+        # The guest runs UTC (seed config); VMware's virtual RTC follows the
+        # host's local time unless pinned — pin it or the guest clock lands
+        # hours off and pacman TLS/signature checks get weird.
+        ("rtc.diffFromUTC", "0"),
+        ("tools.syncTime", "FALSE"),
+        # Headless runs must never block on a dialog.
+        ("msg.autoAnswer", "TRUE"),
+        ("sound.present", "FALSE"),
+        ("usb.present", "FALSE"),
+        ("vmci0.present", "TRUE"),
+    ]
+    return "".join(f'{k} = "{v}"\n' for k, v in entries)
+
+
+def eject_media(vmx_text: str) -> str:
+    """Detach both CD drives (installer + seed) so the next boot hits the disk.
+    Idempotent: already-FALSE lines stay FALSE."""
+    return re.sub(
+        r'^(sata0:[01]\.present) = "TRUE"$',
+        r'\1 = "FALSE"',
+        vmx_text,
+        flags=re.MULTILINE,
+    )
+
+
+def generated_mac(vmx_text: str) -> str | None:
+    """The nic MAC VMware wrote at first power-on (addressType generated) —
+    the key into the vmnet DHCP leases file."""
+    m = re.search(r'^ethernet0\.generatedAddress = "([0-9A-Fa-f:]+)"$',
+                  vmx_text, flags=re.MULTILINE)
+    return m.group(1).lower() if m else None
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="vm-harness-vmx", description=__doc__)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    gen = sub.add_parser("generate", help="write a fresh .vmx")
+    gen.add_argument("--out", required=True)
+    gen.add_argument("--name", default="arch-harness")
+    gen.add_argument("--disk", required=True)
+    gen.add_argument("--iso", required=True)
+    gen.add_argument("--seed-iso", required=True)
+    gen.add_argument("--serial-log", required=True)
+    gen.add_argument("--ram", type=int, default=12288, metavar="MIB")
+    gen.add_argument("--cpus", type=int, default=16)
+
+    ej = sub.add_parser("eject", help="detach installer + seed media in place")
+    ej.add_argument("--vmx", required=True)
+
+    mac = sub.add_parser("mac", help="print the generated nic MAC")
+    mac.add_argument("--vmx", required=True)
+
+    args = ap.parse_args(argv)
+    if args.cmd == "generate":
+        text = build_vmx(
+            name=args.name, disk=args.disk, iso=args.iso, seed_iso=args.seed_iso,
+            serial_log=args.serial_log, ram_mib=args.ram, cpus=args.cpus,
+        )
+        Path(args.out).write_text(text, newline="\n")
+        print(args.out)
+    elif args.cmd == "eject":
+        p = Path(args.vmx)
+        p.write_text(eject_media(p.read_text()), newline="\n")
+        print("media ejected")
+    elif args.cmd == "mac":
+        m = generated_mac(Path(args.vmx).read_text())
+        if not m:
+            print("no generatedAddress yet (VM never powered on?)", file=sys.stderr)
+            return 1
+        print(m)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
