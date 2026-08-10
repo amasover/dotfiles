@@ -788,7 +788,7 @@ hypervisor the daily-driver rebuild targets
 ([decision-daily-driver-vm.md](./decision-daily-driver-vm.md)), and the daily
 target (Story 2.37) has a harness to build on.
 
-Issue: *(open when the story starts)* · Origin: the existing harness (Story 2.7)
+Issue: [#119](https://github.com/amasover/dotfiles/issues/119) · Origin: the existing harness (Story 2.7)
 is libvirt/QEMU on the Linux workstation. Decided at the 2026-08-09 grill:
 **PowerShell sibling script**, not a backend abstraction retrofitted into the
 bash harness and not Git Bash — sibling-level reuse is too thin to outweigh the
