@@ -4,3 +4,4 @@
 # clone now runs the pre-commit hook.)
 .githooks/* text eol=lf
 tests/*.clitest.txt text eol=lf
+.local/bin/setup/vm-harness-seed text eol=lf
