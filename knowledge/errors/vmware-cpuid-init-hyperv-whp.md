@@ -35,15 +35,37 @@ appears in the VM directory.
 - **Firmware SVM** — `VirtualizationFirmwareEnabled: True`, SLAT true, and WSL2 runs
   fine, so the hardware virtualization path works for Microsoft's hypervisor.
 
-## Current state / next candidates
+## Ruled out — second pass (2026-08-10, after a fresh 25H2U1 install)
 
-Never-worked-here matters: no VM has ever booted under VMware on this machine (25H1
-installed 2026-04, unproven; 26H1 upgraded over it). Untried, in order:
+- **Product version** — a fresh 25H2U1 install (different install root: Program
+  Files (x86)) fails identically to 26H1. Both fresh driver payloads.
+- **Elevation** — direct `vmware-vmx -T querytoken` as admin: same silent rc=-19.
+- **Process Lasso** — governor fully stopped: no change. (Restarted after.)
+- **Core parking / AMD 3D V-Cache CCD parking** — all cores forced unparked via
+  `powercfg cpmincores 100`: no change.
+- **Anticheat** — BattlEye/EAC services stopped, no boot drivers loaded; no Vanguard.
+- **IFEO / Exploit-protection mitigations** on vmware images — none exist.
+- **Leftover config** — `preferences.ini` (survives reinstalls), ProgramData
+  `config.ini`/`settings.ini` all read by the dying process and all benign.
+- **Corsair iCUE** — only virtual bus/HID drivers loaded; the CpuId service (and any
+  MSR-poking driver) not running.
+- **ProcMon trace** of the dying process: clean until exit — but note ProcMon cannot
+  see raw device IOCTLs, and the failure lives inside the vmx86 ioctl exchange.
 
-1. **Clean uninstall → reboot → fresh 26H1 install → reboot** (Broadcom's standard
-   escalation; repair-over-top is proven insufficient). Aaron holding off for now.
-2. Broadcom support/community post with the vmware-vmx log bundle.
-3. Downgrade test to 25H1 (no evidence it ever worked either).
+## Verdict and remaining candidates
+
+Software-level causes are exhausted. VMware's monitor init fails on this host in
+every product version, privilege level, and hypervisor mode, while WSL2/Hyper-V
+virtualize fine — the failure is specific to how VMware exercises SVM directly.
+
+1. **BIOS/AGESA update** — strongest remaining suspect. Board BIOS is F32h
+   (2024-12); AGESA updates routinely touch SVM behavior, and VMware enters SVM
+   itself where Hyper-V owns it from boot. Aaron's call (firmware flash).
+2. **Broadcom support/community** with the evidence bundle (vmware-vmx log +
+   the eliminations above).
+3. If unfixable on this board: the daily-driver hypervisor choice
+   ([decision-daily-driver-vm.md](../../docs/decision-daily-driver-vm.md)) needs
+   revisiting — that decision hinged on VMware's 3D acceleration.
 
 **Reboot rule:** silent installers must always get `/norestart` — a VMware silent
 reinstall auto-rebooted the machine once (2026-08-10). Reboots are Aaron's to trigger.

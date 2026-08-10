@@ -59,7 +59,12 @@ $Python = 'C:\Python314\python.exe'
 $SeedTool = Join-Path $PSScriptRoot 'vm-harness-seed'
 $VmxTool = Join-Path $PSScriptRoot 'vm-harness-vmx'
 $LeasesTool = Join-Path $PSScriptRoot 'vm-harness-leases'
-$VmwareDir = "$env:ProgramFiles\VMware\VMware Workstation"
+# Workstation's install root moved between releases (26H1: Program Files;
+# 25H2: Program Files (x86)) — take whichever actually has vmrun.
+$VmwareDir = @("$env:ProgramFiles\VMware\VMware Workstation",
+               "${env:ProgramFiles(x86)}\VMware\VMware Workstation") |
+    Where-Object { Test-Path (Join-Path $_ 'vmrun.exe') } | Select-Object -First 1
+if (-not $VmwareDir) { $VmwareDir = "$env:ProgramFiles\VMware\VMware Workstation" }
 $VmRun = Join-Path $VmwareDir 'vmrun.exe'
 $VdiskMgr = Join-Path $VmwareDir 'vmware-vdiskmanager.exe'
 $InstallTimeoutMin = 60
