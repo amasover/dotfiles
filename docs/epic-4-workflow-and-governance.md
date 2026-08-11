@@ -230,6 +230,44 @@ meanwhile, and Story 2.9's drift loop will surface the swap when it happens.
 
 ---
 
+### Story 4.9: `pre_push` guard — the encrypted archive can't silently go stale
+
+As the repo owner,
+I want a yadm `pre_push` hook that refuses the push when a file listed in
+`.config/yadm/encrypt` is newer than the encrypted archive,
+So that declaring a path encrypted actually gets it into the archive, instead of
+the manifest and the archive drifting apart unnoticed for weeks.
+
+Issue: [#122](https://github.com/amasover/dotfiles/issues/122) · Origin: 2026-08-11 —
+`.local/state/aur-quarantine/{maintainers.tsv,exempt.txt}` joined the manifest on
+2026-07-09 (`9f5e7d3`), but `.local/share/yadm/archive` was last regenerated
+2026-06-20 (`03e4f1b`), so the AUR trust baseline has been declared-but-not-archived
+ever since: a fresh machine's decrypt restores no trust state at all. Mechanism (read
+from `/usr/bin/yadm`): hooks are `~/.config/yadm/hooks/{pre,post}_<command>`, separate
+from `.githooks/`; a non-zero `pre_*` exit aborts the command; hooks receive the
+expanded manifest list as `YADM_ENCRYPT_INCLUDE_FILES`. **Rejected at design time:**
+auto-running `yadm encrypt` from the hook — encryption is symmetric today
+(`yadm.gpg-recipient` unset → `gpg -c`) so it needs a TTY for the passphrase, and gpg
+output is non-deterministic so every run would commit a fresh ~49k binary blob even
+with nothing changed. Non-interactive encryption is available (keypair via
+`yadm.gpg-recipient`, or a passphrase-file wrapper via `yadm.gpg-program`) but a
+keypair makes fresh-machine recovery depend on transporting a private key — out of
+scope. The guard warns; Aaron encrypts deliberately.
+
+**Acceptance criteria:**
+
+- Given a file listed in `.config/yadm/encrypt` is newer than `.local/share/yadm/archive`, when `yadm push` runs, then the hook aborts naming the stale paths and the fix (`yadm encrypt`)
+- Given the archive is newer than every listed file, when `yadm push` runs, then the hook exits 0 without output
+- Given a listed pattern matches nothing on this machine (another machine's path), when the check runs, then it is skipped rather than failing the push
+- Given the check is mtime-based and a fresh clone can produce a false positive, then a documented env override skips it — and the hook never runs `yadm encrypt`, never reads the listed files' contents, and never prints anything from them
+- Given hooks are machine-local until installed, when the story lands, then the hook is tracked at `.config/yadm/hooks/pre_push` and its enable step is documented next to the existing `yadm gitconfig core.hooksPath .githooks` step
+- Given the test contract ([runbook-script-validation.md](./runbook-script-validation.md)), then the staleness comparison is an invokable seam with clitest coverage over fixture directories — no yadm, no gpg, no real archive
+- Given the drift that motivated the story, then the pending attended `yadm encrypt` for the AUR trust baseline is run as part of validation, so the guard's first real push passes for the right reason
+
+**Evidence artifact:** the hook + a green clitest run + a transcript showing the guard blocking a stale push and passing after `yadm encrypt`.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - The GitHub board is the status source of truth, with issues linked from epic `.md` files.
