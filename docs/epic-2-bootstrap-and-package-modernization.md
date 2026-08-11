@@ -807,6 +807,47 @@ observability is seed-driven — installer output redirected to serial (VMware
 serial-port-to-file), sshd enabled in the live ISO by the seed, IP from the
 vmnet DHCP leases file; details in-story.
 
+**Slice plan (2026-08-11 grill).** Slices 1–2 landed (PR #120: driver skeleton,
+logging contract, fetch/seed/status/destroy, seed seam; PR #121: create/install/
+boot/ip, validated live). **Slice 3** is the evidence pipeline — `exec`, the
+shared guest glue, `bootstrap`/`check`, resumable `up`; **slice 4** (progress
+display + ANSI-scrub port + the driver arg-handling-tests decision) closes the
+story. Slice-3 decisions:
+
+- **Guest glue is one shared file**, `.local/bin/setup/vm-harness-guest`
+  (`bootstrap`|`check` subcommands, clitest-covered, LF-pinned): scp'd into the
+  guest at bootstrap time so the guest runs the host checkout's version;
+  parameterized `--class`/`--repo`/`--branch`/`--hardware-pkgs`. The hardware
+  set is the one per-hypervisor difference (VMware: `open-vm-tools
+  zram-generator`; QEMU: `qemu-guest-agent zram-generator`) and is what Story
+  2.30's class/hardware split later absorbs. The libvirt harness swaps its
+  inline ssh strings for the same file in a later Linux-side PR where it can be
+  validated; until then the duplication is deliberate and tracked on #119.
+- **`exec` is ssh-backed with the agent's limitations dropped**: root@ip while
+  install media is attached (live ISO), aaron@ip after eject (picked via the
+  `media` query, no flag); remote exit code propagated (divergence from the
+  qemu-agent exec's no-propagate — that was an agent limitation, not a design
+  goal); no pty; no artificial timeout.
+- **`Wait-Ssh`** (authenticated `BatchMode` login poll ported from `wait_ssh`,
+  with the key-refused downgrade) gates `bootstrap` and replaces `boot`'s
+  port-22 probe — boot's "Up" is a verified login, not an open port.
+- **Trust baseline**: the `inject_trust_baseline` port naturally no-ops on the
+  Windows host (no aur-quarantine state) → guest runs fresh TOFU; the
+  `VM_HARNESS_FRESH_TRUST` override is not ported until a need shows.
+- **Resume probes live state only** (the bash harness's #98 design) with one
+  structural translation: `create` writes the vmx under VMware (libvirt defines
+  the domain at install time), so serial-log existence distinguishes
+  install-never-ran from **dead-install** — which dies with a remedy offering
+  both `install` (safe loud re-run, wipes the half-disk) and `destroy`; a
+  media-attached *running* VM dies as "install in progress". `up` never picks.
+  The decision table lives in `vm-harness-vmx resume` (probed facts in, phase
+  out; pytest-covered).
+- **`bootstrap` runs without a pty this slice** — no cursor-report spray in the
+  raw phase logs; the pty question returns with slice 4's display work.
+- Driver env vars `VM_HARNESS_REPO`/`BRANCH`/`CLASS` get wired through to the
+  guest glue (defaults: public GitHub URL / repo default branch /
+  `workstation`).
+
 **Acceptance criteria:**
 
 - Given the Windows machine with VMware Workstation installed, when `up` runs, then it fresh-installs Arch unattended in a throwaway VMware VM (official ISO + cloud-init–driven `archinstall`, same pattern as the QEMU harness), runs the repo bootstrap inside it, and asserts the check-phase result (metapac unmanaged exactly empty, services, session target)
