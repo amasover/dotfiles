@@ -1,0 +1,99 @@
+Encrypted-archive staleness guard (Story 4.9, #122).
+
+The `stale-check` seam and the hook's push gate run against fixture directories
+with fixed timestamps — no yadm, no gpg, no real archive, no host state.
+
+$ T=$(mktemp -d)
+$ HOOK=$PWD/.config/yadm/hooks/pre_push
+$ REALBASH=$(command -v bash)
+$ W=$T/home && mkdir -p "$W/.ssh" "$W/.local/state/q" "$T/cfg" "$T/data"
+$ for f in .ssh/id_a .ssh/id_b .zshenv .local/state/q/maintainers.tsv; do echo x > "$W/$f"; done
+$ printf '# a comment\n\n.ssh/**\n.zshenv\n.local/state/q/maintainers.tsv\n.config/absent/file\n' > "$T/cfg/encrypt"
+$ touch -d '2026-01-01 00:00' "$W/.ssh/id_a" "$W/.ssh/id_b" "$W/.zshenv" "$W/.local/state/q/maintainers.tsv"
+$ touch -d '2026-06-01 00:00' "$T/data/archive"
+$ CHECK() { "$REALBASH" "$HOOK" stale-check "$T/cfg/encrypt" "$T/data/archive" "$W"; }
+$ RUN() { env YADM_HOOK_DIR="$T/cfg" YADM_HOOK_DATA="$T/data" YADM_HOOK_WORK="$W" "$REALBASH" "$HOOK" 2>&1; }
+$
+
+Archive newer than every listed file: the seam is silent and succeeds. The
+`.config/absent/file` pattern matches nothing on this machine and is skipped
+rather than reported.
+
+$ CHECK; echo rc=$?
+rc=0
+$
+
+One plain path goes stale — reported as itself, count 1.
+
+$ touch -d '2026-07-01 00:00' "$W/.zshenv"
+$ CHECK
+1 .zshenv
+$
+
+A glob reports how many of its matches are stale, in manifest order.
+
+$ touch -d '2026-07-01 00:00' "$W/.ssh/id_a" "$W/.ssh/id_b"
+$ CHECK
+2 .ssh/**
+1 .zshenv
+$
+
+Privacy: expanded filenames under a glob never reach the output.
+
+$ CHECK | grep -c id_a
+0
+$
+
+A `!` line excludes a match from its glob's count.
+
+$ printf '.ssh/**\n!.ssh/id_b\n.zshenv\n' > "$T/cfg/exclusions"
+$ "$REALBASH" "$HOOK" stale-check "$T/cfg/exclusions" "$T/data/archive" "$W"
+1 .ssh/**
+1 .zshenv
+$
+
+No archive at all — the never-encrypted case — makes every match stale.
+
+$ "$REALBASH" "$HOOK" stale-check "$T/cfg/encrypt" "$T/data/absent" "$W"
+2 .ssh/**
+1 .zshenv
+1 .local/state/q/maintainers.tsv
+$
+
+No manifest: nothing is declared, so nothing can be stale.
+
+$ "$REALBASH" "$HOOK" stale-check "$T/cfg/absent" "$T/data/archive" "$W"; echo rc=$?
+rc=0
+$
+
+Hook mode aborts the push, naming the stale patterns and both ways out.
+
+$ RUN; echo rc=$?
+pre_push: the encrypted archive is older than files the encrypt manifest covers.
+  stale:  .ssh/**  (2 files)
+  stale:  .zshenv
+  fix:    yadm encrypt   (then commit the regenerated archive)
+  skip:   YADM_SKIP_ENCRYPT_CHECK=1 yadm push
+rc=1
+$
+
+A freshly regenerated archive clears the gate silently.
+
+$ touch -d '2026-09-01 00:00' "$T/data/archive"
+$ RUN; echo rc=$?
+rc=0
+$
+
+The documented bypass wins over a genuinely stale archive.
+
+$ touch -d '2026-10-01 00:00' "$W/.zshenv"
+$ RUN; echo rc=$?
+pre_push: the encrypted archive is older than files the encrypt manifest covers.
+  stale:  .zshenv
+  fix:    yadm encrypt   (then commit the regenerated archive)
+  skip:   YADM_SKIP_ENCRYPT_CHECK=1 yadm push
+rc=1
+$ env YADM_SKIP_ENCRYPT_CHECK=1 YADM_HOOK_DIR="$T/cfg" YADM_HOOK_DATA="$T/data" YADM_HOOK_WORK="$W" "$REALBASH" "$HOOK" 2>&1; echo rc=$?
+rc=0
+$ rm -rf "$T"
+$

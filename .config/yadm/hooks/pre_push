@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# yadm pre_push hook — block the push when the encrypted archive is stale.
+#
+# Story 4.9 (#122). yadm runs this before `yadm push`; a non-zero exit aborts
+# the push. Origin: `.local/state/aur-quarantine/{maintainers.tsv,exempt.txt}`
+# sat in the encrypt manifest for a month without ever entering the archive, so
+# a fresh machine's decrypt restored no AUR trust state.
+#
+# It only compares timestamps. It never runs `yadm encrypt`, never reads the
+# listed files, and never prints a path that isn't already in the tracked
+# manifest — glob patterns report a count, because expanded `.ssh/**` names can
+# carry private hostnames.
+#
+# Enable:  executable at ~/.config/yadm/hooks/pre_push (yadm finds it there)
+# Bypass:  YADM_SKIP_ENCRYPT_CHECK=1 yadm push
+#
+# Test seam (no yadm, no gpg, no real archive):
+#   pre_push stale-check <manifest> <archive> <workdir>
+# prints "<count> <pattern>" per manifest pattern with matches newer than the
+# archive, and exits 0 either way.
+
+set -u
+
+# Emit "<count> <pattern>" for every manifest pattern whose matches are newer
+# than the archive. A missing archive makes every match stale (bash `-nt` is
+# true when the left file exists and the right one doesn't), which is the
+# never-encrypted case. Patterns containing whitespace are not supported —
+# neither are they by the tar invocation yadm builds from the same file.
+stale_check() {
+    local manifest=$1 archive=$2 workdir=$3
+
+    [[ -f $manifest ]] || return 0
+    [[ -d $workdir ]] || return 0
+    [[ $archive == /* ]] || archive=$PWD/$archive
+
+    local -a includes=() excludes=()
+    local pattern
+    while IFS='' read -r pattern || [[ -n $pattern ]]; do
+        if [[ ${pattern:0:1} == '!' ]]; then
+            excludes+=("${pattern:1}")
+        elif ! [[ $pattern =~ ^[[:blank:]]*(#|$) ]]; then
+            includes+=("$pattern")
+        fi
+    done <"$manifest"
+    ((${#includes[@]})) || return 0
+
+    (
+        cd "$workdir" || exit 0
+        shopt -s nullglob dotglob globstar
+        local match excl count
+        for pattern in "${includes[@]}"; do
+            count=0
+            # shellcheck disable=SC2086  # unquoted on purpose: $pattern is a glob
+            for match in $pattern; do
+                [[ -f $match ]] || continue
+                for excl in ${excludes[@]+"${excludes[@]}"}; do
+                    # shellcheck disable=SC2053  # glob match on purpose
+                    [[ $match == $excl ]] && continue 2
+                done
+                [[ $match -nt $archive ]] && ((count++))
+            done
+            ((count)) && printf '%s %s\n' "$count" "$pattern"
+        done
+        exit 0
+    )
+}
+
+main() {
+    if [[ ${1:-} == stale-check ]]; then
+        shift
+        stale_check "${1:-}" "${2:-}" "${3:-}"
+        return 0
+    fi
+
+    [[ ${YADM_SKIP_ENCRYPT_CHECK:-0} == 1 ]] && return 0
+
+    local dir data work stale count pattern
+    dir=${YADM_HOOK_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/yadm}
+    data=${YADM_HOOK_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/yadm}
+    work=${YADM_HOOK_WORK:-$HOME}
+
+    stale=$(stale_check "$dir/encrypt" "$data/archive" "$work")
+    [[ -n $stale ]] || return 0
+
+    {
+        echo "pre_push: the encrypted archive is older than files the encrypt manifest covers."
+        while read -r count pattern; do
+            if [[ $count == 1 ]]; then
+                printf '  stale:  %s\n' "$pattern"
+            else
+                printf '  stale:  %s  (%s files)\n' "$pattern" "$count"
+            fi
+        done <<<"$stale"
+        echo "  fix:    yadm encrypt   (then commit the regenerated archive)"
+        echo "  skip:   YADM_SKIP_ENCRYPT_CHECK=1 yadm push"
+    } >&2
+    return 1
+}
+
+main "$@"
