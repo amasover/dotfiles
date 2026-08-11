@@ -60,6 +60,12 @@ class TestBuildVmx:
         assert 'memsize = "4096"' in text
         assert 'numvcpus = "4"' in text
 
+    def test_pcie_root_ports_for_nvme_and_vmxnet3(self):
+        # Without these, power-on fails: "No PCIe slot available for Ethernet0".
+        text = _build()
+        assert 'pciBridge4.virtualDev = "pcieRootPort"' in text
+        assert text.count('virtualDev = "pcieRootPort"') == 4
+
 
 class TestEjectMedia:
     def test_detaches_both_cd_drives_only(self):

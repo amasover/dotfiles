@@ -37,6 +37,22 @@ def build_vmx(
         ("firmware", "efi"),
         ("memsize", str(ram_mib)),
         ("numvcpus", str(cpus)),
+        # PCIe root ports: NVMe and vmxnet3 are PCIe devices and need slots on
+        # modern virtualHW — without these, power-on dies with
+        # "[msg.pci.noslotavail] No PCIe slot available for Ethernet0".
+        ("pciBridge0.present", "TRUE"),
+        ("pciBridge4.present", "TRUE"),
+        ("pciBridge4.virtualDev", "pcieRootPort"),
+        ("pciBridge4.functions", "8"),
+        ("pciBridge5.present", "TRUE"),
+        ("pciBridge5.virtualDev", "pcieRootPort"),
+        ("pciBridge5.functions", "8"),
+        ("pciBridge6.present", "TRUE"),
+        ("pciBridge6.virtualDev", "pcieRootPort"),
+        ("pciBridge6.functions", "8"),
+        ("pciBridge7.present", "TRUE"),
+        ("pciBridge7.virtualDev", "pcieRootPort"),
+        ("pciBridge7.functions", "8"),
         ("nvme0.present", "TRUE"),
         ("nvme0:0.present", "TRUE"),
         ("nvme0:0.fileName", disk),
