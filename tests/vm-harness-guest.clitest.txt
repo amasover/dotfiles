@@ -1,0 +1,51 @@
+vm-harness-guest — arg handling and the render-toml seam (Story 2.36, #119).
+Only host-safe seams run here: bootstrap/check mutate a guest, so tests stop
+at their argument validation (which runs before any action).
+
+No args: usage to stdout, rc 2.
+
+$ .local/bin/setup/vm-harness-guest >/dev/null 2>&1; echo rc=$?
+rc=2
+$
+
+help: same text, rc 0.
+
+$ .local/bin/setup/vm-harness-guest help | head -n 1
+vm-harness-guest — guest-side glue shared by both vm-harnesses (2.36, #119).
+$ .local/bin/setup/vm-harness-guest help >/dev/null; echo rc=$?
+rc=0
+$
+
+Unknown subcommand and unknown flags die with rc 2.
+
+$ .local/bin/setup/vm-harness-guest frobnicate 2>&1; echo rc=$?
+vm-harness-guest: FATAL: unknown subcommand 'frobnicate'
+rc=2
+$ .local/bin/setup/vm-harness-guest render-toml --bogus x 2>&1; echo rc=$?
+vm-harness-guest: FATAL: render-toml: unknown argument '--bogus'
+rc=2
+$
+
+bootstrap validates before acting — missing requireds never touch the system.
+
+$ .local/bin/setup/vm-harness-guest bootstrap --class workstation 2>&1; echo rc=$?
+vm-harness-guest: FATAL: bootstrap needs --class, --repo, and --hardware-pkgs
+rc=2
+$
+
+render-toml: the exact machine-local.toml bootstrap writes, one line per
+package, VMware's set here.
+
+$ .local/bin/setup/vm-harness-guest render-toml --hardware-pkgs 'open-vm-tools zram-generator'
+# machine-local metapac group — untracked, never published
+# harness-owned guest hardware set, rewritten every bootstrap
+# (interim home until the Story 2.30 class/hardware split, #96)
+[arch]
+packages = [
+  "open-vm-tools",
+  "zram-generator",
+]
+$ .local/bin/setup/vm-harness-guest render-toml 2>&1; echo rc=$?
+vm-harness-guest: FATAL: render-toml needs --hardware-pkgs
+rc=2
+$

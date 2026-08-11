@@ -1,0 +1,97 @@
+#!/bin/bash
+# vm-harness-guest — guest-side glue shared by both vm-harnesses (2.36, #119).
+#
+# Runs INSIDE the throwaway Arch guest, delivered by the harness at bootstrap
+# time (scp/ssh), so the guest always executes the host checkout's version.
+# Extracted from the libvirt harness's inline ssh strings; consumed first by
+# the VMware harness — the libvirt harness swaps over in a Linux-side PR
+# (until then the inline copies in vm-harness are the recorded duplication).
+#
+# Subcommands:
+#   bootstrap --class C --repo URL --hardware-pkgs "P..." [--branch B]
+#              clone the repo via yadm, set the class, write the harness-owned
+#              hardware set, then run the repo's real bootstrap (check pass,
+#              then converge) unattended
+#   check      assert the end state: metapac unmanaged exactly empty (the hard
+#              gate), service/target samples (informational), drift report
+#   render-toml --hardware-pkgs "P..."
+#              print the machine-local.toml bootstrap writes — exposed as its
+#              own subcommand so tests can cover it without a guest
+#
+# The hardware set is the one per-hypervisor difference (QEMU:
+# qemu-guest-agent; VMware: open-vm-tools; both: zram-generator) — interim
+# home until the Story 2.30 class/hardware split (#96) absorbs it.
+set -euo pipefail
+
+say() { printf '\n==> %s\n' "$*"; }
+die() { printf 'vm-harness-guest: FATAL: %s\n' "$*" >&2; exit 2; }
+
+usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; }
+
+render_toml() {
+    local pkgs=$1 p
+    printf '# machine-local metapac group — untracked, never published\n'
+    printf '# harness-owned guest hardware set, rewritten every bootstrap\n'
+    printf '# (interim home until the Story 2.30 class/hardware split, #96)\n'
+    printf '[arch]\npackages = [\n'
+    for p in $pkgs; do printf '  "%s",\n' "$p"; done
+    printf ']\n'
+}
+
+cmd_bootstrap() {
+    local class='' repo='' branch='' hardware=''
+    while (( $# )); do
+        case $1 in
+            --class)         class=$2; shift 2 ;;
+            --repo)          repo=$2; shift 2 ;;
+            --branch)        branch=$2; shift 2 ;;
+            --hardware-pkgs) hardware=$2; shift 2 ;;
+            *) die "bootstrap: unknown argument '$1'" ;;
+        esac
+    done
+    [[ -n "$class" && -n "$repo" && -n "$hardware" ]] \
+        || die 'bootstrap needs --class, --repo, and --hardware-pkgs'
+    sudo pacman -S --needed --noconfirm git base-devel yadm
+    # || true: a resumed guest is already cloned (known gap: the checkout is
+    # not refreshed — 2.31/#98 owns the fix, which lands here when it does).
+    yadm clone --no-bootstrap ${branch:+-b "$branch"} "$repo" || true
+    yadm config local.class "$class"
+    yadm alt
+    mkdir -p "$HOME/.local/share/metapac"
+    render_toml "$hardware" > "$HOME/.local/share/metapac/machine-local.toml"
+    "$HOME/.local/bin/setup/bootstrap" --check --unattended
+    "$HOME/.local/bin/setup/bootstrap" --unattended
+}
+
+cmd_check() {
+    local out
+    echo '--- metapac unmanaged (must be exactly empty):'
+    out=$(metapac unmanaged 2>/dev/null)
+    if [ -z "$out" ]; then echo OK; else echo "$out"; exit 1; fi
+    echo '--- enabled services (sample):'
+    systemctl is-enabled sshd NetworkManager 2>/dev/null || true
+    echo '--- graphical target reachable:'
+    systemctl status graphical.target --no-pager | head -3 || true
+    echo '--- drift report:'
+    "$HOME/.local/bin/tools/metapac-drift-report"
+}
+
+cmd_render_toml() {
+    local hardware=''
+    while (( $# )); do
+        case $1 in
+            --hardware-pkgs) hardware=$2; shift 2 ;;
+            *) die "render-toml: unknown argument '$1'" ;;
+        esac
+    done
+    [[ -n "$hardware" ]] || die 'render-toml needs --hardware-pkgs'
+    render_toml "$hardware"
+}
+
+case "${1:-}" in
+    bootstrap)   shift; cmd_bootstrap "$@" ;;
+    check)       cmd_check ;;
+    render-toml) shift; cmd_render_toml "$@" ;;
+    ''|help)     usage; [[ "${1:-}" == help ]] || exit 2 ;;
+    *)           die "unknown subcommand '$1'" ;;
+esac

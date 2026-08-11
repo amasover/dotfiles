@@ -80,6 +80,49 @@ class TestMediaState:
         assert vmx.media_state(text) == "ejected"
 
 
+class TestResumePoint:
+    # The decision table `up` rides on. (facts, expected phase-or-refusal.)
+    CASES = [
+        # no vmx at all
+        (dict(media="absent", disk_exists=True, seed_exists=True,
+              serial_log_exists=False, running=False), "create"),
+        # disk gone by hand: create — which then dies loudly on the existing
+        # vmx; destroy is the remedy either way
+        (dict(media="attached", disk_exists=False, seed_exists=True,
+              serial_log_exists=False, running=False), "create"),
+        # never installed and the seed is gone → full re-create
+        (dict(media="attached", disk_exists=True, seed_exists=False,
+              serial_log_exists=False, running=False), "create"),
+        # created, never powered on
+        (dict(media="attached", disk_exists=True, seed_exists=True,
+              serial_log_exists=False, running=False), "install"),
+        # install going on right now — refuse, whatever the serial log says
+        (dict(media="attached", disk_exists=True, seed_exists=True,
+              serial_log_exists=True, running=True), "install-running"),
+        (dict(media="attached", disk_exists=True, seed_exists=True,
+              serial_log_exists=False, running=True), "install-running"),
+        # powered on before, now off, media still attached: died mid-install
+        (dict(media="attached", disk_exists=True, seed_exists=True,
+              serial_log_exists=True, running=False), "dead-install"),
+        # installed + off → boot; the seed stopped mattering at eject
+        (dict(media="ejected", disk_exists=True, seed_exists=False,
+              serial_log_exists=False, running=False), "boot"),
+        # installed + running → bootstrap (check follows; both always re-run)
+        (dict(media="ejected", disk_exists=True, seed_exists=True,
+              serial_log_exists=True, running=True), "bootstrap"),
+    ]
+
+    def test_decision_table(self):
+        for facts, want in self.CASES:
+            assert vmx.resume_point(**facts) == want, facts
+
+    def test_cli_resume(self, capsys):
+        rc = vmx.main(["resume", "--media", "ejected", "--disk", "yes",
+                       "--seed", "no", "--serial-log", "no", "--running", "no"])
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "boot"
+
+
 class TestGeneratedMac:
     def test_reads_vmware_written_mac(self):
         text = _build() + 'ethernet0.generatedAddress = "00:0C:29:AB:CD:EF"\n'

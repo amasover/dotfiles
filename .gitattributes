@@ -7,3 +7,4 @@ tests/*.clitest.txt text eol=lf
 .local/bin/setup/vm-harness-seed text eol=lf
 .local/bin/setup/vm-harness-vmx text eol=lf
 .local/bin/setup/vm-harness-leases text eol=lf
+.local/bin/setup/vm-harness-guest text eol=lf
