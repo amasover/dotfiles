@@ -23,6 +23,15 @@ holds an open handle to the device** — so "restart the driver" attempts (and
 possibly the installers' own) never actually reload it, and the stale instance
 survives.
 
+Unresolved nuance: 26H1 was the machine's FIRST VMware install (the 4/24 file
+dates are the package's build timestamps, not an install date) and failed from
+its first-ever power-on — so either its driver was wedged from the install-time
+service dance onward, or **26H1's driver build is itself broken on this host**
+(same 25.0.0 version label as 25H2U1's, older package build). The working state
+was proven with 25H2U1's driver. A return to 26H1 is a cheap controlled
+experiment: install, do the authd-first driver bounce below, run a 2-second
+probe; if red, reinstall 25H2U1 and bounce again.
+
 ## Fix (no reboot needed)
 
 ```powershell
