@@ -91,11 +91,20 @@ $VmRun = Join-Path $VmwareDir 'vmrun.exe'
 $VdiskMgr = Join-Path $VmwareDir 'vmware-vdiskmanager.exe'
 $InstallTimeoutMin = 60
 
+# One writer owns the phase log (Invoke-Phase). Everything else appends
+# through it — a second Add-Content writer would fight the open handle, which
+# is exactly the crash the first live `up` hit.
+function Write-PhaseLog([string]$Text, [switch]$NoNewline) {
+    if (-not $script:PhaseWriter) { return }
+    if ($NoNewline) { $script:PhaseWriter.Write($Text) }
+    else { $script:PhaseWriter.WriteLine($Text) }
+}
+
 function Say([string]$msg) {
-    # Write-Host bypasses Invoke-Phase's pipeline Tee (information stream), so
-    # mirror narrative markers into the active phase log by hand.
+    # Write-Host is invisible to the phase pipeline (information stream), so
+    # narrative markers reach the log through the phase writer.
     Write-Host "`n==> $msg"
-    if ($script:PhaseLog) { Add-Content -Path $script:PhaseLog -Value "`n==> $msg" }
+    Write-PhaseLog "`n==> $msg"
 }
 function Die([string]$msg) { Write-Host "vm-harness-vmware: FATAL: $msg" -ForegroundColor Red; exit 1 }
 
@@ -108,20 +117,30 @@ function Usage {
 
 # Run one phase with host-side logging: console gets the live stream, the log
 # gets an append-only copy ending in the rc trailer the tooling contract needs.
+# The log has exactly one writer — a shared-read StreamWriter this function
+# owns (AutoFlush keeps `tail` near-live); pipeline output, Say markers, and
+# serial chunks all append through it, so nothing fights over the handle.
 function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
     New-Item -ItemType Directory -Force $LogDir | Out-Null
     $log = Join-Path $LogDir "$RunStamp-$Phase.log"
-    $script:PhaseLog = $log
+    $fs = [System.IO.File]::Open($log, [System.IO.FileMode]::Append,
+        [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
+    $script:PhaseWriter = [System.IO.StreamWriter]::new($fs)
+    $script:PhaseWriter.AutoFlush = $true
     $rc = 0
     try {
-        & $Body 2>&1 | Tee-Object -FilePath $log -Append
+        & $Body 2>&1 | ForEach-Object { Write-PhaseLog "$_"; $_ }
         if ($LASTEXITCODE -is [int] -and $LASTEXITCODE -ne 0) { $rc = $LASTEXITCODE }
     } catch {
-        $_ | Out-String | Tee-Object -FilePath $log -Append | Write-Host
+        $msg = $_ | Out-String
+        Write-PhaseLog $msg
+        Write-Host $msg
         $rc = 1
     }
-    "=== $Phase done rc=$rc" | Tee-Object -FilePath $log -Append
-    $script:PhaseLog = $null
+    Write-PhaseLog "=== $Phase done rc=$rc"
+    "=== $Phase done rc=$rc"
+    $script:PhaseWriter.Close()
+    $script:PhaseWriter = $null
     if ($rc -ne 0) {
         Die "phase '$Phase' failed (rc=$rc) — VM left as-is for inspection. Log: $log"
     }
@@ -165,7 +184,7 @@ function Read-NewSerial([ref]$Offset) {
 function Write-Serial([string]$Text) {
     if (-not $Text) { return }
     Write-Host $Text -NoNewline
-    if ($script:PhaseLog) { Add-Content -Path $script:PhaseLog -Value $Text -NoNewline }
+    Write-PhaseLog $Text -NoNewline
 }
 
 # vm-harness-vmx owns the vmx format; the driver only asks.
