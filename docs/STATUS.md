@@ -67,10 +67,11 @@ Facts:
 - **metapac reinstall churn** (from the 07-19 log review): `yay --sync --asexplicit` without
   `--needed` reinstalls every installed declared package each sync (37–50 per run) — investigation
   in progress, story TBD.
-- **2.36/2.37 drafted** (2026-08-09 grill): Windows vm-harness — PowerShell sibling driving
-  VMware Workstation (2.36, decoupled from 2.30, startable now) and the daily target +
-  graduation capability (2.37, after 2.29/2.30). Specs in epic 2; *harness target* /
-  *graduation* added to CONTEXT.md; issues open when work starts.
+- **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119)): slice 1
+  merged (PR #120); slice 2 open ([PR #121](https://github.com/amasover/dotfiles/pull/121) —
+  create/install/boot/ip, validated live) with adversarial-review fixes committed on the branch,
+  **push pending Aaron's go**. Slice 3 next: bootstrap/check via shared guest bash, resumable
+  `up`, `exec`. 2.37 (daily target) still waits on 2.29/2.30.
 
 ## Standing warnings
 
@@ -78,17 +79,18 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-09, Windows machine)
+## Last session (2026-08-10, Windows machine)
 
-- Grilled the Windows vm-harness plan into **2.36** (PowerShell sibling driving VMware
-  Workstation via `vmrun`; thin driver / logic-in-Python / guest bash shared; startable now)
-  and **2.37** (daily target iterated to *graduation* — capability bar, after 2.29/2.30);
-  *harness target* / *graduation* added to CONTEXT.md.
-- **4.8 betterleaks swap** (#117, PR #118 merged ✅): hook is betterleaks-first
-  (`stdin` staged scan) with gitleaks fallback, clitest-covered (19 cases, PATH-stubbed);
-  `.gitattributes` pins LF for hooks/tests; docs swept. This Windows clone now runs the
-  hook (`core.hooksPath` set, betterleaks 1.7.1 via winget). Left open: planted-secret
-  re-verify of the stdin path; `security.toml` swap waits on Arch packaging.
+- Adversarial two-axis review of **PR #121** (2.36 slice 2), fixes committed on the branch
+  (unpushed). Real bug: serial/`Say` output never reached the phase logs — `Write-Host` is
+  information-stream, invisible to `Invoke-Phase`'s `2>&1` Tee — so `tail install` was
+  near-empty and `destroy` deleted the only serial copy. Also: vmx parsing centralized
+  behind a tested `vm-harness-vmx media` query, install stale-serial + running-VM guards,
+  boot now waits for sshd (the same-MAC lease predates the boot, so the IP wait was a
+  no-op). pytest 43/43, hook clitest 19/19, driver smoke against the live VM green.
+- Environment note: `tests/{quarantine,vm-harness}.clitest.txt` fail on this Windows host
+  (`lua5.1`/`setsid`/`script(1)` missing) — pre-existing platform gap, 4.7's CI concern,
+  untouched by the PR.
 
 ## Epics
 

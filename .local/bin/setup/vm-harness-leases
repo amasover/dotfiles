@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""vm-harness-leases — guest IP from VMware's vmnet DHCP leases (2.36, #119).
+
+The `ip` channel that works before VMware Tools are up (the live ISO has no
+tools, so `vmrun getGuestIPAddress` has nothing to answer with): parse
+C:\\ProgramData\\VMware\\vmnetdhcp.leases (dhcpd.leases(5) format, all times
+UTC) for the harness VM's generated MAC. The file is append-ordered, so the
+LAST block for a MAC is its current lease.
+
+Pure parsing; only main() reads the file. Tests: tests/test_vm_harness_leases.py.
+"""
+
+import argparse
+import re
+import sys
+from pathlib import Path
+
+DEFAULT_LEASES = r"C:\ProgramData\VMware\vmnetdhcp.leases"
+
+_LEASE_RE = re.compile(r"lease\s+(\d+\.\d+\.\d+\.\d+)\s*\{(.*?)\}", re.DOTALL)
+_MAC_RE = re.compile(r"hardware\s+ethernet\s+([0-9A-Fa-f:]+)\s*;")
+
+
+def parse_leases(text: str) -> list[dict]:
+    """All lease blocks, file order. Comment lines are stripped first —
+    dhcpd.leases comments could otherwise smuggle brace-like content."""
+    text = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+    out = []
+    for m in _LEASE_RE.finditer(text):
+        ip, body = m.group(1), m.group(2)
+        mac = _MAC_RE.search(body)
+        out.append({"ip": ip, "mac": mac.group(1).lower() if mac else None})
+    return out
+
+
+def find_ip(text: str, mac: str) -> str | None:
+    """Newest (= last) lease for the MAC, or None."""
+    mac = mac.lower()
+    hit = None
+    for lease in parse_leases(text):
+        if lease["mac"] == mac:
+            hit = lease["ip"]
+    return hit
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="vm-harness-leases", description=__doc__)
+    ap.add_argument("--mac", required=True)
+    ap.add_argument("--leases", default=DEFAULT_LEASES)
+    args = ap.parse_args(argv)
+    try:
+        text = Path(args.leases).read_text()
+    except OSError as e:
+        # Missing until the vmnet DHCP server hands out its first lease ever.
+        print(f"cannot read leases file: {e}", file=sys.stderr)
+        return 1
+    ip = find_ip(text, args.mac)
+    if not ip:
+        print(f"no lease for {args.mac.lower()}", file=sys.stderr)
+        return 1
+    print(ip)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
