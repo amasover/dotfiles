@@ -1,21 +1,8 @@
 """pytest suite for vm-harness-leases (Story 2.36, #119). No VMware needed."""
 
-import importlib.util
-import importlib.machinery
-from pathlib import Path
+from conftest import load_tool
 
-_TOOL = Path(__file__).parent.parent / ".local" / "bin" / "setup" / "vm-harness-leases"
-
-
-def _load():
-    loader = importlib.machinery.SourceFileLoader("vm_harness_leases", str(_TOOL))
-    spec = importlib.util.spec_from_loader("vm_harness_leases", loader)
-    mod = importlib.util.module_from_spec(spec)
-    loader.exec_module(mod)
-    return mod
-
-
-leases = _load()
+leases = load_tool("vm_harness_leases", "vm-harness-leases")
 
 SAMPLE = """\
 # All times in this file are in UTC (GMT), not your local timezone.   This is
@@ -77,3 +64,10 @@ class TestCli:
         f = tmp_path / "l.leases"
         f.write_text(SAMPLE)
         assert leases.main(["--mac", "00:0c:29:00:00:00", "--leases", str(f)]) == 1
+
+    def test_missing_leases_file_is_a_clean_error(self, tmp_path, capsys):
+        # First-ever VM: the vmnet DHCP server hasn't written the file yet.
+        rc = leases.main(["--mac", "00:0c:29:aa:bb:cc",
+                          "--leases", str(tmp_path / "nope.leases")])
+        assert rc == 1
+        assert "cannot read leases file" in capsys.readouterr().err

@@ -1,23 +1,8 @@
 """pytest suite for vm-harness-vmx (Story 2.36, #119). No VMware needed."""
 
-import importlib.util
-import importlib.machinery
-from pathlib import Path
+from conftest import load_tool
 
-import pytest
-
-_TOOL = Path(__file__).parent.parent / ".local" / "bin" / "setup" / "vm-harness-vmx"
-
-
-def _load():
-    loader = importlib.machinery.SourceFileLoader("vm_harness_vmx", str(_TOOL))
-    spec = importlib.util.spec_from_loader("vm_harness_vmx", loader)
-    mod = importlib.util.module_from_spec(spec)
-    loader.exec_module(mod)
-    return mod
-
-
-vmx = _load()
+vmx = load_tool("vm_harness_vmx", "vm-harness-vmx")
 
 
 def _build(**kw):
@@ -81,6 +66,20 @@ class TestEjectMedia:
         assert vmx.eject_media(once) == once
 
 
+class TestMediaState:
+    def test_fresh_vmx_is_attached(self):
+        assert vmx.media_state(_build()) == "attached"
+
+    def test_ejected_after_eject(self):
+        assert vmx.media_state(vmx.eject_media(_build())) == "ejected"
+
+    def test_absent_line_counts_as_ejected(self):
+        # VMware owns the vmx after power-on and may drop FALSE devices.
+        text = "\n".join(l for l in _build().splitlines()
+                         if not l.startswith("sata0:0.present")) + "\n"
+        assert vmx.media_state(text) == "ejected"
+
+
 class TestGeneratedMac:
     def test_reads_vmware_written_mac(self):
         text = _build() + 'ethernet0.generatedAddress = "00:0C:29:AB:CD:EF"\n'
@@ -96,9 +95,15 @@ class TestCli:
         rc = vmx.main(["generate", "--out", str(out), "--disk", "d.vmdk",
                        "--iso", "a.iso", "--seed-iso", "s.iso", "--serial-log", "s.log"])
         assert rc == 0 and out.is_file()
+        rc = vmx.main(["media", "--vmx", str(out)])
+        assert rc == 0
+        assert capsys.readouterr().out.splitlines()[-1] == "attached"
         rc = vmx.main(["eject", "--vmx", str(out)])
         assert rc == 0
         assert 'sata0:0.present = "FALSE"' in out.read_text()
+        rc = vmx.main(["media", "--vmx", str(out)])
+        assert rc == 0
+        assert capsys.readouterr().out.splitlines()[-1] == "ejected"
 
     def test_mac_missing_is_an_error(self, tmp_path):
         out = tmp_path / "t.vmx"

@@ -5,26 +5,15 @@ Run from the repo root: python -m pytest tests/
 """
 
 import base64
-import importlib.util
 import io
 import json
 import sys
-from pathlib import Path
 
 import pytest
 
-_SEED_PATH = Path(__file__).parent.parent / ".local" / "bin" / "setup" / "vm-harness-seed"
+from conftest import load_tool
 
-
-def _load():
-    loader = importlib.machinery.SourceFileLoader("vm_harness_seed", str(_SEED_PATH))
-    spec = importlib.util.spec_from_loader("vm_harness_seed", loader)
-    mod = importlib.util.module_from_spec(spec)
-    loader.exec_module(mod)
-    return mod
-
-
-seed = _load()
+seed = load_tool("vm_harness_seed", "vm-harness-seed")
 
 
 class TestSha512Crypt:

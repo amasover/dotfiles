@@ -48,7 +48,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--mac", required=True)
     ap.add_argument("--leases", default=DEFAULT_LEASES)
     args = ap.parse_args(argv)
-    ip = find_ip(Path(args.leases).read_text(), args.mac)
+    try:
+        text = Path(args.leases).read_text()
+    except OSError as e:
+        # Missing until the vmnet DHCP server hands out its first lease ever.
+        print(f"cannot read leases file: {e}", file=sys.stderr)
+        return 1
+    ip = find_ip(text, args.mac)
     if not ip:
         print(f"no lease for {args.mac.lower()}", file=sys.stderr)
         return 1

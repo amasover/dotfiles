@@ -12,7 +12,8 @@ serial trick.
 `eject` rewrites the vmx so later boots hit the disk: with the ISO still
 attached, the EFI firmware would boot the installer again instead of the
 installed system — the Workstation equivalent of the bash harness's
-"media ejected so later boots hit the disk".
+"media ejected so later boots hit the disk". `media` reports that state
+(attached|ejected) so the driver never parses vmx internals itself.
 
 Logic is pure (text in/text out); only main() touches files. Tests:
 tests/test_vm_harness_vmx.py.
@@ -98,6 +99,15 @@ def eject_media(vmx_text: str) -> str:
     )
 
 
+def media_state(vmx_text: str) -> str:
+    """'attached' while the installer CD is wired in, else 'ejected' — the
+    driver's installed-state probe. An absent sata0:0.present line counts as
+    ejected (VMware rewrites the vmx at power-on and owns the format)."""
+    if re.search(r'^sata0:0\.present = "TRUE"$', vmx_text, flags=re.MULTILINE):
+        return "attached"
+    return "ejected"
+
+
 def generated_mac(vmx_text: str) -> str | None:
     """The nic MAC VMware wrote at first power-on (addressType generated) —
     the key into the vmnet DHCP leases file."""
@@ -123,6 +133,9 @@ def main(argv: list[str] | None = None) -> int:
     ej = sub.add_parser("eject", help="detach installer + seed media in place")
     ej.add_argument("--vmx", required=True)
 
+    med = sub.add_parser("media", help="print attached|ejected")
+    med.add_argument("--vmx", required=True)
+
     mac = sub.add_parser("mac", help="print the generated nic MAC")
     mac.add_argument("--vmx", required=True)
 
@@ -138,6 +151,8 @@ def main(argv: list[str] | None = None) -> int:
         p = Path(args.vmx)
         p.write_text(eject_media(p.read_text()), newline="\n")
         print("media ejected")
+    elif args.cmd == "media":
+        print(media_state(Path(args.vmx).read_text()))
     elif args.cmd == "mac":
         m = generated_mac(Path(args.vmx).read_text())
         if not m:

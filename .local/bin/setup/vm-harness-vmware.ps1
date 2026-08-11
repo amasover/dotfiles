@@ -17,7 +17,8 @@
 #   install    power on headless; archinstall runs via cloud-init and streams
 #              to the serial log, mirrored here live; VM powers itself off;
 #              media is then ejected so later boots hit the disk
-#   boot       start the installed VM headless; wait for and print the NAT IP
+#   boot       start the installed VM headless; wait for the NAT IP + sshd,
+#              then print the IP
 #   ip         print the VM's IPv4 (vmrun guest-tools query, falling back to
 #              the vmnet DHCP leases via vm-harness-leases — works for the
 #              live ISO too)
@@ -29,8 +30,8 @@
 # Logging: every phase writes an append-only log to  $LogDir\<stamp>-<phase>.log
 # ending with "=== <phase> done rc=N" — the same trailer contract the bash
 # harness's tooling (status/tail/resume probes, progress display) keys on.
-# Serial output is logged raw this slice (the bash harness's ANSI scrub ports
-# with the progress-display work).
+# Serial output streams raw to the console and into the install phase log this
+# slice (the bash harness's ANSI scrub ports with the progress-display work).
 #
 # Env overrides mirror the bash harness where they apply:
 #   VM_HARNESS_DIR, VM_HARNESS_DISK (GiB, bare number), VM_HARNESS_RAM (MiB),
@@ -69,7 +70,12 @@ $VmRun = Join-Path $VmwareDir 'vmrun.exe'
 $VdiskMgr = Join-Path $VmwareDir 'vmware-vdiskmanager.exe'
 $InstallTimeoutMin = 60
 
-function Say([string]$msg) { Write-Host "`n==> $msg" }
+function Say([string]$msg) {
+    # Write-Host bypasses Invoke-Phase's pipeline Tee (information stream), so
+    # mirror narrative markers into the active phase log by hand.
+    Write-Host "`n==> $msg"
+    if ($script:PhaseLog) { Add-Content -Path $script:PhaseLog -Value "`n==> $msg" }
+}
 function Die([string]$msg) { Write-Host "vm-harness-vmware: FATAL: $msg" -ForegroundColor Red; exit 1 }
 
 function Usage {
@@ -84,6 +90,7 @@ function Usage {
 function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
     New-Item -ItemType Directory -Force $LogDir | Out-Null
     $log = Join-Path $LogDir "$RunStamp-$Phase.log"
+    $script:PhaseLog = $log
     $rc = 0
     try {
         & $Body 2>&1 | Tee-Object -FilePath $log -Append
@@ -93,6 +100,7 @@ function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
         $rc = 1
     }
     "=== $Phase done rc=$rc" | Tee-Object -FilePath $log -Append
+    $script:PhaseLog = $null
     if ($rc -ne 0) {
         Die "phase '$Phase' failed (rc=$rc) — VM left as-is for inspection. Log: $log"
     }
@@ -120,10 +128,37 @@ function Read-NewSerial([ref]$Offset) {
         if ($fs.Length -le $Offset.Value) { return '' }
         $fs.Position = $Offset.Value
         $buf = New-Object byte[] ($fs.Length - $Offset.Value)
-        [void]$fs.Read($buf, 0, $buf.Length)
-        $Offset.Value = $fs.Length
-        [System.Text.Encoding]::UTF8.GetString($buf)
+        $read = 0
+        while ($read -lt $buf.Length) {
+            $n = $fs.Read($buf, $read, $buf.Length - $read)
+            if ($n -le 0) { break }
+            $read += $n
+        }
+        $Offset.Value += $read
+        [System.Text.Encoding]::UTF8.GetString($buf, 0, $read)
     } finally { $fs.Close() }
+}
+
+# Serial chunks reach the console AND the phase log — Write-Host alone never
+# lands in the log (see Say).
+function Write-Serial([string]$Text) {
+    if (-not $Text) { return }
+    Write-Host $Text -NoNewline
+    if ($script:PhaseLog) { Add-Content -Path $script:PhaseLog -Value $Text -NoNewline }
+}
+
+# vm-harness-vmx owns the vmx format; the driver only asks.
+function Get-MediaState {
+    $s = & $Python $VmxTool media --vmx $Vmx
+    if ($LASTEXITCODE -ne 0) { throw "vm-harness-vmx media failed (rc=$LASTEXITCODE)" }
+    $s
+}
+
+function Test-TcpPort([string]$Ip, [int]$Port) {
+    $c = [System.Net.Sockets.TcpClient]::new()
+    try { $c.ConnectAsync($Ip, $Port).Wait(2000) -and $c.Connected }
+    catch { $false }
+    finally { $c.Dispose() }
 }
 
 function New-Seed {
@@ -179,6 +214,8 @@ function Cmd-Create {
         New-Item -ItemType Directory -Force $VmDir | Out-Null
         New-Seed
         Say "Creating VM (disk ${DiskGib}G, ram ${RamMib}M, $Cpus vcpus)"
+        # No vmx (checked above), so a disk here is a failed create's debris.
+        if (Test-Path $DiskVmdk) { Remove-Item -Force $DiskVmdk }
         & $VdiskMgr -c -s "${DiskGib}GB" -a lsilogic -t 0 $DiskVmdk 2>&1
         if ($LASTEXITCODE -ne 0) { throw "vdiskmanager failed (rc=$LASTEXITCODE)" }
         & $Python $VmxTool generate --out $Vmx --name $VmName --disk $DiskVmdk `
@@ -192,9 +229,12 @@ function Cmd-Create {
 function Cmd-Install {
     Invoke-Phase 'install' {
         if (-not (Test-Path $Vmx)) { throw 'run: create first' }
-        if ((Get-Content $Vmx -Raw) -match 'sata0:0\.present = "FALSE"') {
+        if ((Get-MediaState) -eq 'ejected') {
             throw 'media already ejected — installed. Next: boot (or destroy for a fresh install)'
         }
+        if (Test-VmRunning) { throw 'VM already running — vmrun stop it (or destroy) first' }
+        # A dead run's log could satisfy the exit-marker check below.
+        if (Test-Path $SerialLog) { Remove-Item -Force $SerialLog }
         Say 'Unattended install — serial console streams below (also: tail install)'
         & $VmRun -T ws start $Vmx nogui 2>&1
         if ($LASTEXITCODE -ne 0) { throw "vmrun start failed (rc=$LASTEXITCODE)" }
@@ -202,14 +242,12 @@ function Cmd-Install {
         $deadline = (Get-Date).AddMinutes($InstallTimeoutMin)
         do {
             Start-Sleep -Seconds 5
-            $new = Read-NewSerial ([ref]$offset)
-            if ($new) { Write-Host $new -NoNewline }
+            Write-Serial (Read-NewSerial ([ref]$offset))
             if ((Get-Date) -gt $deadline) {
                 throw "install still running after $InstallTimeoutMin min — inspect: tail install, or vmrun stop + destroy"
             }
         } while (Test-VmRunning)
-        $new = Read-NewSerial ([ref]$offset)
-        if ($new) { Write-Host $new -NoNewline }
+        Write-Serial (Read-NewSerial ([ref]$offset))
         $serial = if (Test-Path $SerialLog) { Get-Content $SerialLog -Raw } else { '' }
         if ($serial -notmatch 'HARNESS-ARCHINSTALL-EXIT:0') {
             throw 'VM powered off without a clean archinstall exit — read the serial output above'
@@ -217,6 +255,7 @@ function Cmd-Install {
         Say 'Install done — ejecting media so later boots hit the disk'
         & $Python $VmxTool eject --vmx $Vmx
         if ($LASTEXITCODE -ne 0) { throw "media eject failed (rc=$LASTEXITCODE)" }
+        if ((Get-MediaState) -ne 'ejected') { throw 'eject did not take — inspect the vmx' }
         Say 'Next: boot'
     }
 }
@@ -224,7 +263,7 @@ function Cmd-Install {
 function Cmd-Boot {
     Invoke-Phase 'boot' {
         if (-not (Test-Path $Vmx)) { throw 'run: create first' }
-        if ((Get-Content $Vmx -Raw) -notmatch 'sata0:0\.present = "FALSE"') {
+        if ((Get-MediaState) -ne 'ejected') {
             throw 'not installed yet — run: install'
         }
         if (Test-VmRunning) { Say 'Already running' }
@@ -232,13 +271,19 @@ function Cmd-Boot {
             & $VmRun -T ws start $Vmx nogui 2>&1
             if ($LASTEXITCODE -ne 0) { throw "vmrun start failed (rc=$LASTEXITCODE)" }
         }
-        Say 'Waiting for the NAT lease'
+        # The lease can predate this boot (same MAC since the install phase),
+        # so an IP alone doesn't prove the guest came up — wait for sshd.
+        Say 'Waiting for the NAT lease + sshd'
         $deadline = (Get-Date).AddMinutes(3)
+        $ip = $null
+        $ssh = $false
         do {
             Start-Sleep -Seconds 5
             $ip = Get-GuestIp
-        } until ($ip -or (Get-Date) -gt $deadline)
+            $ssh = ($null -ne $ip) -and (Test-TcpPort $ip 22)
+        } until ($ssh -or (Get-Date) -gt $deadline)
         if (-not $ip) { throw 'no IP after 3 min — vmnet DHCP lease missing; check: status' }
+        if (-not $ssh) { throw "guest has IP $ip but never opened ssh (22) — check: status, tail install" }
         Say "Up. ssh $VmUser@$ip   (password: $VmPass, or the seeded host key)"
     }
 }
@@ -255,7 +300,7 @@ function Cmd-Status {
     "  cached ISO:  " + $(if (Test-Path $Iso) { "yes ({0:N0} MB)" -f ((Get-Item $Iso).Length / 1MB) } else { 'no — run: fetch' })
     "  seed:        " + $(if (Test-Path (Join-Path $SeedDir 'seed.iso')) { 'yes' } else { 'no — run: seed' })
     if (Test-Path $Vmx) {
-        $installed = (Get-Content $Vmx -Raw) -match 'sata0:0\.present = "FALSE"'
+        $installed = (Get-MediaState) -eq 'ejected'
         "  VM:          $Vmx"
         "  installed:   " + $(if ($installed) { 'yes (media ejected)' } else { 'no — next: install' })
         "  running:     " + $(if (Test-VmRunning) { "yes (ip: $(Get-GuestIp))" } else { 'no' })
