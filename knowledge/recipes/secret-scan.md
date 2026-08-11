@@ -67,6 +67,35 @@ Bypass for a single commit with `git commit --no-verify` — only after running
 the scan manually. False positives are dismissed via `.gitleaksignore` (below),
 which the hook respects.
 
+## Enforced automatically: encrypted-archive staleness guard (Story 4.9, #122)
+
+The scanners guard what you publish; this guards what you forget to publish.
+[.config/yadm/hooks/pre_push](../../.config/yadm/hooks/pre_push) aborts
+`yadm push` when a file matching `.config/yadm/encrypt` is newer than
+`.local/share/yadm/archive` — the drift that left the AUR trust baseline
+declared in the manifest but absent from the archive for a month, so a fresh
+machine's decrypt restored no trust state.
+
+Unlike the pre-commit hook, this needs no `core.hooksPath`: yadm runs
+`~/.config/yadm/hooks/pre_<command>` whenever it exists and is executable, so
+the `yadm checkout` that places the file also enables it. Confirm with
+`test -x ~/.config/yadm/hooks/pre_push && echo enabled`.
+
+It compares timestamps only — it never runs `yadm encrypt`, never reads the
+listed files, and reports a glob as a count instead of expanded filenames
+(a `.ssh/**` name can carry a private hostname). When it fires:
+
+```bash
+yadm encrypt                              # interactive passphrase prompt
+yadm add ~/.local/share/yadm/archive
+yadm commit -m "yadm: refresh encrypted archive"
+```
+
+Because the check is mtime-based, a fresh clone can raise a false positive; the
+cost is one `yadm encrypt`, which is the right direction to fail. Bypass a
+single push with `YADM_SKIP_ENCRYPT_CHECK=1 yadm push`. Behavior is covered by
+[tests/encrypt-staleness.clitest.txt](../../tests/encrypt-staleness.clitest.txt).
+
 ## Steps
 
 All commands are read-only. Run from the repo checkout (`$DOTFILES_CHECKOUT`).
