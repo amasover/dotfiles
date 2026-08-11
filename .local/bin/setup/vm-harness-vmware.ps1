@@ -50,6 +50,13 @@
 
 $ErrorActionPreference = 'Stop'
 
+# The guest talks UTF-8 (ssh, serial); decode native command output as such —
+# the Windows default (OEM CP437) turns every guest em-dash into 'ΓÇö', on the
+# console and in the phase log alike. Process-wide, which is fine: sessions
+# that dot-run this get UTF-8 native decoding, an improvement either way.
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 $VmName = 'arch-harness'
 $WorkDir = if ($env:VM_HARNESS_DIR) { $env:VM_HARNESS_DIR } else { Join-Path $env:LOCALAPPDATA 'bootstrap-harness-vmware' }
 $CacheDir = Join-Path $WorkDir 'cache'
