@@ -230,7 +230,7 @@ meanwhile, and Story 2.9's drift loop will surface the swap when it happens.
 
 ---
 
-### Story 4.9: `pre_push` guard — the encrypted archive can't silently go stale
+### Story 4.9: `pre_push` guard — the encrypted archive can't silently go stale ✅
 
 As the repo owner,
 I want a yadm `pre_push` hook that refuses the push when a file listed in
@@ -238,7 +238,7 @@ I want a yadm `pre_push` hook that refuses the push when a file listed in
 So that declaring a path encrypted actually gets it into the archive, instead of
 the manifest and the archive drifting apart unnoticed for weeks.
 
-Issue: [#122](https://github.com/amasover/dotfiles/issues/122) · Origin: 2026-08-11 —
+Issue: [#122](https://github.com/amasover/dotfiles/issues/122) (closed, PR #123) · Origin: 2026-08-11 —
 `.local/state/aur-quarantine/{maintainers.tsv,exempt.txt}` joined the manifest on
 2026-07-09 (`9f5e7d3`), but `.local/share/yadm/archive` was last regenerated
 2026-06-20 (`03e4f1b`), so the AUR trust baseline has been declared-but-not-archived

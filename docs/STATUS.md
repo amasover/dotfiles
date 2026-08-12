@@ -55,15 +55,9 @@ Facts:
 - **2.25 dotnet repo stack** ([#82](https://github.com/amasover/dotfiles/issues/82)): open for the
   gated host live swap + the `dotnet-runtime-2.1`/`2.2` relic decision; four repo names drift
   declared-but-missing until then.
-- **Aaron's pending live steps** (one attended sitting): yadm pull → `yadm gitconfig core.hooksPath
-  .githooks` (4.4) → `yadm encrypt` (4.9/2.10 baseline files) → chaotic adoption + jack2/redis swaps
-  via attended bootstrap/sync (2.28/2.26/2.23).
-- **4.9 `pre_push` staleness guard** ([#122](https://github.com/amasover/dotfiles/issues/122)):
-  [PR #123](https://github.com/amasover/dotfiles/pull/123) merged (hook + 27 clitest cases + recipe).
-  Open for the attended `yadm encrypt` — four manifest patterns are stale, incl. both AUR
-  trust-baseline files (declared 2026-07-09, archive last written 2026-06-20) and
-  `settings.json` (which answers 3.15/[#77](https://github.com/amasover/dotfiles/issues/77)'s
-  keyed-file question by sweeping it in).
+- **Aaron's pending live steps**: chaotic adoption + jack2/redis swaps via attended bootstrap/sync
+  (2.28/2.26/2.23). The yadm-side steps are done — `core.hooksPath .githooks` set (4.4) and the
+  archive refreshed 2026-08-11 (4.9).
 - **Direction (2026-07-10 grill)**: cleanup era ends at the daily-driver rebuild (a VMware VM
   on the Windows machine, not metal first) + the 1.8 work-machine steps. Record:
   [decision-daily-driver-vm.md](./decision-daily-driver-vm.md), PRD §4 eras, runbook checklist.
@@ -85,18 +79,28 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-10, Windows machine)
+## Last session (2026-08-11, Linux workstation)
 
-- Adversarial two-axis review of **PR #121** (2.36 slice 2), fixes committed on the branch
-  (unpushed). Real bug: serial/`Say` output never reached the phase logs — `Write-Host` is
-  information-stream, invisible to `Invoke-Phase`'s `2>&1` Tee — so `tail install` was
-  near-empty and `destroy` deleted the only serial copy. Also: vmx parsing centralized
-  behind a tested `vm-harness-vmx media` query, install stale-serial + running-VM guards,
-  boot now waits for sshd (the same-MAC lease predates the boot, so the IP wait was a
-  no-op). pytest 43/43, hook clitest 19/19, driver smoke against the live VM green.
-- Environment note: `tests/{quarantine,vm-harness}.clitest.txt` fail on this Windows host
-  (`lua5.1`/`setsid`/`script(1)` missing) — pre-existing platform gap, 4.7's CI concern,
-  untouched by the PR.
+- **The encrypt manifest and the archive had silently diverged.** The AUR trust baseline
+  joined `.config/yadm/encrypt` on 2026-07-09 (`9f5e7d3`) but the archive was last written
+  2026-06-20 (`03e4f1b`) — declared, never encrypted, so a fresh machine's decrypt restored
+  no trust state. Fixed by **4.9** ([#122](https://github.com/amasover/dotfiles/issues/122) ✅,
+  PR #123): a yadm `pre_push` guard that blocks the push when a manifest match is newer than
+  the archive (timestamps only; globs report a count, never expanded `.ssh/**` filenames).
+  Attended wrap-up on the live machine: `core.hooksPath .githooks` set, `yadm encrypt` run,
+  archive 48667 → 51085 bytes, pushed (`d84f2d5`), guard now silent.
+- Auto-encrypt-on-push was considered and rejected — symmetric gpg needs a TTY, and its
+  non-deterministic output would commit a fresh ~49k blob every push. A keypair
+  (`yadm.gpg-recipient`) would fix the TTY problem but make fresh-machine recovery depend on
+  transporting a private key; recorded on #122 rather than adopted.
+- **2.36 slice 3 design note** on [#119](https://github.com/amasover/dotfiles/issues/119):
+  `inject_trust_baseline` doesn't port — it scp's the *Linux host's* plaintext
+  `aur-quarantine` files, and Windows has no such source. Rejected clone-then-decrypt in the
+  unattended guest (routes the passphrase into a throwaway VM); proposed an overridable trust
+  dir populated once on the Windows host by selective `gpg -d | tar xf -` of just the two
+  files, with `VM_HARNESS_FRESH_TRUST=1` as the cheap default and its fidelity cost named.
+- Environment note: pytest isn't installed on the Linux workstation, so the 2.36 Python
+  suites can't run here — the mirror of 2026-08-10's Windows clitest gap, both 4.7's concern.
 
 ## Epics
 
