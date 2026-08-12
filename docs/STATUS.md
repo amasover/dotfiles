@@ -56,8 +56,14 @@ Facts:
   gated host live swap + the `dotnet-runtime-2.1`/`2.2` relic decision; four repo names drift
   declared-but-missing until then.
 - **Aaron's pending live steps** (one attended sitting): yadm pull → `yadm gitconfig core.hooksPath
-  .githooks` (4.4) → `yadm encrypt` (2.10 baseline files) → chaotic adoption + jack2/redis swaps via
-  attended bootstrap/sync (2.28/2.26/2.23).
+  .githooks` (4.4) → `yadm encrypt` (4.9/2.10 baseline files) → chaotic adoption + jack2/redis swaps
+  via attended bootstrap/sync (2.28/2.26/2.23).
+- **4.9 `pre_push` staleness guard** ([#122](https://github.com/amasover/dotfiles/issues/122)):
+  [PR #123](https://github.com/amasover/dotfiles/pull/123) merged (hook + 27 clitest cases + recipe).
+  Open for the attended `yadm encrypt` — four manifest patterns are stale, incl. both AUR
+  trust-baseline files (declared 2026-07-09, archive last written 2026-06-20) and
+  `settings.json` (which answers 3.15/[#77](https://github.com/amasover/dotfiles/issues/77)'s
+  keyed-file question by sweeping it in).
 - **Direction (2026-07-10 grill)**: cleanup era ends at the daily-driver rebuild (a VMware VM
   on the Windows machine, not metal first) + the 1.8 work-machine steps. Record:
   [decision-daily-driver-vm.md](./decision-daily-driver-vm.md), PRD §4 eras, runbook checklist.
@@ -67,11 +73,11 @@ Facts:
 - **metapac reinstall churn** (from the 07-19 log review): `yay --sync --asexplicit` without
   `--needed` reinstalls every installed declared package each sync (37–50 per run) — investigation
   in progress, story TBD.
-- **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119)): slice 1
-  merged (PR #120); slice 2 open ([PR #121](https://github.com/amasover/dotfiles/pull/121) —
-  create/install/boot/ip, validated live) with adversarial-review fixes committed on the branch,
-  **push pending Aaron's go**. Slice 3 next: bootstrap/check via shared guest bash, resumable
-  `up`, `exec`. 2.37 (daily target) still waits on 2.29/2.30.
+- **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119)): slices 1–2
+  merged (PRs #120/#121). Slice 3 next: bootstrap/check via shared guest bash, resumable `up`,
+  `exec` — plus the trust-baseline injection, which doesn't port (the Windows host has no plaintext
+  `aur-quarantine` source); design note on the issue, and it needs 4.9's encrypt first.
+  2.37 (daily target) still waits on 2.29/2.30.
 
 ## Standing warnings
 
