@@ -77,13 +77,16 @@ Facts:
   kooha (no ScreenCast portal backend under i3/X11), simplescreenrecorder (dropped from the Arch
   repos, orphan linked against ffmpeg 7), kazam (dead upstream). `gpu-screen-recorder` +
   `-ui` are the keepers. Aaron's live step: uninstall the three, or they show as `metapac unmanaged`.
-- **Desktop has been running on software rendering.** `MESA_LOADER_DRIVER_OVERRIDE=i965` in
-  `.profile:40` names a driver mesa deleted years ago, so everything GL fell back to llvmpipe —
-  the actual reason recording looked broken, not the long-assumed pending reboot. Removing the
-  export restores Iris Xe acceleration (verified with `env -u`). Separately, legacy
-  `xf86-video-intel` is installed and Xorg picks it over `modesetting`, logging "Unknown chipset"
-  + "disabling acceleration". Both need issues + gated live steps; diagnosis in
-  [knowledge/errors/mesa-i965-override-forces-llvmpipe.md](../knowledge/errors/mesa-i965-override-forces-llvmpipe.md).
+- **3.16 GL acceleration** ([#126](https://github.com/amasover/dotfiles/issues/126),
+  [PR #127](https://github.com/amasover/dotfiles/pull/127)): the desktop had been running on
+  llvmpipe — the real reason recording looked broken, not the long-assumed pending reboot. Both
+  fixes are applied live (mesa `i965` override dropped from `.profile`; legacy
+  `xf86-video-intel` removed) and gsr now records 1080p via `h264_vaapi`. Open only for the
+  post-X-restart `Xorg.0.log` check; commands are on the issue.
+- **2.30 hardware split** ([#96](https://github.com/amasover/dotfiles/issues/96)): 3.16 turned up
+  concrete evidence — the `desktop` group declares an AMD GPU set (`xf86-video-amdgpu`,
+  `vulkan-radeon`, `lib32-vulkan-radeon`) on what is now an Intel laptop, `vulkan-intel` is
+  missing, and `package-inventory.md` still calls the machine AMD. Detailed on the issue.
 
 ## Standing warnings
 
