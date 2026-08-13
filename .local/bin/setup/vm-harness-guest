@@ -52,9 +52,18 @@ cmd_bootstrap() {
     [[ -n "$class" && -n "$repo" && -n "$hardware" ]] \
         || die 'bootstrap needs --class, --repo, and --hardware-pkgs'
     sudo pacman -S --needed --noconfirm git base-devel yadm
-    # || true: a resumed guest is already cloned (known gap: the checkout is
-    # not refreshed — 2.31/#98 owns the fix, which lands here when it does).
-    yadm clone --no-bootstrap ${branch:+-b "$branch"} "$repo" || true
+    # Clone, or refresh an existing checkout. The libvirt harness runs
+    # `yadm clone || true`, which silently no-ops on a resumed guest and
+    # leaves it converging against stale dotfiles (2.31/#98) — a real miss:
+    # on 2026-08-13 a resumed run kept building a package main had already
+    # removed. --ff-only so a surprise divergence fails loudly instead of
+    # merging something nobody asked for.
+    if yadm rev-parse --git-dir >/dev/null 2>&1; then
+        echo "==> Refreshing the existing yadm checkout"
+        yadm pull --ff-only
+    else
+        yadm clone --no-bootstrap ${branch:+-b "$branch"} "$repo"
+    fi
     yadm config local.class "$class"
     yadm alt
     mkdir -p "$HOME/.local/share/metapac"

@@ -4,8 +4,15 @@
 The `ip` channel that works before VMware Tools are up (the live ISO has no
 tools, so `vmrun getGuestIPAddress` has nothing to answer with): parse
 C:\\ProgramData\\VMware\\vmnetdhcp.leases (dhcpd.leases(5) format, all times
-UTC) for the harness VM's generated MAC. The file is append-ordered, so the
-LAST block for a MAC is its current lease.
+UTC) for the harness VM's generated MAC.
+
+A MAC accumulates several lease blocks over a VM's life, so pick by the
+`starts` timestamp — NOT by file position. vmnetdhcp rewrites the file as it
+reclaims expired entries, which can leave the newest lease sitting first (seen
+live 2026-08-13: the current lease led the file while two two-day-old expired
+ones followed, and taking the last block handed ssh a dead address).
+Timestamps are zero-padded `YYYY/MM/DD HH:MM:SS` in UTC, so string order is
+chronological order. Blocks without a timestamp fall back to file order.
 
 Pure parsing; only main() reads the file. Tests: tests/test_vm_harness_leases.py.
 """
@@ -19,6 +26,7 @@ DEFAULT_LEASES = r"C:\ProgramData\VMware\vmnetdhcp.leases"
 
 _LEASE_RE = re.compile(r"lease\s+(\d+\.\d+\.\d+\.\d+)\s*\{(.*?)\}", re.DOTALL)
 _MAC_RE = re.compile(r"hardware\s+ethernet\s+([0-9A-Fa-f:]+)\s*;")
+_STARTS_RE = re.compile(r"starts\s+\d+\s+([\d/]+\s+[\d:]+)\s*;")
 
 
 def parse_leases(text: str) -> list[dict]:
@@ -29,18 +37,28 @@ def parse_leases(text: str) -> list[dict]:
     for m in _LEASE_RE.finditer(text):
         ip, body = m.group(1), m.group(2)
         mac = _MAC_RE.search(body)
-        out.append({"ip": ip, "mac": mac.group(1).lower() if mac else None})
+        starts = _STARTS_RE.search(body)
+        out.append({
+            "ip": ip,
+            "mac": mac.group(1).lower() if mac else None,
+            "starts": starts.group(1) if starts else None,
+        })
     return out
 
 
 def find_ip(text: str, mac: str) -> str | None:
-    """Newest (= last) lease for the MAC, or None."""
+    """The MAC's most recently issued lease, or None. Ranked by `starts`
+    (string order is chronological); a block without one loses to any block
+    with one, and ties break on file order."""
     mac = mac.lower()
-    hit = None
-    for lease in parse_leases(text):
-        if lease["mac"] == mac:
-            hit = lease["ip"]
-    return hit
+    best_ip, best_key = None, None
+    for i, lease in enumerate(parse_leases(text)):
+        if lease["mac"] != mac:
+            continue
+        key = (lease["starts"] or "", i)
+        if best_key is None or key >= best_key:
+            best_ip, best_key = lease["ip"], key
+    return best_ip
 
 
 def main(argv: list[str] | None = None) -> int:

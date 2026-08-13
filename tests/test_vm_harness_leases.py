@@ -39,11 +39,46 @@ class TestParse:
         assert leases.parse_leases("# lease 1.2.3.4 { fake }\n") == []
 
 
+# The shape that broke live on 2026-08-13: vmnetdhcp had rewritten the file,
+# so the CURRENT lease led and two expired ones followed. Taking the last
+# block handed ssh a two-day-dead address.
+REWRITTEN = """\
+lease 192.168.92.130 {
+    starts 4 2026/08/13 04:54:14;
+    ends 4 2026/08/13 05:24:14;
+    hardware ethernet 00:0c:29:40:71:13;
+}
+lease 192.168.92.128 {
+    starts 2 2026/08/11 06:13:06;
+    ends 2 2026/08/11 06:43:06;
+    hardware ethernet 00:0c:29:40:71:13;
+}
+lease 192.168.92.129 {
+    starts 2 2026/08/11 06:22:27;
+    ends 2 2026/08/11 06:24:46;
+    hardware ethernet 00:0c:29:40:71:13;
+}
+"""
+
+
 class TestFindIp:
-    def test_last_lease_wins_for_reassigned_mac(self):
-        # Same MAC leased twice (live ISO then installed system) — the file is
-        # append-ordered, so the later block is the current address.
+    def test_newest_lease_wins_for_reassigned_mac(self):
+        # Same MAC leased twice (live ISO then installed system).
         assert leases.find_ip(SAMPLE, "00:0c:29:aa:bb:cc") == "192.168.152.129"
+
+    def test_newest_wins_even_when_it_leads_the_file(self):
+        assert leases.find_ip(REWRITTEN, "00:0c:29:40:71:13") == "192.168.92.130"
+
+    def test_file_order_breaks_ties_when_timestamps_are_absent(self):
+        text = ("lease 10.0.0.1 {\n hardware ethernet 00:11:22:33:44:55;\n}\n"
+                "lease 10.0.0.2 {\n hardware ethernet 00:11:22:33:44:55;\n}\n")
+        assert leases.find_ip(text, "00:11:22:33:44:55") == "10.0.0.2"
+
+    def test_timestamped_lease_beats_an_undated_one(self):
+        text = ("lease 10.0.0.9 {\n starts 4 2026/08/13 04:54:14;\n"
+                " hardware ethernet 00:11:22:33:44:55;\n}\n"
+                "lease 10.0.0.2 {\n hardware ethernet 00:11:22:33:44:55;\n}\n")
+        assert leases.find_ip(text, "00:11:22:33:44:55") == "10.0.0.9"
 
     def test_mac_matching_is_case_insensitive(self):
         assert leases.find_ip(SAMPLE, "00:0C:29:DD:EE:FF") == "192.168.152.130"
