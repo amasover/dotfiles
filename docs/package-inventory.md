@@ -208,13 +208,20 @@ droppable).
 - **D6 Virtualization:** **Drop `virtualbox` + `virtualbox-host-modules-arch`**; keep
   `qemu-desktop` + `virt-manager` + `virt-viewer`.
 - **D7 Screen recorders:** Resolved 2026-08-12 by **Story 3.10**
-  ([#42](https://github.com/amasover/dotfiles/issues/42)). Keeper: **`simplescreenrecorder`**
-  (X11-native, grabs the display directly, no portal involved). **Drop `kooha`** — it requires
-  the ScreenCast xdg-desktop portal, and no backend implements ScreenCast under i3/X11
-  (`xdg-desktop-portal-gtk` has no ScreenCast; gnome/kde/wlr backends need mutter/KWin/wlroots).
-  Verified on the live machine, kooha 2.3.2-3, 4 days uptime — so the "broken pending reboot"
-  theory is dead. See [knowledge/errors/screencast-portal-missing-on-i3-x11.md](../knowledge/errors/screencast-portal-missing-on-i3-x11.md);
-  revisit kooha if the desktop moves to Wayland. **Drop `kazam`** (dead upstream, superseded).
+  ([#42](https://github.com/amasover/dotfiles/issues/42)). Keepers: **`gpu-screen-recorder`** +
+  **`gpu-screen-recorder-ui`** (maintained, X11 *and* Wayland, VAAPI h264/hevc/vp9 on the Iris Xe).
+  All three incumbents are dropped:
+  - **`kooha`** — needs the ScreenCast xdg-desktop portal, and no backend implements ScreenCast
+    under i3/X11 (`xdg-desktop-portal-gtk` has none; gnome/kde/wlr need mutter/KWin/wlroots).
+    See [knowledge/errors/screencast-portal-missing-on-i3-x11.md](../knowledge/errors/screencast-portal-missing-on-i3-x11.md);
+    revisit if the desktop moves to Wayland.
+  - **`simplescreenrecorder`** — Arch dropped it from the repos; the installed 0.4.4-4 is an
+    orphan linked against ffmpeg 7 (`libavcodec.so.61`, current is `.so.63`) and cannot start.
+  - **`kazam`** — dead upstream, superseded.
+
+  The epic's "recording libs broken pending reboot" theory is dead: 4 days uptime, and the real
+  cause was `MESA_LOADER_DRIVER_OVERRIDE=i965` in `.profile` pinning the whole desktop to
+  llvmpipe ([knowledge/errors/mesa-i965-override-forces-llvmpipe.md](../knowledge/errors/mesa-i965-override-forces-llvmpipe.md)).
   `guvcview` is a webcam viewer, not a recorder — out of scope, stays.
 - **D8 ccat → bat:** `ccat` **uninstalled**, replaced by `bat` (installed). See cross-ref **C1**.
 - **D9 Removable leaves:** `lsdesktopf`, `python-cbeams-git` — drop from bootstrap;

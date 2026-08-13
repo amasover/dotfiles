@@ -72,12 +72,18 @@ Facts:
   `exec` — plus the trust-baseline injection, which doesn't port (the Windows host has no plaintext
   `aur-quarantine` source); design note on the issue, and it needs 4.9's encrypt first.
   2.37 (daily target) still waits on 2.29/2.30.
-- **3.10 screen recorders** ([#42](https://github.com/amasover/dotfiles/issues/42)): kooha can't
-  work on i3/X11 (no ScreenCast portal backend exists for it — diagnosis in
-  [knowledge/errors/screencast-portal-missing-on-i3-x11.md](../knowledge/errors/screencast-portal-missing-on-i3-x11.md)).
-  `simplescreenrecorder` is the keeper; kooha + kazam dropped from the metapac `media` group
-  (branch `story/3.10-consolidate-screen-recorders`). Aaron's live step: uninstall both, or
-  they show up as `metapac unmanaged`.
+- **3.10 screen recorders** ([#42](https://github.com/amasover/dotfiles/issues/42),
+  [PR #125](https://github.com/amasover/dotfiles/pull/125)): all three incumbents are dead here —
+  kooha (no ScreenCast portal backend under i3/X11), simplescreenrecorder (dropped from the Arch
+  repos, orphan linked against ffmpeg 7), kazam (dead upstream). `gpu-screen-recorder` +
+  `-ui` are the keepers. Aaron's live step: uninstall the three, or they show as `metapac unmanaged`.
+- **Desktop has been running on software rendering.** `MESA_LOADER_DRIVER_OVERRIDE=i965` in
+  `.profile:40` names a driver mesa deleted years ago, so everything GL fell back to llvmpipe —
+  the actual reason recording looked broken, not the long-assumed pending reboot. Removing the
+  export restores Iris Xe acceleration (verified with `env -u`). Separately, legacy
+  `xf86-video-intel` is installed and Xorg picks it over `modesetting`, logging "Unknown chipset"
+  + "disabling acceleration". Both need issues + gated live steps; diagnosis in
+  [knowledge/errors/mesa-i965-override-forces-llvmpipe.md](../knowledge/errors/mesa-i965-override-forces-llvmpipe.md).
 
 ## Standing warnings
 

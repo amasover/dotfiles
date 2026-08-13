@@ -46,9 +46,9 @@ app. Trades a clear error for a confusing one.
 
 **Consequence for this repo.** Kooha is unusable on the current i3/X11 session and was dropped
 from the metapac `media` group (Story 3.10, [#42](https://github.com/amasover/dotfiles/issues/42)).
-The X11-native keeper is `simplescreenrecorder`, which grabs the X display directly and never
-touches the portal. That grab path is confirmed healthy — the same X11 capture SSR uses works
-fine here, so nothing about the display or PipeWire is broken:
+The keeper is `gpu-screen-recorder` + `gpu-screen-recorder-ui`, which capture the display
+directly and never touch the portal. That grab path is confirmed healthy — plain X11 capture
+works fine here, so nothing about the display or PipeWire is broken:
 
 ```bash
 ffmpeg -f x11grab -video_size 640x480 -i :0.0+0,0 -t 1 -y /tmp/x11grab-test.mp4
