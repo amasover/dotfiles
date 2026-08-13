@@ -86,11 +86,14 @@ class TestResumePoint:
         # no vmx at all
         (dict(media="absent", disk_exists=True, seed_exists=True,
               serial_log_exists=False, running=False), "create"),
-        # disk gone by hand: create — which then dies loudly on the existing
-        # vmx; destroy is the remedy either way
+        # disk gone by hand. "create" is the honest answer, but note the vmx
+        # still exists, so create would refuse — the driver turns this into
+        # "destroy, then up" up front (Cmd-Up), not a half-run that fetches an
+        # ISO and then stops.
         (dict(media="attached", disk_exists=False, seed_exists=True,
               serial_log_exists=False, running=False), "create"),
-        # never installed and the seed is gone → full re-create
+        # never installed and the seed is gone: same shape — nothing here can
+        # be resumed, and the vmx makes it a destroy-first, not a re-create
         (dict(media="attached", disk_exists=True, seed_exists=False,
               serial_log_exists=False, running=False), "create"),
         # created, never powered on
