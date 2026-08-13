@@ -47,6 +47,8 @@
 # Env overrides mirror the bash harness where they apply:
 #   VM_HARNESS_DIR, VM_HARNESS_DISK (GiB, bare number), VM_HARNESS_RAM (MiB),
 #   VM_HARNESS_CPUS, VM_HARNESS_CLASS, VM_HARNESS_REPO, VM_HARNESS_BRANCH.
+# VM_HARNESS_TRUST_DIR overrides where the AUR trust baseline is read from
+# (default ~\.local\state\aur-quarantine) — see Send-TrustBaseline.
 
 $ErrorActionPreference = 'Stop'
 
@@ -229,10 +231,15 @@ function Wait-Ssh {
 
 # scp the host's AUR trust state (maintainers.tsv + exempt.txt) into the VM
 # before bootstrap, same baseline a decrypt-restored machine would have
-# (Story 2.10). On a Windows host the state dir doesn't exist — the guest
-# runs fresh (TOFU), which the install gate supports unattended.
+# (Story 2.10). Windows has no Arch state dir to read, so the source is
+# overridable (VM_HARNESS_TRUST_DIR) and populated once by extracting just
+# those two members from the yadm archive — recipe:
+# knowledge/recipes/windows-trust-baseline.md. Without it the guest runs
+# fresh TOFU, which trusts whatever it sees: fine for fast iteration, wrong
+# for runs meant to predict a real rebuild (design note on #119).
 function Send-TrustBaseline([string]$Ip) {
-    $sdir = Join-Path $env:USERPROFILE '.local\state\aur-quarantine'
+    $sdir = if ($env:VM_HARNESS_TRUST_DIR) { $env:VM_HARNESS_TRUST_DIR }
+            else { Join-Path $env:USERPROFILE '.local\state\aur-quarantine' }
     $have = @('maintainers.tsv', 'exempt.txt') |
         ForEach-Object { Join-Path $sdir $_ } | Where-Object { Test-Path $_ }
     if (-not $have) {
