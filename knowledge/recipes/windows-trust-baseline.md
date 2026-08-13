@@ -48,6 +48,10 @@ point — which a `gpg -d -o tmp.tar` + extract sequence could not promise. The
 allowlist is an exact-name match, so a hostile archive cannot write outside
 the destination, and symlink members named like a trust file are skipped.
 
+The driver passes `--into <trust dir>`, the same directory `bootstrap` reads,
+so setting `VM_HARNESS_TRUST_DIR` moves both halves together and import can
+never populate somewhere injection doesn't look.
+
 **gpg needs no install:** Git for Windows bundles it (`gpg` 2.4.9 plus
 `pinentry-w32.exe` for the prompt). The tool takes `gpg` from PATH first, then
 falls back to the Git for Windows path; `--gpg` overrides.
@@ -71,6 +75,11 @@ The baseline drifts as packages are accepted on the Arch machine. Refresh by
 pulling the newer archive and re-running `trust-import` — it overwrites in
 place. Nothing here is authoritative; the archive is, and Story 4.9's
 `pre_push` guard keeps the archive itself from going stale.
+
+Overwrite only covers files the archive still carries. If a member has been
+dropped from the archive, the local copy survives it, so the import says so:
+`WARNING: ... exists — that copy is stale and was NOT refreshed`. Delete it
+by hand; the tool never removes files it did not write.
 
 **So local edits here are temporary.** Running `aur-quarantine auto <pkg>` or
 `accept <pkg>` against this copy unblocks harness runs on this machine

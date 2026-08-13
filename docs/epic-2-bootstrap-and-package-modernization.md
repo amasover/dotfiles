@@ -831,9 +831,18 @@ story. Slice-3 decisions:
 - **`Wait-Ssh`** (authenticated `BatchMode` login poll ported from `wait_ssh`,
   with the key-refused downgrade) gates `bootstrap` and replaces `boot`'s
   port-22 probe — boot's "Up" is a verified login, not an open port.
-- **Trust baseline**: the `inject_trust_baseline` port naturally no-ops on the
-  Windows host (no aur-quarantine state) → guest runs fresh TOFU; the
-  `VM_HARNESS_FRESH_TRUST` override is not ported until a need shows.
+- **Trust baseline** (revised during the build — the grill's plan was to let
+  the `inject_trust_baseline` port no-op on Windows and accept fresh TOFU, but
+  a TOFU guest trusts whatever it sees and so goes green where a real rebuild
+  would hold, which makes the evidence run worth less than it looks): the
+  baseline *is* ported. `vm-harness-trust` streams `gpg --decrypt` into
+  Python's `tarfile` and writes only the two allowlisted identity files, so
+  the decrypted archive never touches disk and `.ssh/**`/`.zshenv` are never in
+  plaintext; exposed as `vm-harness-vmware trust-import`.
+  `VM_HARNESS_TRUST_DIR` sets the one location both import and injection use.
+  Fresh TOFU stays available by moving that directory aside — the harness
+  reports it and continues — so `VM_HARNESS_FRESH_TRUST` is still not ported.
+  Recipe: `knowledge/recipes/windows-trust-baseline.md`.
 - **Resume probes live state only** (the bash harness's #98 design) with one
   structural translation: `create` writes the vmx under VMware (libvirt defines
   the domain at install time), so serial-log existence distinguishes
