@@ -68,10 +68,20 @@ Facts:
   `--needed` reinstalls every installed declared package each sync (37–50 per run) — investigation
   in progress, story TBD.
 - **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119)): slices 1–2
-  merged (PRs #120/#121). Slice 3 next: bootstrap/check via shared guest bash, resumable `up`,
-  `exec` — plus the trust-baseline injection, which doesn't port (the Windows host has no plaintext
-  `aur-quarantine` source); design note on the issue, and it needs 4.9's encrypt first.
-  2.37 (daily target) still waits on 2.29/2.30.
+  merged (PRs #120/#121); **slice 3 in review** — `exec`/`bootstrap`/`check`/`up`, shared guest
+  glue, trust import. Code-complete and unit-green; the **evidence artifact is still owed**
+  (bootstrap can't reach rc=0 until the declared set converges — see 2.38). Slice 4 (progress
+  display + ANSI scrub) closes the story. 2.37 still waits on 2.29/2.30.
+- **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), spec on
+  `story/2.38-unattended-age-holds`, unpushed): age-deferred and known-broken packages stop
+  failing unattended runs; design settled at the 2026-08-13 grill. **Linux-side work** (needs
+  `lua5.1` + clitest). Three declared packages are unbuildable today and block the 2.36 evidence
+  run: `simplescreenrecorder` (ffmpeg 9 API break; kooha is Wayland-only, so 3.10 can't just drop
+  it), `shim-signed` (koji source 404), `playwright` (see below).
+- **Quarantine pin is defeatable** ([knowledge note](../knowledge/errors/quarantine-pin-defeated-by-pkgver.md)):
+  a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
+  pin with the newest upstream. Age guarantee is silently void for such PKGBUILDs; needs its own
+  story, options recorded, none chosen.
 
 ## Standing warnings
 
@@ -79,28 +89,26 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-11, Linux workstation)
+## Last session (2026-08-13, Windows machine)
 
-- **The encrypt manifest and the archive had silently diverged.** The AUR trust baseline
-  joined `.config/yadm/encrypt` on 2026-07-09 (`9f5e7d3`) but the archive was last written
-  2026-06-20 (`03e4f1b`) — declared, never encrypted, so a fresh machine's decrypt restored
-  no trust state. Fixed by **4.9** ([#122](https://github.com/amasover/dotfiles/issues/122) ✅,
-  PR #123): a yadm `pre_push` guard that blocks the push when a manifest match is newer than
-  the archive (timestamps only; globs report a count, never expanded `.ssh/**` filenames).
-  Attended wrap-up on the live machine: `core.hooksPath .githooks` set, `yadm encrypt` run,
-  archive 48667 → 51085 bytes, pushed (`d84f2d5`), guard now silent.
-- Auto-encrypt-on-push was considered and rejected — symmetric gpg needs a TTY, and its
-  non-deterministic output would commit a fresh ~49k blob every push. A keypair
-  (`yadm.gpg-recipient`) would fix the TTY problem but make fresh-machine recovery depend on
-  transporting a private key; recorded on #122 rather than adopted.
-- **2.36 slice 3 design note** on [#119](https://github.com/amasover/dotfiles/issues/119):
-  `inject_trust_baseline` doesn't port — it scp's the *Linux host's* plaintext
-  `aur-quarantine` files, and Windows has no such source. Rejected clone-then-decrypt in the
-  unattended guest (routes the passphrase into a throwaway VM); proposed an overridable trust
-  dir populated once on the Windows host by selective `gpg -d | tar xf -` of just the two
-  files, with `VM_HARNESS_FRESH_TRUST=1` as the cheap default and its fidelity cost named.
-- Environment note: pytest isn't installed on the Linux workstation, so the 2.36 Python
-  suites can't run here — the mirror of 2026-08-10's Windows clitest gap, both 4.7's concern.
+- **2.36 slice 3 built and pushed** (`exec`, shared `vm-harness-guest` glue, `bootstrap`/`check`,
+  resumable `up` via a pytest-covered `vm-harness-vmx resume` table, `trust-import`). Live runs
+  found four real defects, all fixed with tests: the phase log had two writers (Tee vs
+  Add-Content) and crashed the first real `up`; native output decoded as OEM, mangling guest
+  em-dashes; `find_ip` trusted file order and returned a **two-day-expired lease** (vmnetdhcp
+  rewrites the file — ssh timed out against a dead IP while the guest was healthy); and the
+  guest glue inherited `yadm clone || true`, so a resumed run converged against stale dotfiles.
+- **Trust baseline now works on Windows** without bash: `vm-harness-trust` streams `gpg --decrypt`
+  into `tarfile` and extracts only the two identity files — the decrypted archive never hits disk
+  ([recipe](../knowledge/recipes/windows-trust-baseline.md)). Local `auto`/`accept` edits there
+  are temporary; the archive is authoritative.
+- Guest reached `bootstrap` and stopped on package content, not harness defects — which is the
+  harness doing its job: **the declared set cannot converge on a fresh machine today** (2.38).
+  The same failures would hit the pending Linux fresh-run evidence.
+
+- Environment note: pytest isn't installed on the Linux workstation and `lua5.1`/`setsid`/
+  `script(1)` are missing on Windows, so neither machine can run the full test suite —
+  4.7's ([#94](https://github.com/amasover/dotfiles/issues/94)) concern.
 
 ## Epics
 
