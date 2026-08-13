@@ -26,15 +26,23 @@ set -euo pipefail
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'vm-harness-guest: FATAL: %s\n' "$*" >&2; exit 2; }
 
+# Guard a flag that takes a value: `need "$@"` before reading $2, so a
+# dangling `--class` dies with the usual message instead of tripping `set -u`.
+need() { (( $# >= 2 )) || die "$1 needs a value"; }
+
 usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; }
 
 render_toml() {
     local pkgs=$1 p
+    local -a list
+    # read -ra splits on IFS without globbing — a bare `for p in $pkgs` would
+    # expand a package named `*` against the guest's cwd.
+    read -ra list <<<"$pkgs"
     printf '# machine-local metapac group — untracked, never published\n'
     printf '# harness-owned guest hardware set, rewritten every bootstrap\n'
     printf '# (interim home until the Story 2.30 class/hardware split, #96)\n'
     printf '[arch]\npackages = [\n'
-    for p in $pkgs; do printf '  "%s",\n' "$p"; done
+    for p in "${list[@]}"; do printf '  "%s",\n' "$p"; done
     printf ']\n'
 }
 
@@ -42,10 +50,10 @@ cmd_bootstrap() {
     local class='' repo='' branch='' hardware=''
     while (( $# )); do
         case $1 in
-            --class)         class=$2; shift 2 ;;
-            --repo)          repo=$2; shift 2 ;;
-            --branch)        branch=$2; shift 2 ;;
-            --hardware-pkgs) hardware=$2; shift 2 ;;
+            --class)         need "$@"; class=$2; shift 2 ;;
+            --repo)          need "$@"; repo=$2; shift 2 ;;
+            --branch)        need "$@"; branch=$2; shift 2 ;;
+            --hardware-pkgs) need "$@"; hardware=$2; shift 2 ;;
             *) die "bootstrap: unknown argument '$1'" ;;
         esac
     done
@@ -58,8 +66,19 @@ cmd_bootstrap() {
     # on 2026-08-13 a resumed run kept building a package main had already
     # removed. --ff-only so a surprise divergence fails loudly instead of
     # merging something nobody asked for.
+    #
+    # A resumed guest must also honour a CHANGED --branch: the harness
+    # advertises VM_HARNESS_BRANCH as the way to validate guest-side bootstrap
+    # changes pre-merge, and a refresh arm that only fast-forwarded whatever
+    # was cloned first would keep testing the old branch — the same stale
+    # checkout bug one level up. Fetch, switch if asked, then fast-forward.
     if yadm rev-parse --git-dir >/dev/null 2>&1; then
         echo "==> Refreshing the existing yadm checkout"
+        yadm fetch --prune origin
+        if [[ -n "$branch" && "$(yadm rev-parse --abbrev-ref HEAD)" != "$branch" ]]; then
+            echo "==> Switching the checkout to '$branch'"
+            yadm checkout "$branch"
+        fi
         yadm pull --ff-only
     else
         yadm clone --no-bootstrap ${branch:+-b "$branch"} "$repo"
@@ -73,9 +92,13 @@ cmd_bootstrap() {
 }
 
 cmd_check() {
-    local out
+    local out rc=0
     echo '--- metapac unmanaged (must be exactly empty):'
-    out=$(metapac unmanaged 2>/dev/null)
+    # metapac's own failure must not look like the gate finding drift: with
+    # `2>/dev/null` and set -e this died silently, and the host only saw
+    # "guest command failed (rc=127)". Keep stderr, report the rc.
+    out=$(metapac unmanaged) || rc=$?
+    (( rc == 0 )) || die "metapac unmanaged failed (rc=$rc) — the gate did not run"
     if [ -z "$out" ]; then echo OK; else echo "$out"; exit 1; fi
     echo '--- enabled services (sample):'
     systemctl is-enabled sshd NetworkManager 2>/dev/null || true
@@ -89,7 +112,7 @@ cmd_render_toml() {
     local hardware=''
     while (( $# )); do
         case $1 in
-            --hardware-pkgs) hardware=$2; shift 2 ;;
+            --hardware-pkgs) need "$@"; hardware=$2; shift 2 ;;
             *) die "render-toml: unknown argument '$1'" ;;
         esac
     done

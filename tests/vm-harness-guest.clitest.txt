@@ -33,6 +33,20 @@ vm-harness-guest: FATAL: bootstrap needs --class, --repo, and --hardware-pkgs
 rc=2
 $
 
+A dangling flag is a usage error, not a `set -u` crash — same FATAL/rc 2 shape
+as every other bad invocation.
+
+$ .local/bin/setup/vm-harness-guest bootstrap --class 2>&1; echo rc=$?
+vm-harness-guest: FATAL: --class needs a value
+rc=2
+$ .local/bin/setup/vm-harness-guest bootstrap --repo x --hardware-pkgs 2>&1; echo rc=$?
+vm-harness-guest: FATAL: --hardware-pkgs needs a value
+rc=2
+$ .local/bin/setup/vm-harness-guest render-toml --hardware-pkgs 2>&1; echo rc=$?
+vm-harness-guest: FATAL: --hardware-pkgs needs a value
+rc=2
+$
+
 render-toml: the exact machine-local.toml bootstrap writes, one line per
 package, VMware's set here.
 
@@ -48,4 +62,16 @@ packages = [
 $ .local/bin/setup/vm-harness-guest render-toml 2>&1; echo rc=$?
 vm-harness-guest: FATAL: render-toml needs --hardware-pkgs
 rc=2
+$
+
+Package names are never glob-expanded against the guest's cwd — `*` is a
+package name here, not a directory listing.
+
+$ GUEST=$PWD/.local/bin/setup/vm-harness-guest
+$ mkdir -p /tmp/globcheck && touch /tmp/globcheck/decoy-a /tmp/globcheck/decoy-b
+$ (cd /tmp/globcheck && "$GUEST" render-toml --hardware-pkgs '*' | tail -n 3)
+packages = [
+  "*",
+]
+$ rm -rf /tmp/globcheck
 $
