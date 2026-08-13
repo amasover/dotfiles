@@ -15,6 +15,11 @@ itself (pinentry); no passphrase passes through this tool.
 The wanted members are an exact allowlist, so a hostile archive cannot smuggle
 a path out of the destination directory.
 
+Two destination shapes: `--dest DIR` writes home-relative (DIR is the home),
+`--into DIR` writes the two basenames straight into DIR — which is what the
+harness's trust directory (VM_HARNESS_TRUST_DIR) is, so the driver always uses
+`--into` and import and injection can never disagree about the location.
+
 Recipe: knowledge/recipes/windows-trust-baseline.md. Tests:
 tests/test_vm_harness_trust.py (fixture tarballs; no gpg, no network).
 """
@@ -52,8 +57,17 @@ def resolve_gpg(explicit: str | None = None) -> str:
         "no gpg on PATH (Windows: install Git for Windows, or pass --gpg)")
 
 
+def member_path(dest: Path, name: str, flat: bool) -> Path:
+    """Where a member lands: home-relative under dest, or — with --into — as a
+    bare basename directly inside dest, which is what VM_HARNESS_TRUST_DIR
+    points at. Either way the name comes from the allowlist, never the
+    archive, so neither form can escape dest."""
+    return dest / Path(name).name if flat else dest / name
+
+
 def extract_members(stream, dest: Path,
-                    wanted: tuple[str, ...] = TRUST_MEMBERS) -> list[str]:
+                    wanted: tuple[str, ...] = TRUST_MEMBERS,
+                    flat: bool = False) -> list[str]:
     """Write the wanted members of a tar stream under dest, in stream order.
 
     Members outside the allowlist are skipped — including symlinks, hardlinks
@@ -65,7 +79,7 @@ def extract_members(stream, dest: Path,
         for member in tf:
             if member.name not in wanted or not member.isfile():
                 continue
-            out = dest / member.name
+            out = member_path(dest, member.name, flat)
             out.parent.mkdir(parents=True, exist_ok=True)
             src = tf.extractfile(member)
             if src is None:
@@ -82,6 +96,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="path to .local/share/yadm/archive")
     ap.add_argument("--dest", default=str(Path.home()),
                     help="extract relative to this directory (default: home)")
+    ap.add_argument("--into",
+                    help="write the two files straight into this directory, by "
+                         "basename (what the harness's trust dir wants)")
     ap.add_argument("--gpg", help="gpg binary (default: PATH, then Git for Windows)")
     args = ap.parse_args(argv)
 
@@ -89,7 +106,8 @@ def main(argv: list[str] | None = None) -> int:
     if not archive.is_file():
         print(f"no archive at {archive}", file=sys.stderr)
         return 1
-    dest = Path(args.dest)
+    flat = args.into is not None
+    dest = Path(args.into) if flat else Path(args.dest)
     try:
         gpg = resolve_gpg(args.gpg)
     except FileNotFoundError as e:
@@ -100,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     proc = subprocess.Popen([gpg, "--decrypt", str(archive)],
                             stdout=subprocess.PIPE)
     try:
-        got = extract_members(proc.stdout, dest)
+        got = extract_members(proc.stdout, dest, flat=flat)
     except tarfile.TarError as e:
         proc.kill()
         proc.wait()
@@ -116,10 +134,19 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     for name in got:
-        print(f"extracted {name} -> {dest / name}")
+        print(f"extracted {name} -> {member_path(dest, name, flat)}")
     missing = [m for m in TRUST_MEMBERS if m not in got]
     for name in missing:
-        print(f"note: {name} is not in the archive", file=sys.stderr)
+        # A member the archive dropped leaves whatever is already on disk
+        # untouched — which then silently outlives the archive it claims to
+        # mirror. The recipe says the archive is authoritative; say so here
+        # too, loudly enough that nobody trusts the leftover.
+        stale = member_path(dest, name, flat)
+        if stale.exists():
+            print(f"WARNING: {name} is not in the archive, but {stale} exists — "
+                  "that copy is stale and was NOT refreshed", file=sys.stderr)
+        else:
+            print(f"note: {name} is not in the archive", file=sys.stderr)
     if not got:
         print("nothing extracted — the archive carries no trust baseline "
               "(run `yadm encrypt` on the Arch machine first)", file=sys.stderr)

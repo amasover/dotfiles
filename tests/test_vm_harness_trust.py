@@ -80,6 +80,79 @@ class TestExtractMembers:
         assert p.read_bytes() == BASELINE[str(p.relative_to(tmp_path)).replace("\\", "/")]
 
 
+class TestIntoDir:
+    """--into writes basenames straight into the harness's trust dir, so
+    `trust-import` and `bootstrap` can't disagree about where the files live."""
+
+    def test_writes_basenames_into_the_directory(self, tmp_path):
+        got = trust.extract_members(_tar(BASELINE), tmp_path, flat=True)
+        assert sorted(got) == sorted(BASELINE)
+        assert sorted(p.name for p in tmp_path.iterdir()) == \
+            ["exempt.txt", "maintainers.tsv"]
+        assert (tmp_path / "maintainers.tsv").read_bytes() == \
+            BASELINE[".local/state/aur-quarantine/maintainers.tsv"]
+
+    def test_allowlist_still_gates_the_flat_form(self, tmp_path):
+        got = trust.extract_members(_tar({**SECRETS, **BASELINE}), tmp_path,
+                                    flat=True)
+        assert sorted(got) == sorted(BASELINE)
+        assert not (tmp_path / "id_ed25519").exists()
+        assert not (tmp_path / ".zshenv").exists()
+
+    def test_member_path_cannot_escape_dest(self, tmp_path):
+        # The name always comes from the allowlist, but assert the mapping
+        # itself stays inside dest in both shapes.
+        for name in trust.TRUST_MEMBERS:
+            for flat in (False, True):
+                p = trust.member_path(tmp_path, name, flat).resolve()
+                assert p.is_relative_to(tmp_path.resolve())
+
+
+class TestStaleMemberWarning:
+    def _run(self, tmp_path, monkeypatch, entries, capsys):
+        """main() with gpg stubbed out to emit a fixture tarball."""
+        archive = tmp_path / "archive"
+        archive.write_bytes(b"not really gpg input")
+        into = tmp_path / "trust"
+        into.mkdir(exist_ok=True)
+        stream = _tar(entries)
+
+        class _Proc:
+            stdout = stream
+            def wait(self): return 0
+            def kill(self): pass
+
+        monkeypatch.setattr(trust, "resolve_gpg", lambda explicit=None: "gpg")
+        monkeypatch.setattr(trust.subprocess, "Popen",
+                            lambda *a, **k: _Proc())
+        rc = trust.main(["--archive", str(archive), "--into", str(into)])
+        return rc, into, capsys.readouterr()
+
+    def test_leftover_from_a_dropped_member_is_called_stale(
+            self, tmp_path, monkeypatch, capsys):
+        (tmp_path / "trust").mkdir()
+        (tmp_path / "trust" / "exempt.txt").write_bytes(b"old\n")
+        only_one = {".local/state/aur-quarantine/maintainers.tsv": b"a\tb\n"}
+        rc, into, out = self._run(tmp_path, monkeypatch, only_one, capsys)
+        assert rc == 0
+        assert "WARNING" in out.err and "stale" in out.err
+        # Untouched, deliberately — the warning is the contract, not a delete.
+        assert (into / "exempt.txt").read_bytes() == b"old\n"
+
+    def test_absent_member_with_no_leftover_is_only_a_note(
+            self, tmp_path, monkeypatch, capsys):
+        only_one = {".local/state/aur-quarantine/maintainers.tsv": b"a\tb\n"}
+        rc, _, out = self._run(tmp_path, monkeypatch, only_one, capsys)
+        assert rc == 0
+        assert "WARNING" not in out.err
+        assert "is not in the archive" in out.err
+
+    def test_empty_archive_exits_nonzero(self, tmp_path, monkeypatch, capsys):
+        rc, _, out = self._run(tmp_path, monkeypatch, SECRETS, capsys)
+        assert rc == 1
+        assert "nothing extracted" in out.err
+
+
 class TestResolveGpg:
     def test_explicit_wins(self):
         assert trust.resolve_gpg(r"C:\custom\gpg.exe") == r"C:\custom\gpg.exe"
