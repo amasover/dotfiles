@@ -30,6 +30,10 @@
 #              via vm-harness-guest check
 #   exec CMD   run a command in the guest over ssh (root while the live ISO is
 #              up, $VmUser once installed); remote exit code propagated
+#   trust-import
+#              one-time host setup: extract the AUR trust baseline from the
+#              yadm archive (gpg prompts; only the two identity files land —
+#              knowledge/recipes/windows-trust-baseline.md)
 #   ip         print the VM's IPv4 (vmrun guest-tools query, falling back to
 #              the vmnet DHCP leases via vm-harness-leases — works for the
 #              live ISO too)
@@ -90,6 +94,9 @@ $SeedTool = Join-Path $PSScriptRoot 'vm-harness-seed'
 $VmxTool = Join-Path $PSScriptRoot 'vm-harness-vmx'
 $LeasesTool = Join-Path $PSScriptRoot 'vm-harness-leases'
 $GuestTool = Join-Path $PSScriptRoot 'vm-harness-guest'
+$TrustTool = Join-Path $PSScriptRoot 'vm-harness-trust'
+# .local/bin/setup -> .local/share/yadm/archive, in whichever checkout runs.
+$Archive = Join-Path $PSScriptRoot '..\..\share\yadm\archive'
 # Workstation's install root moved between releases (26H1: Program Files;
 # 25H2: Program Files (x86)) — take whichever actually has vmrun.
 $VmwareDir = @("$env:ProgramFiles\VMware\VMware Workstation",
@@ -452,6 +459,15 @@ Next:  vm-harness-vmware install   (safe re-install in place)   or:  destroy"
     Say 'up complete — all phases green'
 }
 
+# One-time host setup, not a phase: no VM involved, no logging contract.
+function Cmd-TrustImport {
+    if (-not (Test-Path $Archive)) { Die "no yadm archive at $Archive" }
+    Say 'Importing the AUR trust baseline (gpg will prompt for the archive passphrase)'
+    & $Python $TrustTool --archive $Archive --dest $env:USERPROFILE
+    if ($LASTEXITCODE -ne 0) { Die "trust import failed (rc=$LASTEXITCODE)" }
+    Say 'Done — bootstrap will inject this into every guest from now on'
+}
+
 function Cmd-Ip {
     if (-not (Test-Path $Vmx)) { Die 'no VM — run: create' }
     $ip = Get-GuestIp
@@ -508,6 +524,7 @@ switch ($args[0]) {
     'bootstrap' { Cmd-Bootstrap }
     'check'     { Cmd-Check }
     'exec'      { Cmd-Exec @(@($args) | Select-Object -Skip 1) }
+    'trust-import' { Cmd-TrustImport }
     'ip'        { Cmd-Ip }
     'status'    { Cmd-Status }
     'destroy'   { Cmd-Destroy }

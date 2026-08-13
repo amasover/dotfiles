@@ -25,39 +25,32 @@ declared-but-unarchived; the archive was refreshed 2026-08-11.
 
 ## Steps
 
-Run in **Git Bash**, not PowerShell — the extraction pipes binary data, and
-PowerShell's pipeline mangles it. `gpg` needs no install: Git for Windows
-bundles it (`/usr/bin/gpg`, 2.4.9 as of 2026-08).
+One command, in PowerShell:
 
-```bash
-cd ~/code/dotfiles
-gpg --version | head -1          # confirm gpg is on PATH
+```powershell
+vm-harness-vmware trust-import
 ```
 
-**1. List the archive members first** (prompts for the passphrase; writes
-nothing). This confirms the exact member paths before extracting, and whether
-`exempt.txt` is present at all — naming a missing member makes `tar` fail:
+gpg prompts for the archive passphrase in its own pinentry dialog — the
+passphrase never passes through the harness. Then verify by counting lines
+(don't print the contents: they are AUR maintainer identities, so keep them
+out of transcripts and logs):
 
-```bash
-gpg -d .local/share/yadm/archive | tar -tf - | grep aur-quarantine
+```powershell
+Get-ChildItem ~\.local\state\aur-quarantine | Select-Object Name, Length
 ```
 
-**2. Extract only those members**, relative to `$HOME`:
+**What it does.** [vm-harness-trust](../../.local/bin/setup/vm-harness-trust)
+runs `gpg --decrypt` and feeds its stdout straight into Python's `tarfile` in
+stream mode, writing only the two allowlisted members. The decrypted archive
+is never written to disk, so `.ssh/**` and `.zshenv` exist in plaintext at no
+point — which a `gpg -d -o tmp.tar` + extract sequence could not promise. The
+allowlist is an exact-name match, so a hostile archive cannot write outside
+the destination, and symlink members named like a trust file are skipped.
 
-```bash
-gpg -d .local/share/yadm/archive | tar -xf - -C ~ \
-    .local/state/aur-quarantine/maintainers.tsv \
-    .local/state/aur-quarantine/exempt.txt
-```
-
-Drop the `exempt.txt` line if step 1 didn't list it.
-
-**3. Verify placement** — count lines, don't print contents (they are AUR
-maintainer identities; keep them out of transcripts and logs):
-
-```bash
-wc -l ~/.local/state/aur-quarantine/*
-```
+**gpg needs no install:** Git for Windows bundles it (`gpg` 2.4.9 plus
+`pinentry-w32.exe` for the prompt). The tool takes `gpg` from PATH first, then
+falls back to the Git for Windows path; `--gpg` overrides.
 
 ## Using it
 
@@ -75,5 +68,12 @@ to configure.
 ## Keeping it current
 
 The baseline drifts as packages are accepted on the Arch machine. Refresh by
-re-running step 2 after a `yadm encrypt` + push on that machine — the extract
-overwrites in place. Nothing here is authoritative; the archive is.
+pulling the newer archive and re-running `trust-import` — it overwrites in
+place. Nothing here is authoritative; the archive is, and Story 4.9's
+`pre_push` guard keeps the archive itself from going stale.
+
+## If the import comes back empty
+
+`nothing extracted` means the archive carries no trust baseline — the drift
+4.9 was written for. Run `yadm encrypt` on the Arch machine, commit and push
+the refreshed `.local/share/yadm/archive`, pull here, and re-run.
