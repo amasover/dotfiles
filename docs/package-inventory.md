@@ -151,7 +151,7 @@ Questions below before manifests are split. Native = official repos; **bold** = 
 - **media** — `vlc` `mpv` `yt-dlp` `playerctl` `ffmpegthumbnailer` `imagemagick` `gimp`
   `pavucontrol` `pamixer` `alsa-utils` `pipewire-pulse` `tesseract` `perl-image-exiftool`
   `zathura` `zathura-ps` `guvcview` **tidal-hifi-bin** **feishin-bin** **cli-visualizer**
-  · screen-record (`peek` **byzanz** **kazam** **simplescreenrecorder**) → **Open question Q4**
+  · screen-record (`peek` **byzanz** **kazam** **simplescreenrecorder**) → resolved by **D7**
 - **comms** — `signal-desktop` `discord` `weechat` **teams-for-linux-bin** **zoom**
   **bitlbee** **chatmcp**
 - **browsers** — `firefox` `qutebrowser` **google-chrome** → all three? (Q5)
@@ -207,8 +207,15 @@ droppable).
 - **D5 Containers:** **Drop `docker` + `docker-compose`** (→ `podman`). But see cross-ref **C2**.
 - **D6 Virtualization:** **Drop `virtualbox` + `virtualbox-host-modules-arch`**; keep
   `qemu-desktop` + `virt-manager` + `virt-viewer`.
-- **D7 Screen recorders:** Deferred to **Story 3.10** ([#42](https://github.com/amasover/dotfiles/issues/42),
-  kooha eval; recording libs reportedly broken pending reboot). No screen-recorder changes here.
+- **D7 Screen recorders:** Resolved 2026-08-12 by **Story 3.10**
+  ([#42](https://github.com/amasover/dotfiles/issues/42)). Keeper: **`simplescreenrecorder`**
+  (X11-native, grabs the display directly, no portal involved). **Drop `kooha`** — it requires
+  the ScreenCast xdg-desktop portal, and no backend implements ScreenCast under i3/X11
+  (`xdg-desktop-portal-gtk` has no ScreenCast; gnome/kde/wlr backends need mutter/KWin/wlroots).
+  Verified on the live machine, kooha 2.3.2-3, 4 days uptime — so the "broken pending reboot"
+  theory is dead. See [knowledge/errors/screencast-portal-missing-on-i3-x11.md](../knowledge/errors/screencast-portal-missing-on-i3-x11.md);
+  revisit kooha if the desktop moves to Wayland. **Drop `kazam`** (dead upstream, superseded).
+  `guvcview` is a webcam viewer, not a recorder — out of scope, stays.
 - **D8 ccat → bat:** `ccat` **uninstalled**, replaced by `bat` (installed). See cross-ref **C1**.
 - **D9 Removable leaves:** `lsdesktopf`, `python-cbeams-git` — drop from bootstrap;
   live-uninstall safe (separate gated step). `python2-bin` is contingent on the powerline

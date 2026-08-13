@@ -72,6 +72,12 @@ Facts:
   `exec` — plus the trust-baseline injection, which doesn't port (the Windows host has no plaintext
   `aur-quarantine` source); design note on the issue, and it needs 4.9's encrypt first.
   2.37 (daily target) still waits on 2.29/2.30.
+- **3.10 screen recorders** ([#42](https://github.com/amasover/dotfiles/issues/42)): kooha can't
+  work on i3/X11 (no ScreenCast portal backend exists for it — diagnosis in
+  [knowledge/errors/screencast-portal-missing-on-i3-x11.md](../knowledge/errors/screencast-portal-missing-on-i3-x11.md)).
+  `simplescreenrecorder` is the keeper; kooha + kazam dropped from the metapac `media` group
+  (branch `story/3.10-consolidate-screen-recorders`). Aaron's live step: uninstall both, or
+  they show up as `metapac unmanaged`.
 
 ## Standing warnings
 
