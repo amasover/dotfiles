@@ -72,6 +72,12 @@ pulling the newer archive and re-running `trust-import` — it overwrites in
 place. Nothing here is authoritative; the archive is, and Story 4.9's
 `pre_push` guard keeps the archive itself from going stale.
 
+**So local edits here are temporary.** Running `aur-quarantine auto <pkg>` or
+`accept <pkg>` against this copy unblocks harness runs on this machine
+immediately, but the next `trust-import` silently drops the entry. Anything
+meant to last belongs on the Arch machine, followed by `yadm encrypt` and a
+push — then re-import here.
+
 ## If the import comes back empty
 
 `nothing extracted` means the archive carries no trust baseline — the drift
