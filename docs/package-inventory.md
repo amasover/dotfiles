@@ -151,7 +151,7 @@ Questions below before manifests are split. Native = official repos; **bold** = 
 - **media** — `vlc` `mpv` `yt-dlp` `playerctl` `ffmpegthumbnailer` `imagemagick` `gimp`
   `pavucontrol` `pamixer` `alsa-utils` `pipewire-pulse` `tesseract` `perl-image-exiftool`
   `zathura` `zathura-ps` `guvcview` **tidal-hifi-bin** **feishin-bin** **cli-visualizer**
-  · screen-record (`peek` **byzanz** **kazam** **simplescreenrecorder**) → **Open question Q4**
+  · screen-record (`peek` **byzanz** **kazam** **simplescreenrecorder**) → resolved by **D7**
 - **comms** — `signal-desktop` `discord` `weechat` **teams-for-linux-bin** **zoom**
   **bitlbee** **chatmcp**
 - **browsers** — `firefox` `qutebrowser` **google-chrome** → all three? (Q5)
@@ -207,8 +207,22 @@ droppable).
 - **D5 Containers:** **Drop `docker` + `docker-compose`** (→ `podman`). But see cross-ref **C2**.
 - **D6 Virtualization:** **Drop `virtualbox` + `virtualbox-host-modules-arch`**; keep
   `qemu-desktop` + `virt-manager` + `virt-viewer`.
-- **D7 Screen recorders:** Deferred to **Story 3.10** ([#42](https://github.com/amasover/dotfiles/issues/42),
-  kooha eval; recording libs reportedly broken pending reboot). No screen-recorder changes here.
+- **D7 Screen recorders:** Resolved 2026-08-12 by **Story 3.10**
+  ([#42](https://github.com/amasover/dotfiles/issues/42)). Keepers: **`gpu-screen-recorder`** +
+  **`gpu-screen-recorder-ui`** (maintained, X11 *and* Wayland, VAAPI h264/hevc/vp9 on the Iris Xe).
+  All three incumbents are dropped:
+  - **`kooha`** — needs the ScreenCast xdg-desktop portal, and no backend implements ScreenCast
+    under i3/X11 (`xdg-desktop-portal-gtk` has none; gnome/kde/wlr need mutter/KWin/wlroots).
+    See [knowledge/errors/screencast-portal-missing-on-i3-x11.md](../knowledge/errors/screencast-portal-missing-on-i3-x11.md);
+    revisit if the desktop moves to Wayland.
+  - **`simplescreenrecorder`** — Arch dropped it from the repos; the installed 0.4.4-4 is an
+    orphan linked against ffmpeg 7 (`libavcodec.so.61`, current is `.so.63`) and cannot start.
+  - **`kazam`** — dead upstream, superseded.
+
+  The epic's "recording libs broken pending reboot" theory is dead: 4 days uptime, and the real
+  cause was `MESA_LOADER_DRIVER_OVERRIDE=i965` in `.profile` pinning the whole desktop to
+  llvmpipe ([knowledge/errors/mesa-i965-override-forces-llvmpipe.md](../knowledge/errors/mesa-i965-override-forces-llvmpipe.md)).
+  `guvcview` is a webcam viewer, not a recorder — out of scope, stays.
 - **D8 ccat → bat:** `ccat` **uninstalled**, replaced by `bat` (installed). See cross-ref **C1**.
 - **D9 Removable leaves:** `lsdesktopf`, `python-cbeams-git` — drop from bootstrap;
   live-uninstall safe (separate gated step). `python2-bin` is contingent on the powerline

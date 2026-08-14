@@ -72,6 +72,21 @@ Facts:
   `exec` — plus the trust-baseline injection, which doesn't port (the Windows host has no plaintext
   `aur-quarantine` source); design note on the issue, and it needs 4.9's encrypt first.
   2.37 (daily target) still waits on 2.29/2.30.
+- **3.10 screen recorders** ([#42](https://github.com/amasover/dotfiles/issues/42),
+  [PR #125](https://github.com/amasover/dotfiles/pull/125)): all three incumbents are dead here —
+  kooha (no ScreenCast portal backend under i3/X11), simplescreenrecorder (dropped from the Arch
+  repos, orphan linked against ffmpeg 7), kazam (dead upstream). `gpu-screen-recorder` +
+  `-ui` are the keepers. Aaron's live step: uninstall the three, or they show as `metapac unmanaged`.
+- **3.16 GL acceleration** ([#126](https://github.com/amasover/dotfiles/issues/126),
+  [PR #127](https://github.com/amasover/dotfiles/pull/127)): the desktop had been running on
+  llvmpipe — the real reason recording looked broken, not the long-assumed pending reboot. Both
+  fixes are applied live (mesa `i965` override dropped from `.profile`; legacy
+  `xf86-video-intel` removed) and gsr now records 1080p via `h264_vaapi`. Open only for the
+  post-X-restart `Xorg.0.log` check; commands are on the issue.
+- **2.30 hardware split** ([#96](https://github.com/amasover/dotfiles/issues/96)): 3.16 turned up
+  concrete evidence — the `desktop` group declares an AMD GPU set (`xf86-video-amdgpu`,
+  `vulkan-radeon`, `lib32-vulkan-radeon`) on what is now an Intel laptop, `vulkan-intel` is
+  missing, and `package-inventory.md` still calls the machine AMD. Detailed on the issue.
 
 ## Standing warnings
 
