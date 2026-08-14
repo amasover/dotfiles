@@ -8,6 +8,11 @@
 # bluez/bluez-utils/bluetui: post-inventory arrivals, placed here as session hardware (2.8 call).
 # colorpicker: build-rot relic (2017 GTK, no longer compiles) — machine-local on the
 # workstation; gpick (declared here) is the live alternative (2.7 VM finding).
+# xf86-video-intel removed 2026-08-12 (Story 3.16) — the legacy DDX does not recognise this
+# Raptor Lake chipset and disabled Xorg acceleration outright ("Unknown chipset" / "Failed to
+# submit rendering commands"). Xorg's built-in modesetting driver is correct for Gen4+ Intel;
+# do not re-add. The remaining xf86-video-amdgpu / xf86-video-vesa / vulkan-radeon entries are
+# from an earlier AMD machine and are Story 2.30's (#96) hardware-split problem, not fixed here.
 [arch]
 packages = [
   "adobe-source-code-pro-fonts",
@@ -64,7 +69,6 @@ packages = [
   "xbindkeys",
   "xclip",
   "xf86-video-amdgpu",
-  "xf86-video-intel",
   "xf86-video-vesa",
   "xidlehook",
   "xorg-appres",
