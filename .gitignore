@@ -3,6 +3,7 @@
 *.~undo-tree~*
 
 **.cecli
+**/__pycache*
 
 TODO.org
 
