@@ -358,6 +358,31 @@ Issue: [#77](https://github.com/amasover/dotfiles/issues/77) · Leftovers from S
 
 ---
 
+### Story 3.16: Restore hardware GL acceleration (Intel Iris Xe)
+
+As the repo owner,
+I want the desktop to actually use the GPU,
+So that GL apps, video, and screen recording work instead of silently falling back to software rendering.
+
+Issue: [#126](https://github.com/amasover/dotfiles/issues/126)
+
+Found while evaluating recorders for Story 3.10 — the whole session was running on llvmpipe,
+which is why every recorder looked broken. Two independent causes, applied and validated one at
+a time: (1) `MESA_LOADER_DRIVER_OVERRIDE=i965` in `.profile` names a driver mesa deleted years
+ago, so mesa can't load it and falls back to software; (2) legacy `xf86-video-intel` is installed
+and Xorg auto-selects it over `modesetting`, then logs `Unknown chipset` and disables
+acceleration. Diagnosis: [knowledge/errors/mesa-i965-override-forces-llvmpipe.md](../knowledge/errors/mesa-i965-override-forces-llvmpipe.md).
+
+**Acceptance criteria:**
+
+- Given the `.profile` export is removed, when a fresh login shell starts X, then `glxinfo -B` reports the Iris Xe with `Accelerated: yes` and `Xorg.0.log` has no `AIGLX ... i965` errors
+- Given `xf86-video-intel` is removed, when X restarts, then `Xorg.0.log` shows `modesetting` in use with no "disabling acceleration" line
+- Given both land, when `gsr-ui` runs, then it starts and records — closing out the live-capture half of Story 3.10
+
+**Evidence artifact:** before/after `glxinfo -B` + `Xorg.0.log` excerpts on the issue.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely

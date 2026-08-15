@@ -79,14 +79,29 @@ Facts:
 - **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), spec on
   `story/2.38-unattended-age-holds`, unpushed): age-deferred and known-broken packages stop
   failing unattended runs; design settled at the 2026-08-13 grill. **Linux-side work** (needs
-  `lua5.1` + clitest). Three declared packages are unbuildable today and block the 2.36 evidence
-  run: `simplescreenrecorder` (ffmpeg 9 API break; kooha is Wayland-only, so 3.10 can't just drop
-  it), `shim-signed` (koji source 404), `playwright` (see below).
+  `lua5.1` + clitest). Two declared packages are unbuildable today and block the 2.36 evidence
+  run: `shim-signed` (koji source 404) and `playwright` (see below). The third,
+  `simplescreenrecorder`, stopped being a blocker when 3.10 dropped it from the declared set.
 - **2.39 quarantine pin is defeatable** ([#130](https://github.com/amasover/dotfiles/issues/130)):
   a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
   pin with the newest upstream. Age guarantee is silently void for such PKGBUILDs. Options are
   recorded in a knowledge note on the unpushed `story/2.38-unattended-age-holds` branch; none
   chosen, and that branch has to land before one can be.
+- **3.10 screen recorders** ([#42](https://github.com/amasover/dotfiles/issues/42),
+  [PR #125](https://github.com/amasover/dotfiles/pull/125)): all three incumbents are dead here —
+  kooha (no ScreenCast portal backend under i3/X11), simplescreenrecorder (dropped from the Arch
+  repos, orphan linked against ffmpeg 7), kazam (dead upstream). `gpu-screen-recorder` +
+  `-ui` are the keepers. Aaron's live step: uninstall the three, or they show as `metapac unmanaged`.
+- **3.16 GL acceleration** ([#126](https://github.com/amasover/dotfiles/issues/126),
+  [PR #127](https://github.com/amasover/dotfiles/pull/127)): the desktop had been running on
+  llvmpipe — the real reason recording looked broken, not the long-assumed pending reboot. Both
+  fixes are applied live (mesa `i965` override dropped from `.profile`; legacy
+  `xf86-video-intel` removed) and gsr now records 1080p via `h264_vaapi`. Open only for the
+  post-X-restart `Xorg.0.log` check; commands are on the issue.
+- **2.30 hardware split** ([#96](https://github.com/amasover/dotfiles/issues/96)): 3.16 turned up
+  concrete evidence — the `desktop` group declares an AMD GPU set (`xf86-video-amdgpu`,
+  `vulkan-radeon`, `lib32-vulkan-radeon`) on what is now an Intel laptop, `vulkan-intel` is
+  missing, and `package-inventory.md` still calls the machine AMD. Detailed on the issue.
 
 ## Standing warnings
 
