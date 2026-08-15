@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """vm-harness-display — attended-terminal renderer for vm-harness phases (Story 2.21).
 
-Sits in run_phase's attended pipeline:
+Sits in run_phase's attended pipeline (bash harness, Linux):
 
     phase-cmd 2>&1 | vm-harness-display --mode bar --phase boot \
         [--phases create:done,install:done,boot:current,check:pending] | scrub >> log
 
 Reads the raw stream on stdin and forwards it byte-faithfully to stdout (the
-scrub -> state-log leg). All rendering happens on /dev/tty, three rows:
+scrub -> state-log leg). All rendering happens on the terminal device
+(/dev/tty; CONOUT$ on Windows), three rows:
 
   row 1: spinner + phase breadcrumb (done / CURRENT / pending, from --phases;
          falls back to the bare --phase name) + elapsed, right-aligned
@@ -29,19 +30,41 @@ scrub -> state-log leg). All rendering happens on /dev/tty, three rows:
 The pass-through must never break: any rendering failure disables rendering
 and the pump keeps going; exit code is always 0 (the pipeline's failure
 signal is the phase command itself, via pipefail).
+
+Windows sibling contract (Story 2.36 slice 4). The VMware driver has no sed
+and no shell pipeline, so this tool also carries the harness's ANSI scrub —
+the Python port of the bash harness's `scrub` sed filter — and can own the
+whole log leg:
+
+    vm-harness-display --mode scrub                 # stdin -> scrubbed stdout
+                                                    # (the tests/ seam)
+    vm-harness-display --mode bar|compact|plain --phase P --log FILE
+
+With --log, the scrubbed stream is appended to FILE (write-through, so `tail`
+stays near-live) and stdout carries only the terminal leg: bar mirrors the
+raw stream on the terminal device, compact shows nothing raw, and plain
+writes raw to a tty stdout or the scrubbed copy to a redirected one (the
+same arms run_phase implements in bash). Without --log nothing changes for
+the Linux pipeline: stdout stays the byte-faithful pass-through.
+
+On Windows the terminal device is CONOUT$ with VT processing enabled, and
+resizes are detected by polling (no SIGWINCH); rendering degrades to
+pass-through on any failure, exactly as on Linux.
 """
 
 import argparse
-import fcntl
 import io
 import os
 import re
 import signal
 import struct
 import sys
-import termios
 import threading
 import time
+
+if os.name != "nt":
+    import fcntl
+    import termios
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
@@ -51,6 +74,55 @@ SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 # the tty mirror only (the stdout leg stays byte-faithful for the log).
 CARET_REPLY = re.compile(rb"\^\[\[[0-9;]*[Rt]")
 CARET_PARTIAL = re.compile(rb"\^(\[(\[[0-9;]{0,24})?)?$")
+
+# ---- ANSI scrub: the Python port of the bash harness's `scrub` sed filter ----
+# Same expressions in the same order (see the sed comment in vm-harness):
+# CSI (colors, cursor moves, agetty's soft reset), OSC with either terminator,
+# DCS, charset selectors + ESC=/ESC>, CR handling, superseded sub-100%
+# progress frames, caret-notation terminal replies. Byte regexes: the stream
+# is not guaranteed UTF-8.
+SCRUB_STRIPS = [
+    re.compile(rb"\x1b\[[0-9;?!<>=]*[a-zA-Z]"),
+    re.compile(rb"\x1b\][^\x1b\x07]*(?:\x07|\x1b\\)"),
+    re.compile(rb"\x1bP[^\x1b]*\x1b\\"),
+    re.compile(rb"\x1b[()][0-9A-Za-z]"),
+    re.compile(rb"\x1b[=>]"),
+]
+SCRUB_FRAME = re.compile(rb"[^\n]*\[[#-]*\] *[0-9]{1,2}%\n")
+
+
+def scrub_space(space):
+    """One sed cycle over one pattern space (an input line, no trailing \\n):
+    strip escapes, turn CR redraws into lines, drop every superseded sub-100%
+    progress frame (the trailing segment has no newline, so the final frame
+    of a redraw burst survives), strip caret-notation replies."""
+    for pat in SCRUB_STRIPS:
+        space = pat.sub(b"", space)
+    if space.endswith(b"\r"):
+        space = space[:-1]
+    space = space.replace(b"\r", b"\n")
+    space = SCRUB_FRAME.sub(b"", space)
+    return CARET_REPLY.sub(b"", space)
+
+
+class Scrubber:
+    """Streaming wrapper: buffer to input newlines (sed's cycle boundary),
+    emit one scrubbed pattern space per line, flush the remainder at close."""
+
+    def __init__(self, sink):
+        self.sink = sink      # callable(bytes)
+        self.buf = b""
+
+    def feed(self, chunk):
+        self.buf += chunk
+        *lines, self.buf = self.buf.split(b"\n")
+        for line in lines:
+            self.sink(scrub_space(line) + b"\n")
+
+    def close(self):
+        if self.buf:
+            self.sink(scrub_space(self.buf) + b"\n")
+            self.buf = b""
 
 # Fast-moving detail: (pattern, text builder) — first match per line wins.
 ANCHORS = [
@@ -278,6 +350,9 @@ class Renderer:
 
     def _size(self):
         try:
+            if os.name == "nt":
+                s = os.get_terminal_size(self.tty.fileno())
+                return (s.lines or 24), (s.columns or 80)
             r, c = struct.unpack("HHHH", fcntl.ioctl(self.tty, termios.TIOCGWINSZ, b"\0" * 8))[:2]
             return (r or 24), (c or 80)
         except Exception:
@@ -374,6 +449,11 @@ class Renderer:
     def _tick(self):
         while not self.dead:
             time.sleep(0.5)
+            # No SIGWINCH on Windows: poll for a size change instead. The
+            # flag-then-apply path is the same one the signal handler uses.
+            if os.name == "nt" and not self.resized \
+                    and self._size() != (self.rows, self.cols):
+                self.resized = True
             self.spin_i += 1
             self.draw()
 
@@ -416,25 +496,106 @@ class Renderer:
             pass
 
 
+def open_tty():
+    """The terminal device, VT-capable: /dev/tty, or CONOUT$ with virtual-
+    terminal processing switched on (Windows Terminal has it on already;
+    legacy conhost needs the SetConsoleMode). Raises when there is no console
+    — the caller degrades to pass-through."""
+    if os.name != "nt":
+        return open("/dev/tty", "r+b", buffering=0)
+    import ctypes
+    import msvcrt
+    f = open("CONOUT$", "r+b", buffering=0)
+    handle = msvcrt.get_osfhandle(f.fileno())
+    k32 = ctypes.windll.kernel32
+    mode = ctypes.c_uint32()
+    if not k32.GetConsoleMode(handle, ctypes.byref(mode)):
+        f.close()
+        raise OSError("no console")
+    ENABLE_VT = 0x0004
+    if not mode.value & ENABLE_VT \
+            and not k32.SetConsoleMode(handle, mode.value | ENABLE_VT):
+        f.close()
+        raise OSError("console refused VT mode")
+    return f
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=True)
-    ap.add_argument("--mode", choices=["bar", "compact"], required=True)
-    ap.add_argument("--phase", required=True)
+    ap.add_argument("--mode", choices=["bar", "compact", "plain", "scrub"],
+                    required=True)
+    ap.add_argument("--phase", default="")
     ap.add_argument("--phases", default="",
                     help="breadcrumb: name:status[,name:status...] (done|current|pending)")
+    ap.add_argument("--log", default="",
+                    help="append the scrubbed stream to this file; stdout then "
+                         "carries only the terminal leg (see module docstring)")
     args = ap.parse_args()
+    if args.mode in ("bar", "compact") and not args.phase:
+        ap.error("--phase is required with --mode bar|compact")
 
     phases = parse_phases(args.phases)
-
     out = sys.stdout.buffer
+
+    def write_out(data):
+        # Shared stdout leg with the pass-through's broken-pipe contract:
+        # downstream gone means stop writing there, never a crash.
+        nonlocal out
+        if out is None:
+            return
+        try:
+            out.write(data)
+            out.flush()
+        except BrokenPipeError:
+            # Downstream (scrub/log leg) is gone; pipefail carries the real
+            # rc. Point fd 1 at /dev/null so interpreter teardown doesn't
+            # print a second BrokenPipeError to the terminal.
+            os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
+            out = None
+
+    if args.mode == "scrub":
+        # Pure filter — the tests/ seam for the log scrub, and `vm-harness
+        # scrub`'s sibling. No terminal, no log, exit 0.
+        scrubber = Scrubber(write_out)
+        while True:
+            chunk = os.read(0, 65536)
+            if not chunk:
+                break
+            scrubber.feed(chunk)
+        scrubber.close()
+        sys.exit(0)
+
     renderer = None
-    try:
-        tty = open("/dev/tty", "r+b", buffering=0)
-        renderer = Renderer(tty, args.mode, args.phase, phases)
-        signal.signal(signal.SIGWINCH,
-                      lambda *_: setattr(renderer, "resized", True))
-    except Exception:
-        renderer = None  # no tty / setup failure: plain pass-through
+    if args.mode in ("bar", "compact"):
+        try:
+            tty = open_tty()
+            renderer = Renderer(tty, args.mode, args.phase, phases)
+            if hasattr(signal, "SIGWINCH"):
+                signal.signal(signal.SIGWINCH,
+                              lambda *_: setattr(renderer, "resized", True))
+        except Exception:
+            renderer = None  # no tty / setup failure: plain pass-through
+
+    # The log leg (--log): scrubbed stream appended write-through, so a
+    # concurrent `tail` stays near-live. stdout then carries the terminal leg:
+    # bar-with-renderer mirrors on the tty (stdout silent); compact shows
+    # nothing raw; everything else (plain, or a failed renderer) sends raw to
+    # a tty stdout or the scrubbed copy to a redirected one — the same arms
+    # the bash run_phase implements.
+    log_f = None
+    scrubber = None
+    if args.log:
+        log_f = open(args.log, "ab", buffering=0)
+        sinks = [log_f.write]
+        raw_stdout = False
+        if renderer is None and args.mode != "compact":
+            if out.isatty():
+                raw_stdout = True
+            else:
+                sinks.append(write_out)
+        scrubber = Scrubber(lambda data: [s(data) for s in sinks])
+    else:
+        raw_stdout = True  # Linux contract: byte-faithful pass-through
 
     tail = b""
     try:
@@ -442,15 +603,10 @@ def main():
             chunk = os.read(0, 65536)
             if not chunk:
                 break
-            try:
-                out.write(chunk)
-                out.flush()
-            except BrokenPipeError:
-                # Downstream (scrub/log leg) is gone; pipefail carries the real
-                # rc. Point fd 1 at /dev/null so interpreter teardown doesn't
-                # print a second BrokenPipeError to the terminal.
-                os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
-                break
+            if raw_stdout:
+                write_out(chunk)
+            if scrubber:
+                scrubber.feed(chunk)
             if renderer:
                 renderer.mirror(chunk)
                 # Anchor scan: \r and \n both end a "line" (progress redraws).
@@ -462,6 +618,10 @@ def main():
                     if raw:
                         renderer.on_line(raw.decode("utf-8", "replace"))
     finally:
+        if scrubber:
+            scrubber.close()
+        if log_f:
+            log_f.close()
         if renderer:
             renderer.close()
     sys.exit(0)

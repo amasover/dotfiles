@@ -1,0 +1,76 @@
+vm-harness-display cross-platform seams (clitest) — Story 2.36 slice 4, #119.
+
+Run from the repo root:   clitest tests/vm-harness-display.clitest.txt
+
+These cover the seams the Windows VMware driver depends on — the scrub
+filter mode and the --log leg — and must pass on BOTH machines (Git Bash on
+Windows, bash on Linux): no setsid, no /dev/tty assumptions, no pty. The
+Linux-only display cases (tty degradation, resize) stay in
+tests/vm-harness.clitest.txt; Python-internal scrub logic is pytest's job
+(tests/test_vm_harness_display.py).
+
+--- scrub mode: superseded pacman progress frames dropped, final 100% kept ---
+
+Same vectors as `vm-harness scrub` in tests/vm-harness.clitest.txt — the two
+filters must agree, this is the sed filter's Python port.
+
+$ printf 'pkg-a downloading...\rpkg-a  1.0 MiB  2.0 MiB/s 00:01 [###---------] 25%%\rpkg-a  2.0 MiB  2.0 MiB/s 00:00 [######------] 50%%\rpkg-a  4.0 MiB  2.0 MiB/s 00:00 [############] 100%%\nplain line stays\n(3/5) checking keys [####------] 40%%\r(5/5) checking keys [##########] 100%%\n' | python3 .local/bin/tools/vm-harness-display --mode scrub
+pkg-a downloading...
+pkg-a  4.0 MiB  2.0 MiB/s 00:00 [############] 100%
+plain line stays
+(5/5) checking keys [##########] 100%
+$
+
+--- scrub mode: ANSI colors/OSC stripped, CR redraws become plain lines ---
+
+$ printf '\033[1;32mgreen\033[0m text\n\033]0;title\007bare\nredraw1\rredraw2\n' | python3 .local/bin/tools/vm-harness-display --mode scrub
+green text
+bare
+redraw1
+redraw2
+$
+
+--- scrub mode: caret-notation terminal replies (guest tty echoctl) stripped ---
+
+$ printf '%s\n' '^[[56;192R^[[56;192R[  OK  ] Finished Initial Setup.' '^[[8;25;94t^[[25;94Rplain tail' | python3 .local/bin/tools/vm-harness-display --mode scrub
+[  OK  ] Finished Initial Setup.
+plain tail
+$
+
+--- --log leg: plain mode with redirected stdout, scrubbed copy to both ---
+
+The Windows driver's pipeline: the tool owns the log file (scrubbed,
+append), and a redirected stdout gets the scrubbed stream too — the same
+arm the bash run_phase implements with `scrub | tee -a`.
+
+$ d=$(mktemp -d) && printf 'seed \033[35mok\033[0m\rline2\n' | python3 .local/bin/tools/vm-harness-display --mode plain --log "$d/phase.log"; echo "rc=$?"
+seed ok
+line2
+rc=0
+$ cat "$d/phase.log"
+seed ok
+line2
+$
+
+--- --log leg: appends, never truncates (the rc-trailer contract needs this) ---
+
+$ printf 'first run\n' | python3 .local/bin/tools/vm-harness-display --mode plain --log "$d/append.log" > /dev/null && printf 'second run\n' | python3 .local/bin/tools/vm-harness-display --mode plain --log "$d/append.log" > /dev/null && cat "$d/append.log"
+first run
+second run
+$
+
+--- without --log the pass-through stays byte-faithful (Linux contract) ---
+
+Escapes and CRs must reach stdout untouched when no --log is given — that
+leg feeds the bash harness's own scrub.
+
+$ printf 'keep \033[31mescapes\033[0m\rand CRs\n' | python3 .local/bin/tools/vm-harness-display --mode plain > "$d/raw.out" && cmp -s "$d/raw.out" <(printf 'keep \033[31mescapes\033[0m\rand CRs\n') && echo byte-faithful
+byte-faithful
+$
+
+--- flag validation: bar/compact still require --phase ---
+
+$ python3 .local/bin/tools/vm-harness-display --mode bar 2>&1 | grep -o 'phase is required.*'; echo "rc=${PIPESTATUS[0]}"
+phase is required with --mode bar|compact
+rc=2
+$
