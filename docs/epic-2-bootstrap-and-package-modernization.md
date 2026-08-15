@@ -900,6 +900,98 @@ daily-drivable checklist — a story checkbox can't own "I live in it now".
 
 ---
 
+### Story 2.38: unattended runs survive declared packages they cannot install yet
+
+As the repo owner,
+I want unattended runs to hold — not die — on a declared package whose only
+honest status is "not installable yet",
+So that one unbuildable package stops costing an entire evidence run: four
+consecutive VMware-harness runs (2026-08-12/13) each died on the next such
+package, and none reached `check`.
+
+Issue: [#124](https://github.com/amasover/dotfiles/issues/124) · Origin: the
+Story 2.36 (#119) slice-3 evidence run; design settled at the 2026-08-13 grill.
+*Reconstruction note (2026-08-15):* the original stub was lost with an unpushed
+branch of the same name (not recoverable from the Windows machine either). The
+design below is restored near-verbatim from #124's body, which preserved it in
+full; the **acceptance criteria are re-derived** from that design, not
+recovered, and should be read with that in mind.
+
+Stepping is not the missing piece — Story 2.33's pre-flight already steps aged
+packages, and the run logs show it working (`building powershell-bin 7.6.3-1
+(pinned 331b8c7e)`). The gap is what happens when stepping cannot satisfy the
+package. The design reduces to one question — *a declared package is not
+installed; is that tolerable?* — with exactly **two** tolerable answers.
+Everything else stays fatal.
+
+1. **Wait (age-deferred)** — decided automatically. No version passes the age
+   window and stepping found no target (the shape of `powershell-bin`'s 1-day-old
+   7.6.4-1 upgrade). The run continues, the package is reported, and the hold
+   converges by itself once a version ages in.
+2. **Known-broken** — authored by a human in a repo-tracked
+   `.config/metapac/known-broken.toml`:
+
+   ```toml
+   [simplescreenrecorder]
+   reason    = "build fails against ffmpeg 9 — AVCodec.sample_fmts removed"
+   upstream  = "https://github.com/MaartenBaert/ssr/pull/…"
+   broken_at = "7f050b6e"   # skip while the AUR commit still equals this
+   since     = "2026-08-13"
+   ```
+
+Design decisions (2026-08-13 grill):
+
+- **Repo-tracked, not machine-local** — a fresh guest inherits the list via
+  ordinary `yadm clone`; the point is that `vm-harness up` doesn't die on it,
+  and one injected-state channel (the trust baseline) is enough.
+- **Written by `aur-quarantine broken PKG --reason … --upstream …`, never by a
+  failure** — it resolves the current AUR commit, stamps the date, and leaves
+  the file in `yadm status` to commit. Auto-recording would turn transient
+  failures (network blip, full disk, AUR outage) into permanent skips that look
+  deliberate. Reason required. `unbroken PKG` reverses.
+- **Skip iff the current AUR commit equals `broken_at`** — a pure function of
+  two repo-visible facts, so guest, daily machine, and harness decide
+  identically; no local state, no wasted builds, testable from two SHAs.
+- **No time-based retry, deliberately** — a retry window needs a
+  "last attempted" fact a fresh guest lacks, so every new VM would read an old
+  entry as overdue and burn a full failing build: exactly the cost this
+  removes. Staleness is handled by people (drift shows entry age; `unbroken` +
+  a run tests the hunch).
+- **Auto-retry when upstream moves** — the realistic fix path (a fix PR
+  merging *is* a new AUR commit) — plus `--retry-broken` on demand. If a
+  listed package then builds, the run says so loudly with the `unbroken`
+  remedy.
+
+**Reporting:** known-broken is its own drift category, never folded into
+ordinary missing packages — `missing` has to stay surprising to stay useful.
+
+**Status updates since the grill:** `simplescreenrecorder` left the declared
+set (Story 3.10, PR #125), so the TOML example above stands as grilled but the
+live known-broken candidate today is `shim-signed` (pinned Fedora koji source
+404s). `libnm-iwd` is moot (package removed 2026-08-13). `playwright` is the
+pin-defeated class — Story 2.39's hole ([#130](https://github.com/amasover/dotfiles/issues/130)),
+not solvable by these two holds; writeup:
+[quarantine-pin-defeated-by-pkgver.md](../knowledge/errors/quarantine-pin-defeated-by-pkgver.md).
+Why the broken packages aren't simply patched locally: a forked PKGBUILD means
+maintaining it until upstream merges, and Story 3.11 (#52) set the precedent
+that non-pacman installs are scripts, not forked PKGBUILDs.
+
+**Acceptance criteria** *(re-derived from the #124 design — see the
+reconstruction note)*:
+
+- Given an unattended run and a declared AUR package where no version passes the age window and stepping found no target, when reconcile reaches it, then the run holds the package and continues instead of dying, reports it as age-deferred, and a later run installs it with no operator action once a version ages in
+- Given `aur-quarantine broken PKG --reason … --upstream …`, then it resolves PKG's current AUR commit into `broken_at`, stamps `since`, refuses to run without a reason, and writes the entry to `.config/metapac/known-broken.toml`, leaving the change for `yadm status`; `aur-quarantine unbroken PKG` removes the entry; no code path ever writes an entry from a build failure
+- Given a known-broken entry, when a run reaches that package, then it skips iff the package's current AUR commit equals `broken_at`; on a moved commit or `--retry-broken` the build is attempted, and a success is reported loudly with the `unbroken` remedy
+- Given drift reporting, then known-broken packages appear as their own category and age-deferred holds are reported distinctly — neither is folded into ordinary `missing`
+- Given the test contract ([runbook-script-validation.md](./runbook-script-validation.md)), then the skip predicate, hold classification, and CLI surface ship with clitest coverage (the two-SHA pure-function seam), none of it needing network, AUR access, or host package state
+
+**Evidence artifact:** an unattended run log where a formerly fatal package is
+held and reported in its bucket (age-deferred or known-broken) and the run
+still ends `=== bootstrap done rc=0` — the mechanism that unblocks Story 2.36's
+owed evidence run.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

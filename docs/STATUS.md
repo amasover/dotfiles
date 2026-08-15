@@ -76,17 +76,18 @@ Facts:
   #119: **2.41** libvirt switchover ([#132](https://github.com/amasover/dotfiles/issues/132)) and
   **4.10** driver tests ([#133](https://github.com/amasover/dotfiles/issues/133)).
   2.37 still waits on 2.29/2.30.
-- **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), spec on
-  `story/2.38-unattended-age-holds`, unpushed): age-deferred and known-broken packages stop
-  failing unattended runs; design settled at the 2026-08-13 grill. **Linux-side work** (needs
-  `lua5.1` + clitest). Two declared packages are unbuildable today and block the 2.36 evidence
-  run: `shim-signed` (koji source 404) and `playwright` (see below). The third,
-  `simplescreenrecorder`, stopped being a blocker when 3.10 dropped it from the declared set.
+- **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), in progress
+  on `story/2.38-unattended-age-holds`, re-cut off `main` 2026-08-15): the original spec branch
+  was **lost unpushed** (absent from GitHub and the Windows machine); the epic 2 stub is rebuilt
+  from #124's body, which preserved the full design — acceptance criteria re-derived, Aaron to
+  eyeball. Linux-side work; `lua5.1` + clitest confirmed present here. 2.36 evidence-run blockers
+  unchanged: `shim-signed` (koji 404) and `playwright` (see 2.39).
 - **2.39 quarantine pin is defeatable** ([#130](https://github.com/amasover/dotfiles/issues/130)):
   a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
-  pin with the newest upstream. Age guarantee is silently void for such PKGBUILDs. Options are
-  recorded in a knowledge note on the unpushed `story/2.38-unattended-age-holds` branch; none
-  chosen, and that branch has to land before one can be.
+  pin with the newest upstream. The grill's options writeup went down with the lost 2.38 branch;
+  the recreated note ([quarantine-pin-defeated-by-pkgver.md](../knowledge/errors/quarantine-pin-defeated-by-pkgver.md),
+  on the new 2.38 branch) records the loss — re-derive the options (2026-08-13 Windows-machine
+  transcript is the likeliest source) before picking one.
 - **3.10 screen recorders** ([#42](https://github.com/amasover/dotfiles/issues/42),
   [PR #125](https://github.com/amasover/dotfiles/pull/125)): all three incumbents are dead here —
   kooha (no ScreenCast portal backend under i3/X11), simplescreenrecorder (dropped from the Arch
