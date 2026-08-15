@@ -64,14 +64,29 @@ Facts:
   Sequence: fresh evidence run → live steps above → **2.30** ([#96](https://github.com/amasover/dotfiles/issues/96))
   class+hardware split (now incl. the guest NetworkManager decision) → **2.29** ([#95](https://github.com/amasover/dotfiles/issues/95),
   amended: daily-VM first) → milestone run; **4.7** ([#94](https://github.com/amasover/dotfiles/issues/94)) CI parallel; epic 3 after.
-- **metapac reinstall churn** (from the 07-19 log review): `yay --sync --asexplicit` without
-  `--needed` reinstalls every installed declared package each sync (37–50 per run) — investigation
-  in progress, story TBD.
+- **2.40 metapac reinstall churn** ([#131](https://github.com/amasover/dotfiles/issues/131)): `yay
+  --sync --asexplicit` without `--needed` reinstalls every installed declared package each sync
+  (37–50 per run). Open question on the issue: whether `--needed` skips the explicit re-marking
+  that keeps `unmanaged` honest.
 - **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119)): slices 1–2
-  merged (PRs #120/#121). Slice 3 next: bootstrap/check via shared guest bash, resumable `up`,
-  `exec` — plus the trust-baseline injection, which doesn't port (the Windows host has no plaintext
-  `aur-quarantine` source); design note on the issue, and it needs 4.9's encrypt first.
-  2.37 (daily target) still waits on 2.29/2.30.
+  merged (PRs #120/#121); **slice 3 in review** — `exec`/`bootstrap`/`check`/`up`, shared guest
+  glue, trust import. Code-complete and unit-green; the **evidence artifact is still owed**
+  (bootstrap can't reach rc=0 until the declared set converges — see 2.38). Slice 4 (progress
+  display + ANSI scrub) closes the story. Spun out of slice 3's review so they don't close with
+  #119: **2.41** libvirt switchover ([#132](https://github.com/amasover/dotfiles/issues/132)) and
+  **4.10** driver tests ([#133](https://github.com/amasover/dotfiles/issues/133)).
+  2.37 still waits on 2.29/2.30.
+- **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), spec on
+  `story/2.38-unattended-age-holds`, unpushed): age-deferred and known-broken packages stop
+  failing unattended runs; design settled at the 2026-08-13 grill. **Linux-side work** (needs
+  `lua5.1` + clitest). Two declared packages are unbuildable today and block the 2.36 evidence
+  run: `shim-signed` (koji source 404) and `playwright` (see below). The third,
+  `simplescreenrecorder`, stopped being a blocker when 3.10 dropped it from the declared set.
+- **2.39 quarantine pin is defeatable** ([#130](https://github.com/amasover/dotfiles/issues/130)):
+  a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
+  pin with the newest upstream. Age guarantee is silently void for such PKGBUILDs. Options are
+  recorded in a knowledge note on the unpushed `story/2.38-unattended-age-holds` branch; none
+  chosen, and that branch has to land before one can be.
 - **3.10 screen recorders** ([#42](https://github.com/amasover/dotfiles/issues/42),
   [PR #125](https://github.com/amasover/dotfiles/pull/125)): all three incumbents are dead here —
   kooha (no ScreenCast portal backend under i3/X11), simplescreenrecorder (dropped from the Arch
@@ -94,28 +109,26 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-11, Linux workstation)
+## Last session (2026-08-15, Windows machine)
 
-- **The encrypt manifest and the archive had silently diverged.** The AUR trust baseline
-  joined `.config/yadm/encrypt` on 2026-07-09 (`9f5e7d3`) but the archive was last written
-  2026-06-20 (`03e4f1b`) — declared, never encrypted, so a fresh machine's decrypt restored
-  no trust state. Fixed by **4.9** ([#122](https://github.com/amasover/dotfiles/issues/122) ✅,
-  PR #123): a yadm `pre_push` guard that blocks the push when a manifest match is newer than
-  the archive (timestamps only; globs report a count, never expanded `.ssh/**` filenames).
-  Attended wrap-up on the live machine: `core.hooksPath .githooks` set, `yadm encrypt` run,
-  archive 48667 → 51085 bytes, pushed (`d84f2d5`), guard now silent.
-- Auto-encrypt-on-push was considered and rejected — symmetric gpg needs a TTY, and its
-  non-deterministic output would commit a fresh ~49k blob every push. A keypair
-  (`yadm.gpg-recipient`) would fix the TTY problem but make fresh-machine recovery depend on
-  transporting a private key; recorded on #122 rather than adopted.
-- **2.36 slice 3 design note** on [#119](https://github.com/amasover/dotfiles/issues/119):
-  `inject_trust_baseline` doesn't port — it scp's the *Linux host's* plaintext
-  `aur-quarantine` files, and Windows has no such source. Rejected clone-then-decrypt in the
-  unattended guest (routes the passphrase into a throwaway VM); proposed an overridable trust
-  dir populated once on the Windows host by selective `gpg -d | tar xf -` of just the two
-  files, with `VM_HARNESS_FRESH_TRUST=1` as the cheap default and its fidelity cost named.
-- Environment note: pytest isn't installed on the Linux workstation, so the 2.36 Python
-  suites can't run here — the mirror of 2026-08-10's Windows clitest gap, both 4.7's concern.
+- **Adversarial review of PR #128** (2.36 slice 3) found 12 defects, all fixed with tests on the
+  same branch (pytest 58→78, clitest 8→15 on the guest glue). The two that undercut the PR's own
+  claims: the resume arm ignored a changed `--branch`, so `VM_HARNESS_BRANCH` kept validating the
+  old branch; and `up` fetched a ~1 GB ISO before `create` refused on an existing vmx. Also an
+  expired lease still being handed out (`ends` now honoured), `IndexOf` -1 wrapping to run the
+  pipeline in the wrong order, `Wait-Ssh`'s key-refused downgrade leaving unattended phases to
+  password-prompt, and unquoted env overrides reaching a remote shell.
+- One fix was **pre-existing on `main`**: `break` inside `Usage`'s `ForEach-Object` unwound the
+  whole script, so `vm-harness-vmware frobnicate` exited 0 instead of 2 — the rc contract the
+  tooling keys on. Nothing tests the driver, which is why 4.10 (#133) now exists.
+- Four stories opened from the review + the two long-standing TBDs: **2.39** (#130), **2.40**
+  (#131), **2.41** (#132), **4.10** (#133). Epic story stubs still owed for each when they start.
+- Slice 3's own build (08-13) and its four live-run defects are in PR #128's description; the
+  trust-baseline design is in the epic and [its recipe](../knowledge/recipes/windows-trust-baseline.md).
+- Environment note: pytest isn't installed on the Linux workstation and `lua5.1`/`setsid`/
+  `script(1)` are missing on Windows, so neither machine can run the full test suite —
+  4.7's ([#94](https://github.com/amasover/dotfiles/issues/94)) concern, and now 4.10's too
+  (driver tests would need `pwsh`).
 
 ## Epics
 

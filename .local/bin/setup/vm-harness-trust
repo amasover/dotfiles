@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""vm-harness-trust — import the AUR trust baseline from the yadm archive (2.36, #119).
+
+The harness injects the trust baseline into each guest before bootstrap, but
+the Windows host has no plaintext `~/.local/state/aur-quarantine` to inject
+from (the Linux host does — it IS a set-up Arch machine). Without it a guest
+runs fresh TOFU and an unattended bootstrap stops on the first identity hold.
+
+This extracts ONLY the two identity files from the yadm archive, streaming:
+`gpg -d` writes to a pipe that feeds tarfile in stream mode, so the archive's
+other members (.ssh/**, .zshenv) are never written to disk — no temp copy of
+the decrypted archive exists at any point. gpg prompts for the passphrase
+itself (pinentry); no passphrase passes through this tool.
+
+The wanted members are an exact allowlist, so a hostile archive cannot smuggle
+a path out of the destination directory.
+
+Two destination shapes: `--dest DIR` writes home-relative (DIR is the home),
+`--into DIR` writes the two basenames straight into DIR — which is what the
+harness's trust directory (VM_HARNESS_TRUST_DIR) is, so the driver always uses
+`--into` and import and injection can never disagree about the location.
+
+Recipe: knowledge/recipes/windows-trust-baseline.md. Tests:
+tests/test_vm_harness_trust.py (fixture tarballs; no gpg, no network).
+"""
+
+import argparse
+import shutil
+import subprocess
+import sys
+import tarfile
+from pathlib import Path
+
+TRUST_MEMBERS = (
+    ".local/state/aur-quarantine/maintainers.tsv",
+    ".local/state/aur-quarantine/exempt.txt",
+)
+
+# Git for Windows bundles gpg; nothing to install. Linux/macOS take PATH.
+_GPG_FALLBACKS = (
+    r"C:\Program Files\Git\usr\bin\gpg.exe",
+    r"C:\Program Files (x86)\Git\usr\bin\gpg.exe",
+)
+
+
+def resolve_gpg(explicit: str | None = None) -> str:
+    """The gpg to run: --gpg wins, then PATH, then Git for Windows."""
+    if explicit:
+        return explicit
+    found = shutil.which("gpg")
+    if found:
+        return found
+    for cand in _GPG_FALLBACKS:
+        if Path(cand).is_file():
+            return cand
+    raise FileNotFoundError(
+        "no gpg on PATH (Windows: install Git for Windows, or pass --gpg)")
+
+
+def member_path(dest: Path, name: str, flat: bool) -> Path:
+    """Where a member lands: home-relative under dest, or — with --into — as a
+    bare basename directly inside dest, which is what VM_HARNESS_TRUST_DIR
+    points at. Either way the name comes from the allowlist, never the
+    archive, so neither form can escape dest."""
+    return dest / Path(name).name if flat else dest / name
+
+
+def extract_members(stream, dest: Path,
+                    wanted: tuple[str, ...] = TRUST_MEMBERS,
+                    flat: bool = False) -> list[str]:
+    """Write the wanted members of a tar stream under dest, in stream order.
+
+    Members outside the allowlist are skipped — including symlinks, hardlinks
+    and directories, which are never what an identity file is. Returns the
+    member names written.
+    """
+    got = []
+    with tarfile.open(fileobj=stream, mode="r|") as tf:
+        for member in tf:
+            if member.name not in wanted or not member.isfile():
+                continue
+            out = member_path(dest, member.name, flat)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            src = tf.extractfile(member)
+            if src is None:
+                continue
+            with out.open("wb") as fh:
+                shutil.copyfileobj(src, fh)
+            got.append(member.name)
+    return got
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="vm-harness-trust", description=__doc__)
+    ap.add_argument("--archive", required=True,
+                    help="path to .local/share/yadm/archive")
+    ap.add_argument("--dest", default=str(Path.home()),
+                    help="extract relative to this directory (default: home)")
+    ap.add_argument("--into",
+                    help="write the two files straight into this directory, by "
+                         "basename (what the harness's trust dir wants)")
+    ap.add_argument("--gpg", help="gpg binary (default: PATH, then Git for Windows)")
+    args = ap.parse_args(argv)
+
+    archive = Path(args.archive)
+    if not archive.is_file():
+        print(f"no archive at {archive}", file=sys.stderr)
+        return 1
+    flat = args.into is not None
+    dest = Path(args.into) if flat else Path(args.dest)
+    try:
+        gpg = resolve_gpg(args.gpg)
+    except FileNotFoundError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+
+    # stderr stays attached: gpg's prompts and errors belong on the console.
+    proc = subprocess.Popen([gpg, "--decrypt", str(archive)],
+                            stdout=subprocess.PIPE)
+    try:
+        got = extract_members(proc.stdout, dest, flat=flat)
+    except tarfile.TarError as e:
+        proc.kill()
+        proc.wait()
+        print(f"archive did not decrypt to a readable tar: {e}", file=sys.stderr)
+        return 1
+    finally:
+        if proc.stdout:
+            proc.stdout.close()
+    rc = proc.wait()
+    if rc != 0:
+        print(f"gpg failed (rc={rc}) — wrong passphrase, or no pinentry available",
+              file=sys.stderr)
+        return 1
+
+    for name in got:
+        print(f"extracted {name} -> {member_path(dest, name, flat)}")
+    missing = [m for m in TRUST_MEMBERS if m not in got]
+    for name in missing:
+        # A member the archive dropped leaves whatever is already on disk
+        # untouched — which then silently outlives the archive it claims to
+        # mirror. The recipe says the archive is authoritative; say so here
+        # too, loudly enough that nobody trusts the leftover.
+        stale = member_path(dest, name, flat)
+        if stale.exists():
+            print(f"WARNING: {name} is not in the archive, but {stale} exists — "
+                  "that copy is stale and was NOT refreshed", file=sys.stderr)
+        else:
+            print(f"note: {name} is not in the archive", file=sys.stderr)
+    if not got:
+        print("nothing extracted — the archive carries no trust baseline "
+              "(run `yadm encrypt` on the Arch machine first)", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -4,49 +4,99 @@
 The `ip` channel that works before VMware Tools are up (the live ISO has no
 tools, so `vmrun getGuestIPAddress` has nothing to answer with): parse
 C:\\ProgramData\\VMware\\vmnetdhcp.leases (dhcpd.leases(5) format, all times
-UTC) for the harness VM's generated MAC. The file is append-ordered, so the
-LAST block for a MAC is its current lease.
+UTC) for the harness VM's generated MAC.
 
-Pure parsing; only main() reads the file. Tests: tests/test_vm_harness_leases.py.
+A MAC accumulates several lease blocks over a VM's life, so pick by the
+`starts` timestamp — NOT by file position. vmnetdhcp rewrites the file as it
+reclaims expired entries, which can leave the newest lease sitting first (seen
+live 2026-08-13: the current lease led the file while two two-day-old expired
+ones followed, and taking the last block handed ssh a dead address).
+Timestamps are zero-padded `YYYY/MM/DD HH:MM:SS` in UTC, so string order is
+chronological order. Blocks without a timestamp fall back to file order.
+
+Newest-wins fixes that file shape but not the underlying class: the newest
+lease can ITSELF be expired, and an expired address is either dead or already
+handed to a different VM — `exec` would then run against the wrong guest. So
+`ends` is honoured too: an expired lease is not a lease. A healthy guest
+renews at half the lease time, so a live VM never trips this; `--any-age`
+is the escape hatch when you want the last known address anyway.
+
+Pure parsing; only main() reads the file (and the clock). Tests:
+tests/test_vm_harness_leases.py.
 """
 
 import argparse
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 DEFAULT_LEASES = r"C:\ProgramData\VMware\vmnetdhcp.leases"
 
+# Sorts after any real timestamp: `ends never;` means the lease never expires.
+NEVER = "9999/99/99 99:99:99"
+_TS = r"([\d/]+\s+[\d:]+)"
+
 _LEASE_RE = re.compile(r"lease\s+(\d+\.\d+\.\d+\.\d+)\s*\{(.*?)\}", re.DOTALL)
 _MAC_RE = re.compile(r"hardware\s+ethernet\s+([0-9A-Fa-f:]+)\s*;")
+_STARTS_RE = re.compile(rf"starts\s+\d+\s+{_TS}\s*;")
+_ENDS_RE = re.compile(rf"ends\s+(?:\d+\s+{_TS}|(never))\s*;")
+
+
+def utc_now() -> str:
+    """Now, in the leases file's own format — the only clock read here."""
+    return datetime.now(timezone.utc).strftime("%Y/%m/%d %H:%M:%S")
 
 
 def parse_leases(text: str) -> list[dict]:
     """All lease blocks, file order. Comment lines are stripped first —
-    dhcpd.leases comments could otherwise smuggle brace-like content."""
+    dhcpd.leases comments could otherwise smuggle brace-like content.
+    `ends` is NEVER for `ends never;`, None when the block omits it."""
     text = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
     out = []
     for m in _LEASE_RE.finditer(text):
         ip, body = m.group(1), m.group(2)
         mac = _MAC_RE.search(body)
-        out.append({"ip": ip, "mac": mac.group(1).lower() if mac else None})
+        starts = _STARTS_RE.search(body)
+        ends = _ENDS_RE.search(body)
+        out.append({
+            "ip": ip,
+            "mac": mac.group(1).lower() if mac else None,
+            "starts": starts.group(1) if starts else None,
+            "ends": (NEVER if ends and ends.group(2) else
+                     ends.group(1) if ends else None),
+        })
     return out
 
 
-def find_ip(text: str, mac: str) -> str | None:
-    """Newest (= last) lease for the MAC, or None."""
+def find_ip(text: str, mac: str, now: str | None = None) -> str | None:
+    """The MAC's most recently issued lease that is still current, or None.
+
+    Ranked by `starts` (string order is chronological); a block without one
+    loses to any block with one, and ties break on file order. When `now` is
+    given, a lease whose `ends` is at or before it is skipped outright — an
+    expired address belongs to nobody, or worse, to somebody else. A block
+    with no `ends` is never treated as expired."""
     mac = mac.lower()
-    hit = None
-    for lease in parse_leases(text):
-        if lease["mac"] == mac:
-            hit = lease["ip"]
-    return hit
+    best_ip, best_key = None, None
+    for i, lease in enumerate(parse_leases(text)):
+        if lease["mac"] != mac:
+            continue
+        if now is not None and lease["ends"] is not None and lease["ends"] <= now:
+            continue
+        key = (lease["starts"] or "", i)
+        if best_key is None or key >= best_key:
+            best_ip, best_key = lease["ip"], key
+    return best_ip
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="vm-harness-leases", description=__doc__)
     ap.add_argument("--mac", required=True)
     ap.add_argument("--leases", default=DEFAULT_LEASES)
+    ap.add_argument("--any-age", action="store_true",
+                    help="accept an expired lease (last known address)")
+    ap.add_argument("--now", help="override the clock (UTC 'YYYY/MM/DD HH:MM:SS'); tests")
     args = ap.parse_args(argv)
     try:
         text = Path(args.leases).read_text()
@@ -54,9 +104,15 @@ def main(argv: list[str] | None = None) -> int:
         # Missing until the vmnet DHCP server hands out its first lease ever.
         print(f"cannot read leases file: {e}", file=sys.stderr)
         return 1
-    ip = find_ip(text, args.mac)
+    now = None if args.any_age else (args.now or utc_now())
+    ip = find_ip(text, args.mac, now)
     if not ip:
-        print(f"no lease for {args.mac.lower()}", file=sys.stderr)
+        if now is not None and find_ip(text, args.mac):
+            print(f"only expired leases for {args.mac.lower()} — the VM is off, or "
+                  "its address was reclaimed (--any-age to use it anyway)",
+                  file=sys.stderr)
+        else:
+            print(f"no lease for {args.mac.lower()}", file=sys.stderr)
         return 1
     print(ip)
     return 0

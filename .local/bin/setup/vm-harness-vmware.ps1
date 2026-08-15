@@ -7,7 +7,7 @@
 # driver by design — logic lives in Python (vm-harness-seed / -vmx / -leases),
 # guest-side bash is shared with the libvirt harness.
 #
-# Subcommands (bootstrap/check/up arrive in the next slice):
+# Subcommands (remaining for slice 4: --progress display + ANSI scrub):
 #   fetch      download + sha256-verify the latest Arch ISO into the local cache
 #   seed       generate the cloud-init NoCloud seed (vm-harness-seed, hypervisor
 #              vmware: NVMe device path, open-vm-tools, live-ISO ssh for exec)
@@ -17,8 +17,23 @@
 #   install    power on headless; archinstall runs via cloud-init and streams
 #              to the serial log, mirrored here live; VM powers itself off;
 #              media is then ejected so later boots hit the disk
-#   boot       start the installed VM headless; wait for the NAT IP + sshd,
-#              then print the IP
+#   boot       start the installed VM headless; wait for an authenticated ssh
+#              login, then print the IP
+#   up         everything to a green check: create → install → boot →
+#              bootstrap → check, resuming past phases live state proves done
+#              (vm-harness-vmx resume). Never destroys; a died install stops
+#              it with the remedy
+#   bootstrap  clone + converge the repo inside the guest via the shared
+#              vm-harness-guest glue (scp'd fresh each run); class/repo/branch
+#              from the env overrides below
+#   check      assert the end state (metapac unmanaged empty is the hard gate)
+#              via vm-harness-guest check
+#   exec CMD   run a command in the guest over ssh (root while the live ISO is
+#              up, aaron once installed); remote exit code propagated
+#   trust-import
+#              one-time host setup: extract the AUR trust baseline from the
+#              yadm archive into the trust dir (gpg prompts; only the two
+#              identity files land — knowledge/recipes/windows-trust-baseline.md)
 #   ip         print the VM's IPv4 (vmrun guest-tools query, falling back to
 #              the vmnet DHCP leases via vm-harness-leases — works for the
 #              live ISO too)
@@ -36,8 +51,22 @@
 # Env overrides mirror the bash harness where they apply:
 #   VM_HARNESS_DIR, VM_HARNESS_DISK (GiB, bare number), VM_HARNESS_RAM (MiB),
 #   VM_HARNESS_CPUS, VM_HARNESS_CLASS, VM_HARNESS_REPO, VM_HARNESS_BRANCH.
+# VM_HARNESS_TRUST_DIR overrides where the AUR trust baseline lives — both
+# where trust-import writes it and where bootstrap reads it (default
+# ~\.local\state\aur-quarantine); see Get-TrustDir.
 
 $ErrorActionPreference = 'Stop'
+
+# The guest talks UTF-8 (ssh, serial); decode native command output as such —
+# the Windows default (OEM CP437) turns every guest em-dash into 'ΓÇö', on the
+# console and in the phase log alike. Process-wide, which is fine: sessions
+# that dot-run this get UTF-8 native decoding, an improvement either way.
+# Both encodings are the BOM-less instance: $OutputEncoding governs the bytes
+# PowerShell feeds a native command's stdin, and [System.Text.Encoding]::UTF8
+# carries a preamble that would arrive as a BOM on the far side.
+$Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $Utf8NoBom
+$OutputEncoding = $Utf8NoBom
 
 $VmName = 'arch-harness'
 $WorkDir = if ($env:VM_HARNESS_DIR) { $env:VM_HARNESS_DIR } else { Join-Path $env:LOCALAPPDATA 'bootstrap-harness-vmware' }
@@ -52,6 +81,15 @@ $RamMib = if ($env:VM_HARNESS_RAM) { [int]$env:VM_HARNESS_RAM } else { 12288 }
 $Cpus = if ($env:VM_HARNESS_CPUS) { [int]$env:VM_HARNESS_CPUS } else { 16 }
 $VmUser = 'aaron'
 $VmPass = 'vm'    # throwaway VM only; reachable only from this host's NAT
+$Repo = if ($env:VM_HARNESS_REPO) { $env:VM_HARNESS_REPO } else { 'https://github.com/amasover/dotfiles.git' }
+$Branch = $env:VM_HARNESS_BRANCH  # guest clones this branch (default: repo default = main);
+                                  # set it to validate guest-side bootstrap changes pre-merge
+$Class = if ($env:VM_HARNESS_CLASS) { $env:VM_HARNESS_CLASS } else { 'workstation' }
+# The harness-owned guest hardware set (interim home until 2.30's split, #96) —
+# the one per-hypervisor difference the shared guest glue takes as a parameter.
+$HardwarePkgs = 'open-vm-tools zram-generator'
+$SshOpts = @('-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=NUL',
+             '-o', 'LogLevel=ERROR')
 $Vmx = Join-Path $VmDir "$VmName.vmx"
 $DiskVmdk = Join-Path $VmDir 'disk.vmdk'
 $SerialLog = Join-Path $VmDir 'install-serial.log'
@@ -60,6 +98,10 @@ $Python = 'C:\Python314\python.exe'
 $SeedTool = Join-Path $PSScriptRoot 'vm-harness-seed'
 $VmxTool = Join-Path $PSScriptRoot 'vm-harness-vmx'
 $LeasesTool = Join-Path $PSScriptRoot 'vm-harness-leases'
+$GuestTool = Join-Path $PSScriptRoot 'vm-harness-guest'
+$TrustTool = Join-Path $PSScriptRoot 'vm-harness-trust'
+# .local/bin/setup -> .local/share/yadm/archive, in whichever checkout runs.
+$Archive = Join-Path $PSScriptRoot '..\..\share\yadm\archive'
 # Workstation's install root moved between releases (26H1: Program Files;
 # 25H2: Program Files (x86)) — take whichever actually has vmrun.
 $VmwareDir = @("$env:ProgramFiles\VMware\VMware Workstation",
@@ -70,37 +112,59 @@ $VmRun = Join-Path $VmwareDir 'vmrun.exe'
 $VdiskMgr = Join-Path $VmwareDir 'vmware-vdiskmanager.exe'
 $InstallTimeoutMin = 60
 
+# One writer owns the phase log (Invoke-Phase). Everything else appends
+# through it — a second Add-Content writer would fight the open handle, which
+# is exactly the crash the first live `up` hit.
+function Write-PhaseLog([string]$Text, [switch]$NoNewline) {
+    if (-not $script:PhaseWriter) { return }
+    if ($NoNewline) { $script:PhaseWriter.Write($Text) }
+    else { $script:PhaseWriter.WriteLine($Text) }
+}
+
 function Say([string]$msg) {
-    # Write-Host bypasses Invoke-Phase's pipeline Tee (information stream), so
-    # mirror narrative markers into the active phase log by hand.
+    # Write-Host is invisible to the phase pipeline (information stream), so
+    # narrative markers reach the log through the phase writer.
     Write-Host "`n==> $msg"
-    if ($script:PhaseLog) { Add-Content -Path $script:PhaseLog -Value "`n==> $msg" }
+    Write-PhaseLog "`n==> $msg"
 }
 function Die([string]$msg) { Write-Host "vm-harness-vmware: FATAL: $msg" -ForegroundColor Red; exit 1 }
 
 function Usage {
-    # The header is the help, same convention as the bash harness.
-    Get-Content $PSCommandPath | Select-Object -Skip 1 |
-        ForEach-Object { if ($_ -match '^#\s?(.*)$') { $Matches[1] } else { break } } |
-        Where-Object { $_ -ne $null }
+    # The header is the help, same convention as the bash harness. A real
+    # foreach, not ForEach-Object: `break` inside a pipeline has no loop to
+    # leave, so it unwound the whole script and the caller's `exit 2` never
+    # ran — `vm-harness-vmware frobnicate` reported success.
+    foreach ($line in (Get-Content $PSCommandPath | Select-Object -Skip 1)) {
+        if ($line -match '^#\s?(.*)$') { $Matches[1] } else { break }
+    }
 }
 
 # Run one phase with host-side logging: console gets the live stream, the log
 # gets an append-only copy ending in the rc trailer the tooling contract needs.
+# The log has exactly one writer — a shared-read StreamWriter this function
+# owns (AutoFlush keeps `tail` near-live); pipeline output, Say markers, and
+# serial chunks all append through it, so nothing fights over the handle.
 function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
     New-Item -ItemType Directory -Force $LogDir | Out-Null
     $log = Join-Path $LogDir "$RunStamp-$Phase.log"
-    $script:PhaseLog = $log
+    $fs = [System.IO.File]::Open($log, [System.IO.FileMode]::Append,
+        [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
+    $script:PhaseWriter = [System.IO.StreamWriter]::new($fs)
+    $script:PhaseWriter.AutoFlush = $true
     $rc = 0
     try {
-        & $Body 2>&1 | Tee-Object -FilePath $log -Append
+        & $Body 2>&1 | ForEach-Object { Write-PhaseLog "$_"; $_ }
         if ($LASTEXITCODE -is [int] -and $LASTEXITCODE -ne 0) { $rc = $LASTEXITCODE }
     } catch {
-        $_ | Out-String | Tee-Object -FilePath $log -Append | Write-Host
+        $msg = $_ | Out-String
+        Write-PhaseLog $msg
+        Write-Host $msg
         $rc = 1
     }
-    "=== $Phase done rc=$rc" | Tee-Object -FilePath $log -Append
-    $script:PhaseLog = $null
+    Write-PhaseLog "=== $Phase done rc=$rc"
+    "=== $Phase done rc=$rc"
+    $script:PhaseWriter.Close()
+    $script:PhaseWriter = $null
     if ($rc -ne 0) {
         Die "phase '$Phase' failed (rc=$rc) — VM left as-is for inspection. Log: $log"
     }
@@ -144,7 +208,7 @@ function Read-NewSerial([ref]$Offset) {
 function Write-Serial([string]$Text) {
     if (-not $Text) { return }
     Write-Host $Text -NoNewline
-    if ($script:PhaseLog) { Add-Content -Path $script:PhaseLog -Value $Text -NoNewline }
+    Write-PhaseLog $Text -NoNewline
 }
 
 # vm-harness-vmx owns the vmx format; the driver only asks.
@@ -154,11 +218,97 @@ function Get-MediaState {
     $s
 }
 
-function Test-TcpPort([string]$Ip, [int]$Port) {
-    $c = [System.Net.Sockets.TcpClient]::new()
-    try { $c.ConnectAsync($Ip, $Port).Wait(2000) -and $c.Connected }
-    catch { $false }
-    finally { $c.Dispose() }
+# Live ISO (media attached) carries root + the seeded key; the installed
+# system carries $VmUser. ssh targets follow the VM's state, no flag.
+function Get-GuestUser { if ((Get-MediaState) -eq 'attached') { 'root' } else { $VmUser } }
+
+# Poll for an authenticated login — not an open port: a login is what the next
+# phase needs (ported from the bash harness's wait_ssh; also closes the
+# stale-lease gap — the vmnet lease predates a reboot, same MAC, so an IP
+# alone proves nothing about the guest).
+# Set by Wait-Ssh: did the key actually authenticate, or did we only prove
+# sshd is listening? Unattended phases must not proceed on the latter.
+$script:SshKeyAuth = $false
+
+function Wait-Ssh {
+    $user = Get-GuestUser
+    $script:SshKeyAuth = $false
+    Say 'Waiting for ssh (up to ~2 min)'
+    for ($i = 0; $i -lt 40; $i++) {
+        $ip = Get-GuestIp
+        if ($ip) {
+            $out = & ssh -o BatchMode=yes -o ConnectTimeout=2 @SshOpts "$user@$ip" true 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $script:SshKeyAuth = $true
+                Say "ssh ready: $user@$ip"
+                return $ip
+            }
+            if ("$out" -match 'Permission denied') {
+                Say "sshd up at $ip (key auth refused — expect password prompts)"
+                return $ip
+            }
+        }
+        Start-Sleep -Seconds 3
+    }
+    throw 'no ssh after ~2 minutes — check: status, tail install'
+}
+
+# Every automated ssh/scp adds BatchMode: without it a guest that refused the
+# key parks the run on an interactive password prompt with no timeout, which
+# is not what "unattended" means. Interactive `exec` deliberately omits it.
+$BatchOpts = @('-o', 'BatchMode=yes') + $SshOpts
+
+# Guard the phases that must run unattended. Wait-Ssh's key-refused downgrade
+# is fine for `boot` (a human is watching); bootstrap/check would hang.
+function Assert-KeyAuth {
+    if (-not $script:SshKeyAuth) {
+        throw ('ssh key auth was refused — an unattended phase cannot password-prompt. ' +
+               'Re-seed with a host key present (destroy + up), or run the step by hand.')
+    }
+}
+
+# POSIX single-quote a value going into a remote shell command string:
+# close, escape, reopen. Guards the VM_HARNESS_CLASS/REPO/BRANCH overrides,
+# which are operator-set but land verbatim in the guest's shell.
+function ConvertTo-ShellQuoted([string]$Value) {
+    "'" + ($Value -replace "'", "'\''") + "'"
+}
+
+# scp the host's AUR trust state (maintainers.tsv + exempt.txt) into the VM
+# before bootstrap, same baseline a decrypt-restored machine would have
+# (Story 2.10). Windows has no Arch state dir to read, so the source is
+# overridable (VM_HARNESS_TRUST_DIR) and populated once by extracting just
+# those two members from the yadm archive — recipe:
+# knowledge/recipes/windows-trust-baseline.md. Without it the guest runs
+# fresh TOFU, which trusts whatever it sees: fine for fast iteration, wrong
+# for runs meant to predict a real rebuild (design note on #119).
+function Get-TrustDir {
+    if ($env:VM_HARNESS_TRUST_DIR) { $env:VM_HARNESS_TRUST_DIR }
+    else { Join-Path $env:USERPROFILE '.local\state\aur-quarantine' }
+}
+
+function Send-TrustBaseline([string]$Ip) {
+    $sdir = Get-TrustDir
+    $have = @('maintainers.tsv', 'exempt.txt') |
+        ForEach-Object { Join-Path $sdir $_ } | Where-Object { Test-Path $_ }
+    if (-not $have) {
+        Say "Trust baseline: none on host ($sdir) — VM runs fresh (TOFU)"
+        return
+    }
+    Say "Trust baseline: injecting $(($have | Split-Path -Leaf) -join ' ') into the VM"
+    & ssh @BatchOpts "$VmUser@$Ip" 'mkdir -p ~/.local/state/aur-quarantine'
+    if ($LASTEXITCODE -ne 0) { throw "trust baseline mkdir failed (rc=$LASTEXITCODE)" }
+    & scp @BatchOpts -q @have "$VmUser@${Ip}:.local/state/aur-quarantine/"
+    if ($LASTEXITCODE -ne 0) { throw "trust baseline scp failed (rc=$LASTEXITCODE)" }
+}
+
+# Push the shared guest glue (fresh each run — the guest executes the host
+# checkout's version) and run one of its subcommands, streaming output.
+function Invoke-GuestGlue([string]$Ip, [string]$RemoteCmd) {
+    & scp @BatchOpts -q $GuestTool "$VmUser@${Ip}:vm-harness-guest"
+    if ($LASTEXITCODE -ne 0) { throw "scp vm-harness-guest failed (rc=$LASTEXITCODE)" }
+    & ssh @BatchOpts "$VmUser@$Ip" $RemoteCmd 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "guest command failed (rc=$LASTEXITCODE): $RemoteCmd" }
 }
 
 function New-Seed {
@@ -271,21 +421,123 @@ function Cmd-Boot {
             & $VmRun -T ws start $Vmx nogui 2>&1
             if ($LASTEXITCODE -ne 0) { throw "vmrun start failed (rc=$LASTEXITCODE)" }
         }
-        # The lease can predate this boot (same MAC since the install phase),
-        # so an IP alone doesn't prove the guest came up — wait for sshd.
-        Say 'Waiting for the NAT lease + sshd'
-        $deadline = (Get-Date).AddMinutes(3)
-        $ip = $null
-        $ssh = $false
-        do {
-            Start-Sleep -Seconds 5
-            $ip = Get-GuestIp
-            $ssh = ($null -ne $ip) -and (Test-TcpPort $ip 22)
-        } until ($ssh -or (Get-Date) -gt $deadline)
-        if (-not $ip) { throw 'no IP after 3 min — vmnet DHCP lease missing; check: status' }
-        if (-not $ssh) { throw "guest has IP $ip but never opened ssh (22) — check: status, tail install" }
+        $ip = Wait-Ssh
         Say "Up. ssh $VmUser@$ip   (password: $VmPass, or the seeded host key)"
     }
+}
+
+function Cmd-Bootstrap {
+    Invoke-Phase 'bootstrap' {
+        if (-not (Test-Path $Vmx)) { throw 'run: create first' }
+        if ((Get-MediaState) -ne 'ejected') { throw 'not installed yet — run: install' }
+        if (-not (Test-VmRunning)) { throw 'VM not running — run: boot' }
+        $ip = Wait-Ssh
+        Assert-KeyAuth
+        Send-TrustBaseline $ip
+        Say "Running repo bootstrap inside the VM (class: $Class, unattended; AUR builds take a while)"
+        $cmd = 'bash vm-harness-guest bootstrap' +
+               " --class $(ConvertTo-ShellQuoted $Class)" +
+               " --repo $(ConvertTo-ShellQuoted $Repo)" +
+               " --hardware-pkgs $(ConvertTo-ShellQuoted $HardwarePkgs)"
+        if ($Branch) { $cmd += " --branch $(ConvertTo-ShellQuoted $Branch)" }
+        Invoke-GuestGlue $ip $cmd
+    }
+}
+
+function Cmd-Check {
+    Invoke-Phase 'check' {
+        if (-not (Test-Path $Vmx)) { throw 'run: create first' }
+        if ((Get-MediaState) -ne 'ejected') { throw 'not installed yet — run: install' }
+        if (-not (Test-VmRunning)) { throw 'VM not running — run: boot' }
+        $ip = Wait-Ssh
+        Assert-KeyAuth
+        Say 'Asserting VM end state'
+        Invoke-GuestGlue $ip 'bash vm-harness-guest check'
+    }
+}
+
+function Cmd-Exec([string[]]$Command) {
+    if (-not (Test-Path $Vmx)) { Die 'no VM — run: create' }
+    if (-not $Command) { Die 'usage: exec CMD [ARGS...]' }
+    # A DHCP lease outlives the VM that held it, so an IP alone is not a
+    # running guest — without this, exec against a stopped VM hangs on the
+    # TCP connect instead of saying what is wrong.
+    if (-not (Test-VmRunning)) { Die 'VM not running — run: boot' }
+    $ip = Get-GuestIp
+    if (-not $ip) { Die 'no IP known (no current lease yet — check: status)' }
+    $user = Get-GuestUser
+    # `--` ends ssh's own option parsing (it re-parses after the destination),
+    # so a guest command starting with `-` reaches the guest intact.
+    & ssh @SshOpts "$user@$ip" -- @Command
+    exit $LASTEXITCODE
+}
+
+# Facts in, phase out — the decision table lives in vm-harness-vmx (pytest).
+# Collapsed to a single string: a multi-line result would turn every `-eq`
+# below into an array filter (silently falsy), so any surprise here has to
+# reach the unknown-answer guard in Cmd-Up rather than slip past it.
+function Get-ResumePoint {
+    $media = if (Test-Path $Vmx) { Get-MediaState } else { 'absent' }
+    $p = & $Python $VmxTool resume --media $media `
+        --disk $(if (Test-Path $DiskVmdk) { 'yes' } else { 'no' }) `
+        --seed $(if (Test-Path (Join-Path $SeedDir 'seed.iso')) { 'yes' } else { 'no' }) `
+        --serial-log $(if (Test-Path $SerialLog) { 'yes' } else { 'no' }) `
+        --running $(if (Test-VmRunning) { 'yes' } else { 'no' })
+    if ($LASTEXITCODE -ne 0) { throw "vm-harness-vmx resume failed (rc=$LASTEXITCODE)" }
+    (@($p) -join ' ').Trim()
+}
+
+function Cmd-Up {
+    $from = Get-ResumePoint
+    if ($from -eq 'dead-install') {
+        Die "VM powered on before but install media is still attached — it died mid-install (up never auto-destroys).
+Next:  vm-harness-vmware install   (safe re-install in place)   or:  destroy"
+    }
+    if ($from -eq 'install-running') {
+        Die 'an install appears to be running right now — watch it (tail install) or vmrun stop first'
+    }
+    $phases = @('create', 'install', 'boot', 'bootstrap', 'check')
+    $idx = [array]::IndexOf($phases, $from)
+    # IndexOf returns -1 for anything unrecognised, and PowerShell wraps a
+    # negative index: $phases[-1..4] is check,create,install,... — i.e. an
+    # unreadable answer would silently run the pipeline in the wrong order.
+    if ($idx -lt 0) { Die "unreadable resume point '$from' from vm-harness-vmx — check: status" }
+    # `create` refuses while a vmx exists (destroy is always explicit), so say
+    # that here rather than after Cmd-Fetch has pulled a ~1 GB ISO to get there.
+    if ($idx -eq 0 -and (Test-Path $Vmx)) {
+        Die "resume wants a fresh create, but VM '$VmName' already exists — its disk or seed is missing.
+Next:  vm-harness-vmware destroy   then:  up"
+    }
+    if ($idx -gt 0) {
+        Say "resume: skipped $($phases[0..($idx - 1)] -join ' ') (probed complete) — starting at $from"
+    }
+    # create boots nothing, but install boots the ISO straight from the cache —
+    # both need it present. An explicit `fetch` stays the force-refresh.
+    if (-not (Test-Path $Iso) -and $idx -le 1) { Cmd-Fetch }
+    foreach ($p in $phases[$idx..($phases.Count - 1)]) {
+        switch ($p) {
+            'create'    { Cmd-Create }
+            'install'   { Cmd-Install }
+            'boot'      { Cmd-Boot }
+            'bootstrap' { Cmd-Bootstrap }
+            'check'     { Cmd-Check }
+        }
+    }
+    Say 'up complete — all phases green'
+}
+
+# One-time host setup, not a phase: no VM involved, no logging contract.
+function Cmd-TrustImport {
+    if (-not (Test-Path $Archive)) { Die "no yadm archive at $Archive" }
+    # --into the very directory Send-TrustBaseline reads, so setting
+    # VM_HARNESS_TRUST_DIR can't leave import and injection pointing at
+    # different places.
+    $tdir = Get-TrustDir
+    Say "Importing the AUR trust baseline into $tdir (gpg will prompt for the archive passphrase)"
+    New-Item -ItemType Directory -Force $tdir | Out-Null
+    & $Python $TrustTool --archive $Archive --into $tdir
+    if ($LASTEXITCODE -ne 0) { Die "trust import failed (rc=$LASTEXITCODE)" }
+    Say 'Done — bootstrap will inject this into every guest from now on'
 }
 
 function Cmd-Ip {
@@ -335,15 +587,20 @@ function Cmd-Tail([string]$Phase) {
 }
 
 switch ($args[0]) {
-    'fetch'   { Cmd-Fetch }
-    'seed'    { Cmd-Seed }
-    'create'  { Cmd-Create }
-    'install' { Cmd-Install }
-    'boot'    { Cmd-Boot }
-    'ip'      { Cmd-Ip }
-    'status'  { Cmd-Status }
-    'destroy' { Cmd-Destroy }
-    'tail'    { Cmd-Tail $args[1] }
+    'fetch'     { Cmd-Fetch }
+    'seed'      { Cmd-Seed }
+    'create'    { Cmd-Create }
+    'install'   { Cmd-Install }
+    'boot'      { Cmd-Boot }
+    'up'        { Cmd-Up }
+    'bootstrap' { Cmd-Bootstrap }
+    'check'     { Cmd-Check }
+    'exec'      { Cmd-Exec @(@($args) | Select-Object -Skip 1) }
+    'trust-import' { Cmd-TrustImport }
+    'ip'        { Cmd-Ip }
+    'status'    { Cmd-Status }
+    'destroy'   { Cmd-Destroy }
+    'tail'      { Cmd-Tail $args[1] }
     'help'    { Usage }
     $null     { Usage; exit 2 }
     default   { Write-Host "vm-harness-vmware: unknown subcommand '$($args[0])'" -ForegroundColor Red; Usage; exit 2 }

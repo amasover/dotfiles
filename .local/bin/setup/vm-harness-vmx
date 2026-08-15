@@ -15,6 +15,11 @@ installed system — the Workstation equivalent of the bash harness's
 "media ejected so later boots hit the disk". `media` reports that state
 (attached|ejected) so the driver never parses vmx internals itself.
 
+`resume` is the pipeline's resume-point decision table (the bash harness's
+"probe live state only" design, #98): the driver gathers the facts, this
+answers where `up` starts — or refuses (dead-install / install-running),
+because `up` never destroys and never re-runs a died install unasked.
+
 Logic is pure (text in/text out); only main() touches files. Tests:
 tests/test_vm_harness_vmx.py.
 """
@@ -108,6 +113,26 @@ def media_state(vmx_text: str) -> str:
     return "ejected"
 
 
+def resume_point(*, media: str, disk_exists: bool, seed_exists: bool,
+                 serial_log_exists: bool, running: bool) -> str:
+    """Where `up` (re)starts, from live state only. media='absent' means no
+    vmx. The serial log only exists once a power-on happened, so with media
+    still attached it separates install-never-ran from dead-install (under
+    VMware `create` writes the vmx, so unlike libvirt its existence proves
+    nothing about install). The seed stops mattering once media is ejected."""
+    if media == "absent" or not disk_exists:
+        return "create"
+    if media == "attached":
+        if not seed_exists:
+            return "create"
+        if running:
+            return "install-running"
+        if serial_log_exists:
+            return "dead-install"
+        return "install"
+    return "bootstrap" if running else "boot"
+
+
 def generated_mac(vmx_text: str) -> str | None:
     """The nic MAC VMware wrote at first power-on (addressType generated) —
     the key into the vmnet DHCP leases file."""
@@ -136,6 +161,12 @@ def main(argv: list[str] | None = None) -> int:
     med = sub.add_parser("media", help="print attached|ejected")
     med.add_argument("--vmx", required=True)
 
+    res = sub.add_parser("resume", help="print the phase `up` resumes at")
+    res.add_argument("--media", required=True,
+                     choices=["absent", "attached", "ejected"])
+    for flag in ("--disk", "--seed", "--serial-log", "--running"):
+        res.add_argument(flag, required=True, choices=["yes", "no"])
+
     mac = sub.add_parser("mac", help="print the generated nic MAC")
     mac.add_argument("--vmx", required=True)
 
@@ -153,6 +184,12 @@ def main(argv: list[str] | None = None) -> int:
         print("media ejected")
     elif args.cmd == "media":
         print(media_state(Path(args.vmx).read_text()))
+    elif args.cmd == "resume":
+        print(resume_point(
+            media=args.media, disk_exists=args.disk == "yes",
+            seed_exists=args.seed == "yes",
+            serial_log_exists=args.serial_log == "yes",
+            running=args.running == "yes"))
     elif args.cmd == "mac":
         m = generated_mac(Path(args.vmx).read_text())
         if not m:
