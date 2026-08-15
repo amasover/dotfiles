@@ -68,14 +68,15 @@ Facts:
   --sync --asexplicit` without `--needed` reinstalls every installed declared package each sync
   (37–50 per run). Open question on the issue: whether `--needed` skips the explicit re-marking
   that keeps `unmanaged` honest.
-- **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119)): slices 1–2
-  merged (PRs #120/#121); **slice 3 in review** — `exec`/`bootstrap`/`check`/`up`, shared guest
-  glue, trust import. Code-complete and unit-green; the **evidence artifact is still owed**
-  (bootstrap can't reach rc=0 until the declared set converges — see 2.38). Slice 4 (progress
-  display + ANSI scrub) closes the story. Spun out of slice 3's review so they don't close with
-  #119: **2.41** libvirt switchover ([#132](https://github.com/amasover/dotfiles/issues/132)) and
-  **4.10** driver tests ([#133](https://github.com/amasover/dotfiles/issues/133)).
-  2.37 still waits on 2.29/2.30.
+- **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119)): slices
+  1–3 merged (PRs #120/#121/#128); **slice 4 in PR** — progress display + ANSI scrub ported
+  (shared tool grew `--log`/`plain`/`scrub` + Windows console support; decisions in the epic).
+  The **evidence artifact is still owed** (bootstrap can't reach rc=0 until the declared set
+  converges — see 2.38), plus attended `--progress`/bar transcripts from a real run. Spun out of
+  slice 3's review so they don't close with #119: **2.41** libvirt switchover
+  ([#132](https://github.com/amasover/dotfiles/issues/132)) and **4.10** driver tests
+  ([#133](https://github.com/amasover/dotfiles/issues/133), stays open — slice 4 didn't absorb
+  it). 2.37 still waits on 2.29/2.30.
 - **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), spec on
   `story/2.38-unattended-age-holds`, unpushed): age-deferred and known-broken packages stop
   failing unattended runs; design settled at the 2026-08-13 grill. **Linux-side work** (needs
@@ -111,20 +112,17 @@ Facts:
 
 ## Last session (2026-08-15, Windows machine)
 
-- **Adversarial review of PR #128** (2.36 slice 3) found 12 defects, all fixed with tests on the
-  same branch (pytest 58→78, clitest 8→15 on the guest glue). The two that undercut the PR's own
-  claims: the resume arm ignored a changed `--branch`, so `VM_HARNESS_BRANCH` kept validating the
-  old branch; and `up` fetched a ~1 GB ISO before `create` refused on an existing vmx. Also an
-  expired lease still being handed out (`ends` now honoured), `IndexOf` -1 wrapping to run the
-  pipeline in the wrong order, `Wait-Ssh`'s key-refused downgrade leaving unattended phases to
-  password-prompt, and unquoted env overrides reaching a remote shell.
-- One fix was **pre-existing on `main`**: `break` inside `Usage`'s `ForEach-Object` unwound the
-  whole script, so `vm-harness-vmware frobnicate` exited 0 instead of 2 — the rc contract the
-  tooling keys on. Nothing tests the driver, which is why 4.10 (#133) now exists.
-- Four stories opened from the review + the two long-standing TBDs: **2.39** (#130), **2.40**
-  (#131), **2.41** (#132), **4.10** (#133). Epic story stubs still owed for each when they start.
-- Slice 3's own build (08-13) and its four live-run defects are in PR #128's description; the
-  trust-baseline design is in the epic and [its recipe](../knowledge/recipes/windows-trust-baseline.md).
+- **PR #128 (2.36 slice 3) merged** after reconciling STATUS with main's 3.10/3.16 merges; the
+  reconcile also shrank 2.38's blocker list — 3.10 dropped `simplescreenrecorder` from the
+  declared set, so two packages block the evidence run, not three.
+- **2.36 slice 4 built**: the shared display tool now runs on Windows consoles (CONOUT$ + VT
+  enable, polled resize) and carries the ANSI scrub as its `--log`/`--mode scrub` legs; the
+  driver pipes every phase through it (`--progress`/`--plain` flags, default bottom bar, up
+  breadcrumbs, resume log header). pytest 78→106, +8 cross-platform clitest cases; rc contract
+  and a sandboxed seed phase verified live. Decisions (pty stays off; 4.10 not absorbed) in the
+  epic's slice-4 block. Attended bar/compact transcripts from a real run still owed on #119.
+- Epic story stubs are still owed for **2.39** (#130), **2.40** (#131), **2.41** (#132),
+  **4.10** (#133) when each starts.
 - Environment note: pytest isn't installed on the Linux workstation and `lua5.1`/`setsid`/
   `script(1)` are missing on Windows, so neither machine can run the full test suite —
   4.7's ([#94](https://github.com/amasover/dotfiles/issues/94)) concern, and now 4.10's too
