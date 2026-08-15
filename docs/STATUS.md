@@ -64,24 +64,29 @@ Facts:
   Sequence: fresh evidence run → live steps above → **2.30** ([#96](https://github.com/amasover/dotfiles/issues/96))
   class+hardware split (now incl. the guest NetworkManager decision) → **2.29** ([#95](https://github.com/amasover/dotfiles/issues/95),
   amended: daily-VM first) → milestone run; **4.7** ([#94](https://github.com/amasover/dotfiles/issues/94)) CI parallel; epic 3 after.
-- **metapac reinstall churn** (from the 07-19 log review): `yay --sync --asexplicit` without
-  `--needed` reinstalls every installed declared package each sync (37–50 per run) — investigation
-  in progress, story TBD.
+- **2.40 metapac reinstall churn** ([#131](https://github.com/amasover/dotfiles/issues/131)): `yay
+  --sync --asexplicit` without `--needed` reinstalls every installed declared package each sync
+  (37–50 per run). Open question on the issue: whether `--needed` skips the explicit re-marking
+  that keeps `unmanaged` honest.
 - **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119)): slices 1–2
   merged (PRs #120/#121); **slice 3 in review** — `exec`/`bootstrap`/`check`/`up`, shared guest
   glue, trust import. Code-complete and unit-green; the **evidence artifact is still owed**
   (bootstrap can't reach rc=0 until the declared set converges — see 2.38). Slice 4 (progress
-  display + ANSI scrub) closes the story. 2.37 still waits on 2.29/2.30.
+  display + ANSI scrub) closes the story. Spun out of slice 3's review so they don't close with
+  #119: **2.41** libvirt switchover ([#132](https://github.com/amasover/dotfiles/issues/132)) and
+  **4.10** driver tests ([#133](https://github.com/amasover/dotfiles/issues/133)).
+  2.37 still waits on 2.29/2.30.
 - **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), spec on
   `story/2.38-unattended-age-holds`, unpushed): age-deferred and known-broken packages stop
   failing unattended runs; design settled at the 2026-08-13 grill. **Linux-side work** (needs
   `lua5.1` + clitest). Three declared packages are unbuildable today and block the 2.36 evidence
   run: `simplescreenrecorder` (ffmpeg 9 API break; kooha is Wayland-only, so 3.10 can't just drop
   it), `shim-signed` (koji source 404), `playwright` (see below).
-- **Quarantine pin is defeatable** ([knowledge note](../knowledge/errors/quarantine-pin-defeated-by-pkgver.md)):
+- **2.39 quarantine pin is defeatable** ([#130](https://github.com/amasover/dotfiles/issues/130)):
   a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
-  pin with the newest upstream. Age guarantee is silently void for such PKGBUILDs; needs its own
-  story, options recorded, none chosen.
+  pin with the newest upstream. Age guarantee is silently void for such PKGBUILDs. Options are
+  recorded in a knowledge note on the unpushed `story/2.38-unattended-age-holds` branch; none
+  chosen, and that branch has to land before one can be.
 
 ## Standing warnings
 
@@ -89,26 +94,26 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-13, Windows machine)
+## Last session (2026-08-15, Windows machine)
 
-- **2.36 slice 3 built and pushed** (`exec`, shared `vm-harness-guest` glue, `bootstrap`/`check`,
-  resumable `up` via a pytest-covered `vm-harness-vmx resume` table, `trust-import`). Live runs
-  found four real defects, all fixed with tests: the phase log had two writers (Tee vs
-  Add-Content) and crashed the first real `up`; native output decoded as OEM, mangling guest
-  em-dashes; `find_ip` trusted file order and returned a **two-day-expired lease** (vmnetdhcp
-  rewrites the file — ssh timed out against a dead IP while the guest was healthy); and the
-  guest glue inherited `yadm clone || true`, so a resumed run converged against stale dotfiles.
-- **Trust baseline now works on Windows** without bash: `vm-harness-trust` streams `gpg --decrypt`
-  into `tarfile` and extracts only the two identity files — the decrypted archive never hits disk
-  ([recipe](../knowledge/recipes/windows-trust-baseline.md)). Local `auto`/`accept` edits there
-  are temporary; the archive is authoritative.
-- Guest reached `bootstrap` and stopped on package content, not harness defects — which is the
-  harness doing its job: **the declared set cannot converge on a fresh machine today** (2.38).
-  The same failures would hit the pending Linux fresh-run evidence.
-
+- **Adversarial review of PR #128** (2.36 slice 3) found 12 defects, all fixed with tests on the
+  same branch (pytest 58→78, clitest 8→15 on the guest glue). The two that undercut the PR's own
+  claims: the resume arm ignored a changed `--branch`, so `VM_HARNESS_BRANCH` kept validating the
+  old branch; and `up` fetched a ~1 GB ISO before `create` refused on an existing vmx. Also an
+  expired lease still being handed out (`ends` now honoured), `IndexOf` -1 wrapping to run the
+  pipeline in the wrong order, `Wait-Ssh`'s key-refused downgrade leaving unattended phases to
+  password-prompt, and unquoted env overrides reaching a remote shell.
+- One fix was **pre-existing on `main`**: `break` inside `Usage`'s `ForEach-Object` unwound the
+  whole script, so `vm-harness-vmware frobnicate` exited 0 instead of 2 — the rc contract the
+  tooling keys on. Nothing tests the driver, which is why 4.10 (#133) now exists.
+- Four stories opened from the review + the two long-standing TBDs: **2.39** (#130), **2.40**
+  (#131), **2.41** (#132), **4.10** (#133). Epic story stubs still owed for each when they start.
+- Slice 3's own build (08-13) and its four live-run defects are in PR #128's description; the
+  trust-baseline design is in the epic and [its recipe](../knowledge/recipes/windows-trust-baseline.md).
 - Environment note: pytest isn't installed on the Linux workstation and `lua5.1`/`setsid`/
   `script(1)` are missing on Windows, so neither machine can run the full test suite —
-  4.7's ([#94](https://github.com/amasover/dotfiles/issues/94)) concern.
+  4.7's ([#94](https://github.com/amasover/dotfiles/issues/94)) concern, and now 4.10's too
+  (driver tests would need `pwsh`).
 
 ## Epics
 
