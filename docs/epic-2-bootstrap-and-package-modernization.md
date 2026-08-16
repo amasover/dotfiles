@@ -523,13 +523,13 @@ Issue: [#75](https://github.com/amasover/dotfiles/issues/75) · Options recorded
 
 ---
 
-### Story 2.23: Triage redis→valkey
+### Story 2.23: Triage redis→valkey ✅
 
 As the repo owner,
 I want the repos' redis→valkey replacement decided and reflected in the groups,
 So that the standing drift line disappears and installs stop pulling a superseded package.
 
-Issue: [#76](https://github.com/amasover/dotfiles/issues/76) · Captured live by the 2.9 inbox hook during the 2.7 VM acceptance run; the host group still declares `redis` and the host runs AUR redis. Small; Aaron's call.
+Issue: [#76](https://github.com/amasover/dotfiles/issues/76) (closed, PR #115) · Captured live by the 2.9 inbox hook during the 2.7 VM acceptance run; the host group still declares `redis` and the host runs AUR redis. Small; Aaron's call.
 
 **Acceptance criteria:**
 
@@ -989,6 +989,111 @@ reconstruction note)*:
 held and reported in its bucket (age-deferred or known-broken) and the run
 still ends `=== bootstrap done rc=0` — the mechanism that unblocks Story 2.36's
 owed evidence run.
+
+---
+
+### Story 2.39: a pinned AUR commit does not pin what gets built — `pkgver()` defeats the age guarantee
+
+As the repo owner,
+I want packages whose PKGBUILDs compute their version at build time detected
+and handled honestly by the quarantine,
+So that a stepped pin cannot silently install brand-new upstream code while the
+run reports the 14-day age window as satisfied.
+
+Issue: [#130](https://github.com/amasover/dotfiles/issues/130) · Origin: the
+Story 2.36 (#119) slice-3 evidence run, split out of Story 2.38 (#124). Error
+writeup: [quarantine-pin-defeated-by-pkgver.md](../knowledge/errors/quarantine-pin-defeated-by-pkgver.md).
+
+Stepping the AUR checkout (Story 2.33) pins the *recipe*, not the *result*: a
+`pkgver()` resolving git tags, a `-git`-style recipe tracking a moving ref, or
+an npm/pip "latest" lookup replaces the pinned version during the build. Seen
+2026-08-13: `playwright` stepped to the pinned 1.61.0 commit and built 1.62.1,
+dying on a checksum mismatch — loud only by luck. A package in this class that
+builds *cleanly* installs new upstream code while reporting the quarantine
+satisfied: the mechanism silently inverted.
+
+**Blocked:** the policy options enumerated at the 2026-08-13 grill were lost
+with the original 2.38 branch (see the writeup's reconstruction note) and must
+be re-derived — likeliest source is the 2026-08-13 Windows-machine session
+transcript — before this story picks one. None was chosen.
+
+**Acceptance criteria:**
+
+- Given a PKGBUILD that computes its version at build time, when the quarantine evaluates it, then the package is detected as un-pinnable-by-stepping
+- Given a detected package, when any run reports on it, then it is never reported as satisfying an age window that stepping cannot actually guarantee
+- Given the re-derived options, then a policy is chosen and recorded (issue + error writeup), and the chosen behavior ships with clitest coverage
+
+**Evidence artifact:** a run log showing a `pkgver()`-class package detected
+and reported honestly, plus the recorded policy decision.
+
+---
+
+### Story 2.40: metapac reinstall churn — every sync reinstalls every declared package
+
+As the repo owner,
+I want a sync of an already-converged machine to install nothing,
+So that bootstrap, updates, and harness evidence runs stop paying for 37–50
+no-op reinstalls per run — noise in every log and part of what trips the AUR
+clone-burst throttle (Story 2.22, #75).
+
+Issue: [#131](https://github.com/amasover/dotfiles/issues/131) · Origin: the
+2026-07-19 green-run log review; carried as "story TBD" in STATUS since.
+Linux-side work.
+
+`yay --sync --asexplicit` runs without `--needed`, so every installed declared
+package reinstalls on each sync. The interaction to determine **before**
+changing the flag: `--asexplicit` re-marks packages as explicitly installed —
+what keeps `metapac unmanaged` honest (Story 2.35, #112) — and `--needed`
+skips already-current packages, possibly skipping the re-marking too. Adding
+`--needed` naively could quietly reintroduce the drift 2.35 closed. Determine:
+
+- Does `--needed` still apply `--asexplicit` to an already-installed package?
+- If not, what does the explicit-marking correctly (a separate
+  `pacman -D --asexplicit` pass, or metapac doing it)?
+- Is the churn coming from the `yay` invocation or from how metapac drives it?
+
+**Acceptance criteria:**
+
+- Given an already-converged machine, when a sync runs, then it reinstalls nothing
+- Given the change, then `metapac unmanaged` stays exactly empty and a drift report taken before and after the sync is unchanged
+- Given the `--needed`/`--asexplicit` interaction, then the answer is determined by evidence and recorded on the issue before the flag change lands
+
+**Evidence artifact:** before/after sync logs on a converged machine (zero
+reinstalls) + an unchanged drift-report pair.
+
+---
+
+### Story 2.41: libvirt harness adopts the shared `vm-harness-guest` glue
+
+As the repo owner,
+I want the libvirt harness to run the same guest-side `bootstrap`/`check` file
+the VMware harness runs,
+So that guest-glue fixes land once instead of the two copies drifting — three
+PR #128 review fixes exist on the VMware path only, and the libvirt harness is
+the one producing the fresh-run evidence the epic is waiting on.
+
+Issue: [#132](https://github.com/amasover/dotfiles/issues/132) · Origin: Story
+2.36 (#119) extracted `.local/bin/setup/vm-harness-guest` from the libvirt
+harness's inline ssh strings, but the switchover needs Linux-side validation,
+so the duplication was deliberate and only recorded as a note on #119 — this
+story gives it an owner that doesn't close with #119.
+
+Divergences already real, fixed in the shared file and still broken inline:
+resume honours a changed `--branch` (the inline `yadm clone || true` no-ops on
+an existing guest and keeps converging whatever was cloned first); `check`
+reports metapac's own failure instead of exiting silently under `set -e`; and
+arg handling (a dangling flag dies FATAL/rc 2 instead of tripping `set -u`,
+package names are not glob-expanded against the guest's cwd).
+
+**Acceptance criteria:**
+
+- Given the libvirt harness, when it drives a guest, then it copies in and invokes `vm-harness-guest` with the QEMU hardware set (`qemu-guest-agent zram-generator`) as the per-hypervisor parameter, and the inline guest-side ssh strings are gone
+- Given deliberate divergences that are real design differences (exec rc propagation — the qemu-agent path could not propagate; pty behaviour), then each is kept only with its reason re-recorded, and everything else converges on the shared file
+- Given the switchover, then it is validated by a real `up` on the Linux host — the validation Story 2.36 could not do from Windows
+- Given the shared file's existing clitest suite, then it passes unchanged
+
+**Evidence artifact:** a libvirt `up` run log with the guest phases executed
+via `vm-harness-guest`.
 
 ---
 

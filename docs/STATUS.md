@@ -48,16 +48,16 @@ Facts:
 - **2.21 progress mode** ([#73](https://github.com/amasover/dotfiles/issues/73)): #102 + #111
   (SIGWINCH resize fix, pty regression test) merged; open for attended transcripts from a green run.
 - **2.26 provider pins** ([#83](https://github.com/amasover/dotfiles/issues/83)): #86/#99/#110 merged
-  (PROVIDER_PINS step 3d). Host jack2→pipewire-jack swap stays a live step.
-- **2.23 redis→valkey** ([#76](https://github.com/amasover/dotfiles/issues/76)): [PR #115](https://github.com/amasover/dotfiles/pull/115)
-  **merged** — valkey declared (Aaron's call). Open until the host live swap + clean drift report.
-  The *parked* guest has AUR redis installed and would conflict on its next sync — moot if destroyed.
+  (PROVIDER_PINS step 3d). The host jack2→pipewire-jack swap is **done** (verified live
+  2026-08-15: jack2 absent, pipewire-jack installed).
 - **2.25 dotnet repo stack** ([#82](https://github.com/amasover/dotfiles/issues/82)): open for the
   gated host live swap + the `dotnet-runtime-2.1`/`2.2` relic decision; four repo names drift
   declared-but-missing until then.
-- **Aaron's pending live steps**: chaotic adoption + jack2/redis swaps via attended bootstrap/sync
-  (2.28/2.26/2.23). The yadm-side steps are done — `core.hooksPath .githooks` set (4.4) and the
-  archive refreshed 2026-08-11 (4.9).
+- **Aaron's pending live steps**: chaotic adoption (chaotic-keyring/-mirrorlist not yet
+  installed) and the redis→valkey host swap (redis still installed, valkey absent — 2.23's issue
+  auto-closed with the declaration PR, so this line is the swap's only tracker), both via
+  attended bootstrap/sync (2.28/2.23). The yadm-side steps are done — `core.hooksPath .githooks`
+  set (4.4) and the archive refreshed 2026-08-11 (4.9).
 - **Direction (2026-07-10 grill)**: cleanup era ends at the daily-driver rebuild (a VMware VM
   on the Windows machine, not metal first) + the 1.8 work-machine steps. Record:
   [decision-daily-driver-vm.md](./decision-daily-driver-vm.md), PRD §4 eras, runbook checklist.
@@ -68,14 +68,14 @@ Facts:
   --sync --asexplicit` without `--needed` reinstalls every installed declared package each sync
   (37–50 per run). Open question on the issue: whether `--needed` skips the explicit re-marking
   that keeps `unmanaged` honest.
-- **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119)): slices 1–2
-  merged (PRs #120/#121); **slice 3 in review** — `exec`/`bootstrap`/`check`/`up`, shared guest
-  glue, trust import. Code-complete and unit-green; the **evidence artifact is still owed**
-  (bootstrap can't reach rc=0 until the declared set converges — see 2.38). Slice 4 (progress
-  display + ANSI scrub) closes the story. Spun out of slice 3's review so they don't close with
-  #119: **2.41** libvirt switchover ([#132](https://github.com/amasover/dotfiles/issues/132)) and
-  **4.10** driver tests ([#133](https://github.com/amasover/dotfiles/issues/133)).
-  2.37 still waits on 2.29/2.30.
+- **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119), reopened):
+  slices 1–3 merged (PRs #120/#121/#128). GitHub auto-closed #119 at the #128 merge — the PR
+  body's slice-4 sentence contains the literal closing keyword "closes #119" — reopened
+  2026-08-15. Still owed: **slice 4** (progress display + ANSI scrub + the driver-tests
+  decision) and the **evidence artifact** (bootstrap can't reach rc=0 until 2.38's holds land).
+  Spun out so they don't close with #119: **2.41** libvirt glue switchover
+  ([#132](https://github.com/amasover/dotfiles/issues/132)) and **4.10** driver tests
+  ([#133](https://github.com/amasover/dotfiles/issues/133)). 2.37 still waits on 2.29/2.30.
 - **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), in progress
   on `story/2.38-unattended-age-holds`, re-cut off `main` 2026-08-15): the original spec branch
   was **lost unpushed** (absent from GitHub and the Windows machine); the epic 2 stub is rebuilt
@@ -84,21 +84,14 @@ Facts:
   unchanged: `shim-signed` (koji 404) and `playwright` (see 2.39).
 - **2.39 quarantine pin is defeatable** ([#130](https://github.com/amasover/dotfiles/issues/130)):
   a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
-  pin with the newest upstream. The grill's options writeup went down with the lost 2.38 branch;
-  the recreated note ([quarantine-pin-defeated-by-pkgver.md](../knowledge/errors/quarantine-pin-defeated-by-pkgver.md),
-  on the new 2.38 branch) records the loss — re-derive the options (2026-08-13 Windows-machine
-  transcript is the likeliest source) before picking one.
-- **3.10 screen recorders** ([#42](https://github.com/amasover/dotfiles/issues/42),
-  [PR #125](https://github.com/amasover/dotfiles/pull/125)): all three incumbents are dead here —
-  kooha (no ScreenCast portal backend under i3/X11), simplescreenrecorder (dropped from the Arch
-  repos, orphan linked against ffmpeg 7), kazam (dead upstream). `gpu-screen-recorder` +
-  `-ui` are the keepers. Aaron's live step: uninstall the three, or they show as `metapac unmanaged`.
-- **3.16 GL acceleration** ([#126](https://github.com/amasover/dotfiles/issues/126),
-  [PR #127](https://github.com/amasover/dotfiles/pull/127)): the desktop had been running on
-  llvmpipe — the real reason recording looked broken, not the long-assumed pending reboot. Both
-  fixes are applied live (mesa `i965` override dropped from `.profile`; legacy
-  `xf86-video-intel` removed) and gsr now records 1080p via `h264_vaapi`. Open only for the
-  post-X-restart `Xorg.0.log` check; commands are on the issue.
+  pin with the newest upstream. Spec now in epic 2. **Blocked**: the grill's policy-options
+  writeup went down with the lost 2.38 branch and none was chosen — re-derive the options
+  (likeliest source: the 2026-08-13 Windows-machine session transcript) before picking one; the
+  recreated [error note](../knowledge/errors/quarantine-pin-defeated-by-pkgver.md) records the loss.
+- **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
+  live breakage until done — the 3.16 driver switch renamed Xorg outputs (`eDP1`→`eDP-1` etc.),
+  so autorandr dock/undock auto-switching currently matches nothing and polybar's multi-monitor
+  layouts can't select. Attended work per docking setup; spec in epic 3.
 - **2.30 hardware split** ([#96](https://github.com/amasover/dotfiles/issues/96)): 3.16 turned up
   concrete evidence — the `desktop` group declares an AMD GPU set (`xf86-video-amdgpu`,
   `vulkan-radeon`, `lib32-vulkan-radeon`) on what is now an Intel laptop, `vulkan-intel` is
@@ -110,26 +103,24 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-15, Windows machine)
+## Last session (2026-08-15, Linux workstation)
 
-- **Adversarial review of PR #128** (2.36 slice 3) found 12 defects, all fixed with tests on the
-  same branch (pytest 58→78, clitest 8→15 on the guest glue). The two that undercut the PR's own
-  claims: the resume arm ignored a changed `--branch`, so `VM_HARNESS_BRANCH` kept validating the
-  old branch; and `up` fetched a ~1 GB ISO before `create` refused on an existing vmx. Also an
-  expired lease still being handed out (`ends` now honoured), `IndexOf` -1 wrapping to run the
-  pipeline in the wrong order, `Wait-Ssh`'s key-refused downgrade leaving unattended phases to
-  password-prompt, and unquoted env overrides reaching a remote shell.
-- One fix was **pre-existing on `main`**: `break` inside `Usage`'s `ForEach-Object` unwound the
-  whole script, so `vm-harness-vmware frobnicate` exited 0 instead of 2 — the rc contract the
-  tooling keys on. Nothing tests the driver, which is why 4.10 (#133) now exists.
-- Four stories opened from the review + the two long-standing TBDs: **2.39** (#130), **2.40**
-  (#131), **2.41** (#132), **4.10** (#133). Epic story stubs still owed for each when they start.
-- Slice 3's own build (08-13) and its four live-run defects are in PR #128's description; the
-  trust-baseline design is in the epic and [its recipe](../knowledge/recipes/windows-trust-baseline.md).
-- Environment note: pytest isn't installed on the Linux workstation and `lua5.1`/`setsid`/
-  `script(1)` are missing on Windows, so neither machine can run the full test suite —
-  4.7's ([#94](https://github.com/amasover/dotfiles/issues/94)) concern, and now 4.10's too
-  (driver tests would need `pwsh`).
+- **The 2.38/2.39 spec branch turned out lost** — `story/2.38-unattended-age-holds` was never
+  pushed and isn't on the Windows machine either. Rebuilt from the issue bodies, which preserved
+  the full design: 2.38's epic stub (acceptance criteria re-derived, worth Aaron's eyeball) and
+  the 2.39 error note. The one unrecoverable piece is 2.39's policy-options list (see its entry).
+- **All owed epic stubs written** (2.39/2.40/2.41 in epic 2, 3.17 in epic 3, 4.10 in epic 4).
+  The "add the stub when the story starts" deferral is retired — a story's stub is written when
+  its issue opens.
+- **STATUS reconciled against the board and live pacman state**: 2.23/3.10/3.16 closed →
+  ✅-marked in their epics; #119 reopened (GitHub keyword auto-close, not a decision); the jack2
+  swap and the 3.10 recorder uninstalls verified done on the live machine; chaotic adoption and
+  the redis swap still pending. PR #128's review details live in its PR description.
+- **Environment**: `lua5.1` + clitest are present on the Linux workstation, so 2.38 is buildable
+  here. pytest is still missing here, and Windows still lacks `lua5.1`/`setsid`/`script(1)` — no
+  machine runs the full suite (4.7's [#94](https://github.com/amasover/dotfiles/issues/94)
+  concern, and 4.10's [#133](https://github.com/amasover/dotfiles/issues/133), whose driver
+  tests would need `pwsh`).
 
 ## Epics
 

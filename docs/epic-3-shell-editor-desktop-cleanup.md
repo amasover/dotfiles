@@ -209,13 +209,13 @@ switch (corp Wi-Fi) that left iwd enabled. See [package-inventory.md](./package-
 
 ---
 
-### Story 3.10: Consolidate screen recorders (evaluate kooha)
+### Story 3.10: Consolidate screen recorders (evaluate kooha) ✅
 
 As the repo owner,
 I want one or two screen-capture tools instead of five,
 So that screen recording is reliable and not a pile of overlapping legacy apps.
 
-Issue: [#42](https://github.com/amasover/dotfiles/issues/42)
+Issue: [#42](https://github.com/amasover/dotfiles/issues/42) (closed, PR #125)
 
 Deferred from Story 2.2: `peek` + `byzanz` + `kazam` + `simplescreenrecorder` + `guvcview`
 all installed. Aaron wants to evaluate **kooha**. Recording libs reportedly broken until a
@@ -358,13 +358,13 @@ Issue: [#77](https://github.com/amasover/dotfiles/issues/77) · Leftovers from S
 
 ---
 
-### Story 3.16: Restore hardware GL acceleration (Intel Iris Xe)
+### Story 3.16: Restore hardware GL acceleration (Intel Iris Xe) ✅
 
 As the repo owner,
 I want the desktop to actually use the GPU,
 So that GL apps, video, and screen recording work instead of silently falling back to software rendering.
 
-Issue: [#126](https://github.com/amasover/dotfiles/issues/126)
+Issue: [#126](https://github.com/amasover/dotfiles/issues/126) (closed, PR #127)
 
 Found while evaluating recorders for Story 3.10 — the whole session was running on llvmpipe,
 which is why every recorder looked broken. Two independent causes, applied and validated one at
@@ -380,6 +380,40 @@ acceleration. Diagnosis: [knowledge/errors/mesa-i965-override-forces-llvmpipe.md
 - Given both land, when `gsr-ui` runs, then it starts and records — closing out the live-capture half of Story 3.10
 
 **Evidence artifact:** before/after `glxinfo -B` + `Xorg.0.log` excerpts on the issue.
+
+---
+
+### Story 3.17: Migrate monitor names after the modesetting driver switch
+
+As the repo owner,
+I want the desktop's monitor-layout configs to use the `modesetting` driver's
+dashed output names,
+So that autorandr auto-switching and the polybar multi-monitor layouts work
+again after the 3.16 driver change.
+
+Issue: [#129](https://github.com/amasover/dotfiles/issues/129) · Origin: fallout from
+Story 3.16 (#126, PR #127), found during post-reboot verification. Not a regression to
+reverse — the driver switch was correct; the rename has to be followed through.
+
+Xorg outputs renamed `eDP1`/`HDMI1`/`DP1`/`DP1-1`/`DP1-2`/`VIRTUAL1` →
+`eDP-1`/`HDMI-1`/`DP-1`/`DP-2`. Broken by the rename: all six autorandr profiles
+(their EDID fingerprints are keyed by output name, so `autorandr --detected` matches
+nothing and dock/undock auto-switching is dead) and `.config/polybar/launch.sh`'s
+hardcoded layout table. Incidentally fixed by it: `~/.screenlayout/*.sh` already used
+dashed names. Unaffected: i3's monitor block (commented out, already dashed).
+
+**Acceptance criteria:**
+
+- Given each autorandr profile, when the corresponding monitors are attached, then the profile is re-saved under `modesetting` naming and `autorandr --detected` matches it
+- Given `.config/polybar/launch.sh`, when the layout table is updated to dashed output names, then each layout selects the intended bars
+- Given a profile cannot be re-created (hardware no longer available), then it is deleted or marked stale rather than left silently non-matching
+- Given the migration lands, when docs are updated, then the naming dependency is recorded so a future driver change does not silently break the same configs again
+
+Re-saving autorandr profiles needs the physical monitors, so this is attended
+work done per docking setup, not a single repo edit.
+
+**Evidence artifact:** `autorandr --detected` matching on each re-saved setup +
+the updated `launch.sh` layout table.
 
 ---
 
