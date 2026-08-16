@@ -100,6 +100,21 @@ $ printf 'aur-quarantine: p maintainer changed (a -> b).\n' | .local/bin/setup/b
 no-verdict
 $
 
+--- bootstrap --sync-fatal: deterministic sync failures are recognized (2.26) ---
+
+Lines that repeat identically on every retry must die on attempt 1. The
+provider prompt joined the list 2026-08-16 after burning 4 attempts live.
+
+$ printf ':: There are 2 providers available for libgl:\n' | .local/bin/setup/bootstrap --sync-fatal
+:: There are 2 providers available for libgl:
+$ printf 'error: unresolvable package conflicts detected\n' | .local/bin/setup/bootstrap --sync-fatal
+error: unresolvable package conflicts detected
+$ printf 'error: target not found: nosuchpkg\n' | .local/bin/setup/bootstrap --sync-fatal
+error: target not found: nosuchpkg
+$ printf 'warning: something transient\nerror: failed retrieving file\n' | .local/bin/setup/bootstrap --sync-fatal; echo "rc=$?"
+rc=0
+$
+
 --- aur-quarantine broken: a reason is required (rc 2) ---
 
 $ .local/bin/tools/aur-quarantine broken somepkg 2>&1; echo "rc=$?"

@@ -91,12 +91,21 @@ step_outcome() { # $1 = 1 if installed now, else 0; note on stdin
     fi
 }
 
+# Deterministic sync failures must die on attempt 1, not burn all 10 retries
+# (Story 2.26): resolver questions and declaration errors repeat identically
+# every attempt (the libgl provider prompt cost 4 attempts before this line
+# knew it, 2026-08-16). Sync log on stdin; prints the decisive line, if any.
+sync_fatal_line() {
+    grep -m1 -E 'unresolvable package conflicts detected|target not found:|There are [0-9]+ providers available for' || true
+}
+
 # Hidden test seams (tests/quarantine.clitest.txt), dispatched before the arg
 # loop and preconditions:
 #   --probe-provider PKG...        print "<declared>\t<provider>" per substitution
 #                                  (needs only pacman)
 #   --verdict-bucket CLASS REPO    print the pre-flight bucket for one verdict
 #   --step-outcome INSTALLED       classify one stepping attempt (note on stdin)
+#   --sync-fatal                   print the deterministic-fatal line from a sync log (stdin)
 if [[ "${1:-}" == "--probe-provider" ]]; then
     shift
     for p in "$@"; do
@@ -111,6 +120,10 @@ if [[ "${1:-}" == "--verdict-bucket" ]]; then
 fi
 if [[ "${1:-}" == "--step-outcome" ]]; then
     step_outcome "${2:-0}"
+    exit 0
+fi
+if [[ "${1:-}" == "--sync-fatal" ]]; then
+    sync_fatal_line
     exit 0
 fi
 
@@ -270,7 +283,9 @@ fi
 # "remove the conflicting provider?" prompt to yes, so a wrong provider
 # already on the system is replaced instead of killing the run; unattended is
 # VM-only (the metal gate above), so that auto-removal never touches metal.
-PROVIDER_PINS=(pipewire-jack) # extend when a new pre-build provider collision appears
+PROVIDER_PINS=(pipewire-jack libglvnd) # extend when a new pre-build provider collision appears
+# (jack2 2026-07-19; libgl 2026-08-16 — chaotic's nvidia-340xx-utils also provides it,
+#  and the resolver's "2 providers available" prompt hangs an unattended sync)
 say "Provider pins"
 if [[ $CHECK -eq 1 ]]; then
     echo "  would: pacman -S --needed ${PROVIDER_PINS[*]}   (declared providers install first, before any dep resolution picks one)"
@@ -743,8 +758,10 @@ elif [[ $UNATTENDED -eq 1 ]]; then
             last_held="$held_pkg"
             continue
         fi
-        fatal=$(grep -m1 -E 'unresolvable package conflicts detected|target not found:' "$sync_log" || true)
-        [[ -z "$fatal" ]] || die "sync failed deterministically — fix the declarations. Decisive line: $fatal"
+        fatal=$(sync_fatal_line <"$sync_log")
+        [[ -z "$fatal" ]] || die "sync failed deterministically — retrying cannot help. Decisive line: $fatal
+    'providers available' = a new provider ambiguity: pin the right provider (bootstrap PROVIDER_PINS) and declare it in a group.
+    Otherwise: fix the declarations."
         retry_delay=$((60 + attempt * 30))
         echo "bootstrap: sync attempt $attempt failed — retrying in ${retry_delay}s"
         # Purge corrupt built archives (e.g. truncated by a disk-full episode):
