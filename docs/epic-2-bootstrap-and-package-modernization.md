@@ -1188,6 +1188,47 @@ decision (no shim deferral line, or no shim at all).
 
 ---
 
+### Story 2.44: fresh installs come up with Secure Boot on — provisioning-time enrollment, self-maintaining signing
+
+As the repo owner,
+I want machines this repo provisions in the future to boot with Secure Boot
+enabled and a chain that re-signs itself on updates,
+So that boot verification is a property of the recipe from day one — not a
+hand-done afterthought that dies half-finished, which is exactly how the
+current workstation ended up unverified (the 2.43 audit, #136).
+
+Issue: [#139](https://github.com/amasover/dotfiles/issues/139) · Origin: the
+2.43 audit. **A provisioning story, not a fix for the current laptop** — it
+stays Secure-Boot-off unless Aaron later opts it in with the same tooling
+(its firmware is already in Setup Mode, so the door is open).
+
+Secure Boot joins the 2.29 (#95) recipe alongside partitions/LUKS/bootloader:
+firmware in Setup Mode as a provisioning precondition (fresh OVMF/VMware vars
+for VMs), keys enrolled at provision time, bootloader + kernels signed at
+install, and a pacman hook re-signing on every update. On metal, enrolling
+Microsoft's certificates alongside custom keys is the safe default (option
+ROMs; any dual-boot — the workstation's live Ubuntu chain is the cautionary
+example); pure VMs may skip them.
+
+**Decisions owed:** the route (`sbctl` custom keys — no shim, the strong
+default for repo-owned machines — vs shim+MOK); which machine classes
+enforce (daily-driver VM? harness throwaway guests probably not); interplay
+with 2.29's bootloader choice (changes what gets signed, not whether);
+whether the harness proves it (VMware and OVMF both support Secure Boot
+guests — a signed-chain guest run would be the evidence).
+
+**Acceptance criteria:**
+
+- Given the provisioning recipe, when it builds a machine, then Secure Boot is enforcing and the whole boot chain is signed — recorded route, declarations matching it
+- Given a kernel or bootloader update on such a machine, then it reboots fine with no manual signing step (hook-driven re-signing proven)
+- Given enforcement risk, then the recovery path (firmware fallback, rollback) is in the runbook before any machine flips enforcement
+- Given the current workstation, then it is explicitly out of scope, with its opt-in path noted
+
+**Evidence artifact:** a provisioned guest (or metal run) showing
+`mokutil --sb-state` enabled + a post-update reboot staying bootable.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

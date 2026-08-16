@@ -24,8 +24,3 @@ reason    = "DELETED from the AUR (empty repo, found 2026-08-16) — can never i
 broken_at = "0000000000000000000000000000000000000000"   # skip while the AUR commit still equals this
 since     = "2026-08-16"
 
-[shim-signed]
-reason    = "kept deferred at Aaron's call (2026-08-16) pending the 2.43 boot-chain audit (#136) — note the AUR recipe itself works again since 2026-07-31 (build-7 source URL verified live); un-defer via 2.43's decision, not by auto-retry"
-upstream  = "https://github.com/amasover/dotfiles/issues/136"
-broken_at = "2fb92b90a7b89c6f9807b4a1e92dedeec3803dcf"   # skip while the AUR commit still equals this
-since     = "2026-08-16"
