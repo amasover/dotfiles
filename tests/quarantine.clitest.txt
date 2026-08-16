@@ -2,10 +2,12 @@ Quarantine tooling shell-level tests (clitest — see tests/vm-harness.clitest.t
 header and knowledge/reference/clitest-shell-tests.md for format notes).
 
 Run from the repo root:   clitest tests/quarantine.clitest.txt
-Covers Stories 2.32/2.33/2.35 (#100/#103/#112): the metapac-declared parser,
-the aur-quarantine preflight CLI surface, the policy's version rendering, and
-the bootstrap seams — provider-substitution probe (stubbed pacman) and the
-pre-flight verdict bucketing.
+Covers Stories 2.32/2.33/2.35/2.38 (#100/#103/#112/#124): the metapac-declared
+parser, the aur-quarantine preflight CLI surface, the policy's version
+rendering, the bootstrap seams — provider-substitution probe (stubbed pacman),
+pre-flight verdict bucketing, the 2.38 step-outcome classifier — plus the
+known-broken CLI (broken/unbroken/broken-status/broken-list, offline via
+--at + AUR_KNOWN_BROKEN_FILE) and the filtered sync-config staging.
 Network-dependent behavior (live RPC verdicts) is deliberately untested here.
 
 --- metapac-declared: hostname_groups -> group files -> sorted union ---
@@ -78,6 +80,108 @@ $ .local/bin/setup/bootstrap --verdict-bucket missing ""
 missing
 $ .local/bin/setup/bootstrap --verdict-bucket age chaotic-aur
 age
+$
+
+--- bootstrap --step-outcome: the 2.38 hold classifier (update's note on stdin) ---
+
+"No version passes the window" is the tolerable wait answer — deferred, not
+fatal — and splits on whether an aged version is already installed. Build
+failures and unrecognized notes (identity holds) stay fatal in the callers.
+
+$ printf 'aur-quarantine: p has no version older than 14d that is newer than none — nothing to step to yet.\n' | .local/bin/setup/bootstrap --step-outcome 0
+defer-missing
+$ printf 'aur-quarantine: p has no version older than 14d that is newer than 1.0-1 — nothing to step to yet.\n' | .local/bin/setup/bootstrap --step-outcome 1
+defer-upgrade
+$ printf 'aur-quarantine: base @ 12345678 failed (deps/build/source/install) — not installed.\n' | .local/bin/setup/bootstrap --step-outcome 0
+build-failed
+$ printf 'aur-quarantine: building p 1.2-1 (pinned 12345678; installed: none)...\naur-quarantine: p updated to 1.2-1.\n' | .local/bin/setup/bootstrap --step-outcome 1
+stepped
+$ printf 'aur-quarantine: p maintainer changed (a -> b).\n' | .local/bin/setup/bootstrap --step-outcome 0
+no-verdict
+$
+
+--- aur-quarantine broken: a reason is required (rc 2) ---
+
+$ .local/bin/tools/aur-quarantine broken somepkg 2>&1; echo "rc=$?"
+usage: aur-quarantine broken PKG --reason STR [--upstream URL] [--at SHA [--base PKGBASE]]
+aur-quarantine: a known-broken entry is a recorded human decision — the reason is not optional.
+rc=2
+$
+
+--- broken --at records offline (2.38); quotes in the reason are sanitized ---
+
+$ kbdir=$(mktemp -d) && export AUR_KNOWN_BROKEN_FILE="$kbdir/known-broken.toml" && .local/bin/tools/aur-quarantine broken sspkg --reason 'build fails against ffmpeg 9 — "sample_fmts" removed' --upstream "https://example.invalid/pr/1" --at 7f050b6e1111222233334444555566667777aaaa 2>&1 | sed "s|$kbdir|KB|"
+aur-quarantine: sspkg recorded known-broken at 7f050b6e — unattended runs skip it while the AUR commit is unchanged, and auto-retry once upstream moves.
+    entry: KB/known-broken.toml — repo-tracked, commit it (yadm add / git add)
+    undo:  aur-quarantine unbroken sspkg
+$ .local/bin/tools/aur-quarantine broken-list | sed "s|$(date +%F)|DATE|" | tr '\t' '|'
+sspkg|sspkg|7f050b6e1111222233334444555566667777aaaa|DATE|build fails against ffmpeg 9 — 'sample_fmts' removed
+$
+
+--- broken-status: the pure two-SHA decision — skip / retry / absent ---
+
+$ .local/bin/tools/aur-quarantine broken-status sspkg 7f050b6e1111222233334444555566667777aaaa | cut -f1
+skip
+$ .local/bin/tools/aur-quarantine broken-status sspkg beefbeef0000000000000000000000000000cafe | cut -f1
+retry
+$ .local/bin/tools/aur-quarantine broken-status neverheardof cafecafe
+absent
+$
+
+--- broken-status: an 8-char hand-authored broken_at prefix-matches a full commit ---
+
+$ printf '\n[handpkg]\nreason = "typed by hand"\nbroken_at = "12ab34cd"\n' >> "$AUR_KNOWN_BROKEN_FILE" && .local/bin/tools/aur-quarantine broken-status handpkg 12ab34cd9999888877776666555544443333aaaa | cut -f1
+skip
+$
+
+--- broken: dotted names get quoted TOML sections and still round-trip ---
+
+$ .local/bin/tools/aur-quarantine broken relic-2.1 --reason "relic" --at abcdef1234567890abcdef1234567890abcdef12 2>/dev/null; .local/bin/tools/aur-quarantine broken-status relic-2.1 abcdef12 | cut -f1
+skip
+$
+
+--- unbroken removes only its entry; unknown package is rc 1 ---
+
+$ .local/bin/tools/aur-quarantine unbroken sspkg 2>&1
+aur-quarantine: sspkg is no longer known-broken — the next run builds it normally.
+$ .local/bin/tools/aur-quarantine unbroken sspkg 2>&1 | sed "s|$kbdir|KB|"; .local/bin/tools/aur-quarantine unbroken sspkg 2>/dev/null || echo "rc=$?"
+aur-quarantine: no known-broken entry for 'sspkg' in KB/known-broken.toml
+rc=1
+$ .local/bin/tools/aur-quarantine broken-list | cut -f1 | sort | paste -sd' '
+handpkg relic-2.1
+$ unset AUR_KNOWN_BROKEN_FILE
+$
+
+--- metapac-filtered-config: drops named declarations, re-points machine-local (2.38) ---
+
+The staged copy is what `metapac --config-dir` syncs against: named packages
+must vanish from every group INCLUDING the absolute-path machine-local group,
+dots in names must not act as regex wildcards, and a name declared nowhere is
+a note, not an error. metapac-declared over the staged dir proves the net set.
+
+$ f=$(mktemp -d) && mkdir -p "$f/src/groups" && printf '[hostname_groups]\n"h" = [\n  "alpha",\n  "%s/src/local.toml",\n]\n' "$f" > "$f/src/config.toml" && printf '[arch]\npackages = [\n  "keep-pkg",\n  "drop-pkg",  # trailing comments are house style (the valkey line)\n  "lua5.1-style",\n]\n' > "$f/src/groups/alpha.toml" && printf '[arch]\npackages = [\n  "drop-pkg",\n  "local-keep",\n]\n' > "$f/src/local.toml" && .local/bin/tools/metapac-filtered-config --config-dir "$f/src" "$f/out" drop-pkg lua5.1-style nosuch-pkg | sort
+filtered: drop-pkg (2 declaration line(s))
+filtered: lua5.1-style (1 declaration line(s))
+filtered: nosuch-pkg (declared nowhere — nothing to drop)
+$ .local/bin/tools/metapac-declared --config-dir "$f/out" --hostname h
+keep-pkg
+local-keep
+$
+
+--- metapac-filtered-config: zero names is a faithful copy ---
+
+$ .local/bin/tools/metapac-filtered-config --config-dir "$f/src" "$f/plain" && diff "$f/src/groups/alpha.toml" "$f/plain/groups/alpha.toml" && echo same
+same
+$
+
+--- metapac-filtered-config: a relative DEST still writes absolute group paths ---
+
+metapac resolves relative paths in config.toml against its groups dir, so the
+re-pointed machine-local path must come out absolute no matter how DEST was
+spelled (found live: a relative DEST made metapac error on groups/<dest>/...).
+
+$ mkdir -p "$f/rel" && (cd "$f/rel" && "$OLDPWD/.local/bin/tools/metapac-filtered-config" --config-dir "$f/src" out drop-pkg >/dev/null) && grep -o '"/[^"]*abs-group[^"]*"' "$f/rel/out/config.toml" | sed "s|$f|F|"
+"F/rel/out/abs-group-1-local.toml"
 $
 
 End of tests.

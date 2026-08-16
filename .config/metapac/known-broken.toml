@@ -1,0 +1,11 @@
+# known-broken — declared packages a human has verified cannot build right now
+# (Story 2.38, #124). An unattended run SKIPS a listed package while the AUR
+# commit still equals broken_at, instead of dying on its build; once upstream
+# moves (any new commit) the build is retried automatically, and a success is
+# reported loudly with the `unbroken` remedy. Repo-tracked on purpose: a fresh
+# guest inherits this via ordinary yadm clone.
+#
+# Entries are a recorded human decision — never written by a failure. Manage
+# them with the CLI, which resolves the commit and stamps the date:
+#   aur-quarantine broken PKG --reason "..." [--upstream URL]
+#   aur-quarantine unbroken PKG

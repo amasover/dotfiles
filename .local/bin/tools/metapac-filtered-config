@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# metapac-filtered-config — stage a filtered copy of the metapac config for one
+# sync (Story 2.38).
+#
+# Copies config.toml plus every group file (groups/*.toml and the absolute-path
+# groups referenced from config.toml, e.g. machine-local) into DEST, dropping
+# the declaration lines of the named packages. `metapac --config-dir DEST sync`
+# then cannot request them — which is the only reliable way to hold a package
+# out of a transaction: both install gates (yay AURPreInstall, the chaotic alpm
+# hook) can only abort a whole transaction, never excise one target. The real
+# config is untouched, so drift reporting still sees the full declared set.
+#
+# Usage: metapac-filtered-config [--config-dir SRC] DEST [PKG...]
+#   SRC   defaults to ~/.config/metapac
+#   DEST  created/overwritten; safe to re-stage into the same directory
+#   PKG   zero names = plain copy
+#
+# Prints one "filtered:" line per package (with the dropped-line count; a name
+# declared nowhere says so — not an error). Exits nonzero only on a broken
+# source config.
+set -euo pipefail
+
+src="$HOME/.config/metapac"
+if [[ "${1:-}" == --config-dir ]]; then
+    src="${2:?--config-dir needs a path}"
+    shift 2
+fi
+dest="${1:-}"
+[[ -n "$dest" ]] || { echo "usage: metapac-filtered-config [--config-dir SRC] DEST [PKG...]" >&2; exit 2; }
+shift
+# Absolute on purpose: DEST lands inside the staged config.toml as the
+# machine-local group's path, and metapac resolves relative paths against its
+# groups dir — a relative DEST would point at a file that isn't there.
+dest=$(realpath -m "$dest")
+[[ -f "$src/config.toml" ]] || { echo "metapac-filtered-config: no config.toml under $src" >&2; exit 1; }
+
+mkdir -p "$dest/groups"
+
+# One extended regex matching any of the names' declaration lines, e.g.
+#   "pkg",   or   "pkg"
+# Package names are [a-z0-9@._+-]; escape the regex-active ones.
+declare -A dropped=()
+pat=""
+for p in "$@"; do
+    dropped[$p]=0
+    esc=$(printf '%s' "$p" | sed 's/[][\.|$(){}?+*^]/\\&/g')
+    pat+="${pat:+|}$esc"
+done
+
+filter_into() { # $1=src file, $2=dest file — copy minus the named declarations
+    if [[ -z "$pat" ]]; then
+        cp "$1" "$2"
+        return 0
+    fi
+    # trailing comments are part of the house group style ("valkey",  # why)
+    grep -Ev "^[[:space:]]*\"(${pat})\",?[[:space:]]*(#.*)?$" "$1" > "$2" || true
+    # per-package audit counts (grep -c per name is clearer than parsing diff)
+    local p esc n
+    for p in "${!dropped[@]}"; do
+        esc=$(printf '%s' "$p" | sed 's/[][\.|$(){}?+*^]/\\&/g')
+        n=$(grep -Ec "^[[:space:]]*\"${esc}\",?[[:space:]]*(#.*)?$" "$1" || true)
+        dropped[$p]=$(( dropped[$p] + n ))
+    done
+}
+
+for f in "$src"/groups/*.toml; do
+    [[ -f "$f" ]] || continue
+    filter_into "$f" "$dest/groups/$(basename "$f")"
+done
+
+# config.toml: keep everything, but re-point absolute-path group references
+# (the machine-local group) at filtered copies inside DEST. Entries may omit
+# the .toml suffix (metapac resolves either) — mirror that here.
+i=0
+: > "$dest/config.toml"
+while IFS= read -r line; do
+    abs=$(sed -n 's/.*"\(\/[^"]*\)".*/\1/p' <<<"$line")
+    resolved=""
+    if [[ -n "$abs" && "$abs" != "$dest"* ]]; then
+        if [[ -f "$abs" ]]; then resolved="$abs"
+        elif [[ -f "$abs.toml" ]]; then resolved="$abs.toml"
+        fi
+    fi
+    if [[ -n "$resolved" ]]; then
+        i=$((i + 1))
+        copy="$dest/abs-group-$i-$(basename "${resolved%.toml}").toml"
+        filter_into "$resolved" "$copy"
+        line=${line/"\"$abs\""/"\"$copy\""}
+    fi
+    printf '%s\n' "$line"
+done < "$src/config.toml" >> "$dest/config.toml"
+
+for p in "${!dropped[@]}"; do
+    if (( dropped[$p] > 0 )); then
+        echo "filtered: $p (${dropped[$p]} declaration line(s))"
+    else
+        echo "filtered: $p (declared nowhere — nothing to drop)"
+    fi
+done

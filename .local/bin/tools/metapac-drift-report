@@ -52,7 +52,18 @@ else
 fi
 
 # 2. declared-but-missing — declared in some group, not installed at all.
-missing=$(comm -13 <(pacman -Qq | sort) <(printf '%s\n' "$declared") | sed '/^$/d' || true)
+# Known-broken and age-deferred names (Story 2.38) split into their own
+# sections below, so `missing` stays surprising enough to stay useful.
+kb_rows=$("$HOME/.local/bin/tools/aur-quarantine" broken-list 2>/dev/null || true)
+def_file="${XDG_STATE_HOME:-$HOME/.local/state}/aur-quarantine/deferred.tsv"
+held_names=$({
+    cut -f1 <<<"$kb_rows"
+    cut -f1 "$def_file" 2>/dev/null
+    true
+} | sed '/^$/d' | sort -u)
+
+missing_all=$(comm -13 <(pacman -Qq | sort) <(printf '%s\n' "$declared") | sed '/^$/d' || true)
+missing=$(comm -23 <(printf '%s\n' "$missing_all") <(printf '%s\n' "$held_names") | sed '/^$/d' || true)
 if [[ -n "$missing" ]]; then
     echo
     echo " [!] declared but not installed:"
@@ -60,6 +71,30 @@ if [[ -n "$missing" ]]; then
     echo "     apply:  metapac sync   (prompts before acting)"
 else
     echo " [ok] declared-but-missing: none"
+fi
+
+# 2b. known-broken — human-recorded unbuildable packages (runs skip them while
+# the AUR commit is unmoved). Showing `since` keeps entry age visible: stale
+# entries are a person's job to retire, by design (no time-based retry).
+if [[ -n "$kb_rows" ]]; then
+    echo
+    echo " [!] known-broken (runs skip these; auto-retried when upstream moves):"
+    while IFS=$'\t' read -r kp _ kat ksince kreason; do
+        [[ -n "$kp" ]] || continue
+        printf '     %s — since %s (at %.8s): %s\n' "$kp" "${ksince:-?}" "${kat:-?}" "${kreason:-no reason recorded}"
+    done <<<"$kb_rows"
+    echo "     builds again?  aur-quarantine unbroken <pkg>   — force one attempt: bootstrap --unattended --retry-broken"
+fi
+
+# 2c. age-deferred — the last unattended run's wait-holds; converge by
+# themselves once a version ages past the quarantine window.
+if [[ -s "$def_file" ]] && grep -q $'\tage\t' "$def_file"; then
+    echo
+    echo " [i] age-deferred (as of the last unattended run, $(date -r "$def_file" +'%F %H:%M')):"
+    while IFS=$'\t' read -r dp dc dw; do
+        [[ "$dc" == age ]] || continue
+        printf '     %s — %s\n' "$dp" "$dw"
+    done <"$def_file"
 fi
 
 # 3. inbox triage nudge — captured installs waiting for a real group.
