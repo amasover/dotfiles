@@ -95,7 +95,6 @@ packages = [
   "sed",
   "shadow",
   "sharutils",
-  "shim-signed",
   "sudo",
   "sysfsutils",
   "systemd",
