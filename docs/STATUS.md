@@ -53,11 +53,6 @@ Facts:
 - **2.25 dotnet repo stack** ([#82](https://github.com/amasover/dotfiles/issues/82)): open for the
   gated host live swap + the `dotnet-runtime-2.1`/`2.2` relic decision; four repo names drift
   declared-but-missing until then.
-- **Aaron's pending live steps**: chaotic adoption (chaotic-keyring/-mirrorlist not yet
-  installed) and the redis→valkey host swap (redis still installed, valkey absent — 2.23's issue
-  auto-closed with the declaration PR, so this line is the swap's only tracker), both via
-  attended bootstrap/sync (2.28/2.23). The yadm-side steps are done — `core.hooksPath .githooks`
-  set (4.4) and the archive refreshed 2026-08-11 (4.9).
 - **Direction (2026-07-10 grill)**: cleanup era ends at the daily-driver rebuild (a VMware VM
   on the Windows machine, not metal first) + the 1.8 work-machine steps. Record:
   [decision-daily-driver-vm.md](./decision-daily-driver-vm.md), PRD §4 eras, runbook checklist.
@@ -121,6 +116,14 @@ Facts:
   machine runs the full suite (4.7's [#94](https://github.com/amasover/dotfiles/issues/94)
   concern, and 4.10's [#133](https://github.com/amasover/dotfiles/issues/133), whose driver
   tests would need `pwsh`).
+- **Both remaining live steps completed later the same session**: Aaron swapped the host to
+  valkey (9.1.1 verified installed, redis gone), and chaotic-aur was enabled on the workstation
+  via a one-shot root script mirroring bootstrap §5b — gate hook symlinked first (observed
+  firing on the enable transaction itself), key lsigned, keyring + mirrorlist installed,
+  `[chaotic-aur]` appended to pacman.conf, DBs synced (repo carries ~3.2k packages). The 2.35
+  declared-but-missing drift for the chaotic infra packages is resolved; the next attended
+  `metapac` sync can pull chaotic binaries, still age-gated. No pending live steps remain —
+  the yadm-side ones (4.4 hooksPath, 4.9 archive refresh) were already done.
 
 ## Epics
 
