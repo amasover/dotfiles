@@ -1097,6 +1097,36 @@ via `vm-harness-guest`.
 
 ---
 
+### Story 2.42: metapac 0.10 prints `unmanaged` as one-line inline TOML — the quoted-name seds silently no-op
+
+As the repo owner,
+I want the tooling that parses `metapac unmanaged` to read metapac 0.10's
+actual output shape,
+So that bootstrap's dep-retagging repair and the drift report's unmanaged
+listing work again instead of silently doing nothing.
+
+Issue: [#135](https://github.com/amasover/dotfiles/issues/135) · Origin: found
+live during Story 2.38 (#124) implementation, 2026-08-15. `metapac unmanaged`
+(0.10.0) prints one inline-TOML line — `arch = { packages = ["a", "b"] }` —
+while two consumers extract names with a sed matching only the old
+one-quoted-name-per-line shape: bootstrap 6b's explicit-but-undeclared
+dep-retagging loop (whose own comment predicted exactly this failure) and
+metapac-drift-report's unmanaged listing (header prints, names don't). **Not
+broken:** the vm-harness-guest `check` hard gate — empty unmanaged prints zero
+bytes, so the exactly-empty assert still works (verified live) — and the 2.38
+drift buckets, which never parse `unmanaged`.
+
+**Acceptance criteria:**
+
+- Given one shared name-extraction seam, when `metapac unmanaged` output is parsed, then both the one-line inline-TOML shape and the legacy per-line shape yield the same names, with clitest fixtures for both
+- Given bootstrap 6b, then explicit-but-undeclared packages with a requirer are dep-marked again
+- Given metapac-drift-report, then the unmanaged section lists names again when drift exists
+
+**Evidence artifact:** a drift report listing real unmanaged names on a
+machine with known drift, plus the green clitest fixtures.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

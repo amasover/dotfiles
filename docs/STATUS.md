@@ -72,11 +72,13 @@ Facts:
   ([#132](https://github.com/amasover/dotfiles/issues/132)) and **4.10** driver tests
   ([#133](https://github.com/amasover/dotfiles/issues/133)). 2.37 still waits on 2.29/2.30.
 - **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), in progress
-  on `story/2.38-unattended-age-holds`, re-cut off `main` 2026-08-15): the original spec branch
-  was **lost unpushed** (absent from GitHub and the Windows machine); the epic 2 stub is rebuilt
-  from #124's body, which preserved the full design — acceptance criteria re-derived, Aaron to
-  eyeball. Linux-side work; `lua5.1` + clitest confirmed present here. 2.36 evidence-run blockers
-  unchanged: `shim-signed` (koji 404) and `playwright` (see 2.39).
+  on `story/2.38-unattended-age-holds`): **implementation code-complete on the branch** —
+  known-broken CLI (`aur-quarantine broken/unbroken/broken-status/broken-list`), age-deferral in
+  pre-flight + sync loop, filtered `metapac --config-dir` staging (`metapac-filtered-config`),
+  drift-report buckets; clitest 88→109, all green; live read-only probes validated the staging
+  against real metapac. Owed: Aaron's eyeball on the re-derived AC, branch push + PR, and the
+  evidence artifact (a harness run held on `shim-signed`/`playwright` reaching
+  `=== bootstrap done rc=0`; needs a `broken` entry for shim-signed authored on the run's repo).
 - **2.39 quarantine pin is defeatable** ([#130](https://github.com/amasover/dotfiles/issues/130)):
   a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
   pin with the newest upstream. Spec now in epic 2. **Blocked**: the grill's policy-options
@@ -124,6 +126,14 @@ Facts:
   declared-but-missing drift for the chaotic infra packages is resolved; the next attended
   `metapac` sync can pull chaotic binaries, still age-gated. No pending live steps remain —
   the yadm-side ones (4.4 hooksPath, 4.9 archive refresh) were already done.
+- **2.38 implemented** (same session, see its entry). Two finds along the way: PR #128 had
+  committed `vm-harness-guest` without its executable bit (Windows git; fixed on the 2.38
+  branch — its 12 clitest cases were failing on `main`), and metapac 0.10's one-line
+  `unmanaged` output silently no-ops the quoted-name seds in bootstrap 6b and the drift
+  report → spun out as **2.42** ([#135](https://github.com/amasover/dotfiles/issues/135), with
+  epic stub). The guest check's exactly-empty gate is unaffected (verified live). Live drift
+  noticed while probing: `libnm` + `networkmanager` are explicitly installed but declared
+  nowhere — Aaron's triage, likely 3.9 (#41) fallout.
 
 ## Epics
 
