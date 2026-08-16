@@ -31,15 +31,21 @@
 #                     gate (alpm hooks can't see user env, so no env bypass).
 #   broken PKG --reason STR [--upstream URL]
 #                     record PKG as known-broken at its CURRENT AUR commit
-#                     (Story 2.38): unattended runs then SKIP it while the
-#                     commit is unchanged, instead of dying on its build. A
-#                     human decision — reason required, never auto-recorded.
+#                     (Story 2.38): unattended runs then SKIP it while no
+#                     FIXED version has aged past the quarantine window,
+#                     instead of dying on its build. A human decision —
+#                     reason required, never auto-recorded.
 #                     Offline/tests: --at SHA [--base PKGBASE] skips the network.
 #   unbroken PKG      remove PKG's known-broken entry (it builds again).
 #   broken-status PKG SHA
 #                     decide skip|retry|absent from PKG's entry vs SHA — a pure
 #                     function of two repo-visible facts, no network, no state.
 #   broken-current PKG  print PKG's current AUR pkgbase commit (network).
+#   broken-fix PKG    is there an aged commit NEWER than PKG's broken_at whose
+#                     version beats the installed one? rc 0 + "sha<TAB>ver" if
+#                     so (a retry can build something other than the recipe
+#                     already known broken), rc 1 otherwise. Network (fetches
+#                     the AUR clone); tests: --repo DIR skips the fetch.
 #   broken-list       dump known-broken entries as TSV:
 #                     pkg<TAB>base<TAB>broken_at<TAB>since<TAB>reason
 #   build BASE SHA    (internal) build+install pkgbase BASE at AUR git commit SHA.
@@ -129,11 +135,16 @@ kb_remove() {                   # drop $1's section; everything else verbatim
     ' "$kb_file" > "$kb_file.tmp" && mv "$kb_file.tmp" "$kb_file"
 }
 sha_match() {                   # $1/$2: full or abbreviated commit ids
-    [[ -n $1 && -n $2 ]] || return 1
-    [[ $1 == "$2"* || $2 == "$1"* ]]
+    # case-normalized: git prints lowercase, but a hand-typed uppercase
+    # broken_at must still match (else the entry silently never skips)
+    local a=${1,,} b=${2,,}
+    [[ -n $a && -n $b ]] || return 1
+    [[ $a == "$b"* || $b == "$a"* ]]
 }
 aur_head() {                    # $1=pkgbase -> its current AUR commit, exactly one line
-    git ls-remote "https://aur.archlinux.org/$1.git" HEAD 2>/dev/null | head -1 | cut -f1
+    # timeout: a black-holed network must not hang an unattended run for
+    # TCP-stack minutes per package (curl paths already cap at 20s)
+    timeout 20 git ls-remote "https://aur.archlinux.org/$1.git" HEAD 2>/dev/null | head -1 | cut -f1
 }
 
 fetch_repo() {                  # $1=pkgbase -> ensures clone in cache; echoes its path
@@ -165,6 +176,25 @@ target_at_or_before() {         # $1=repo_dir $2=cutoff_epoch $3=installed_ver
         return 1   # newest aged version isn't newer than installed -> nothing to step to
     done < <(git -C "$dir" log --format='%H %ct' -- .SRCINFO)
     return 1
+}
+
+# Known-broken retry gate (Story 2.38 review fix): the aged build target, but
+# only if it POSTDATES broken_at. Without this, any third-party push moved the
+# AUR head, the retry rebuilt the newest *aged* recipe — the broken one itself
+# — and the failed build turned every unattended run fatal for a quarantine
+# window's worth of days. Echoes "sha<TAB>ver" (rc 0) only when the target is
+# strictly newer than broken_at; a broken_at the clone no longer contains
+# (history rewrite) can't be ordered against, and a rewritten recipe is new
+# content, so a non-matching target counts as newer then.
+fix_target_after() {            # $1=repo_dir $2=cutoff_epoch $3=broken_at $4=installed_ver
+    local dir=$1 cutoff=$2 bat=$3 inst=$4 res sha
+    res=$(target_at_or_before "$dir" "$cutoff" "$inst") || return 1
+    sha=${res%%$'\t'*}
+    sha_match "$bat" "$sha" && return 1     # the recipe already known broken
+    if git -C "$dir" cat-file -e "${bat}^{commit}" 2>/dev/null; then
+        git -C "$dir" merge-base --is-ancestor "$bat" "$sha" 2>/dev/null || return 1
+    fi
+    printf '%s\n' "$res"
 }
 
 cmd_seed() {
@@ -328,7 +358,9 @@ cmd_broken() {                  # record a human known-broken decision (Story 2.
         return 2
     fi
     reason=${reason//$'\t'/ }; reason=${reason//$'\n'/ }; reason=${reason//\"/\'}
-    upstream=${upstream//\"/}
+    # same treatment as reason: a pasted newline here would inject raw TOML
+    # lines (a foreign [section] could even steal the broken_at stamp)
+    upstream=${upstream//$'\t'/ }; upstream=${upstream//$'\n'/ }; upstream=${upstream//\"/}
     if [[ -z $at ]]; then
         local line
         line=$(rpc_info "$pkg" | head -1)
@@ -345,6 +377,7 @@ cmd_broken() {                  # record a human known-broken decision (Story 2.
     # twice), and a newline inside broken_at is malformed TOML
     [[ $at =~ ^[0-9a-fA-F]{4,40}$ ]] \
         || { echo "aur-quarantine: '$at' is not a commit id (4-40 hex chars, one line)." >&2; return 1; }
+    at=${at,,}                  # git shas are lowercase; an uppercase stamp would never match
     [[ -n $base ]] || base="$pkg"
     kb_remove "$pkg"
     mkdir -p "$(dirname "$kb_file")"
@@ -363,7 +396,7 @@ cmd_broken() {                  # record a human known-broken decision (Story 2.
         printf 'since     = "%s"\n' "$(date +%F)"
         [[ $base == "$pkg" ]] || printf 'base      = "%s"\n' "$base"
     } >> "$kb_file"
-    echo "aur-quarantine: $pkg recorded known-broken at ${at:0:8} — unattended runs skip it while the AUR commit is unchanged, and auto-retry once upstream moves." >&2
+    echo "aur-quarantine: $pkg recorded known-broken at ${at:0:8} — unattended runs skip it, and auto-retry once a NEWER version ages past the quarantine window." >&2
     echo "    entry: $kb_file — repo-tracked, commit it (yadm add / git add)" >&2
     echo "    undo:  aur-quarantine unbroken $pkg" >&2
 }
@@ -389,6 +422,29 @@ cmd_broken_status() {           # PKG SHA -> skip|retry|absent (+detail); no net
     else
         printf 'retry\t%s\t%s\n' "$at" "$reason"
     fi
+}
+
+cmd_broken_fix() {              # PKG [--repo DIR] -> aged fix newer than broken_at, or rc 1
+    local pkg="" repo=""
+    while (( $# )); do
+        case "$1" in
+            --repo) repo="${2:-}"; shift; shift ;;
+            *)      if [[ -n $pkg || $1 == -* ]]; then pkg=""; break; fi
+                    pkg="$1"; shift ;;
+        esac
+    done
+    [[ -n $pkg ]] || { echo "usage: aur-quarantine broken-fix PKG [--repo DIR]" >&2; return 2; }
+    local row base at inst cutoff
+    row=$(kb_row "$pkg")
+    [[ -n $row ]] || { echo "aur-quarantine: no known-broken entry for '$pkg'." >&2; return 2; }
+    IFS=$'\t' read -r _ base at _ _ <<<"$row"
+    [[ -n $at ]] || { echo "aur-quarantine: '$pkg' entry has no broken_at." >&2; return 2; }
+    if [[ -z $repo ]]; then
+        repo=$(fetch_repo "$base") || { echo "aur-quarantine: could not fetch AUR git ($base)." >&2; return 1; }
+    fi
+    inst=$("$PACMAN" -Q "$pkg" 2>/dev/null | awk '{print $2}')
+    cutoff=$(( $(date +%s) - ${AUR_QUARANTINE_DAYS:-14}*86400 ))
+    fix_target_after "$repo" "$cutoff" "$at" "$inst"
 }
 
 cmd_broken_current() {          # PKG -> current AUR pkgbase commit (network)
@@ -418,8 +474,9 @@ case "${1:-}" in
     unbroken)     shift; cmd_unbroken "$@" ;;
     broken-status)  shift; cmd_broken_status "$@" ;;
     broken-current) shift; cmd_broken_current "$@" ;;
+    broken-fix)   shift; cmd_broken_fix "$@" ;;
     broken-list)  kb_rows ;;
     build)        shift; cmd_build "$@" ;;
     -h|--help|"") grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//' ;;
-    *)            echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|preflight|bypass-once|broken|unbroken|broken-status|broken-current|broken-list|build)" >&2; exit 2 ;;
+    *)            echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|preflight|bypass-once|broken|unbroken|broken-status|broken-current|broken-fix|broken-list|build)" >&2; exit 2 ;;
 esac

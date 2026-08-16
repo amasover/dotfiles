@@ -1,7 +1,10 @@
 # known-broken — declared packages a human has verified cannot build right now
 # (Story 2.38, #124). An unattended run SKIPS a listed package while the AUR
-# commit still equals broken_at, instead of dying on its build; once upstream
-# moves (any new commit) the build is retried automatically, and a success is
+# commit still equals broken_at, instead of dying on its build. Once upstream
+# moves, the build is retried automatically only when a commit NEWER than
+# broken_at has aged past the quarantine window (any earlier retry could only
+# rebuild the recipe already known broken); until then the run keeps skipping
+# and prints the waiting fix with an unbroken+auto remedy. A retry success is
 # reported loudly with the `unbroken` remedy. Repo-tracked on purpose: a fresh
 # guest inherits this via ordinary yadm clone.
 #

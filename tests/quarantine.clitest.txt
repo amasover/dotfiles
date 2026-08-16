@@ -115,6 +115,18 @@ $ printf 'warning: something transient\nerror: failed retrieving file\n' | .loca
 rc=0
 $
 
+--- bootstrap --sync-fatal: 'target not found' needs pacman's error: prefix ---
+
+A PKGBUILD echoing the bare phrase mid-build must not kill a recoverable run
+on attempt 1; pacman's real line always carries the "error:" prefix, possibly
+with an SGR color reset between prefix and phrase (the pty keeps colors on).
+
+$ printf 'checking... target not found: some-optional-lib, continuing\n' | .local/bin/setup/bootstrap --sync-fatal; echo "rc=$?"
+rc=0
+$ printf '\033[1;31merror:\033[0m target not found: foo\n' | .local/bin/setup/bootstrap --sync-fatal | sed 's/\x1b/E/g'
+E[1;31merror:E[0m target not found: foo
+$
+
 --- aur-quarantine broken: a reason is required (rc 2) ---
 
 $ .local/bin/tools/aur-quarantine broken somepkg 2>&1; echo "rc=$?"
@@ -126,7 +138,7 @@ $
 --- broken --at records offline (2.38); quotes in the reason are sanitized ---
 
 $ kbdir=$(mktemp -d) && export AUR_KNOWN_BROKEN_FILE="$kbdir/known-broken.toml" && .local/bin/tools/aur-quarantine broken sspkg --reason 'build fails against ffmpeg 9 — "sample_fmts" removed' --upstream "https://example.invalid/pr/1" --at 7f050b6e1111222233334444555566667777aaaa 2>&1 | sed "s|$kbdir|KB|"
-aur-quarantine: sspkg recorded known-broken at 7f050b6e — unattended runs skip it while the AUR commit is unchanged, and auto-retry once upstream moves.
+aur-quarantine: sspkg recorded known-broken at 7f050b6e — unattended runs skip it, and auto-retry once a NEWER version ages past the quarantine window.
     entry: KB/known-broken.toml — repo-tracked, commit it (yadm add / git add)
     undo:  aur-quarantine unbroken sspkg
 $ .local/bin/tools/aur-quarantine broken-list | sed "s|$(date +%F)|DATE|" | tr '\t' '|'
@@ -169,6 +181,26 @@ $ .local/bin/tools/aur-quarantine broken relic-2.1 --reason "relic" --at abcdef1
 skip
 $
 
+--- broken --at: uppercase hex is accepted but stamped lowercase (else it never matches) ---
+
+$ .local/bin/tools/aur-quarantine broken upperpkg --reason "typed from a web page" --at ABCDEF12ABCDEF12ABCDEF12ABCDEF12ABCDEF12 >/dev/null 2>&1; .local/bin/tools/aur-quarantine broken-status upperpkg abcdef12abcdef12abcdef12abcdef12abcdef12 | cut -f1
+skip
+$ .local/bin/tools/aur-quarantine unbroken upperpkg >/dev/null 2>&1
+$
+
+--- broken --upstream: newlines cannot inject raw TOML lines ---
+
+The reason was always sanitized; the upstream URL takes the same treatment —
+a pasted multi-line value must collapse into one line, never become a foreign
+[section] that steals the broken_at stamp.
+
+$ .local/bin/tools/aur-quarantine broken injpkg --reason r --upstream "$(printf 'http://x\n[hijack]\nreason = "fake"')" --at 1234abcd1234abcd1234abcd1234abcd1234abcd >/dev/null 2>&1; .local/bin/tools/aur-quarantine broken-list | cut -f1 | sort | paste -sd' '
+handpkg injpkg relic-2.1 sspkg
+$ .local/bin/tools/aur-quarantine broken-status injpkg 1234abcd1234abcd1234abcd1234abcd1234abcd | cut -f1
+skip
+$ .local/bin/tools/aur-quarantine unbroken injpkg >/dev/null 2>&1
+$
+
 --- unbroken removes only its entry; unknown package is rc 1 ---
 
 $ .local/bin/tools/aur-quarantine unbroken sspkg 2>&1
@@ -178,6 +210,30 @@ aur-quarantine: no known-broken entry for 'sspkg' in KB/known-broken.toml
 rc=1
 $ .local/bin/tools/aur-quarantine broken-list | cut -f1 | sort | paste -sd' '
 handpkg relic-2.1
+$ unset AUR_KNOWN_BROKEN_FILE
+$
+
+--- broken-fix: retry only when an aged commit NEWER than broken_at exists (2.38 review) ---
+
+A moved AUR head alone must not trigger a retry: the newest window-passing
+recipe is still the broken one, and rebuilding it turned every unattended run
+fatal for a window's worth of days after any third-party push. A local git
+history stands in for the AUR clone (--repo skips the fetch). First: head
+moved, but only by a commit too new for the window — keep waiting (rc 1).
+
+$ g=$(mktemp -d) && export AUR_KNOWN_BROKEN_FILE="$g/kb.toml" && git -C "$g" init -qb main && printf 'pkgver = 1.0\npkgrel = 1\n' > "$g/.SRCINFO" && git -C "$g" add .SRCINFO && GIT_COMMITTER_DATE=2020-01-01T00:00:00Z git -C "$g" -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm broken && .local/bin/tools/aur-quarantine broken gitpkg --reason r --at "$(git -C "$g" rev-parse HEAD)" >/dev/null 2>&1; echo ok
+ok
+$ printf 'pkgver = 2.0\npkgrel = 1\n' > "$g/.SRCINFO" && git -C "$g" add .SRCINFO && git -C "$g" -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm too-new-fix && .local/bin/tools/aur-quarantine broken-fix gitpkg --repo "$g"; echo "rc=$?"
+rc=1
+$
+
+--- broken-fix: once a newer commit HAS aged past the window, retry fires (rc 0) ---
+
+$ printf 'pkgver = 3.0\npkgrel = 1\n' > "$g/.SRCINFO" && git -C "$g" add .SRCINFO && GIT_COMMITTER_DATE=2020-06-01T00:00:00Z git -C "$g" -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -qm aged-fix && .local/bin/tools/aur-quarantine broken-fix gitpkg --repo "$g" | cut -f2
+3.0-1
+$ .local/bin/tools/aur-quarantine broken-fix nosuchentry --repo "$g" 2>&1; echo "rc=$?"
+aur-quarantine: no known-broken entry for 'nosuchentry'.
+rc=2
 $ unset AUR_KNOWN_BROKEN_FILE
 $
 
@@ -211,6 +267,21 @@ spelled (found live: a relative DEST made metapac error on groups/<dest>/...).
 
 $ mkdir -p "$f/rel" && (cd "$f/rel" && "$OLDPWD/.local/bin/tools/metapac-filtered-config" --config-dir "$f/src" out drop-pkg >/dev/null) && grep -o '"/[^"]*abs-group[^"]*"' "$f/rel/out/config.toml" | sed "s|$f|F|"
 "F/rel/out/abs-group-1-local.toml"
+$
+
+--- metapac-filtered-config: a declaration style the filter cannot drop fails closed ---
+
+The drop regex only understands the house one-name-per-line style. A held
+package declared any other way (inline array here) must abort the staging:
+the sync would otherwise still request the very package the run held, then
+die later blaming a dependency. A held name inside a trailing comment is NOT
+a declaration and must not trip the audit.
+
+$ v=$(mktemp -d) && mkdir -p "$v/src/groups" && printf '[hostname_groups]\n"h" = [\n  "alpha",\n]\n' > "$v/src/config.toml" && printf '[arch]\npackages = ["held-pkg", "other-pkg"]\n' > "$v/src/groups/alpha.toml" && .local/bin/tools/metapac-filtered-config --config-dir "$v/src" "$v/out" held-pkg 2>&1; echo "rc=$?"
+metapac-filtered-config: FATAL: 'held-pkg' still appears in alpha.toml after filtering — declared in a TOML style this filter cannot drop (only one-name-per-line "pkg" lines are handled). Rewrite the declaration in the house style, or release the hold.
+rc=1
+$ printf '[arch]\npackages = [\n  "other-pkg",  # replaces "held-pkg"\n]\n' > "$v/src/groups/alpha.toml" && .local/bin/tools/metapac-filtered-config --config-dir "$v/src" "$v/out2" held-pkg
+filtered: held-pkg (declared nowhere — nothing to drop)
 $
 
 End of tests.

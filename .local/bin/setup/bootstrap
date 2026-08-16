@@ -96,7 +96,11 @@ step_outcome() { # $1 = 1 if installed now, else 0; note on stdin
 # every attempt (the libgl provider prompt cost 4 attempts before this line
 # knew it, 2026-08-16). Sync log on stdin; prints the decisive line, if any.
 sync_fatal_line() {
-    grep -m1 -E 'unresolvable package conflicts detected|target not found:|There are [0-9]+ providers available for' || true
+    # 'target not found' is anchored to pacman's "error:" prefix so a build log
+    # merely echoing the phrase can't kill a recoverable run on attempt 1; the
+    # prefix may carry SGR color codes under the pty (script -qefc), so allow
+    # one sequence between "error:" and the phrase
+    grep -m1 -E $'unresolvable package conflicts detected|error: ?(\x1b\\[[0-9;]*m)? ?target not found:|There are [0-9]+ providers available for' || true
 }
 
 # Hidden test seams (tests/quarantine.clitest.txt), dispatched before the arg
@@ -359,10 +363,20 @@ declare -A sync_filter=()
 defer_pkg() { # $1=pkg $2=class $3=why
     sync_filter[$1]=1
     deferred_report+=("$1"$'\t'"$2"$'\t'"$3")
+    # persist immediately: a run that defers and then dies must not leave
+    # deferred.tsv understating the holds (it only rewrote on success before)
+    mkdir -p "$qstate"
+    printf '%s\n' "${deferred_report[@]}" > "$qstate/deferred.tsv"
     echo "  DEFERRED [$2]: $1 — $3"
 }
 sync_cmd="metapac sync --no-confirm"
 staged_cfg=""
+sync_log=""
+cleanup_tmp() { # EXIT trap: the mktemp artifacts outlived every earlier exit path
+    [[ -z "$staged_cfg" ]] || rm -rf "$staged_cfg"
+    [[ -z "$sync_log" ]] || rm -f "$sync_log"
+}
+trap cleanup_tmp EXIT
 stage_filtered_sync() { # (re)build the filtered config; no filters = no-op
     (( ${#sync_filter[@]} > 0 )) || return 0
     [[ -n "$staged_cfg" ]] || staged_cfg=$(mktemp -d)
@@ -401,7 +415,7 @@ die_still_held() { # $1 = held package that stepping could not satisfy
     if [[ -n "${sync_filter[$1]+x}" ]]; then
         # 2.38: a deferred package is filtered out of the requested set, so a
         # repeat hold means something else pulls it in — filtering can't help.
-        why="it was DEFERRED (filtered from the requested set) yet still enters the transaction — most likely pulled in as a DEPENDENCY of another declared package"
+        why="it was DEFERRED (filtered from the requested set) yet still enters the transaction — most likely pulled in as a DEPENDENCY of (or provider for) another declared package"
     elif grep -q 'has no version older' <<<"${step_note:-}"; then
         why="NO aged version exists yet (nothing in its AUR history is both older than the quarantine window and newer than what is installed)"
     elif grep -qE 'failed \(deps/build/source/install\)' <<<"${step_note:-}"; then
@@ -509,8 +523,12 @@ else
     # (.config/metapac/known-broken.toml, via `aur-quarantine broken`). Skip
     # while the AUR commit still equals broken_at — a pure function of two
     # repo-visible facts, so guest, daily machine and harness decide the same
-    # and no failing build is ever burned. When upstream moves (any new
-    # commit) the build is auto-retried; --retry-broken forces the attempt.
+    # and no failing build is ever burned. When upstream moves, retry ONLY if
+    # an aged commit NEWER than broken_at exists (broken-fix): the newest
+    # window-passing recipe is otherwise the broken one itself, and rebuilding
+    # it would turn every run fatal for a window's worth of days after any
+    # third-party push (adversarial review, 2026-08-16). --retry-broken
+    # forces the attempt regardless.
     declare -A kb_retry=()
     kb_out=$("$aq" broken-list 2>/dev/null || true)
     if [[ -n "$kb_out" ]]; then
@@ -519,6 +537,13 @@ else
         kept=()
         for p in "${candidates[@]}"; do
             if [[ -z "${kb_listed[$p]+x}" ]]; then
+                kept+=("$p")
+                continue
+            fi
+            if [[ "${repo_of[$p]:-}" == chaotic-aur ]]; then
+                # the entry records a broken AUR *recipe*; chaotic carries a
+                # prebuilt binary, so the sync installs without any build
+                echo "  known-broken: $p — but chaotic-aur carries a binary; installing from the repo, no AUR build involved"
                 kept+=("$p")
                 continue
             fi
@@ -538,10 +563,18 @@ else
             IFS=$'\t' read -r kst kx kreason <<<"$("$aq" broken-status "$p" "$cur")"
             if [[ "$kst" == skip ]]; then
                 defer_pkg "$p" broken "known-broken since $kx: $kreason"
-            else
-                echo "  known-broken: $p — AUR commit moved (${kx:0:8} -> ${cur:0:8}), auto-retrying the build"
+            elif "$aq" broken-fix "$p" >/dev/null 2>&1; then
+                echo "  known-broken: $p — upstream moved (${kx:0:8} -> ${cur:0:8}) and a newer aged version exists, auto-retrying the build"
                 kb_retry[$p]=1
                 kept+=("$p")
+            else
+                # movement alone is not a fix: the newest window-passing recipe
+                # is still the broken one. Keep skipping, but tell the human a
+                # candidate fix is waiting out its quarantine.
+                echo "  known-broken: $p — upstream moved (${kx:0:8} -> ${cur:0:8}) but nothing newer has aged past the ${AUR_QUARANTINE_DAYS:-14}d window yet"
+                echo "      check:    https://aur.archlinux.org/packages/$p"
+                echo "      fix now:  aur-quarantine unbroken $p && aur-quarantine auto $p   (then re-run)"
+                defer_pkg "$p" broken "known-broken since $kx: $kreason (upstream moved ${kx:0:8} -> ${cur:0:8}; fix not aged in yet)"
             fi
         done
         candidates=("${kept[@]}")
@@ -610,6 +643,7 @@ else
         else
             echo "  pre-building (${#to_build[@]}): ${to_build[*]}"
             build_failed=""
+            no_verdict=""
             for p in "${to_build[@]}"; do
                 note=$("$aq" update "$p" 2>&1 | tee /dev/stderr) || true
                 inst=0
@@ -624,15 +658,17 @@ else
                     defer-upgrade)
                         defer_pkg "$p" age "installed $(pacman -Q "$p" 2>/dev/null | awk '{print $2}') stays; only the too-new upgrade is deferred" ;;
                     build-failed)
-                        [[ -z "${kb_retry[$p]+x}" ]] || die "known-broken '$p' still fails at the moved AUR commit — re-stamp the entry so runs skip it again:
+                        [[ -z "${kb_retry[$p]+x}" ]] || die "known-broken '$p' STILL fails at the retried commit (a newer aged version, or --retry-broken) — re-stamp the entry so runs skip it again:
     aur-quarantine broken $p --reason '...' [--upstream URL]"
                         build_failed+="$p " ;;
-                    *) build_failed+="$p " ;;
+                    *) no_verdict+="$p " ;;
                 esac
             done
             [[ -z "$build_failed" ]] || die "aged build FAILED for: $build_failed(the decisive error is in the output above).
     Broken upstream and you already know?  aur-quarantine broken <pkg> --reason '...' [--upstream URL]   (2.38: runs then skip it)
     Or decide:  aur-quarantine auto <pkg>   (skip its age delay)  — or wait for age-out"
+            [[ -z "$no_verdict" ]] || die "stepping produced NO VERDICT for: $no_verdict(no build failure marker — an RPC/network blip or an identity hold mid-pass; the decisive lines are above).
+    Transient? re-run bootstrap. Identity hold: verify on https://aur.archlinux.org/packages/<pkg>, then aur-quarantine accept <pkg>"
             ok_built=()
             for p in "${to_build[@]}"; do
                 [[ -n "${sync_filter[$p]+x}" ]] || ok_built+=("$p")

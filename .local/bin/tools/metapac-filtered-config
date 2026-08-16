@@ -16,8 +16,11 @@
 #   PKG   zero names = plain copy
 #
 # Prints one "filtered:" line per package (with the dropped-line count; a name
-# declared nowhere says so — not an error). Exits nonzero only on a broken
-# source config.
+# declared nowhere says so — not an error). Exits nonzero on a broken source
+# config, or when a named package still appears quoted in a staged group file
+# after filtering — the filter only understands the house one-name-per-line
+# style, and a declaration it cannot drop MUST fail closed here, not surface
+# later as a sync the gate aborts with a misleading dependency diagnosis.
 set -euo pipefail
 
 src="$HOME/.config/metapac"
@@ -89,6 +92,24 @@ while IFS= read -r line; do
     fi
     printf '%s\n' "$line"
 done < "$src/config.toml" >> "$dest/config.toml"
+
+# Fail-closed audit: the drop regex only matches the house style (one quoted
+# name per line). A declaration in any other valid TOML form (inline array,
+# table entry) escapes it — and the staged config would still request the very
+# package the run decided to hold. Catch that here: any surviving quoted
+# occurrence in a staged group file, comments stripped, is fatal. config.toml
+# is excluded on purpose (hostname_groups strings are group names, not
+# package declarations).
+for p in "${!dropped[@]}"; do
+    esc=$(printf '%s' "$p" | sed 's/[][\.|$(){}?+*^]/\\&/g')
+    for g in "$dest"/groups/*.toml "$dest"/abs-group-*.toml; do
+        [[ -f "$g" ]] || continue
+        if sed 's/#.*$//' "$g" | grep -qE "\"${esc}\""; then
+            echo "metapac-filtered-config: FATAL: '$p' still appears in $(basename "$g") after filtering — declared in a TOML style this filter cannot drop (only one-name-per-line \"pkg\" lines are handled). Rewrite the declaration in the house style, or release the hold." >&2
+            exit 1
+        fi
+    done
+done
 
 for p in "${!dropped[@]}"; do
     if (( dropped[$p] > 0 )); then
