@@ -28,8 +28,11 @@ scrub -> state-log leg). All rendering happens on the terminal device
                 prints the failing log's tail on nonzero rc.
 
 The pass-through must never break: any rendering failure disables rendering
-and the pump keeps going; exit code is always 0 (the pipeline's failure
-signal is the phase command itself, via pipefail).
+and the pump keeps going; rendering failures never change the exit code (the
+pipeline's failure signal is the phase command itself, via pipefail). The one
+exception is the --log leg: a log that cannot be opened or written is lost
+phase output, not cosmetics, so that exits 3 — the driver fails the phase
+instead of stamping rc=0 over a truncated log.
 
 Windows sibling contract (Story 2.36 slice 4). The VMware driver has no sed
 and no shell pipeline, so this tool also carries the harness's ANSI scrub —
@@ -81,6 +84,11 @@ CARET_PARTIAL = re.compile(rb"\^(\[(\[[0-9;]{0,24})?)?$")
 # DCS, charset selectors + ESC=/ESC>, CR handling, superseded sub-100%
 # progress frames, caret-notation terminal replies. Byte regexes: the stream
 # is not guaranteed UTF-8.
+#
+# One deliberate divergence from sed (fuzz-verified the only one): input NOT
+# ending in a newline gets one appended at close — sed preserves the missing
+# final newline. Here the next log write is the driver's rc trailer, which
+# must start on its own line, never glued to an unterminated last line.
 SCRUB_STRIPS = [
     re.compile(rb"\x1b\[[0-9;?!<>=]*[a-zA-Z]"),
     re.compile(rb"\x1b\][^\x1b\x07]*(?:\x07|\x1b\\)"),
@@ -503,20 +511,30 @@ def open_tty():
     — the caller degrades to pass-through."""
     if os.name != "nt":
         return open("/dev/tty", "r+b", buffering=0)
+    import atexit
     import ctypes
     import msvcrt
     f = open("CONOUT$", "r+b", buffering=0)
     handle = msvcrt.get_osfhandle(f.fileno())
     k32 = ctypes.windll.kernel32
+    # explicit argtypes: ctypes' default int conversion truncates a 64-bit
+    # HANDLE; console handles are small today, but that's luck, not contract
+    k32.GetConsoleMode.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+    k32.GetConsoleMode.restype = ctypes.c_int
+    k32.SetConsoleMode.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    k32.SetConsoleMode.restype = ctypes.c_int
     mode = ctypes.c_uint32()
     if not k32.GetConsoleMode(handle, ctypes.byref(mode)):
         f.close()
         raise OSError("no console")
     ENABLE_VT = 0x0004
-    if not mode.value & ENABLE_VT \
-            and not k32.SetConsoleMode(handle, mode.value | ENABLE_VT):
-        f.close()
-        raise OSError("console refused VT mode")
+    if not mode.value & ENABLE_VT:
+        if not k32.SetConsoleMode(handle, mode.value | ENABLE_VT):
+            f.close()
+            raise OSError("console refused VT mode")
+        # legacy conhost: put the mode back on exit — the next legacy app in
+        # this window shouldn't inherit VT processing we switched on
+        atexit.register(k32.SetConsoleMode, handle, mode.value)
     return f
 
 
@@ -533,6 +551,8 @@ def main():
     args = ap.parse_args()
     if args.mode in ("bar", "compact") and not args.phase:
         ap.error("--phase is required with --mode bar|compact")
+    if args.mode == "scrub" and args.log:
+        ap.error("--log is not valid with --mode scrub (scrub already writes the scrubbed stream to stdout)")
 
     phases = parse_phases(args.phases)
     out = sys.stdout.buffer
@@ -584,9 +604,30 @@ def main():
     # the bash run_phase implements.
     log_f = None
     scrubber = None
+    log_failed = []            # first --log OSError — the exit-3 signal
     if args.log:
-        log_f = open(args.log, "ab", buffering=0)
-        sinks = [log_f.write]
+        try:
+            log_f = open(args.log, "ab", buffering=0)
+        except OSError as e:
+            # Rendering degrades; the log leg must not (module docstring): a
+            # log this tool cannot write is lost phase output, and the driver
+            # keys the phase's fate off this exit code.
+            sys.stderr.write(f"vm-harness-display: FATAL: cannot open --log {args.log}: {e}\n")
+            sys.exit(3)
+
+        def log_write(data):
+            # First failure reports once and disarms the leg; the pump keeps
+            # serving the console, and EOF exits 3 so the driver fails the
+            # phase instead of stamping a clean rc over a truncated log.
+            if log_failed:
+                return
+            try:
+                log_f.write(data)
+            except OSError as e:
+                log_failed.append(e)
+                sys.stderr.write(f"vm-harness-display: FATAL: --log write failed: {e}\n")
+
+        sinks = [log_write]
         raw_stdout = False
         if renderer is None and args.mode != "compact":
             if out.isatty():
@@ -609,6 +650,13 @@ def main():
                 scrubber.feed(chunk)
             if renderer:
                 renderer.mirror(chunk)
+                if renderer.dead and not raw_stdout and args.mode == "bar":
+                    # tty rendering died mid-phase: reopen the stdout leg so
+                    # the console isn't dark for the rest of the phase (the
+                    # log keeps filling either way), starting with the chunk
+                    # the dead mirror just dropped
+                    raw_stdout = True
+                    write_out(chunk)
                 # Anchor scan: \r and \n both end a "line" (progress redraws).
                 tail += chunk
                 *lines, tail = re.split(rb"[\r\n]", tail)
@@ -621,10 +669,13 @@ def main():
         if scrubber:
             scrubber.close()
         if log_f:
-            log_f.close()
+            try:
+                log_f.close()
+            except OSError:
+                pass
         if renderer:
             renderer.close()
-    sys.exit(0)
+    sys.exit(3 if log_failed else 0)
 
 
 if __name__ == "__main__":

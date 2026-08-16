@@ -5,11 +5,18 @@ No terminal, no VMware, no network — the Renderer itself needs a live tty and
 is covered by tests/display-resize-check.py (POSIX) and the clitest cases.
 """
 
+import os
+import subprocess
 import sys
+
+import pytest
 
 from conftest import load_tool
 
 display = load_tool("vm_harness_display", "vm-harness-display", subdir="tools")
+
+TOOL_PATH = os.path.join(os.path.dirname(__file__), os.pardir,
+                         ".local", "bin", "tools", "vm-harness-display")
 
 
 def scrub_all(data, chunk_size=None):
@@ -183,3 +190,22 @@ class TestRenderFallback:
         line = row2(4, 40)
         assert f"5/{n}" in line
         assert "▶" in line
+
+
+class TestLogLegFailure:
+    """A --log the tool cannot write is lost phase output, never a silent
+    success: exit 3, one FATAL on stderr, and the pump keeps serving the
+    stdout leg (review fix — a dead log leg used to leave the phase reporting
+    rc=0 over an empty log). The unopenable-log arm is clitest-covered
+    cross-platform; the mid-stream write failure needs /dev/full."""
+
+    @pytest.mark.skipif(not os.path.exists("/dev/full"),
+                        reason="needs /dev/full (Linux)")
+    def test_log_write_failure_exits_3_stdout_leg_survives(self):
+        p = subprocess.run(
+            [sys.executable, TOOL_PATH, "--mode", "plain", "--phase", "p",
+             "--log", "/dev/full"],
+            input=b"line1\nline2\n", capture_output=True)
+        assert p.returncode == 3
+        assert p.stderr.count(b"--log write failed") == 1
+        assert p.stdout == b"line1\nline2\n"

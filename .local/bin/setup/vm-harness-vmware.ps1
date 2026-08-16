@@ -125,6 +125,7 @@ $DisplayTool = Join-Path $PSScriptRoot '..\tools\vm-harness-display'
 $script:DisplayMode = 'plain'   # resolved at dispatch: bar | compact | plain
 $script:PhasesStatus = ''       # Cmd-Up breadcrumb for the display: name:done|current|pending,...
 $script:ResumeHeader = ''       # set by a resuming up; Invoke-Phase logs it once
+$script:SinkDied = $false       # display child died mid-phase — output was lost
 # .local/bin/setup -> .local/share/yadm/archive, in whichever checkout runs.
 $Archive = Join-Path $PSScriptRoot '..\..\share\yadm\archive'
 # Workstation's install root moved between releases (26H1: Program Files;
@@ -149,9 +150,13 @@ function Write-PhaseLog([string]$Text, [switch]$NoNewline) {
         else { $script:PhaseWriter.WriteLine($Text) }
     } catch {
         # Display child gone mid-phase (it shouldn't be — it exits 0 even on
-        # render failure). Drop the sink so the phase still reaches its rc
-        # trailer; the child's own stderr already said why on the console.
+        # render failure; only a --log failure is fatal by contract). Drop the
+        # sink so the phase still reaches its rc trailer, and REMEMBER: every
+        # byte from here on is lost, so Invoke-Phase must fail the phase (the
+        # bash harness fails it via pipefail) instead of reporting a clean rc
+        # over a truncated log.
         $script:PhaseWriter = $null
+        $script:SinkDied = $true
     }
 }
 
@@ -183,12 +188,20 @@ function Usage {
 # trailer is appended after WaitForExit, so the trailer contract holds and
 # nothing fights over the handle.
 function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
+    # The sink is every phase's only output path — a missing interpreter or
+    # tool must die HERE with a name, not lose the whole phase to a dead sink
+    # (adversarial review, 2026-08-16: the spawn was unconditional and a dead
+    # child silently swallowed all output while the phase reported rc=0).
+    if (-not (Test-Path $Python)) { Die "python not found at $Python — every phase logs through the display tool" }
+    if (-not (Test-Path $DisplayTool)) { Die "display tool missing: $DisplayTool — phase output would be lost (yadm checkout it)" }
     New-Item -ItemType Directory -Force $LogDir | Out-Null
     $log = Join-Path $LogDir "$RunStamp-$Phase.log"
     # A resumed `up` stamps its first log with what it skipped (bash parity);
     # written before the child opens its append handle. Consumed on first use.
+    # AppendAllText, not Add-Content: the scrubbed body lines are LF, and the
+    # trailer is the one line tooling greps for — no stray \r on it.
     if ($script:ResumeHeader) {
-        Add-Content -Path $log -Value $script:ResumeHeader
+        [System.IO.File]::AppendAllText($log, "$($script:ResumeHeader)`n")
         $script:ResumeHeader = ''
     }
     $psi = [System.Diagnostics.ProcessStartInfo]::new($Python)
@@ -200,9 +213,14 @@ function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
     $psi.UseShellExecute = $false          # stdout/stderr stay on the console
     $psi.RedirectStandardInput = $true
     $psi.StandardInputEncoding = $Utf8NoBom
-    $proc = [System.Diagnostics.Process]::Start($psi)
+    try {
+        $proc = [System.Diagnostics.Process]::Start($psi)
+    } catch {
+        Die "could not start the display child ($Python $DisplayTool): $($_.Exception.Message)"
+    }
     $script:PhaseWriter = $proc.StandardInput
     $script:PhaseWriter.AutoFlush = $true
+    $script:SinkDied = $false
     $rc = 0
     try {
         & $Body 2>&1 | ForEach-Object { Write-PhaseLog "$_" }
@@ -214,7 +232,16 @@ function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
     if ($script:PhaseWriter) { $script:PhaseWriter.Close() }
     $script:PhaseWriter = $null
     $proc.WaitForExit()
-    Add-Content -Path $log -Value "=== $Phase done rc=$rc"
+    # A dead sink or a nonzero child exit (rc 3 = --log leg failure, by the
+    # tool's contract) means the log is untrustworthy — fail the phase even
+    # when the body itself succeeded, bash-pipefail style.
+    if ($script:SinkDied -or $proc.ExitCode -ne 0) {
+        [System.IO.File]::AppendAllText($log,
+            "=== display sink FAILED (child rc=$($proc.ExitCode)) — output above may be incomplete`n")
+        Write-Host "vm-harness-vmware: display sink failed mid-phase (child rc=$($proc.ExitCode)) — phase output was lost" -ForegroundColor Red
+        if ($rc -eq 0) { $rc = 1 }
+    }
+    [System.IO.File]::AppendAllText($log, "=== $Phase done rc=$rc`n")
     "=== $Phase done rc=$rc"
     if ($rc -ne 0) {
         # Compact mode hid the stream — surface the failure before dying.
