@@ -71,14 +71,17 @@ Facts:
   Spun out so they don't close with #119: **2.41** libvirt glue switchover
   ([#132](https://github.com/amasover/dotfiles/issues/132)) and **4.10** driver tests
   ([#133](https://github.com/amasover/dotfiles/issues/133)). 2.37 still waits on 2.29/2.30.
-- **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), in progress
-  on `story/2.38-unattended-age-holds`): **implementation code-complete on the branch** —
-  known-broken CLI (`aur-quarantine broken/unbroken/broken-status/broken-list`), age-deferral in
-  pre-flight + sync loop, filtered `metapac --config-dir` staging (`metapac-filtered-config`),
-  drift-report buckets; clitest 88→109, all green; live read-only probes validated the staging
-  against real metapac. Owed: Aaron's eyeball on the re-derived AC, branch push + PR, and the
-  evidence artifact (a harness run held on `shim-signed`/`playwright` reaching
-  `=== bootstrap done rc=0`; needs a `broken` entry for shim-signed authored on the run's repo).
+- **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), PR open
+  from `story/2.38-unattended-age-holds`): implementation complete — known-broken CLI,
+  age-deferral in pre-flight + sync loop, filtered `metapac --config-dir` staging, drift-report
+  buckets; clitest 88→115 green. First validation run (2026-08-16) proved the skip path live
+  (both `DEFERRED [broken]` lines fired) and flushed out three more finds fixed on the branch:
+  the libgl provider prompt (chaotic's nvidia-340xx-utils; pinned via PROVIDER_PINS + the
+  deterministic-fatal seam now catches resolver prompts), the arc-theme bit-rot (→ 3.18 #137),
+  and a `broken`-CLI commit-id intake bug. **Owed: the green evidence run** (fresh
+  `VM_HARNESS_BRANCH=story/2.38-unattended-age-holds` destroy+up; three deferrals expected:
+  shim-signed + both arcs). playwright is now `auto` on the workstation (age delay skipped) and
+  un-deferred; shim-signed stays deferred pending 2.43 (#136).
 - **2.39 quarantine pin is defeatable** ([#130](https://github.com/amasover/dotfiles/issues/130)):
   a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
   pin with the newest upstream. Spec now in epic 2. **Blocked**: the grill's policy-options
@@ -134,6 +137,13 @@ Facts:
   epic stub). The guest check's exactly-empty gate is unaffected (verified live). Live drift
   noticed while probing: `libnm` + `networkmanager` are explicitly installed but declared
   nowhere — Aaron's triage, likely 3.9 (#41) fallout.
+- **Spun out of the 2.38 validation run (2026-08-16)**: **2.43** shim-signed boot-chain audit
+  ([#136](https://github.com/amasover/dotfiles/issues/136) — is Secure Boot even in the chain?
+  the AUR recipe healed 2026-07-31 but it stays deferred until the audit) and **3.18** Arc
+  theme triage ([#137](https://github.com/amasover/dotfiles/issues/137) — dead upstream,
+  unbuildable, half-deleted from the AUR, yet the live desktop runs Arc-Dark). Aaron's live
+  step done this session: `aur-quarantine auto playwright` — **the exempt list changed, so
+  `yadm encrypt` is owed before the next yadm push** (the 4.9 guard will block until then).
 
 ## Epics
 

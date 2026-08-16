@@ -1127,6 +1127,33 @@ machine with known drift, plus the green clitest fixtures.
 
 ---
 
+### Story 2.43: does this machine still need shim-signed? — Secure Boot / boot-chain audit
+
+As the repo owner,
+I want to know whether this machine actually boots through the signed Secure
+Boot shim,
+So that `shim-signed` is either kept declared for a recorded reason or removed
+— instead of sitting known-broken-deferred with nobody remembering why it
+exists.
+
+Issue: [#136](https://github.com/amasover/dotfiles/issues/136) · Origin: Story
+2.38 (#124) validation — shim-signed's build failure was one of the two
+packages killing the 2026-08-12/13 evidence runs. It is deferred at Aaron's
+call even though the AUR recipe works again since 2026-07-31; the declaration
+in `base.toml` predates any recorded rationale, and the declared set also
+themes rEFInd — whether shim actually fronts that chain is unknown.
+
+**Acceptance criteria:**
+
+- Given read-only inspection (`mokutil --sb-state`, `bootctl status`, ESP contents), then the machine's actual boot chain — and whether shim participates in it — is documented on the issue or in a knowledge note
+- Given the finding, then `shim-signed` is either kept declared with the reason recorded and its known-broken entry retired, or removed from `base.toml` with the host copy's fate decided
+- Given the rebuild direction (daily-driver VM, later metal), then whether any machine class needs shim is stated
+
+**Evidence artifact:** the audit findings + a fresh run converging with the
+decision (no shim deferral line, or no shim at all).
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
