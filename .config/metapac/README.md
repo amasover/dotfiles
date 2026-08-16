@@ -15,6 +15,10 @@ against what's declared here: `metapac sync` installs the declared set,
   file — renders overwrite it.
 - **`~/.local/share/metapac/machine-local.toml`** — untracked group for
   never-publish package names; bootstrap creates it empty on fresh machines.
+- **`known-broken.toml`** — NOT a group: declared packages a human recorded as
+  unbuildable (Story 2.38). Unattended runs skip them while the AUR commit is
+  unmoved. Managed only via `aur-quarantine broken`/`unbroken`, never by hand
+  or by a failure; metapac itself ignores the file.
 
 Why the profile knob is yadm's (`local.class`) rather than metapac's, and the
 rest of the design: [docs/decision-bootstrap-architecture.md](../../docs/decision-bootstrap-architecture.md).

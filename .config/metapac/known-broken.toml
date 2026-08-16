@@ -1,0 +1,31 @@
+# known-broken — declared packages a human has verified cannot build right now
+# (Story 2.38, #124). An unattended run SKIPS a listed package while the AUR
+# commit still equals broken_at, instead of dying on its build. Once upstream
+# moves, the build is retried automatically only when a commit NEWER than
+# broken_at has aged past the quarantine window (any earlier retry could only
+# rebuild the recipe already known broken); until then the run keeps skipping
+# and prints the waiting fix with an unbroken+auto remedy. A retry success is
+# reported loudly with the `unbroken` remedy. Repo-tracked on purpose: a fresh
+# guest inherits this via ordinary yadm clone.
+#
+# Entries are a recorded human decision — never written by a failure. Manage
+# them with the CLI, which resolves the commit and stamps the date:
+#   aur-quarantine broken PKG --reason "..." [--upstream URL]
+#   aur-quarantine unbroken PKG
+
+[arc-gtk-theme]
+reason    = "bit-rot: the 20221218 tarball's gnome-shell meson rules reference dirs the tarball lacks, and meson 1.12 hard-errors where old meson warned. Upstream archived Dec 2022, AUR recipe untouched since 2024 — no fix coming; skip pending theme triage"
+upstream  = "https://github.com/jnsh/arc-theme"
+broken_at = "d92ee57d5d38aeca23e050ec236ef3897f3c5162"   # skip while the AUR commit still equals this
+since     = "2026-08-16"
+
+[arc-solid-gtk-theme]
+reason    = "DELETED from the AUR (empty repo, found 2026-08-16) — can never install fresh anywhere; defer until the declaration is removed or a replacement theme is chosen"
+broken_at = "0000000000000000000000000000000000000000"   # skip while the AUR commit still equals this
+since     = "2026-08-16"
+
+[shim-signed]
+reason    = "kept deferred at Aaron's call (2026-08-16) pending the 2.43 boot-chain audit (#136) — note the AUR recipe itself works again since 2026-07-31 (build-7 source URL verified live); un-defer via 2.43's decision, not by auto-retry"
+upstream  = "https://github.com/amasover/dotfiles/issues/136"
+broken_at = "2fb92b90a7b89c6f9807b4a1e92dedeec3803dcf"   # skip while the AUR commit still equals this
+since     = "2026-08-16"

@@ -28,6 +28,7 @@ packages = [
   "clight",
   "clight-gui-git",
   "conky",
+  "libglvnd",  # provider pin (bootstrap 3d): chaotic's nvidia-340xx-utils also provides libgl and the resolver prompt kills unattended syncs (2026-08-16)
   "dunst",
   "feh",
   "flashfocus",

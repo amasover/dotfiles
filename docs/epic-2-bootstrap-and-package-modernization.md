@@ -957,10 +957,15 @@ Design decisions (2026-08-13 grill):
   entry as overdue and burn a full failing build: exactly the cost this
   removes. Staleness is handled by people (drift shows entry age; `unbroken` +
   a run tests the hunch).
-- **Auto-retry when upstream moves** — the realistic fix path (a fix PR
-  merging *is* a new AUR commit) — plus `--retry-broken` on demand. If a
-  listed package then builds, the run says so loudly with the `unbroken`
-  remedy.
+- **Auto-retry when upstream moves *and* the fix has aged in** — a moved
+  commit alone proves nothing: the newest *window-passing* recipe is still the
+  broken one, and rebuilding it would turn every run fatal for a window's
+  worth of days after any third-party push (adversarial review, 2026-08-16).
+  So a retry fires only when an aged commit newer than `broken_at` exists
+  (`aur-quarantine broken-fix`); until then the run keeps skipping and prints
+  the waiting fix with its AUR link and the `unbroken` + `auto` fast path.
+  `--retry-broken` still forces the attempt on demand. If a listed package
+  then builds, the run says so loudly with the `unbroken` remedy.
 
 **Reporting:** known-broken is its own drift category, never folded into
 ordinary missing packages — `missing` has to stay surprising to stay useful.
@@ -1094,6 +1099,63 @@ package names are not glob-expanded against the guest's cwd).
 
 **Evidence artifact:** a libvirt `up` run log with the guest phases executed
 via `vm-harness-guest`.
+
+---
+
+### Story 2.42: metapac 0.10 prints `unmanaged` as one-line inline TOML — the quoted-name seds silently no-op
+
+As the repo owner,
+I want the tooling that parses `metapac unmanaged` to read metapac 0.10's
+actual output shape,
+So that bootstrap's dep-retagging repair and the drift report's unmanaged
+listing work again instead of silently doing nothing.
+
+Issue: [#135](https://github.com/amasover/dotfiles/issues/135) · Origin: found
+live during Story 2.38 (#124) implementation, 2026-08-15. `metapac unmanaged`
+(0.10.0) prints one inline-TOML line — `arch = { packages = ["a", "b"] }` —
+while two consumers extract names with a sed matching only the old
+one-quoted-name-per-line shape: bootstrap 6b's explicit-but-undeclared
+dep-retagging loop (whose own comment predicted exactly this failure) and
+metapac-drift-report's unmanaged listing (header prints, names don't). **Not
+broken:** the vm-harness-guest `check` hard gate — empty unmanaged prints zero
+bytes, so the exactly-empty assert still works (verified live) — and the 2.38
+drift buckets, which never parse `unmanaged`.
+
+**Acceptance criteria:**
+
+- Given one shared name-extraction seam, when `metapac unmanaged` output is parsed, then both the one-line inline-TOML shape and the legacy per-line shape yield the same names, with clitest fixtures for both
+- Given bootstrap 6b, then explicit-but-undeclared packages with a requirer are dep-marked again
+- Given metapac-drift-report, then the unmanaged section lists names again when drift exists
+
+**Evidence artifact:** a drift report listing real unmanaged names on a
+machine with known drift, plus the green clitest fixtures.
+
+---
+
+### Story 2.43: does this machine still need shim-signed? — Secure Boot / boot-chain audit
+
+As the repo owner,
+I want to know whether this machine actually boots through the signed Secure
+Boot shim,
+So that `shim-signed` is either kept declared for a recorded reason or removed
+— instead of sitting known-broken-deferred with nobody remembering why it
+exists.
+
+Issue: [#136](https://github.com/amasover/dotfiles/issues/136) · Origin: Story
+2.38 (#124) validation — shim-signed's build failure was one of the two
+packages killing the 2026-08-12/13 evidence runs. It is deferred at Aaron's
+call even though the AUR recipe works again since 2026-07-31; the declaration
+in `base.toml` predates any recorded rationale, and the declared set also
+themes rEFInd — whether shim actually fronts that chain is unknown.
+
+**Acceptance criteria:**
+
+- Given read-only inspection (`mokutil --sb-state`, `bootctl status`, ESP contents), then the machine's actual boot chain — and whether shim participates in it — is documented on the issue or in a knowledge note
+- Given the finding, then `shim-signed` is either kept declared with the reason recorded and its known-broken entry retired, or removed from `base.toml` with the host copy's fate decided
+- Given the rebuild direction (daily-driver VM, later metal), then whether any machine class needs shim is stated
+
+**Evidence artifact:** the audit findings + a fresh run converging with the
+decision (no shim deferral line, or no shim at all).
 
 ---
 
