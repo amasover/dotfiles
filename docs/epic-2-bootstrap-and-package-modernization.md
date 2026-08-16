@@ -1188,40 +1188,44 @@ decision (no shim deferral line, or no shim at all).
 
 ---
 
-### Story 2.44: enable Secure Boot deliberately — sbctl vs shim, with the Ubuntu dual-boot constraint
+### Story 2.44: fresh installs come up with Secure Boot on — provisioning-time enrollment, self-maintaining signing
 
 As the repo owner,
-I want Secure Boot turned on as a finished, self-maintaining setup instead of
-the half-abandoned 2024 attempt the 2.43 audit found,
-So that boot verification actually protects this machine — without ever
-breaking the Ubuntu dual-boot.
+I want machines this repo provisions in the future to boot with Secure Boot
+enabled and a chain that re-signs itself on updates,
+So that boot verification is a property of the recipe from day one — not a
+hand-done afterthought that dies half-finished, which is exactly how the
+current workstation ended up unverified (the 2.43 audit, #136).
 
 Issue: [#139](https://github.com/amasover/dotfiles/issues/139) · Origin: the
-2.43 audit (#136) — firmware in Setup Mode, rEFInd unsigned and booting
-directly, empty `/etc/refind.d/keys`, no MOK; `shim-signed` dropped by 2.43.
-Setup Mode is the ideal starting point for custom-key enrollment.
+2.43 audit. **A provisioning story, not a fix for the current laptop** — it
+stays Secure-Boot-off unless Aaron later opts it in with the same tooling
+(its firmware is already in Setup Mode, so the door is open).
 
-**Hard constraint:** the machine dual-boots Ubuntu via Canonical's shim
-(Microsoft-CA-signed). Any custom-key enrollment must also enroll the
-Microsoft certificates (e.g. `sbctl enroll-keys --microsoft`) or Ubuntu stops
-booting when enforcement turns on. Nothing Ubuntu-related is removed.
+Secure Boot joins the 2.29 (#95) recipe alongside partitions/LUKS/bootloader:
+firmware in Setup Mode as a provisioning precondition (fresh OVMF/VMware vars
+for VMs), keys enrolled at provision time, bootloader + kernels signed at
+install, and a pacman hook re-signing on every update. On metal, enrolling
+Microsoft's certificates alongside custom keys is the safe default (option
+ROMs; any dual-boot — the workstation's live Ubuntu chain is the cautionary
+example); pure VMs may skip them.
 
-**Route decision owed:** sbctl custom keys (no shim; sign rEFInd + kernels;
-pacman hook re-signs on updates) vs shim + MOK (`refind-install --shim
---localkeys` territory). Package declarations follow the chosen route;
-whether the daily-driver VM / future metal get Secure Boot is decided
-alongside (the 2.29 recipe currently doesn't).
+**Decisions owed:** the route (`sbctl` custom keys — no shim, the strong
+default for repo-owned machines — vs shim+MOK); which machine classes
+enforce (daily-driver VM? harness throwaway guests probably not); interplay
+with 2.29's bootloader choice (changes what gets signed, not whether);
+whether the harness proves it (VMware and OVMF both support Secure Boot
+guests — a signed-chain guest run would be the evidence).
 
 **Acceptance criteria:**
 
-- Given the route decision, then it is recorded with its rationale, and the package declarations match it (signing tools declared deliberately or dropped)
-- Given enrollment and signing, then Secure Boot is ON and verified (`mokutil --sb-state`, `bootctl`), Arch boots its signed chain, and **Ubuntu still boots**
-- Given a kernel or rEFInd update, then the chain stays bootable without manual signing (hook-driven re-signing proven)
-- Given the risk of a locked-out machine, then recovery (firmware fallback, enforcement rollback) is documented in a runbook/knowledge note before enforcement is flipped
+- Given the provisioning recipe, when it builds a machine, then Secure Boot is enforcing and the whole boot chain is signed — recorded route, declarations matching it
+- Given a kernel or bootloader update on such a machine, then it reboots fine with no manual signing step (hook-driven re-signing proven)
+- Given enforcement risk, then the recovery path (firmware fallback, rollback) is in the runbook before any machine flips enforcement
+- Given the current workstation, then it is explicitly out of scope, with its opt-in path noted
 
-**Evidence artifact:** `mokutil --sb-state` / `bootctl` showing Secure Boot
-enabled + a post-update boot proving the re-signing hook, with Ubuntu boot
-confirmed.
+**Evidence artifact:** a provisioned guest (or metal run) showing
+`mokutil --sb-state` enabled + a post-update reboot staying bootable.
 
 ---
 

@@ -100,8 +100,9 @@ Facts:
   keys dir; the only shim on the ESP is **Ubuntu's live dual-boot** (do not touch). Decision:
   `shim-signed` dropped from `base.toml`, its deferral entry retired. Still Aaron's: whether to
   uninstall the host's shim-signed/sbsigntools/mokutil-git copies. Future work spun out as
-  **2.44** Secure Boot setup ([#139](https://github.com/amasover/dotfiles/issues/139) — sbctl
-  vs shim, Microsoft certs required for the Ubuntu path).
+  **2.44** ([#139](https://github.com/amasover/dotfiles/issues/139)): Secure Boot as a property
+  of **fresh installs** (provisioning-time enrollment in the 2.29 recipe, self-re-signing
+  chain) — this workstation explicitly out of scope, opt-in later.
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   live breakage until done — the 3.16 driver switch renamed Xorg outputs (`eDP1`→`eDP-1` etc.),
   so autorandr dock/undock auto-switching currently matches nothing and polybar's multi-monitor
@@ -143,7 +144,8 @@ Facts:
 - **2.43 executed after the PR merges**: boot-chain audit (findings on #136 — no Secure Boot,
   Setup Mode, unsigned rEFInd booting directly; the ESP's shim is Ubuntu's **live dual-boot**,
   corrected from "leftovers"), `shim-signed` dropped + deferral retired on the 2.43 branch, and
-  **2.44** (#139, deliberate Secure Boot setup, Ubuntu-safe) opened with its stub.
+  **2.44** (#139) opened with its stub — reframed at Aaron's direction to *fresh installs boot
+  Secure* (provisioning-time, rides the 2.29 recipe), not a fix for this machine.
 
 ## Epics
 
