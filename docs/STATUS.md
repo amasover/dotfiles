@@ -68,6 +68,9 @@ Facts:
   body's slice-4 sentence contains the literal closing keyword "closes #119" — reopened
   2026-08-15. Still owed: **slice 4** (progress display + ANSI scrub + the driver-tests
   decision) and the **evidence artifact** (bootstrap can't reach rc=0 until 2.38's holds land).
+  Slice 4 is PR [#134](https://github.com/amasover/dotfiles/pull/134); adversarial-review fixes
+  pushed 2026-08-16 (dead display sink now fails the phase, log-leg errors exit 3 — details in
+  the PR comment); needs a Windows smoke run before merge.
   Spun out so they don't close with #119: **2.41** libvirt glue switchover
   ([#132](https://github.com/amasover/dotfiles/issues/132)) and **4.10** driver tests
   ([#133](https://github.com/amasover/dotfiles/issues/133)). 2.37 still waits on 2.29/2.30.
@@ -81,7 +84,10 @@ Facts:
   and a `broken`-CLI commit-id intake bug. **Owed: the green evidence run** (fresh
   `VM_HARNESS_BRANCH=story/2.38-unattended-age-holds` destroy+up; three deferrals expected:
   shim-signed + both arcs). playwright is now `auto` on the workstation (age delay skipped) and
-  un-deferred; shim-signed stays deferred pending 2.43 (#136).
+  un-deferred; shim-signed stays deferred pending 2.43 (#136). Adversarial-review fixes pushed
+  2026-08-16 (known-broken retry now gated on an aged fix newer than `broken_at` via
+  `broken-fix`, filter fails closed on non-house TOML styles, CLI intake hardening; clitest
+  115→129 — details in the PR comment).
 - **2.39 quarantine pin is defeatable** ([#130](https://github.com/amasover/dotfiles/issues/130)):
   a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
   pin with the newest upstream. Spec now in epic 2. **Blocked**: the grill's policy-options
@@ -103,40 +109,22 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-15, Linux workstation)
+## Last session (2026-08-16, Linux workstation)
 
-- **The 2.38/2.39 spec branch turned out lost** — `story/2.38-unattended-age-holds` was never
-  pushed and isn't on the Windows machine either. Rebuilt from the issue bodies, which preserved
-  the full design: 2.38's epic stub (acceptance criteria re-derived, worth Aaron's eyeball) and
-  the 2.39 error note. The one unrecoverable piece is 2.39's policy-options list (see its entry).
-- **All owed epic stubs written** (2.39/2.40/2.41 in epic 2, 3.17 in epic 3, 4.10 in epic 4).
-  The "add the stub when the story starts" deferral is retired — a story's stub is written when
-  its issue opens.
-- **STATUS reconciled against the board and live pacman state**: 2.23/3.10/3.16 closed →
-  ✅-marked in their epics; #119 reopened (GitHub keyword auto-close, not a decision); the jack2
-  swap and the 3.10 recorder uninstalls verified done on the live machine; chaotic adoption and
-  the redis swap still pending. PR #128's review details live in its PR description.
-- **Environment**: `lua5.1` + clitest are present on the Linux workstation, so 2.38 is buildable
-  here. pytest is still missing here, and Windows still lacks `lua5.1`/`setsid`/`script(1)` — no
-  machine runs the full suite (4.7's [#94](https://github.com/amasover/dotfiles/issues/94)
-  concern, and 4.10's [#133](https://github.com/amasover/dotfiles/issues/133), whose driver
-  tests would need `pwsh`).
-- **Both remaining live steps completed later the same session**: Aaron swapped the host to
-  valkey (9.1.1 verified installed, redis gone), and chaotic-aur was enabled on the workstation
-  via a one-shot root script mirroring bootstrap §5b — gate hook symlinked first (observed
-  firing on the enable transaction itself), key lsigned, keyring + mirrorlist installed,
-  `[chaotic-aur]` appended to pacman.conf, DBs synced (repo carries ~3.2k packages). The 2.35
-  declared-but-missing drift for the chaotic infra packages is resolved; the next attended
-  `metapac` sync can pull chaotic binaries, still age-gated. No pending live steps remain —
-  the yadm-side ones (4.4 hooksPath, 4.9 archive refresh) were already done.
-- **2.38 implemented** (same session, see its entry). Two finds along the way: PR #128 had
-  committed `vm-harness-guest` without its executable bit (Windows git; fixed on the 2.38
-  branch — its 12 clitest cases were failing on `main`), and metapac 0.10's one-line
-  `unmanaged` output silently no-ops the quoted-name seds in bootstrap 6b and the drift
-  report → spun out as **2.42** ([#135](https://github.com/amasover/dotfiles/issues/135), with
-  epic stub). The guest check's exactly-empty gate is unaffected (verified live). Live drift
-  noticed while probing: `libnm` + `networkmanager` are explicitly installed but declared
-  nowhere — Aaron's triage, likely 3.9 (#41) fallout.
+- **Adversarial review of both open PRs** (#138 and #134), fixes committed and pushed to both
+  branches the same session; full finding→fix mapping lives in a comment on each PR. The two
+  #138 majors were design-level: the known-broken auto-retry could only rebuild the already-
+  broken recipe (any third-party AUR push → ~14 days of fatal unattended runs — now gated on
+  `aur-quarantine broken-fix`: an aged commit newer than `broken_at`), and shim-signed's
+  "no auto-retry" note is not mechanism-enforced (**left as-is at Aaron's call** — an aged-in
+  fix may auto-install ahead of 2.43's audit; revisit via #136). The #134 major: a dead/missing
+  display child silently lost all phase output while the phase stamped rc=0 — now the phase
+  fails loudly and log-leg errors exit 3.
+- **Environment**: `python-pycdlib` installed on the workstation (seed-ISO tests now runnable
+  here); pytest still runs via `uvx pytest`. Windows gaps unchanged (4.7 #94 / 4.10 #133).
+- Prior-session context (spec-branch loss and rebuild, chaotic-aur enablement, valkey swap,
+  2.42 spin-out) is recorded on the relevant issues and epic entries; the `libnm` +
+  `networkmanager` undeclared drift is still Aaron's to triage (likely 3.9 #41 fallout).
 - **Spun out of the 2.38 validation run (2026-08-16)**: **2.43** shim-signed boot-chain audit
   ([#136](https://github.com/amasover/dotfiles/issues/136) — is Secure Boot even in the chain?
   the AUR recipe healed 2026-07-31 but it stays deferred until the audit) and **3.18** Arc
