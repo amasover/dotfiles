@@ -9,3 +9,15 @@
 # them with the CLI, which resolves the commit and stamps the date:
 #   aur-quarantine broken PKG --reason "..." [--upstream URL]
 #   aur-quarantine unbroken PKG
+
+[playwright]
+reason    = "aged pin f96840a8 predates the 2026-08-12 packaging rewrite: its pkgver() bumps to newest upstream mid-build and dies on the unfetched tarball. Self-heals once the rewrite ages into the 14d window (~2026-08-26) — unbroken it then"
+upstream  = "https://aur.archlinux.org/cgit/aur.git/commit/?h=playwright&id=317811d"
+broken_at = "317811daf38358080a36fc7ddd7dc4884b87241f"   # skip while the AUR commit still equals this
+since     = "2026-08-16"
+
+[shim-signed]
+reason    = "pinned Fedora koji source tarball 404s — source vanished upstream; needs an AUR PKGBUILD update"
+upstream  = "https://aur.archlinux.org/packages/shim-signed"
+broken_at = "2fb92b90a7b89c6f9807b4a1e92dedeec3803dcf"   # skip while the AUR commit still equals this
+since     = "2026-08-16"

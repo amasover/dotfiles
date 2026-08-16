@@ -132,6 +132,9 @@ sha_match() {                   # $1/$2: full or abbreviated commit ids
     [[ -n $1 && -n $2 ]] || return 1
     [[ $1 == "$2"* || $2 == "$1"* ]]
 }
+aur_head() {                    # $1=pkgbase -> its current AUR commit, exactly one line
+    git ls-remote "https://aur.archlinux.org/$1.git" HEAD 2>/dev/null | head -1 | cut -f1
+}
 
 fetch_repo() {                  # $1=pkgbase -> ensures clone in cache; echoes its path
     local base=$1 dir="$cache_dir/$1"
@@ -331,13 +334,17 @@ cmd_broken() {                  # record a human known-broken decision (Story 2.
         line=$(rpc_info "$pkg" | head -1)
         if [[ -z $line ]]; then
             echo "aur-quarantine: cannot resolve '$pkg' via the AUR RPC — record offline with:" >&2
-            echo "    --at \$(git ls-remote https://aur.archlinux.org/<pkgbase>.git HEAD | cut -f1) --base <pkgbase>" >&2
+            echo "    --at \$(git ls-remote https://aur.archlinux.org/<pkgbase>.git HEAD | head -1 | cut -f1) --base <pkgbase>" >&2
             return 1
         fi
         IFS=$'\t' read -r _ base _ _ <<<"$line"
-        at=$(git ls-remote "https://aur.archlinux.org/${base}.git" HEAD 2>/dev/null | cut -f1)
+        at=$(aur_head "$base")
         [[ -n $at ]] || { echo "aur-quarantine: could not read ${base}'s current AUR commit (git ls-remote failed)." >&2; return 1; }
     fi
+    # one line, hex only — ls-remote can match several refs (seen live: HEAD
+    # twice), and a newline inside broken_at is malformed TOML
+    [[ $at =~ ^[0-9a-fA-F]{4,40}$ ]] \
+        || { echo "aur-quarantine: '$at' is not a commit id (4-40 hex chars, one line)." >&2; return 1; }
     [[ -n $base ]] || base="$pkg"
     kb_remove "$pkg"
     mkdir -p "$(dirname "$kb_file")"
@@ -394,7 +401,7 @@ cmd_broken_current() {          # PKG -> current AUR pkgbase commit (network)
         IFS=$'\t' read -r _ base _ _ < <(rpc_info "$1")
     fi
     [[ -n ${base:-} ]] || base="$1"
-    sha=$(git ls-remote "https://aur.archlinux.org/${base}.git" HEAD 2>/dev/null | cut -f1)
+    sha=$(aur_head "$base")
     [[ -n $sha ]] || { echo "aur-quarantine: could not read ${base}'s current AUR commit." >&2; return 1; }
     printf '%s\n' "$sha"
 }

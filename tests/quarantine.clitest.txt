@@ -134,6 +134,21 @@ $ printf '\n[handpkg]\nreason = "typed by hand"\nbroken_at = "12ab34cd"\n' >> "$
 skip
 $
 
+--- broken: a multi-line or non-hex --at is refused (rc 1) ---
+
+Seen live: `git ls-remote ... HEAD` matched two refs, and the two-line result
+became a broken_at with an embedded newline — malformed TOML. The commit id
+must be one line of 4-40 hex chars, however it was obtained.
+
+$ .local/bin/tools/aur-quarantine broken twoline --reason "x" --at "7f050b6e
+7f050b6e" 2>&1; echo "rc=$?"
+aur-quarantine: '7f050b6e
+7f050b6e' is not a commit id (4-40 hex chars, one line).
+rc=1
+$ .local/bin/tools/aur-quarantine broken nothex --reason "x" --at "not-a-sha" 2>&1 | tail -1
+aur-quarantine: 'not-a-sha' is not a commit id (4-40 hex chars, one line).
+$
+
 --- broken: dotted names get quoted TOML sections and still round-trip ---
 
 $ .local/bin/tools/aur-quarantine broken relic-2.1 --reason "relic" --at abcdef1234567890abcdef1234567890abcdef12 2>/dev/null; .local/bin/tools/aur-quarantine broken-status relic-2.1 abcdef12 | cut -f1
