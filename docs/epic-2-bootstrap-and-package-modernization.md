@@ -957,10 +957,15 @@ Design decisions (2026-08-13 grill):
   entry as overdue and burn a full failing build: exactly the cost this
   removes. Staleness is handled by people (drift shows entry age; `unbroken` +
   a run tests the hunch).
-- **Auto-retry when upstream moves** — the realistic fix path (a fix PR
-  merging *is* a new AUR commit) — plus `--retry-broken` on demand. If a
-  listed package then builds, the run says so loudly with the `unbroken`
-  remedy.
+- **Auto-retry when upstream moves *and* the fix has aged in** — a moved
+  commit alone proves nothing: the newest *window-passing* recipe is still the
+  broken one, and rebuilding it would turn every run fatal for a window's
+  worth of days after any third-party push (adversarial review, 2026-08-16).
+  So a retry fires only when an aged commit newer than `broken_at` exists
+  (`aur-quarantine broken-fix`); until then the run keeps skipping and prints
+  the waiting fix with its AUR link and the `unbroken` + `auto` fast path.
+  `--retry-broken` still forces the attempt on demand. If a listed package
+  then builds, the run says so loudly with the `unbroken` remedy.
 
 **Reporting:** known-broken is its own drift category, never folded into
 ordinary missing packages — `missing` has to stay surprising to stay useful.
