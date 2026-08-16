@@ -7,7 +7,17 @@
 # driver by design — logic lives in Python (vm-harness-seed / -vmx / -leases),
 # guest-side bash is shared with the libvirt harness.
 #
-# Subcommands (remaining for slice 4: --progress display + ANSI scrub):
+# Flags (before the subcommand, same vocabulary as the bash harness):
+#   --progress compact display instead of the stream: three live rows (phase
+#              breadcrumb · bootstrap step strip · latest anchor); a failing
+#              phase prints its log tail. Needs a console; rejects --plain.
+#   --plain    bare raw stream — no bottom bar.
+# Default with an interactive console: the raw stream plus the pinned bottom
+# rows rendered by the shared tools/vm-harness-display (python-rich styling
+# when present, unstyled otherwise). Redirected stdout falls back to plain
+# and the log-side scrub still applies.
+#
+# Subcommands:
 #   fetch      download + sha256-verify the latest Arch ISO into the local cache
 #   seed       generate the cloud-init NoCloud seed (vm-harness-seed, hypervisor
 #              vmware: NVMe device path, open-vm-tools, live-ISO ssh for exec)
@@ -45,8 +55,18 @@
 # Logging: every phase writes an append-only log to  $LogDir\<stamp>-<phase>.log
 # ending with "=== <phase> done rc=N" — the same trailer contract the bash
 # harness's tooling (status/tail/resume probes, progress display) keys on.
-# Serial output streams raw to the console and into the install phase log this
-# slice (the bash harness's ANSI scrub ports with the progress-display work).
+# The log copy is scrubbed (ANSI escapes stripped, CR redraws flattened) by
+# the shared display tool, which owns the whole phase output path: the driver
+# feeds it the raw stream on stdin, it appends the scrubbed copy to the log
+# (--log) and renders the console leg per the mode above. Same filter as the
+# bash harness's `scrub`; test seam: vm-harness-display --mode scrub.
+#
+# The guest sync runs WITHOUT a pty here (decided at slice 4, diverging from
+# the bash harness's `ssh -t`): BatchMode automation would fight forced tty
+# allocation, PowerShell's line-oriented native pipeline would mangle raw
+# pty CR-frames anyway, and the display's anchors read pacman's `::`/`==>`
+# lines, which appear pty or not. Cost: no live pacman progress bars in bar
+# mode's firehose — plain per-package lines instead.
 #
 # Env overrides mirror the bash harness where they apply:
 #   VM_HARNESS_DIR, VM_HARNESS_DISK (GiB, bare number), VM_HARNESS_RAM (MiB),
@@ -100,6 +120,12 @@ $VmxTool = Join-Path $PSScriptRoot 'vm-harness-vmx'
 $LeasesTool = Join-Path $PSScriptRoot 'vm-harness-leases'
 $GuestTool = Join-Path $PSScriptRoot 'vm-harness-guest'
 $TrustTool = Join-Path $PSScriptRoot 'vm-harness-trust'
+# .local/bin/setup -> .local/bin/tools: the display/scrub tool both harnesses share.
+$DisplayTool = Join-Path $PSScriptRoot '..\tools\vm-harness-display'
+$script:DisplayMode = 'plain'   # resolved at dispatch: bar | compact | plain
+$script:PhasesStatus = ''       # Cmd-Up breadcrumb for the display: name:done|current|pending,...
+$script:ResumeHeader = ''       # set by a resuming up; Invoke-Phase logs it once
+$script:SinkDied = $false       # display child died mid-phase — output was lost
 # .local/bin/setup -> .local/share/yadm/archive, in whichever checkout runs.
 $Archive = Join-Path $PSScriptRoot '..\..\share\yadm\archive'
 # Workstation's install root moved between releases (26H1: Program Files;
@@ -112,20 +138,34 @@ $VmRun = Join-Path $VmwareDir 'vmrun.exe'
 $VdiskMgr = Join-Path $VmwareDir 'vmware-vdiskmanager.exe'
 $InstallTimeoutMin = 60
 
-# One writer owns the phase log (Invoke-Phase). Everything else appends
-# through it — a second Add-Content writer would fight the open handle, which
-# is exactly the crash the first live `up` hit.
+# One sink owns the phase output (Invoke-Phase): the display child's stdin.
+# Everything a phase emits goes through it — the child scrubs into the log
+# (its append handle is the log's only writer until it exits) and renders the
+# console leg, so nothing fights over the file and nothing corrupts the
+# pinned rows by writing to the console directly.
 function Write-PhaseLog([string]$Text, [switch]$NoNewline) {
     if (-not $script:PhaseWriter) { return }
-    if ($NoNewline) { $script:PhaseWriter.Write($Text) }
-    else { $script:PhaseWriter.WriteLine($Text) }
+    try {
+        if ($NoNewline) { $script:PhaseWriter.Write($Text) }
+        else { $script:PhaseWriter.WriteLine($Text) }
+    } catch {
+        # Display child gone mid-phase (it shouldn't be — it exits 0 even on
+        # render failure; only a --log failure is fatal by contract). Drop the
+        # sink so the phase still reaches its rc trailer, and REMEMBER: every
+        # byte from here on is lost, so Invoke-Phase must fail the phase (the
+        # bash harness fails it via pipefail) instead of reporting a clean rc
+        # over a truncated log.
+        $script:PhaseWriter = $null
+        $script:SinkDied = $true
+    }
 }
 
 function Say([string]$msg) {
-    # Write-Host is invisible to the phase pipeline (information stream), so
-    # narrative markers reach the log through the phase writer.
-    Write-Host "`n==> $msg"
-    Write-PhaseLog "`n==> $msg"
+    # Inside a phase the display child renders the marker (bar/plain mirror
+    # their stdin) — a Write-Host here would double it and corrupt compact's
+    # pinned rows. Outside a phase there is no sink, so speak directly.
+    if ($script:PhaseWriter) { Write-PhaseLog "`n==> $msg" }
+    else { Write-Host "`n==> $msg" }
 }
 function Die([string]$msg) { Write-Host "vm-harness-vmware: FATAL: $msg" -ForegroundColor Red; exit 1 }
 
@@ -139,33 +179,76 @@ function Usage {
     }
 }
 
-# Run one phase with host-side logging: console gets the live stream, the log
-# gets an append-only copy ending in the rc trailer the tooling contract needs.
-# The log has exactly one writer — a shared-read StreamWriter this function
-# owns (AutoFlush keeps `tail` near-live); pipeline output, Say markers, and
-# serial chunks all append through it, so nothing fights over the handle.
+# Run one phase with host-side logging (2.36 slice 4: through the shared
+# display tool). The tool takes the raw stream on stdin, appends the scrubbed
+# copy to the log (--log, write-through — `tail` stays near-live) and renders
+# the console leg per $DisplayMode: bar mirrors raw plus the pinned rows,
+# compact renders rows only, plain passes through (raw on a console, scrubbed
+# into a redirect). The child is the log's only writer until it exits; the rc
+# trailer is appended after WaitForExit, so the trailer contract holds and
+# nothing fights over the handle.
 function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
+    # The sink is every phase's only output path — a missing interpreter or
+    # tool must die HERE with a name, not lose the whole phase to a dead sink
+    # (adversarial review, 2026-08-16: the spawn was unconditional and a dead
+    # child silently swallowed all output while the phase reported rc=0).
+    if (-not (Test-Path $Python)) { Die "python not found at $Python — every phase logs through the display tool" }
+    if (-not (Test-Path $DisplayTool)) { Die "display tool missing: $DisplayTool — phase output would be lost (yadm checkout it)" }
     New-Item -ItemType Directory -Force $LogDir | Out-Null
     $log = Join-Path $LogDir "$RunStamp-$Phase.log"
-    $fs = [System.IO.File]::Open($log, [System.IO.FileMode]::Append,
-        [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
-    $script:PhaseWriter = [System.IO.StreamWriter]::new($fs)
+    # A resumed `up` stamps its first log with what it skipped (bash parity);
+    # written before the child opens its append handle. Consumed on first use.
+    # AppendAllText, not Add-Content: the scrubbed body lines are LF, and the
+    # trailer is the one line tooling greps for — no stray \r on it.
+    if ($script:ResumeHeader) {
+        [System.IO.File]::AppendAllText($log, "$($script:ResumeHeader)`n")
+        $script:ResumeHeader = ''
+    }
+    $psi = [System.Diagnostics.ProcessStartInfo]::new($Python)
+    foreach ($a in @($DisplayTool, '--mode', $script:DisplayMode,
+                     '--phase', $Phase, '--log', $log)) { $psi.ArgumentList.Add($a) }
+    if ($script:PhasesStatus) {
+        $psi.ArgumentList.Add('--phases'); $psi.ArgumentList.Add($script:PhasesStatus)
+    }
+    $psi.UseShellExecute = $false          # stdout/stderr stay on the console
+    $psi.RedirectStandardInput = $true
+    $psi.StandardInputEncoding = $Utf8NoBom
+    try {
+        $proc = [System.Diagnostics.Process]::Start($psi)
+    } catch {
+        Die "could not start the display child ($Python $DisplayTool): $($_.Exception.Message)"
+    }
+    $script:PhaseWriter = $proc.StandardInput
     $script:PhaseWriter.AutoFlush = $true
+    $script:SinkDied = $false
     $rc = 0
     try {
-        & $Body 2>&1 | ForEach-Object { Write-PhaseLog "$_"; $_ }
+        & $Body 2>&1 | ForEach-Object { Write-PhaseLog "$_" }
         if ($LASTEXITCODE -is [int] -and $LASTEXITCODE -ne 0) { $rc = $LASTEXITCODE }
     } catch {
-        $msg = $_ | Out-String
-        Write-PhaseLog $msg
-        Write-Host $msg
+        Write-PhaseLog ($_ | Out-String)
         $rc = 1
     }
-    Write-PhaseLog "=== $Phase done rc=$rc"
-    "=== $Phase done rc=$rc"
-    $script:PhaseWriter.Close()
+    if ($script:PhaseWriter) { $script:PhaseWriter.Close() }
     $script:PhaseWriter = $null
+    $proc.WaitForExit()
+    # A dead sink or a nonzero child exit (rc 3 = --log leg failure, by the
+    # tool's contract) means the log is untrustworthy — fail the phase even
+    # when the body itself succeeded, bash-pipefail style.
+    if ($script:SinkDied -or $proc.ExitCode -ne 0) {
+        [System.IO.File]::AppendAllText($log,
+            "=== display sink FAILED (child rc=$($proc.ExitCode)) — output above may be incomplete`n")
+        Write-Host "vm-harness-vmware: display sink failed mid-phase (child rc=$($proc.ExitCode)) — phase output was lost" -ForegroundColor Red
+        if ($rc -eq 0) { $rc = 1 }
+    }
+    [System.IO.File]::AppendAllText($log, "=== $Phase done rc=$rc`n")
+    "=== $Phase done rc=$rc"
     if ($rc -ne 0) {
+        # Compact mode hid the stream — surface the failure before dying.
+        if ($script:DisplayMode -eq 'compact') {
+            "--- last 40 log lines ($log):"
+            Get-Content $log -Tail 40 -ErrorAction SilentlyContinue
+        }
         Die "phase '$Phase' failed (rc=$rc) — VM left as-is for inspection. Log: $log"
     }
 }
@@ -203,11 +286,11 @@ function Read-NewSerial([ref]$Offset) {
     } finally { $fs.Close() }
 }
 
-# Serial chunks reach the console AND the phase log — Write-Host alone never
-# lands in the log (see Say).
+# Serial chunks go through the phase sink like everything else: the display
+# child mirrors them on the console (bar/plain) and scrubs them into the log —
+# the raw ANSI/CR spray from the installer stays out of the file.
 function Write-Serial([string]$Text) {
     if (-not $Text) { return }
-    Write-Host $Text -NoNewline
     Write-PhaseLog $Text -NoNewline
 }
 
@@ -508,14 +591,27 @@ Next:  vm-harness-vmware install   (safe re-install in place)   or:  destroy"
         Die "resume wants a fresh create, but VM '$VmName' already exists — its disk or seed is missing.
 Next:  vm-harness-vmware destroy   then:  up"
     }
-    if ($idx -gt 0) {
-        Say "resume: skipped $($phases[0..($idx - 1)] -join ' ') (probed complete) — starting at $from"
+    $skipped = @(); if ($idx -gt 0) { $skipped = @($phases[0..($idx - 1)]) }
+    if ($skipped) {
+        # Log association with the earlier run's set is this header plus
+        # timestamp order (bash parity) — Invoke-Phase stamps the first log.
+        $script:ResumeHeader = "resume: skipped $($skipped -join ' ') (probed complete) — starting at $from"
+        Say $script:ResumeHeader
     }
     # create boots nothing, but install boots the ISO straight from the cache —
     # both need it present. An explicit `fetch` stays the force-refresh.
     if (-not (Test-Path $Iso) -and $idx -le 1) { Cmd-Fetch }
-    foreach ($p in $phases[$idx..($phases.Count - 1)]) {
-        switch ($p) {
+    # Breadcrumb for the display: every phase with its status — probed-complete
+    # (resume) and already-run phases show done, the running one current.
+    $todo = @($phases[$idx..($phases.Count - 1)])
+    for ($i = 0; $i -lt $todo.Count; $i++) {
+        $crumb = @($skipped | ForEach-Object { "${_}:done" })
+        for ($j = 0; $j -lt $todo.Count; $j++) {
+            $status = if ($j -lt $i) { 'done' } elseif ($j -eq $i) { 'current' } else { 'pending' }
+            $crumb += "$($todo[$j]):$status"
+        }
+        $script:PhasesStatus = $crumb -join ','
+        switch ($todo[$i]) {
             'create'    { Cmd-Create }
             'install'   { Cmd-Install }
             'boot'      { Cmd-Boot }
@@ -523,6 +619,7 @@ Next:  vm-harness-vmware destroy   then:  up"
             'check'     { Cmd-Check }
         }
     }
+    $script:PhasesStatus = ''
     Say 'up complete — all phases green'
 }
 
@@ -586,7 +683,33 @@ function Cmd-Tail([string]$Phase) {
     Get-Content $newest.FullName -Tail 40
 }
 
-switch ($args[0]) {
+# ---- dispatch: vm-harness-vmware [--progress|--plain] <subcommand> ---------
+$Argv = @($args)
+$ProgressFlag = $false
+$PlainFlag = $false
+while ($Argv.Count -gt 0 -and "$($Argv[0])" -like '-*') {
+    switch ($Argv[0]) {
+        '--progress' { $ProgressFlag = $true }
+        '--plain'    { $PlainFlag = $true }
+        { $_ -in '-h', '--help' } { Usage; exit 0 }
+        default { Write-Host "vm-harness-vmware: unknown flag '$($Argv[0])'   (try: help)" -ForegroundColor Red; exit 2 }
+    }
+    $Argv = @($Argv | Select-Object -Skip 1)
+}
+
+# Resolve the attended display (bash-harness vocabulary). A display flag with
+# nothing watching is a mistake — reject loudly. The bar default degrades to
+# plain when the console is redirected; the tool renders unstyled if
+# python-rich is absent (styling only), so rich is not probed here.
+if ($ProgressFlag) {
+    if ($PlainFlag) { Die '--progress and --plain contradict each other' }
+    if ([Console]::IsOutputRedirected) { Die '--progress needs a console (stdout is redirected)' }
+    $script:DisplayMode = 'compact'
+} elseif (-not $PlainFlag -and -not [Console]::IsOutputRedirected -and (Test-Path $DisplayTool)) {
+    $script:DisplayMode = 'bar'
+}
+
+switch ($Argv[0]) {
     'fetch'     { Cmd-Fetch }
     'seed'      { Cmd-Seed }
     'create'    { Cmd-Create }
@@ -595,13 +718,13 @@ switch ($args[0]) {
     'up'        { Cmd-Up }
     'bootstrap' { Cmd-Bootstrap }
     'check'     { Cmd-Check }
-    'exec'      { Cmd-Exec @(@($args) | Select-Object -Skip 1) }
+    'exec'      { Cmd-Exec @($Argv | Select-Object -Skip 1) }
     'trust-import' { Cmd-TrustImport }
     'ip'        { Cmd-Ip }
     'status'    { Cmd-Status }
     'destroy'   { Cmd-Destroy }
-    'tail'      { Cmd-Tail $args[1] }
+    'tail'      { Cmd-Tail $Argv[1] }
     'help'    { Usage }
     $null     { Usage; exit 2 }
-    default   { Write-Host "vm-harness-vmware: unknown subcommand '$($args[0])'" -ForegroundColor Red; Usage; exit 2 }
+    default   { Write-Host "vm-harness-vmware: unknown subcommand '$($Argv[0])'" -ForegroundColor Red; Usage; exit 2 }
 }

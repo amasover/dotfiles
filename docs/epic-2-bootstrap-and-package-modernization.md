@@ -857,6 +857,35 @@ story. Slice-3 decisions:
   guest glue (defaults: public GitHub URL / repo default branch /
   `workstation`).
 
+Slice-4 decisions (2026-08-15 build):
+
+- **The shared display tool grew the log leg.** The PowerShell driver has no
+  shell pipeline, so `tools/vm-harness-display` gained `--log` (scrubbed
+  append, write-through so `tail` stays near-live) plus `plain` and `scrub`
+  modes; the driver feeds the child raw stdin and the child owns the whole
+  phase output path — the log's single writer until it exits, with the rc
+  trailer appended after. The Linux pipeline is untouched: without `--log`,
+  stdout stays the byte-faithful pass-through.
+- **The ANSI scrub is the sed filter ported expression-for-expression** to
+  Python in the same tool; `--mode scrub` is the stdin→stdout test seam, and
+  the clitest vectors are copied from `vm-harness scrub`'s so the two filters
+  can't drift silently.
+- **Windows console support**: CONOUT$ with VT processing enabled (legacy
+  conhost needs the SetConsoleMode), resize by polling in the ticker (no
+  SIGWINCH); any failure degrades to pass-through, exactly as on Linux.
+- **The pty stays off under VMware** (divergence from the bash harness's
+  `ssh -t`): BatchMode automation would fight forced tty allocation,
+  PowerShell's line-oriented native pipeline would mangle raw pty CR-frames,
+  and the display's anchors read pacman's `::`/`==>` lines, which appear pty
+  or not. Cost: plain per-package lines instead of live progress bars in bar
+  mode's firehose.
+- **Driver arg-handling tests: not absorbed.** Slice 4 kept the new driver
+  code thin (the display/scrub logic lives in Python under pytest); the
+  driver's own dispatch/guard tests remain Story 4.10's
+  ([#133](https://github.com/amasover/dotfiles/issues/133)) scope, including
+  its Pester-vs-clitest runner decision and the CI gating question it shares
+  with 4.7.
+
 **Acceptance criteria:**
 
 - Given the Windows machine with VMware Workstation installed, when `up` runs, then it fresh-installs Arch unattended in a throwaway VMware VM (official ISO + cloud-init–driven `archinstall`, same pattern as the QEMU harness), runs the repo bootstrap inside it, and asserts the check-phase result (metapac unmanaged exactly empty, services, session target)

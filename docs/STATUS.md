@@ -74,8 +74,9 @@ Facts:
   Spun out so they don't close with #119: **2.41** libvirt glue switchover
   ([#132](https://github.com/amasover/dotfiles/issues/132)) and **4.10** driver tests
   ([#133](https://github.com/amasover/dotfiles/issues/133)). 2.37 still waits on 2.29/2.30.
-- **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), PR open
-  from `story/2.38-unattended-age-holds`): implementation complete — known-broken CLI,
+- **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124),
+  PR [#138](https://github.com/amasover/dotfiles/pull/138) merged 2026-08-16; issue stays open
+  for the evidence run): implementation complete — known-broken CLI,
   age-deferral in pre-flight + sync loop, filtered `metapac --config-dir` staging, drift-report
   buckets; clitest 88→115 green. First validation run (2026-08-16) proved the skip path live
   (both `DEFERRED [broken]` lines fired) and flushed out three more finds fixed on the branch:
