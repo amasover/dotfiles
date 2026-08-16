@@ -21,3 +21,14 @@ reason    = "pinned Fedora koji source tarball 404s — source vanished upstream
 upstream  = "https://aur.archlinux.org/packages/shim-signed"
 broken_at = "2fb92b90a7b89c6f9807b4a1e92dedeec3803dcf"   # skip while the AUR commit still equals this
 since     = "2026-08-16"
+
+[arc-gtk-theme]
+reason    = "bit-rot: the 20221218 tarball's gnome-shell meson rules reference dirs the tarball lacks, and meson 1.12 hard-errors where old meson warned. Upstream archived Dec 2022, AUR recipe untouched since 2024 — no fix coming; skip pending theme triage"
+upstream  = "https://github.com/jnsh/arc-theme"
+broken_at = "d92ee57d5d38aeca23e050ec236ef3897f3c5162"   # skip while the AUR commit still equals this
+since     = "2026-08-16"
+
+[arc-solid-gtk-theme]
+reason    = "DELETED from the AUR (empty repo, found 2026-08-16) — can never install fresh anywhere; defer until the declaration is removed or a replacement theme is chosen"
+broken_at = "0000000000000000000000000000000000000000"   # skip while the AUR commit still equals this
+since     = "2026-08-16"
