@@ -268,6 +268,49 @@ scope. The guard warns; Aaron encrypts deliberately.
 
 ---
 
+### Story 4.10: the vm-harness PowerShell driver has no automated tests
+
+As the repo owner,
+I want the host-side seams of `vm-harness-vmware.ps1` under automated tests,
+So that the driver — ~600 lines carrying the resume decision, the phase-log
+contract, and every ssh guard — stops being the one untested seam in the
+harness.
+
+Issue: [#133](https://github.com/amasover/dotfiles/issues/133) · Origin: the PR #128
+review. `break` inside `Usage`'s `ForEach-Object` had no loop to leave, so it unwound
+the whole script and `vm-harness-vmware frobnicate` exited 0 instead of 2 — the
+rc contract the harness's own tooling keys on, broken on `main` and caught only by a
+manual exit-code check. The same review found four more driver defects only host-side
+tests would catch (a negative resume index running the pipeline in the wrong order,
+`Wait-Ssh`'s key-refused downgrade leaving unattended phases at a password prompt,
+env overrides interpolated unquoted into a remote shell string, `exec` trusting a
+DHCP lease that outlives its VM). Slice 4 of Story 2.36 lists the arg-handling-tests
+decision; close this as a duplicate if slice 4 absorbs the work.
+
+Testable without VMware, VMs, or network: subcommand dispatch and exit codes (bad
+usage rc 2, `help` rc 0); usage/help rendering off the header comment; guards that
+run before any `vmrun` call (`exec` with no VM, `up`'s unreadable-resume-point
+refusal, the destroy-first refusal when create cannot proceed);
+`ConvertTo-ShellQuoted` round-tripping quotes and injection payloads; `Get-TrustDir`
+honouring `VM_HARNESS_TRUST_DIR`.
+
+**Decisions owed:** the runner (Pester, the native fit, vs clitest driven under
+`pwsh`, one test vocabulary for the repo), and gating — the tests need `pwsh`,
+which the Linux workstation lacks, so where they run (locally, CI, or both)
+interacts with Story 4.7 (#94) the same way the `lua5.1`/`setsid` gap already
+does.
+
+**Acceptance criteria:**
+
+- Given the listed host-side seams, then each is covered by automated tests needing no VMware, no VM, and no network
+- Given the rc contract, then an unknown subcommand exiting 2 is a regression test
+- Given the runner and gating decisions, then both are made and recorded (issue + validation runbook), consistent with Story 4.7's CI direction
+
+**Evidence artifact:** a green driver-test run + the recorded runner/gating
+decisions.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - The GitHub board is the status source of truth, with issues linked from epic `.md` files.

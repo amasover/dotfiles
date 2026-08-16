@@ -523,13 +523,13 @@ Issue: [#75](https://github.com/amasover/dotfiles/issues/75) · Options recorded
 
 ---
 
-### Story 2.23: Triage redis→valkey
+### Story 2.23: Triage redis→valkey ✅
 
 As the repo owner,
 I want the repos' redis→valkey replacement decided and reflected in the groups,
 So that the standing drift line disappears and installs stop pulling a superseded package.
 
-Issue: [#76](https://github.com/amasover/dotfiles/issues/76) · Captured live by the 2.9 inbox hook during the 2.7 VM acceptance run; the host group still declares `redis` and the host runs AUR redis. Small; Aaron's call.
+Issue: [#76](https://github.com/amasover/dotfiles/issues/76) (closed, PR #115) · Captured live by the 2.9 inbox hook during the 2.7 VM acceptance run; the host group still declares `redis` and the host runs AUR redis. Small; Aaron's call.
 
 **Acceptance criteria:**
 
@@ -926,6 +926,265 @@ daily-drivable checklist — a story checkbox can't own "I live in it now".
 - Given the runbook, when the story lands, then the daily-drivable acceptance checklist documents the graduation procedure: what to verify before keeping a run
 
 **Evidence artifact:** a daily-target run log set going green end-to-end (LUKS + `daily-vm` class + attended real-archive decrypt) plus a guarded-destroy transcript.
+
+---
+
+### Story 2.38: unattended runs survive declared packages they cannot install yet
+
+As the repo owner,
+I want unattended runs to hold — not die — on a declared package whose only
+honest status is "not installable yet",
+So that one unbuildable package stops costing an entire evidence run: four
+consecutive VMware-harness runs (2026-08-12/13) each died on the next such
+package, and none reached `check`.
+
+Issue: [#124](https://github.com/amasover/dotfiles/issues/124) · Origin: the
+Story 2.36 (#119) slice-3 evidence run; design settled at the 2026-08-13 grill.
+*Reconstruction note (2026-08-15):* the original stub was lost with an unpushed
+branch of the same name (not recoverable from the Windows machine either). The
+design below is restored near-verbatim from #124's body, which preserved it in
+full; the **acceptance criteria are re-derived** from that design, not
+recovered, and should be read with that in mind.
+
+Stepping is not the missing piece — Story 2.33's pre-flight already steps aged
+packages, and the run logs show it working (`building powershell-bin 7.6.3-1
+(pinned 331b8c7e)`). The gap is what happens when stepping cannot satisfy the
+package. The design reduces to one question — *a declared package is not
+installed; is that tolerable?* — with exactly **two** tolerable answers.
+Everything else stays fatal.
+
+1. **Wait (age-deferred)** — decided automatically. No version passes the age
+   window and stepping found no target (the shape of `powershell-bin`'s 1-day-old
+   7.6.4-1 upgrade). The run continues, the package is reported, and the hold
+   converges by itself once a version ages in.
+2. **Known-broken** — authored by a human in a repo-tracked
+   `.config/metapac/known-broken.toml`:
+
+   ```toml
+   [simplescreenrecorder]
+   reason    = "build fails against ffmpeg 9 — AVCodec.sample_fmts removed"
+   upstream  = "https://github.com/MaartenBaert/ssr/pull/…"
+   broken_at = "7f050b6e"   # skip while the AUR commit still equals this
+   since     = "2026-08-13"
+   ```
+
+Design decisions (2026-08-13 grill):
+
+- **Repo-tracked, not machine-local** — a fresh guest inherits the list via
+  ordinary `yadm clone`; the point is that `vm-harness up` doesn't die on it,
+  and one injected-state channel (the trust baseline) is enough.
+- **Written by `aur-quarantine broken PKG --reason … --upstream …`, never by a
+  failure** — it resolves the current AUR commit, stamps the date, and leaves
+  the file in `yadm status` to commit. Auto-recording would turn transient
+  failures (network blip, full disk, AUR outage) into permanent skips that look
+  deliberate. Reason required. `unbroken PKG` reverses.
+- **Skip iff the current AUR commit equals `broken_at`** — a pure function of
+  two repo-visible facts, so guest, daily machine, and harness decide
+  identically; no local state, no wasted builds, testable from two SHAs.
+- **No time-based retry, deliberately** — a retry window needs a
+  "last attempted" fact a fresh guest lacks, so every new VM would read an old
+  entry as overdue and burn a full failing build: exactly the cost this
+  removes. Staleness is handled by people (drift shows entry age; `unbroken` +
+  a run tests the hunch).
+- **Auto-retry when upstream moves *and* the fix has aged in** — a moved
+  commit alone proves nothing: the newest *window-passing* recipe is still the
+  broken one, and rebuilding it would turn every run fatal for a window's
+  worth of days after any third-party push (adversarial review, 2026-08-16).
+  So a retry fires only when an aged commit newer than `broken_at` exists
+  (`aur-quarantine broken-fix`); until then the run keeps skipping and prints
+  the waiting fix with its AUR link and the `unbroken` + `auto` fast path.
+  `--retry-broken` still forces the attempt on demand. If a listed package
+  then builds, the run says so loudly with the `unbroken` remedy.
+
+**Reporting:** known-broken is its own drift category, never folded into
+ordinary missing packages — `missing` has to stay surprising to stay useful.
+
+**Status updates since the grill:** `simplescreenrecorder` left the declared
+set (Story 3.10, PR #125), so the TOML example above stands as grilled but the
+live known-broken candidate today is `shim-signed` (pinned Fedora koji source
+404s). `libnm-iwd` is moot (package removed 2026-08-13). `playwright` is the
+pin-defeated class — Story 2.39's hole ([#130](https://github.com/amasover/dotfiles/issues/130)),
+not solvable by these two holds; writeup:
+[quarantine-pin-defeated-by-pkgver.md](../knowledge/errors/quarantine-pin-defeated-by-pkgver.md).
+Why the broken packages aren't simply patched locally: a forked PKGBUILD means
+maintaining it until upstream merges, and Story 3.11 (#52) set the precedent
+that non-pacman installs are scripts, not forked PKGBUILDs.
+
+**Acceptance criteria** *(re-derived from the #124 design — see the
+reconstruction note)*:
+
+- Given an unattended run and a declared AUR package where no version passes the age window and stepping found no target, when reconcile reaches it, then the run holds the package and continues instead of dying, reports it as age-deferred, and a later run installs it with no operator action once a version ages in
+- Given `aur-quarantine broken PKG --reason … --upstream …`, then it resolves PKG's current AUR commit into `broken_at`, stamps `since`, refuses to run without a reason, and writes the entry to `.config/metapac/known-broken.toml`, leaving the change for `yadm status`; `aur-quarantine unbroken PKG` removes the entry; no code path ever writes an entry from a build failure
+- Given a known-broken entry, when a run reaches that package, then it skips iff the package's current AUR commit equals `broken_at`; on a moved commit or `--retry-broken` the build is attempted, and a success is reported loudly with the `unbroken` remedy
+- Given drift reporting, then known-broken packages appear as their own category and age-deferred holds are reported distinctly — neither is folded into ordinary `missing`
+- Given the test contract ([runbook-script-validation.md](./runbook-script-validation.md)), then the skip predicate, hold classification, and CLI surface ship with clitest coverage (the two-SHA pure-function seam), none of it needing network, AUR access, or host package state
+
+**Evidence artifact:** an unattended run log where a formerly fatal package is
+held and reported in its bucket (age-deferred or known-broken) and the run
+still ends `=== bootstrap done rc=0` — the mechanism that unblocks Story 2.36's
+owed evidence run.
+
+---
+
+### Story 2.39: a pinned AUR commit does not pin what gets built — `pkgver()` defeats the age guarantee
+
+As the repo owner,
+I want packages whose PKGBUILDs compute their version at build time detected
+and handled honestly by the quarantine,
+So that a stepped pin cannot silently install brand-new upstream code while the
+run reports the 14-day age window as satisfied.
+
+Issue: [#130](https://github.com/amasover/dotfiles/issues/130) · Origin: the
+Story 2.36 (#119) slice-3 evidence run, split out of Story 2.38 (#124). Error
+writeup: [quarantine-pin-defeated-by-pkgver.md](../knowledge/errors/quarantine-pin-defeated-by-pkgver.md).
+
+Stepping the AUR checkout (Story 2.33) pins the *recipe*, not the *result*: a
+`pkgver()` resolving git tags, a `-git`-style recipe tracking a moving ref, or
+an npm/pip "latest" lookup replaces the pinned version during the build. Seen
+2026-08-13: `playwright` stepped to the pinned 1.61.0 commit and built 1.62.1,
+dying on a checksum mismatch — loud only by luck. A package in this class that
+builds *cleanly* installs new upstream code while reporting the quarantine
+satisfied: the mechanism silently inverted.
+
+**Blocked:** the policy options enumerated at the 2026-08-13 grill were lost
+with the original 2.38 branch (see the writeup's reconstruction note) and must
+be re-derived — likeliest source is the 2026-08-13 Windows-machine session
+transcript — before this story picks one. None was chosen.
+
+**Acceptance criteria:**
+
+- Given a PKGBUILD that computes its version at build time, when the quarantine evaluates it, then the package is detected as un-pinnable-by-stepping
+- Given a detected package, when any run reports on it, then it is never reported as satisfying an age window that stepping cannot actually guarantee
+- Given the re-derived options, then a policy is chosen and recorded (issue + error writeup), and the chosen behavior ships with clitest coverage
+
+**Evidence artifact:** a run log showing a `pkgver()`-class package detected
+and reported honestly, plus the recorded policy decision.
+
+---
+
+### Story 2.40: metapac reinstall churn — every sync reinstalls every declared package
+
+As the repo owner,
+I want a sync of an already-converged machine to install nothing,
+So that bootstrap, updates, and harness evidence runs stop paying for 37–50
+no-op reinstalls per run — noise in every log and part of what trips the AUR
+clone-burst throttle (Story 2.22, #75).
+
+Issue: [#131](https://github.com/amasover/dotfiles/issues/131) · Origin: the
+2026-07-19 green-run log review; carried as "story TBD" in STATUS since.
+Linux-side work.
+
+`yay --sync --asexplicit` runs without `--needed`, so every installed declared
+package reinstalls on each sync. The interaction to determine **before**
+changing the flag: `--asexplicit` re-marks packages as explicitly installed —
+what keeps `metapac unmanaged` honest (Story 2.35, #112) — and `--needed`
+skips already-current packages, possibly skipping the re-marking too. Adding
+`--needed` naively could quietly reintroduce the drift 2.35 closed. Determine:
+
+- Does `--needed` still apply `--asexplicit` to an already-installed package?
+- If not, what does the explicit-marking correctly (a separate
+  `pacman -D --asexplicit` pass, or metapac doing it)?
+- Is the churn coming from the `yay` invocation or from how metapac drives it?
+
+**Acceptance criteria:**
+
+- Given an already-converged machine, when a sync runs, then it reinstalls nothing
+- Given the change, then `metapac unmanaged` stays exactly empty and a drift report taken before and after the sync is unchanged
+- Given the `--needed`/`--asexplicit` interaction, then the answer is determined by evidence and recorded on the issue before the flag change lands
+
+**Evidence artifact:** before/after sync logs on a converged machine (zero
+reinstalls) + an unchanged drift-report pair.
+
+---
+
+### Story 2.41: libvirt harness adopts the shared `vm-harness-guest` glue
+
+As the repo owner,
+I want the libvirt harness to run the same guest-side `bootstrap`/`check` file
+the VMware harness runs,
+So that guest-glue fixes land once instead of the two copies drifting — three
+PR #128 review fixes exist on the VMware path only, and the libvirt harness is
+the one producing the fresh-run evidence the epic is waiting on.
+
+Issue: [#132](https://github.com/amasover/dotfiles/issues/132) · Origin: Story
+2.36 (#119) extracted `.local/bin/setup/vm-harness-guest` from the libvirt
+harness's inline ssh strings, but the switchover needs Linux-side validation,
+so the duplication was deliberate and only recorded as a note on #119 — this
+story gives it an owner that doesn't close with #119.
+
+Divergences already real, fixed in the shared file and still broken inline:
+resume honours a changed `--branch` (the inline `yadm clone || true` no-ops on
+an existing guest and keeps converging whatever was cloned first); `check`
+reports metapac's own failure instead of exiting silently under `set -e`; and
+arg handling (a dangling flag dies FATAL/rc 2 instead of tripping `set -u`,
+package names are not glob-expanded against the guest's cwd).
+
+**Acceptance criteria:**
+
+- Given the libvirt harness, when it drives a guest, then it copies in and invokes `vm-harness-guest` with the QEMU hardware set (`qemu-guest-agent zram-generator`) as the per-hypervisor parameter, and the inline guest-side ssh strings are gone
+- Given deliberate divergences that are real design differences (exec rc propagation — the qemu-agent path could not propagate; pty behaviour), then each is kept only with its reason re-recorded, and everything else converges on the shared file
+- Given the switchover, then it is validated by a real `up` on the Linux host — the validation Story 2.36 could not do from Windows
+- Given the shared file's existing clitest suite, then it passes unchanged
+
+**Evidence artifact:** a libvirt `up` run log with the guest phases executed
+via `vm-harness-guest`.
+
+---
+
+### Story 2.42: metapac 0.10 prints `unmanaged` as one-line inline TOML — the quoted-name seds silently no-op
+
+As the repo owner,
+I want the tooling that parses `metapac unmanaged` to read metapac 0.10's
+actual output shape,
+So that bootstrap's dep-retagging repair and the drift report's unmanaged
+listing work again instead of silently doing nothing.
+
+Issue: [#135](https://github.com/amasover/dotfiles/issues/135) · Origin: found
+live during Story 2.38 (#124) implementation, 2026-08-15. `metapac unmanaged`
+(0.10.0) prints one inline-TOML line — `arch = { packages = ["a", "b"] }` —
+while two consumers extract names with a sed matching only the old
+one-quoted-name-per-line shape: bootstrap 6b's explicit-but-undeclared
+dep-retagging loop (whose own comment predicted exactly this failure) and
+metapac-drift-report's unmanaged listing (header prints, names don't). **Not
+broken:** the vm-harness-guest `check` hard gate — empty unmanaged prints zero
+bytes, so the exactly-empty assert still works (verified live) — and the 2.38
+drift buckets, which never parse `unmanaged`.
+
+**Acceptance criteria:**
+
+- Given one shared name-extraction seam, when `metapac unmanaged` output is parsed, then both the one-line inline-TOML shape and the legacy per-line shape yield the same names, with clitest fixtures for both
+- Given bootstrap 6b, then explicit-but-undeclared packages with a requirer are dep-marked again
+- Given metapac-drift-report, then the unmanaged section lists names again when drift exists
+
+**Evidence artifact:** a drift report listing real unmanaged names on a
+machine with known drift, plus the green clitest fixtures.
+
+---
+
+### Story 2.43: does this machine still need shim-signed? — Secure Boot / boot-chain audit
+
+As the repo owner,
+I want to know whether this machine actually boots through the signed Secure
+Boot shim,
+So that `shim-signed` is either kept declared for a recorded reason or removed
+— instead of sitting known-broken-deferred with nobody remembering why it
+exists.
+
+Issue: [#136](https://github.com/amasover/dotfiles/issues/136) · Origin: Story
+2.38 (#124) validation — shim-signed's build failure was one of the two
+packages killing the 2026-08-12/13 evidence runs. It is deferred at Aaron's
+call even though the AUR recipe works again since 2026-07-31; the declaration
+in `base.toml` predates any recorded rationale, and the declared set also
+themes rEFInd — whether shim actually fronts that chain is unknown.
+
+**Acceptance criteria:**
+
+- Given read-only inspection (`mokutil --sb-state`, `bootctl status`, ESP contents), then the machine's actual boot chain — and whether shim participates in it — is documented on the issue or in a knowledge note
+- Given the finding, then `shim-signed` is either kept declared with the reason recorded and its known-broken entry retired, or removed from `base.toml` with the host copy's fate decided
+- Given the rebuild direction (daily-driver VM, later metal), then whether any machine class needs shim is stated
+
+**Evidence artifact:** the audit findings + a fresh run converging with the
+decision (no shim deferral line, or no shim at all).
 
 ---
 

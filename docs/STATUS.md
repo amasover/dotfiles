@@ -48,16 +48,11 @@ Facts:
 - **2.21 progress mode** ([#73](https://github.com/amasover/dotfiles/issues/73)): #102 + #111
   (SIGWINCH resize fix, pty regression test) merged; open for attended transcripts from a green run.
 - **2.26 provider pins** ([#83](https://github.com/amasover/dotfiles/issues/83)): #86/#99/#110 merged
-  (PROVIDER_PINS step 3d). Host jack2→pipewire-jack swap stays a live step.
-- **2.23 redis→valkey** ([#76](https://github.com/amasover/dotfiles/issues/76)): [PR #115](https://github.com/amasover/dotfiles/pull/115)
-  **merged** — valkey declared (Aaron's call). Open until the host live swap + clean drift report.
-  The *parked* guest has AUR redis installed and would conflict on its next sync — moot if destroyed.
+  (PROVIDER_PINS step 3d). The host jack2→pipewire-jack swap is **done** (verified live
+  2026-08-15: jack2 absent, pipewire-jack installed).
 - **2.25 dotnet repo stack** ([#82](https://github.com/amasover/dotfiles/issues/82)): open for the
   gated host live swap + the `dotnet-runtime-2.1`/`2.2` relic decision; four repo names drift
   declared-but-missing until then.
-- **Aaron's pending live steps**: chaotic adoption + jack2/redis swaps via attended bootstrap/sync
-  (2.28/2.26/2.23). The yadm-side steps are done — `core.hooksPath .githooks` set (4.4) and the
-  archive refreshed 2026-08-11 (4.9).
 - **Direction (2026-07-10 grill)**: cleanup era ends at the daily-driver rebuild (a VMware VM
   on the Windows machine, not metal first) + the 1.8 work-machine steps. Record:
   [decision-daily-driver-vm.md](./decision-daily-driver-vm.md), PRD §4 eras, runbook checklist.
@@ -68,37 +63,42 @@ Facts:
   --sync --asexplicit` without `--needed` reinstalls every installed declared package each sync
   (37–50 per run). Open question on the issue: whether `--needed` skips the explicit re-marking
   that keeps `unmanaged` honest.
-- **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119)): slices
-  1–3 merged (PRs #120/#121/#128); **slice 4 in PR** — progress display + ANSI scrub ported
-  (shared tool grew `--log`/`plain`/`scrub` + Windows console support; decisions in the epic).
-  The **evidence artifact is still owed** (bootstrap can't reach rc=0 until the declared set
-  converges — see 2.38), plus attended `--progress`/bar transcripts from a real run. Spun out of
-  slice 3's review so they don't close with #119: **2.41** libvirt switchover
+- **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119), reopened):
+  slices 1–3 merged (PRs #120/#121/#128). GitHub auto-closed #119 at the #128 merge — the PR
+  body's slice-4 sentence contains the literal closing keyword "closes #119" — reopened
+  2026-08-15. Still owed: **slice 4** (progress display + ANSI scrub + the driver-tests
+  decision) and the **evidence artifact** (bootstrap can't reach rc=0 until 2.38's holds land).
+  Slice 4 is PR [#134](https://github.com/amasover/dotfiles/pull/134); adversarial-review fixes
+  pushed 2026-08-16 (dead display sink now fails the phase, log-leg errors exit 3 — details in
+  the PR comment); needs a Windows smoke run before merge.
+  Spun out so they don't close with #119: **2.41** libvirt glue switchover
   ([#132](https://github.com/amasover/dotfiles/issues/132)) and **4.10** driver tests
-  ([#133](https://github.com/amasover/dotfiles/issues/133), stays open — slice 4 didn't absorb
-  it). 2.37 still waits on 2.29/2.30.
-- **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124), spec on
-  `story/2.38-unattended-age-holds`, unpushed): age-deferred and known-broken packages stop
-  failing unattended runs; design settled at the 2026-08-13 grill. **Linux-side work** (needs
-  `lua5.1` + clitest). Two declared packages are unbuildable today and block the 2.36 evidence
-  run: `shim-signed` (koji source 404) and `playwright` (see below). The third,
-  `simplescreenrecorder`, stopped being a blocker when 3.10 dropped it from the declared set.
+  ([#133](https://github.com/amasover/dotfiles/issues/133)). 2.37 still waits on 2.29/2.30.
+- **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124),
+  PR [#138](https://github.com/amasover/dotfiles/pull/138) merged 2026-08-16; issue stays open
+  for the evidence run): implementation complete — known-broken CLI,
+  age-deferral in pre-flight + sync loop, filtered `metapac --config-dir` staging, drift-report
+  buckets; clitest 88→115 green. First validation run (2026-08-16) proved the skip path live
+  (both `DEFERRED [broken]` lines fired) and flushed out three more finds fixed on the branch:
+  the libgl provider prompt (chaotic's nvidia-340xx-utils; pinned via PROVIDER_PINS + the
+  deterministic-fatal seam now catches resolver prompts), the arc-theme bit-rot (→ 3.18 #137),
+  and a `broken`-CLI commit-id intake bug. **Owed: the green evidence run** (fresh
+  `VM_HARNESS_BRANCH=story/2.38-unattended-age-holds` destroy+up; three deferrals expected:
+  shim-signed + both arcs). playwright is now `auto` on the workstation (age delay skipped) and
+  un-deferred; shim-signed stays deferred pending 2.43 (#136). Adversarial-review fixes pushed
+  2026-08-16 (known-broken retry now gated on an aged fix newer than `broken_at` via
+  `broken-fix`, filter fails closed on non-house TOML styles, CLI intake hardening; clitest
+  115→129 — details in the PR comment).
 - **2.39 quarantine pin is defeatable** ([#130](https://github.com/amasover/dotfiles/issues/130)):
   a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
-  pin with the newest upstream. Age guarantee is silently void for such PKGBUILDs. Options are
-  recorded in a knowledge note on the unpushed `story/2.38-unattended-age-holds` branch; none
-  chosen, and that branch has to land before one can be.
-- **3.10 screen recorders** ([#42](https://github.com/amasover/dotfiles/issues/42),
-  [PR #125](https://github.com/amasover/dotfiles/pull/125)): all three incumbents are dead here —
-  kooha (no ScreenCast portal backend under i3/X11), simplescreenrecorder (dropped from the Arch
-  repos, orphan linked against ffmpeg 7), kazam (dead upstream). `gpu-screen-recorder` +
-  `-ui` are the keepers. Aaron's live step: uninstall the three, or they show as `metapac unmanaged`.
-- **3.16 GL acceleration** ([#126](https://github.com/amasover/dotfiles/issues/126),
-  [PR #127](https://github.com/amasover/dotfiles/pull/127)): the desktop had been running on
-  llvmpipe — the real reason recording looked broken, not the long-assumed pending reboot. Both
-  fixes are applied live (mesa `i965` override dropped from `.profile`; legacy
-  `xf86-video-intel` removed) and gsr now records 1080p via `h264_vaapi`. Open only for the
-  post-X-restart `Xorg.0.log` check; commands are on the issue.
+  pin with the newest upstream. Spec now in epic 2. **Blocked**: the grill's policy-options
+  writeup went down with the lost 2.38 branch and none was chosen — re-derive the options
+  (likeliest source: the 2026-08-13 Windows-machine session transcript) before picking one; the
+  recreated [error note](../knowledge/errors/quarantine-pin-defeated-by-pkgver.md) records the loss.
+- **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
+  live breakage until done — the 3.16 driver switch renamed Xorg outputs (`eDP1`→`eDP-1` etc.),
+  so autorandr dock/undock auto-switching currently matches nothing and polybar's multi-monitor
+  layouts can't select. Attended work per docking setup; spec in epic 3.
 - **2.30 hardware split** ([#96](https://github.com/amasover/dotfiles/issues/96)): 3.16 turned up
   concrete evidence — the `desktop` group declares an AMD GPU set (`xf86-video-amdgpu`,
   `vulkan-radeon`, `lib32-vulkan-radeon`) on what is now an Intel laptop, `vulkan-intel` is
@@ -110,23 +110,29 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-15, Windows machine)
+## Last session (2026-08-16, Linux workstation)
 
-- **PR #128 (2.36 slice 3) merged** after reconciling STATUS with main's 3.10/3.16 merges; the
-  reconcile also shrank 2.38's blocker list — 3.10 dropped `simplescreenrecorder` from the
-  declared set, so two packages block the evidence run, not three.
-- **2.36 slice 4 built**: the shared display tool now runs on Windows consoles (CONOUT$ + VT
-  enable, polled resize) and carries the ANSI scrub as its `--log`/`--mode scrub` legs; the
-  driver pipes every phase through it (`--progress`/`--plain` flags, default bottom bar, up
-  breadcrumbs, resume log header). pytest 78→106, +8 cross-platform clitest cases; rc contract
-  and a sandboxed seed phase verified live. Decisions (pty stays off; 4.10 not absorbed) in the
-  epic's slice-4 block. Attended bar/compact transcripts from a real run still owed on #119.
-- Epic story stubs are still owed for **2.39** (#130), **2.40** (#131), **2.41** (#132),
-  **4.10** (#133) when each starts.
-- Environment note: pytest isn't installed on the Linux workstation and `lua5.1`/`setsid`/
-  `script(1)` are missing on Windows, so neither machine can run the full test suite —
-  4.7's ([#94](https://github.com/amasover/dotfiles/issues/94)) concern, and now 4.10's too
-  (driver tests would need `pwsh`).
+- **Adversarial review of both open PRs** (#138 and #134), fixes committed and pushed to both
+  branches the same session; full finding→fix mapping lives in a comment on each PR. The two
+  #138 majors were design-level: the known-broken auto-retry could only rebuild the already-
+  broken recipe (any third-party AUR push → ~14 days of fatal unattended runs — now gated on
+  `aur-quarantine broken-fix`: an aged commit newer than `broken_at`), and shim-signed's
+  "no auto-retry" note is not mechanism-enforced (**left as-is at Aaron's call** — an aged-in
+  fix may auto-install ahead of 2.43's audit; revisit via #136). The #134 major: a dead/missing
+  display child silently lost all phase output while the phase stamped rc=0 — now the phase
+  fails loudly and log-leg errors exit 3.
+- **Environment**: `python-pycdlib` installed on the workstation (seed-ISO tests now runnable
+  here); pytest still runs via `uvx pytest`. Windows gaps unchanged (4.7 #94 / 4.10 #133).
+- Prior-session context (spec-branch loss and rebuild, chaotic-aur enablement, valkey swap,
+  2.42 spin-out) is recorded on the relevant issues and epic entries; the `libnm` +
+  `networkmanager` undeclared drift is still Aaron's to triage (likely 3.9 #41 fallout).
+- **Spun out of the 2.38 validation run (2026-08-16)**: **2.43** shim-signed boot-chain audit
+  ([#136](https://github.com/amasover/dotfiles/issues/136) — is Secure Boot even in the chain?
+  the AUR recipe healed 2026-07-31 but it stays deferred until the audit) and **3.18** Arc
+  theme triage ([#137](https://github.com/amasover/dotfiles/issues/137) — dead upstream,
+  unbuildable, half-deleted from the AUR, yet the live desktop runs Arc-Dark). Aaron's live
+  step done this session: `aur-quarantine auto playwright` — **the exempt list changed, so
+  `yadm encrypt` is owed before the next yadm push** (the 4.9 guard will block until then).
 
 ## Epics
 
