@@ -1188,6 +1188,43 @@ decision (no shim deferral line, or no shim at all).
 
 ---
 
+### Story 2.44: enable Secure Boot deliberately — sbctl vs shim, with the Ubuntu dual-boot constraint
+
+As the repo owner,
+I want Secure Boot turned on as a finished, self-maintaining setup instead of
+the half-abandoned 2024 attempt the 2.43 audit found,
+So that boot verification actually protects this machine — without ever
+breaking the Ubuntu dual-boot.
+
+Issue: [#139](https://github.com/amasover/dotfiles/issues/139) · Origin: the
+2.43 audit (#136) — firmware in Setup Mode, rEFInd unsigned and booting
+directly, empty `/etc/refind.d/keys`, no MOK; `shim-signed` dropped by 2.43.
+Setup Mode is the ideal starting point for custom-key enrollment.
+
+**Hard constraint:** the machine dual-boots Ubuntu via Canonical's shim
+(Microsoft-CA-signed). Any custom-key enrollment must also enroll the
+Microsoft certificates (e.g. `sbctl enroll-keys --microsoft`) or Ubuntu stops
+booting when enforcement turns on. Nothing Ubuntu-related is removed.
+
+**Route decision owed:** sbctl custom keys (no shim; sign rEFInd + kernels;
+pacman hook re-signs on updates) vs shim + MOK (`refind-install --shim
+--localkeys` territory). Package declarations follow the chosen route;
+whether the daily-driver VM / future metal get Secure Boot is decided
+alongside (the 2.29 recipe currently doesn't).
+
+**Acceptance criteria:**
+
+- Given the route decision, then it is recorded with its rationale, and the package declarations match it (signing tools declared deliberately or dropped)
+- Given enrollment and signing, then Secure Boot is ON and verified (`mokutil --sb-state`, `bootctl`), Arch boots its signed chain, and **Ubuntu still boots**
+- Given a kernel or rEFInd update, then the chain stays bootable without manual signing (hook-driven re-signing proven)
+- Given the risk of a locked-out machine, then recovery (firmware fallback, enforcement rollback) is documented in a runbook/knowledge note before enforcement is flipped
+
+**Evidence artifact:** `mokutil --sb-state` / `bootctl` showing Secure Boot
+enabled + a post-update boot proving the re-signing hook, with Ubuntu boot
+confirmed.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

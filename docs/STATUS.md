@@ -82,10 +82,9 @@ Facts:
   (both `DEFERRED [broken]` lines fired) and flushed out three more finds fixed on the branch:
   the libgl provider prompt (chaotic's nvidia-340xx-utils; pinned via PROVIDER_PINS + the
   deterministic-fatal seam now catches resolver prompts), the arc-theme bit-rot (→ 3.18 #137),
-  and a `broken`-CLI commit-id intake bug. **Owed: the green evidence run** (fresh
-  `VM_HARNESS_BRANCH=story/2.38-unattended-age-holds` destroy+up; three deferrals expected:
-  shim-signed + both arcs). playwright is now `auto` on the workstation (age delay skipped) and
-  un-deferred; shim-signed stays deferred pending 2.43 (#136). Adversarial-review fixes pushed
+  and a `broken`-CLI commit-id intake bug. **Owed: the green evidence run** — with #138 merged
+  (and once 2.43's PR lands) it's a plain `vm-harness destroy` + `up` off `main`: playwright
+  installs via `auto`, two deferrals expected (the arcs). Adversarial-review fixes pushed
   2026-08-16 (known-broken retry now gated on an aged fix newer than `broken_at` via
   `broken-fix`, filter fails closed on non-house TOML styles, CLI intake hardening; clitest
   115→129 — details in the PR comment).
@@ -95,6 +94,14 @@ Facts:
   writeup went down with the lost 2.38 branch and none was chosen — re-derive the options
   (likeliest source: the 2026-08-13 Windows-machine session transcript) before picking one; the
   recreated [error note](../knowledge/errors/quarantine-pin-defeated-by-pkgver.md) records the loss.
+- **2.43 shim-signed audit** ([#136](https://github.com/amasover/dotfiles/issues/136), PR open
+  from `story/2.43-drop-shim-signed`): audit done, findings on the issue — Secure Boot is
+  disabled with the firmware in Setup Mode, rEFInd boots directly and unsigned, no MOK, empty
+  keys dir; the only shim on the ESP is **Ubuntu's live dual-boot** (do not touch). Decision:
+  `shim-signed` dropped from `base.toml`, its deferral entry retired. Still Aaron's: whether to
+  uninstall the host's shim-signed/sbsigntools/mokutil-git copies. Future work spun out as
+  **2.44** Secure Boot setup ([#139](https://github.com/amasover/dotfiles/issues/139) — sbctl
+  vs shim, Microsoft certs required for the Ubuntu path).
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   live breakage until done — the 3.16 driver switch renamed Xorg outputs (`eDP1`→`eDP-1` etc.),
   so autorandr dock/undock auto-switching currently matches nothing and polybar's multi-monitor
@@ -133,6 +140,10 @@ Facts:
   unbuildable, half-deleted from the AUR, yet the live desktop runs Arc-Dark). Aaron's live
   step done this session: `aur-quarantine auto playwright` — **the exempt list changed, so
   `yadm encrypt` is owed before the next yadm push** (the 4.9 guard will block until then).
+- **2.43 executed after the PR merges**: boot-chain audit (findings on #136 — no Secure Boot,
+  Setup Mode, unsigned rEFInd booting directly; the ESP's shim is Ubuntu's **live dual-boot**,
+  corrected from "leftovers"), `shim-signed` dropped + deferral retired on the 2.43 branch, and
+  **2.44** (#139, deliberate Secure Boot setup, Ubuntu-safe) opened with its stub.
 
 ## Epics
 
