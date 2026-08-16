@@ -11,4 +11,6 @@ packages = [
   "playwright",
   "chromium",
   "1password-cli",
+  "gpu-screen-recorder-ui",
+  "python-pycdlib",
 ]
