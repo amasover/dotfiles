@@ -84,7 +84,8 @@ Facts:
   deterministic-fatal seam now catches resolver prompts), the arc-theme bit-rot (→ 3.18 #137),
   and a `broken`-CLI commit-id intake bug. **Owed: the green evidence run** — with #138 merged
   (and once 2.43's PR lands) it's a plain `vm-harness destroy` + `up` off `main`: playwright
-  installs via `auto`, two deferrals expected (the arcs). Adversarial-review fixes pushed
+  installs via `auto`; the arcs pre-build patched (3.18 workaround), so expect ZERO deferrals —
+  the held-path live proof is run 1's two `DEFERRED` lines + the clitest coverage. Adversarial-review fixes pushed
   2026-08-16 (known-broken retry now gated on an aged fix newer than `broken_at` via
   `broken-fix`, filter fails closed on non-house TOML styles, CLI intake hardening; clitest
   115→129 — details in the PR comment).
@@ -103,6 +104,13 @@ Facts:
   **2.44** ([#139](https://github.com/amasover/dotfiles/issues/139)): Secure Boot as a property
   of **fresh installs** (provisioning-time enrollment in the 2.29 recipe, self-re-signing
   chain) — this workstation explicitly out of scope, opt-in later.
+- **3.18 arc theme** ([#137](https://github.com/amasover/dotfiles/issues/137), PR open from
+  `story/3.18-arc-build-workaround`): root cause found (meson 1.12 validates `depend_files` as
+  files; arc's `find` feeds it directories) — one-line fix validated on the 2022 tarball (full
+  guest build) and upstream master; upstream PR drafted from `~/code/arc-theme` (Aaron submits).
+  Interim: repo-local patch under `.config/dotfiles/aur-patches/` applied by `aur-quarantine
+  build` + a bootstrap pre-build pass, both arcs **un-deferred**. Delete the patch when the
+  upstream PR merges AND the AUR recipe ships it; the theme-future decision stays open.
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   live breakage until done — the 3.16 driver switch renamed Xorg outputs (`eDP1`→`eDP-1` etc.),
   so autorandr dock/undock auto-switching currently matches nothing and polybar's multi-monitor

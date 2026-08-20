@@ -46,6 +46,9 @@
 #                     so (a retry can build something other than the recipe
 #                     already known broken), rc 1 otherwise. Network (fetches
 #                     the AUR clone); tests: --repo DIR skips the fetch.
+#   apply-patches DIR BASE  (internal) apply ~/.config/dotfiles/aur-patches/BASE/
+#                     into DIR's extracted src/ — build() does this itself; the
+#                     subcommand exists as an offline test seam (AUR_PATCHES_DIR).
 #   broken-list       dump known-broken entries as TSV:
 #                     pkg<TAB>base<TAB>broken_at<TAB>since<TAB>reason
 #   build BASE SHA    (internal) build+install pkgbase BASE at AUR git commit SHA.
@@ -93,6 +96,27 @@ save_exempt() { mkdir -p "$state_dir"; : > "$exempt_file.tmp"
 
 # --- known-broken list (Story 2.38) ------------------------------------------
 kb_file="${AUR_KNOWN_BROKEN_FILE:-$HOME/.config/metapac/known-broken.toml}"
+patches_dir="${AUR_PATCHES_DIR:-$HOME/.config/dotfiles/aur-patches}" # repo-local build patches (see its README; Story 3.18)
+
+# Apply repo-local patches for a pkgbase into an extracted recipe dir
+# (patch -Np1 against the single extracted source under src/). A patch that
+# no longer applies fails LOUDLY — stale patches must be refreshed or deleted,
+# never forced. No-op when the pkgbase has no patch dir.
+apply_patches() {               # $1=recipe dir, $2=pkgbase
+    local pdir="$patches_dir/$2" sdir p
+    compgen -G "$pdir/*.patch" >/dev/null || return 0
+    sdir=$(find "$1/src" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)
+    [[ -n $sdir ]] || { echo "aur-quarantine: $2 has local patches but no extracted source under $1/src" >&2; return 1; }
+    for p in "$pdir"/*.patch; do
+        if patch --forward -Np1 -d "$sdir" < "$p" >&2; then
+            echo "aur-quarantine: applied local patch ${p##*/} to ${sdir##*/}" >&2
+        else
+            echo "aur-quarantine: local patch ${p##*/} FAILED to apply to $2 — stale (upstream moved?). Refresh or delete $pdir." >&2
+            return 1
+        fi
+    done
+}
+has_patches() { compgen -G "$patches_dir/$1/*.patch" >/dev/null; }
 
 # Constrained TOML reader: [pkg] / ["pkg"] sections holding 'key = "value"'
 # lines. One TSV row per entry: pkg<TAB>base<TAB>broken_at<TAB>since<TAB>reason
@@ -254,8 +278,20 @@ cmd_build() {                   # $1=pkgbase $2=sha  (installs)
     local base=$1 sha=$2 dir
     dir=$(fetch_repo "$base") || { echo "aur-quarantine: build $base: fetch failed." >&2; return 1; }
     git -C "$dir" checkout --quiet "$sha" 2>/dev/null || { echo "aur-quarantine: build $base: checkout ${sha:0:8} failed." >&2; return 1; }
+    # Repo-local patches (Story 3.18): extract first (--nobuild; -d defers the
+    # dep check to the real build), patch the source, then build unextracted
+    # (-e). The plain path stays a single makepkg run.
+    if has_patches "$base"; then
+        if ! ( cd "$dir" && rm -rf src && makepkg --nobuild -d --noconfirm ) \
+            || ! apply_patches "$dir" "$base"; then
+            echo "aur-quarantine: build $base: local patch stage failed — not built." >&2
+            git -C "$dir" checkout --quiet - 2>/dev/null || true; return 1
+        fi
+        if ( cd "$dir" && makepkg -esi --noconfirm ); then
+            git -C "$dir" checkout --quiet - 2>/dev/null || true; return 0
+        fi
     # makepkg -s installs repo deps; AUR deps are NOT resolved here. Any failure -> hold.
-    if ( cd "$dir" && makepkg -si --noconfirm ); then
+    elif ( cd "$dir" && makepkg -si --noconfirm ); then
         git -C "$dir" checkout --quiet - 2>/dev/null || true; return 0
     fi
     echo "aur-quarantine: $base @ ${sha:0:8} failed (deps/build/source/install) — not installed. If the build succeeded, re-run in a terminal (sudo needs a password prompt); makepkg will reuse the built package." >&2
@@ -476,6 +512,7 @@ case "${1:-}" in
     broken-current) shift; cmd_broken_current "$@" ;;
     broken-fix)   shift; cmd_broken_fix "$@" ;;
     broken-list)  kb_rows ;;
+    apply-patches) shift; apply_patches "$@" ;; # (internal/test seam) RECIPE_DIR PKGBASE
     build)        shift; cmd_build "$@" ;;
     -h|--help|"") grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//' ;;
     *)            echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|preflight|bypass-once|broken|unbroken|broken-status|broken-current|broken-fix|broken-list|build)" >&2; exit 2 ;;

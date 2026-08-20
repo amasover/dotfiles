@@ -284,4 +284,31 @@ $ printf '[arch]\npackages = [\n  "other-pkg",  # replaces "held-pkg"\n]\n' > "$
 filtered: held-pkg (declared nowhere — nothing to drop)
 $
 
+--- aur-quarantine apply-patches: repo-local patches into extracted src (3.18) ---
+
+The build path applies ~/.config/dotfiles/aur-patches/<pkgbase>/*.patch into
+the extracted source before building; AUR_PATCHES_DIR is the test override.
+
+$ ap=$(mktemp -d) && mkdir -p "$ap/patches/fakepkg" "$ap/recipe/src/fake-1.0" && printf 'hello\nworld\n' > "$ap/recipe/src/fake-1.0/f.txt" && printf -- '--- a/f.txt\n+++ b/f.txt\n@@ -1,2 +1,2 @@\n hello\n-world\n+patched\n' > "$ap/patches/fakepkg/0001-fix.patch" && AUR_PATCHES_DIR="$ap/patches" .local/bin/tools/aur-quarantine apply-patches "$ap/recipe" fakepkg 2>&1 | tail -1; cat "$ap/recipe/src/fake-1.0/f.txt"
+aur-quarantine: applied local patch 0001-fix.patch to fake-1.0
+hello
+patched
+$
+
+--- apply-patches: no patch dir for the pkgbase is a silent no-op (rc 0) ---
+
+$ AUR_PATCHES_DIR="$ap/patches" .local/bin/tools/aur-quarantine apply-patches "$ap/recipe" otherpkg; echo "rc=$?"
+rc=0
+$
+
+--- apply-patches: a patch that no longer applies fails loudly (rc 1) ---
+
+Re-applying the same patch stands in for a stale one: --forward refuses
+already-applied hunks, and forcing is exactly what the tool must never do.
+
+$ AUR_PATCHES_DIR="$ap/patches" .local/bin/tools/aur-quarantine apply-patches "$ap/recipe" fakepkg 2>&1 | sed "s|$ap|AP|" | tail -1; AUR_PATCHES_DIR="$ap/patches" .local/bin/tools/aur-quarantine apply-patches "$ap/recipe" fakepkg >/dev/null 2>&1 || echo "rc=$?"
+aur-quarantine: local patch 0001-fix.patch FAILED to apply to fakepkg — stale (upstream moved?). Refresh or delete AP/patches/fakepkg.
+rc=1
+$
+
 End of tests.

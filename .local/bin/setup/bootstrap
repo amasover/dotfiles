@@ -624,16 +624,33 @@ else
             || die "declared packages found in no repo and not in the AUR: $missing— typo, renamed, or AUR-deleted; fix the group files"
         [[ -z "$identity" ]] || die "quarantine identity holds — human decisions, all of them at once: $identity
     verify each on https://aur.archlinux.org/packages/<pkg>, then: aur-quarantine accept <pkg>, and re-run bootstrap"
-        # One pre-build pass covers three reasons: age holds (must install an
-        # aged version), known-broken retries (upstream moved), and provider-
-        # substituted names (must exist before the resolver is asked). update
-        # installs the newest window-passing version either way. Outcomes are
-        # classified per package (Story 2.38): "nothing to step to" is the
-        # tolerable wait answer — DEFER and continue — while real build
-        # failures and identity holds still die.
+        # Locally-patched packages (Story 3.18): a declared package with
+        # patches under ~/.config/dotfiles/aur-patches/<pkgbase> must be
+        # built by OUR build path (which applies them) BEFORE the sync asks
+        # yay, which cannot patch. metapac requests only missing packages,
+        # so pre-installing keeps it out of the sync entirely. One name per
+        # pkgbase — the build installs every split package of the base.
+        patched_prebuild=()
+        declare -A patched_base_seen=()
+        for p in "${candidates[@]}"; do
+            b="${base_of[$p]:-$p}"
+            [[ -d "$HOME/.config/dotfiles/aur-patches/$b" ]] || continue
+            pacman -Q "$p" >/dev/null 2>&1 && continue
+            [[ -n "${patched_base_seen[$b]+x}" ]] && continue
+            patched_base_seen[$b]=1
+            echo "  locally patched (aur-patches/$b): $p — pre-building before the sync"
+            patched_prebuild+=("$p")
+        done
+        # One pre-build pass covers four reasons: age holds (must install an
+        # aged version), known-broken retries (upstream moved), provider-
+        # substituted names (must exist before the resolver is asked), and
+        # locally-patched packages. update installs the newest window-passing
+        # version either way. Outcomes are classified per package (Story
+        # 2.38): "nothing to step to" is the tolerable wait answer — DEFER
+        # and continue — while real build failures and identity holds still die.
         to_build=()
         declare -A queued=()
-        for p in "${age_holds[@]}" "${!kb_retry[@]}" "${presolve[@]}"; do
+        for p in "${age_holds[@]}" "${!kb_retry[@]}" "${presolve[@]}" "${patched_prebuild[@]}"; do
             [[ -n "${queued[$p]+x}" ]] && continue
             queued[$p]=1
             to_build+=("$p")

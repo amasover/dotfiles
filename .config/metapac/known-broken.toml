@@ -13,15 +13,3 @@
 #   aur-quarantine broken PKG --reason "..." [--upstream URL]
 #   aur-quarantine unbroken PKG
 
-[arc-solid-gtk-theme]
-reason    = "split package of pkgbase arc-gtk-theme (NOT deleted — earlier note wrong): same bit-rotted build, fails together with arc-gtk-theme; flagged out-of-date on the AUR since 2025-11 with no response. Skip pending theme triage (3.18, #137)"
-upstream  = "https://aur.archlinux.org/packages/arc-solid-gtk-theme"
-broken_at = "d92ee57d5d38aeca23e050ec236ef3897f3c5162"   # skip while the AUR commit still equals this
-since     = "2026-08-19"
-base      = "arc-gtk-theme"
-
-[arc-gtk-theme]
-reason    = "recipe pinned to the 20221218 release, whose tarball dies under meson 1.12 (gnome-shell meson rules reference dirs the tarball lacks). Upstream git is ALIVE (pushed 2025-10, gnome-shell dirs through 45) but has tagged no release since 2022 — fix is repackaging from a pinned git snapshot; 3.18 (#137) owns it, AUR adoption candidate"
-upstream  = "https://github.com/jnsh/arc-theme"
-broken_at = "d92ee57d5d38aeca23e050ec236ef3897f3c5162"   # skip while the AUR commit still equals this
-since     = "2026-08-19"
