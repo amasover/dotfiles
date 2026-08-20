@@ -117,6 +117,9 @@ Facts:
   Interim: repo-local patch under `.config/dotfiles/aur-patches/` applied by `aur-quarantine
   build` + a bootstrap pre-build pass, both arcs **un-deferred**. Delete the patch when the
   upstream PR merges AND the AUR recipe ships it; the theme-future decision stays open.
+  Follow-up in PR: the patch stage's `makepkg --nobuild` verified source PGP sigs, which a
+  fresh guest's empty keyring can never satisfy (arc died "unknown public key", 2026-08-20 run)
+  — now `--skippgpcheck` there; checksums + the age pin stay the integrity gate.
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   live breakage until done — the 3.16 driver switch renamed Xorg outputs (`eDP1`→`eDP-1` etc.),
   so autorandr dock/undock auto-switching currently matches nothing and polybar's multi-monitor
