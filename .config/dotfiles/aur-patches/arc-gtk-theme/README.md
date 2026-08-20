@@ -11,6 +11,8 @@ guest) and upstream master.
 Upstream fix submitted from `~/code/arc-theme`, branch
 `gnome-shell-gresource-meson-1.12` (github.com/jnsh/arc-theme PR by Aaron).
 
+https://github.com/jnsh/arc-theme/pull/238
+
 **Delete this dir when:** the upstream PR is merged AND the AUR package
 (pkgbase `arc-gtk-theme`, also building `arc-solid-gtk-theme`) ships a
 recipe/source containing the fix — or when Story 3.18 retires Arc entirely.
