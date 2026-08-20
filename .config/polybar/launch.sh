@@ -14,6 +14,7 @@
 # get list of connected monitors, space separated
 #active_monitors=$(xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" ORS=" ")
 active_monitors=$(xrandr --listactivemonitors | tail -n +2 | awk '{print $2}' ORS=" " | sed 's/+//g')
+echo "$active_monitors"
 test=echo $(echo $active_monitors | sed 's/*//g')
 echo "$test"
 
@@ -23,7 +24,7 @@ echo "$test"
 laptop="eDP1 "
 laptop_star="*eDP1 "
 laptop_4k="*DP1-1 DP1-2~1 DP1-2~2 eDP1 "
-three="eDP1 DP1-1 DP1-3 "
+three="*eDP-1 DP-1-1 DP-1-3 "
 displaylink="*DP1-1 eDP1 DP1-3 "
 dragon="eDP1 DP1 "
 home="*eDP1 DP1-1~1 DP1-1~2 DP1-2 "
@@ -60,7 +61,7 @@ function set_monitor_vars() {
             mode="4k split with laptop monitor (home)"
             ;;
         "$three" )
-            export_monitor_vars "eDP1" "DP1-1" "DP1-3" "" ""
+            export_monitor_vars "eDP-1" "DP-1-1" "DP-1-3" "" ""
             mode="three"
             ;;
         "$displaylink" )
