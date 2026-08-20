@@ -417,7 +417,7 @@ the updated `launch.sh` layout table.
 
 ---
 
-### Story 3.18: Arc GTK theme is dead upstream and unbuildable — replace, vendor, or drop
+### Story 3.18: Arc GTK theme is release-less upstream and unbuildable — repackage, replace, or drop
 
 As the repo owner,
 I want a deliberate decision about the desktop's GTK theme now that Arc cannot
@@ -427,7 +427,8 @@ silently losing the configured theme.
 
 Issue: [#137](https://github.com/amasover/dotfiles/issues/137) · Origin: the
 Story 2.38 (#124) validation run, 2026-08-16 — `arc-gtk-theme` burned sync
-attempts 2–10 (upstream archived Dec 2022; its 20221218 tarball's gnome-shell
+attempts 2–10 (upstream git is alive — pushed 2025-10, gnome-shell dirs through
+45 — but has tagged no release since Dec 2022; the 20221218 tarball's gnome-shell
 meson rules reference directories the tarball lacks, and meson 1.12
 hard-errors where the old meson warned; AUR recipe untouched since 2024;
 chaotic doesn't carry it). `arc-solid-gtk-theme` is a split package of the

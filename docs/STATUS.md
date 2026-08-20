@@ -137,7 +137,7 @@ Facts:
 - **Spun out of the 2.38 validation run (2026-08-16)**: **2.43** shim-signed boot-chain audit
   ([#136](https://github.com/amasover/dotfiles/issues/136) — is Secure Boot even in the chain?
   the AUR recipe healed 2026-07-31 but it stays deferred until the audit) and **3.18** Arc
-  theme triage ([#137](https://github.com/amasover/dotfiles/issues/137) — dead upstream,
+  theme triage ([#137](https://github.com/amasover/dotfiles/issues/137) — release-less upstream,
   unbuildable split-package pair, yet the live desktop runs Arc-Dark). Aaron's live
   step done this session: `aur-quarantine auto playwright` — **the exempt list changed, so
   `yadm encrypt` is owed before the next yadm push** (the 4.9 guard will block until then).
