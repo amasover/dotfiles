@@ -89,6 +89,12 @@ Facts:
   2026-08-16 (known-broken retry now gated on an aged fix newer than `broken_at` via
   `broken-fix`, filter fails closed on non-house TOML styles, CLI intake hardening; clitest
   115→129 — details in the PR comment).
+- **2.45 syu upgrade holds** ([#144](https://github.com/amasover/dotfiles/issues/144), PR open
+  from `story/2.45-syu-upgrade-holds`): a chaotic-gate age hold on an *upgrade* killed step 3c's
+  `pacman -Syu` on the 2026-08-20 resumed run — the aged ngrok was already installed, but 3c had
+  no hold handling and 2.38's deferrals only shape the *requested* set. Fixed: unattended 3c
+  retries with accumulated `--ignore` for age holds on installed packages (deferred + reported
+  like every 2.38 hold); everything else still dies. Owed: the evidence run log (spec in epic 2).
 - **2.39 quarantine pin is defeatable** ([#130](https://github.com/amasover/dotfiles/issues/130)):
   a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
   pin with the newest upstream. Spec now in epic 2. **Blocked**: the grill's policy-options
