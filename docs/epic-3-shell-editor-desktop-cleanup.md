@@ -430,15 +430,18 @@ Story 2.38 (#124) validation run, 2026-08-16 — `arc-gtk-theme` burned sync
 attempts 2–10 (upstream archived Dec 2022; its 20221218 tarball's gnome-shell
 meson rules reference directories the tarball lacks, and meson 1.12
 hard-errors where the old meson warned; AUR recipe untouched since 2024;
-chaotic doesn't carry it). `arc-solid-gtk-theme` is deleted from the AUR
-outright. Both are known-broken-deferred, so runs survive — but the live
+chaotic doesn't carry it). `arc-solid-gtk-theme` is a split package of the
+same pkgbase — it exists on the AUR but fails with the same build (an earlier
+note wrongly called it deleted; corrected 2026-08-19). The pkgbase has been
+flagged out-of-date since 2025-11 with no response. Both are
+known-broken-deferred, so runs survive — but the live
 desktop runs Arc-Dark (`.gtkrc-2.0` + `gtk-3.0/settings.ini`), and a fresh
 machine now gets no theme. Same shape as Story 3.10's recorder consolidation.
 
 **Acceptance criteria:**
 
 - Given the candidates (maintained successor theme, vendored built theme files per 3.11's scripts-not-PKGBUILDs precedent, a different theme, or deliberate theme-less fresh installs), then one is chosen and recorded
-- Given the choice, then the declarations match it — `arc-solid-gtk-theme` leaves the groups regardless (it can never install again), the known-broken entries are retired to match, and the GTK configs are updated if the theme changes
+- Given the choice, then the declarations match it — `arc-solid-gtk-theme` lives or dies with the same decision (it builds from the same pkgbase), the known-broken entries are retired to match, and the GTK configs are updated if the theme changes
 - Given a fresh-machine path (harness guest is fine), then it converges with the intended theme state
 
 **Evidence artifact:** the recorded decision + a run/guest showing the

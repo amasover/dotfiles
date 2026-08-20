@@ -20,7 +20,8 @@ broken_at = "d92ee57d5d38aeca23e050ec236ef3897f3c5162"   # skip while the AUR co
 since     = "2026-08-16"
 
 [arc-solid-gtk-theme]
-reason    = "DELETED from the AUR (empty repo, found 2026-08-16) — can never install fresh anywhere; defer until the declaration is removed or a replacement theme is chosen"
-broken_at = "0000000000000000000000000000000000000000"   # skip while the AUR commit still equals this
-since     = "2026-08-16"
-
+reason    = "split package of pkgbase arc-gtk-theme (NOT deleted — earlier note wrong): same bit-rotted build, fails together with arc-gtk-theme; flagged out-of-date on the AUR since 2025-11 with no response. Skip pending theme triage (3.18, #137)"
+upstream  = "https://aur.archlinux.org/packages/arc-solid-gtk-theme"
+broken_at = "d92ee57d5d38aeca23e050ec236ef3897f3c5162"   # skip while the AUR commit still equals this
+since     = "2026-08-19"
+base      = "arc-gtk-theme"
