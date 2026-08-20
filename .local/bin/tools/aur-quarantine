@@ -281,8 +281,15 @@ cmd_build() {                   # $1=pkgbase $2=sha  (installs)
     # Repo-local patches (Story 3.18): extract first (--nobuild; -d defers the
     # dep check to the real build), patch the source, then build unextracted
     # (-e). The plain path stays a single makepkg run.
+    # --skippgpcheck: a fresh machine (harness guest) has an empty gpg keyring,
+    # so any sig-carrying source fails verification outright (arc-gtk-theme:
+    # "unknown public key", 2026-08-20 guest run) — and importing validpgpkeys
+    # unattended would be TOFU on a key id read from the same recipe, adding no
+    # trust. Integrity here is the age-pinned AUR commit plus the PKGBUILD's
+    # checksums, which --nobuild still verifies; the -e build re-verifies
+    # nothing (it reuses src/), so this is the only gate on the patched path.
     if has_patches "$base"; then
-        if ! ( cd "$dir" && rm -rf src && makepkg --nobuild -d --noconfirm ) \
+        if ! ( cd "$dir" && rm -rf src && makepkg --nobuild -d --noconfirm --skippgpcheck ) \
             || ! apply_patches "$dir" "$base"; then
             echo "aur-quarantine: build $base: local patch stage failed — not built." >&2
             git -C "$dir" checkout --quiet - 2>/dev/null || true; return 1
