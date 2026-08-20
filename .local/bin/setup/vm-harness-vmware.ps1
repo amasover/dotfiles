@@ -61,12 +61,15 @@
 # (--log) and renders the console leg per the mode above. Same filter as the
 # bash harness's `scrub`; test seam: vm-harness-display --mode scrub.
 #
-# The guest sync runs WITHOUT a pty here (decided at slice 4, diverging from
-# the bash harness's `ssh -t`): BatchMode automation would fight forced tty
-# allocation, PowerShell's line-oriented native pipeline would mangle raw
-# pty CR-frames anyway, and the display's anchors read pacman's `::`/`==>`
-# lines, which appear pty or not. Cost: no live pacman progress bars in bar
-# mode's firehose — plain per-package lines instead.
+# The guest glue runs under a pty when one is available (`ssh -t`, revising
+# the slice-4 no-pty call — attended runs came out colorless, the cost that
+# decision underestimated): with the local console as stdin, the guest tools
+# see a tty and emit color; without one, ssh warns and proceeds pty-less —
+# the same arms the bash harness's vm_ssh has. The slice-4 caveats hold but
+# are absorbed downstream: the scrub drops the pty's CR-frames and caret
+# echo from the logs, and PowerShell's line-oriented native pipeline means
+# redraw bursts reach the console one line at a time (final frame, in color)
+# rather than animating — colors yes, live bars no.
 #
 # Env overrides mirror the bash harness where they apply:
 #   VM_HARNESS_DIR, VM_HARNESS_DISK (GiB, bare number), VM_HARNESS_RAM (MiB),
@@ -387,10 +390,13 @@ function Send-TrustBaseline([string]$Ip) {
 
 # Push the shared guest glue (fresh each run — the guest executes the host
 # checkout's version) and run one of its subcommands, streaming output.
+# Single `-t` (vm_ssh parity): a pty when the local console provides one, so
+# the guest tools emit color; a warning + pty-less run when stdin is
+# redirected. The scrub keeps either variant out of the logs (see header).
 function Invoke-GuestGlue([string]$Ip, [string]$RemoteCmd) {
     & scp @BatchOpts -q $GuestTool "$VmUser@${Ip}:vm-harness-guest"
     if ($LASTEXITCODE -ne 0) { throw "scp vm-harness-guest failed (rc=$LASTEXITCODE)" }
-    & ssh @BatchOpts "$VmUser@$Ip" $RemoteCmd 2>&1
+    & ssh -t @BatchOpts "$VmUser@$Ip" $RemoteCmd 2>&1
     if ($LASTEXITCODE -ne 0) { throw "guest command failed (rc=$LASTEXITCODE): $RemoteCmd" }
 }
 
