@@ -91,6 +91,16 @@ step_outcome() { # $1 = 1 if installed now, else 0; note on stdin
     fi
 }
 
+# Classify a quarantine hold that aborted the 3c full upgrade (Story 2.45).
+# Exactly one answer is tolerable unattended: an AGE hold on a package that is
+# already installed — the aged version stays and only the too-new upgrade
+# waits (--ignore, retry). Everything else needs a human: identity/rpc holds
+# by policy, and an age hold on a package NOT installed cannot be --ignore'd
+# into existence (it entered the transaction as a dependency, not an upgrade).
+syu_hold_action() { # $1 = hold code, $2 = 1 if the package is installed
+    if [[ "$1" == age && "${2:-0}" == 1 ]]; then echo ignore-upgrade; else echo die; fi
+}
+
 # Deterministic sync failures must die on attempt 1, not burn all 10 retries
 # (Story 2.26): resolver questions and declaration errors repeat identically
 # every attempt (the libgl provider prompt cost 4 attempts before this line
@@ -109,6 +119,7 @@ sync_fatal_line() {
 #                                  (needs only pacman)
 #   --verdict-bucket CLASS REPO    print the pre-flight bucket for one verdict
 #   --step-outcome INSTALLED       classify one stepping attempt (note on stdin)
+#   --syu-hold-action CODE INSTALLED  classify a hold that aborted the 3c upgrade
 #   --sync-fatal                   print the deterministic-fatal line from a sync log (stdin)
 if [[ "${1:-}" == "--probe-provider" ]]; then
     shift
@@ -124,6 +135,10 @@ if [[ "${1:-}" == "--verdict-bucket" ]]; then
 fi
 if [[ "${1:-}" == "--step-outcome" ]]; then
     step_outcome "${2:-0}"
+    exit 0
+fi
+if [[ "${1:-}" == "--syu-hold-action" ]]; then
+    syu_hold_action "${2:-}" "${3:-0}"
     exit 0
 fi
 if [[ "${1:-}" == "--sync-fatal" ]]; then
@@ -259,89 +274,18 @@ else
         --sort rate --protocol https --age 6 --save "$mirrorlist"
 fi
 
-# --- 3c. system sync (Story 2.34) ----------------------------------------------
-# Sync DBs age between runs — a resumed VM days later, or a machine restored
-# from an old snapshot — and Arch mirrors purge superseded package files, so a
-# stale DB 404s everywhere no matter how good the mirrorlist is (2026-07-19:
-# mesa/svt-av1 rebuilt between runs killed the pre-build's dep install). One
-# full -Syu here aligns DB and installed set with what mirrors actually carry.
-# Never bare -Sy: installing against a fresh DB on old system libs is the
-# classic Arch partial-upgrade trap. Fresh installs pay ~nothing (pacstrap
-# DBs are minutes old, nothing to upgrade).
-say "System sync"
-if [[ $CHECK -eq 1 ]]; then
-    echo "  would: pacman -Syu   (refresh DBs + full upgrade — mirrors purge superseded files)"
-else
-    sudo pacman -Syu "${NC[@]}"
-fi
-
-# --- 3d. provider pins (Story 2.26) ---------------------------------------------
-# Declaring a provider in a group (#99: pipewire-jack for jack) stopped being
-# enough when 2.33 moved AUR pre-builds ahead of the sync: dep resolution runs
-# before the declared set is installed, and --noconfirm pacman picks the
-# alphabetically-first provider (jack2, 2026-07-19 — the sync then dies on the
-# conflict with the declared choice). Install the pins first so no dependency
-# resolution ever gets to choose a provider. Every pin must also be declared
-# in a group — the harness's exactly-empty unmanaged check flags one that
-# isn't. Unattended, --ask=4 (libalpm's conflict question) defaults the
-# "remove the conflicting provider?" prompt to yes, so a wrong provider
-# already on the system is replaced instead of killing the run; unattended is
-# VM-only (the metal gate above), so that auto-removal never touches metal.
-PROVIDER_PINS=(pipewire-jack libglvnd) # extend when a new pre-build provider collision appears
-# (jack2 2026-07-19; libgl 2026-08-16 — chaotic's nvidia-340xx-utils also provides it,
-#  and the resolver's "2 providers available" prompt hangs an unattended sync)
-say "Provider pins"
-if [[ $CHECK -eq 1 ]]; then
-    echo "  would: pacman -S --needed ${PROVIDER_PINS[*]}   (declared providers install first, before any dep resolution picks one)"
-elif [[ $UNATTENDED -eq 1 ]]; then
-    sudo pacman -S --needed --noconfirm --ask=4 "${PROVIDER_PINS[@]}"
-else
-    sudo pacman -S --needed "${PROVIDER_PINS[@]}"
-fi
-
-# --- 4. yay (AUR helper; one manual makepkg, everything else goes through it) ---
-say "yay"
-if command -v yay >/dev/null; then
-    echo "  already installed"
-elif [[ $CHECK -eq 1 ]]; then
-    echo "  would: git clone aur.archlinux.org/yay-bin + makepkg -si"
-else
-    tmp=$(mktemp -d)
-    git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin"
-    (cd "$tmp/yay-bin" && makepkg -si "${NC[@]}")
-    rm -rf "$tmp"
-fi
-
-# --- 4b. quarantine prerequisites (Story 2.10) --------------------------------
-# Two things the install gate needs before the first yay install:
-#  * jq — aur-quarantine's RPC parsing; must exist before any hold remediation,
-#    because the sync that would have installed it is exactly what a hold aborts.
-#  * exemption seed — metapac and yay skip the age delay everywhere, mirroring
-#    the live machines' standing judgment (trusted infrastructure that releases
-#    faster than the 14d window). Maintainer changes are still held wherever a
-#    baseline exists. Idempotent: dedupes against a decrypt-restored exempt.txt.
-say "Quarantine prerequisites"
+# Quarantine hold machinery — defined here because step 3c below is the first
+# consumer; the 6a sync loop shares all of it. (Moved up from beside the loop
+# for Story 2.45 — order of definition is execution order in a script.)
+#
+# Hold handling (Stories 2.10/2.28): a hold — from the AURPreInstall hook (AUR
+# builds) or the chaotic-quarantine-gate alpm hook (chaotic binaries) — aborts
+# the transaction and lands in held-install.tsv. An "age" hold is stepped to
+# the newest aged version, the same selection model as update's stepping (for
+# a chaotic package that means building the same recipe from source at an aged
+# commit). Identity holds (orphan / maintainer-change) and RPC failures are a
+# human decision — die with the remedy.
 qstate="${XDG_STATE_HOME:-$HOME/.local/state}/aur-quarantine"
-if [[ $CHECK -eq 1 ]]; then
-    echo "  would: pacman -S --needed jq lua51; seed exempt.txt with: metapac yay"
-else
-    # lua51 runs quarantine-policy.lua for the chaotic-aur alpm gate (2.28);
-    # it matches yay's embedded gopher-lua (5.1).
-    sudo pacman -S --needed "${NC[@]}" jq lua51
-    mkdir -p "$qstate"
-    for p in metapac yay; do
-        grep -qxF "$p" "$qstate/exempt.txt" 2>/dev/null || echo "$p" >>"$qstate/exempt.txt"
-    done
-    echo "  exempt seed: metapac yay (age delay skipped; identity checks unaffected)"
-fi
-
-# Quarantine hold handling for the sync loop (Stories 2.10/2.28): a hold —
-# from the AURPreInstall hook (AUR builds) or the chaotic-quarantine-gate alpm
-# hook (chaotic binaries) — aborts the sync and lands in held-install.tsv. An
-# "age" hold is stepped to the newest aged version, the same selection model
-# as update's stepping (for a chaotic package that means building the same
-# recipe from source at an aged commit). Identity holds (orphan /
-# maintainer-change) and RPC failures are a human decision — die with the remedy.
 held_install_file="$qstate/held-install.tsv"
 step_note=""
 step_age_hold() { # $1 = held package; captures the attempt for die_still_held
@@ -425,6 +369,109 @@ die_still_held() { # $1 = held package that stepping could not satisfy
     Decide:  aur-quarantine auto $1   (skip its age delay)  — or wait for it to age out
     Broken upstream and you already know?  aur-quarantine broken $1 --reason '...'   (2.38: runs then skip it)"
 }
+
+# --- 3c. system sync (Story 2.34) ----------------------------------------------
+# Sync DBs age between runs — a resumed VM days later, or a machine restored
+# from an old snapshot — and Arch mirrors purge superseded package files, so a
+# stale DB 404s everywhere no matter how good the mirrorlist is (2026-07-19:
+# mesa/svt-av1 rebuilt between runs killed the pre-build's dep install). One
+# full -Syu here aligns DB and installed set with what mirrors actually carry.
+# Never bare -Sy: installing against a fresh DB on old system libs is the
+# classic Arch partial-upgrade trap. Fresh installs pay ~nothing (pacstrap
+# DBs are minutes old, nothing to upgrade).
+#
+# Unattended (Story 2.45): an upgrade of an INSTALLED chaotic package can be
+# held by the quarantine gate (age window), and an alpm hook's only veto
+# aborts the whole transaction — a resumed run with the aged ngrok 3.39.10
+# installed died here when chaotic offered a 7d-old 3.39.11 (2026-08-20).
+# The remedy for a held upgrade is simply "not yet": --ignore it and re-run;
+# the installed aged version stays, everything else upgrades, and the deferral
+# is reported like every 2.38 hold. A fresh install can't trip this (no
+# chaotic repo, nothing installed to upgrade); anything but an age hold on an
+# installed package still dies with the remedy.
+say "System sync"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: pacman -Syu   (refresh DBs + full upgrade — mirrors purge superseded files)"
+elif [[ $UNATTENDED -eq 1 ]]; then
+    syu_ok=0
+    syu_ignore=()
+    for _ in 1 2 3 4 5; do
+        rm -f "$held_install_file"
+        if sudo pacman -Syu "${NC[@]}" "${syu_ignore[@]}"; then
+            syu_ok=1
+            break
+        fi
+        [[ -s "$held_install_file" ]] || die "system sync failed and no quarantine hold was recorded — read the pacman output above"
+        IFS=$'\t' read -r held_pkg held_code <"$held_install_file"
+        inst=0
+        pacman -Q "$held_pkg" >/dev/null 2>&1 && inst=1
+        [[ "$(syu_hold_action "$held_code" "$inst")" == ignore-upgrade ]] || die_hold "$held_pkg" "$held_code"
+        defer_pkg "$held_pkg" age "upgrade held at system sync; installed aged version stays"
+        syu_ignore+=(--ignore "$held_pkg")
+    done
+    [[ $syu_ok -eq 1 ]] || die "system sync failed after 5 attempts — read the output above"
+else
+    sudo pacman -Syu "${NC[@]}"
+fi
+
+# --- 3d. provider pins (Story 2.26) ---------------------------------------------
+# Declaring a provider in a group (#99: pipewire-jack for jack) stopped being
+# enough when 2.33 moved AUR pre-builds ahead of the sync: dep resolution runs
+# before the declared set is installed, and --noconfirm pacman picks the
+# alphabetically-first provider (jack2, 2026-07-19 — the sync then dies on the
+# conflict with the declared choice). Install the pins first so no dependency
+# resolution ever gets to choose a provider. Every pin must also be declared
+# in a group — the harness's exactly-empty unmanaged check flags one that
+# isn't. Unattended, --ask=4 (libalpm's conflict question) defaults the
+# "remove the conflicting provider?" prompt to yes, so a wrong provider
+# already on the system is replaced instead of killing the run; unattended is
+# VM-only (the metal gate above), so that auto-removal never touches metal.
+PROVIDER_PINS=(pipewire-jack libglvnd) # extend when a new pre-build provider collision appears
+# (jack2 2026-07-19; libgl 2026-08-16 — chaotic's nvidia-340xx-utils also provides it,
+#  and the resolver's "2 providers available" prompt hangs an unattended sync)
+say "Provider pins"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: pacman -S --needed ${PROVIDER_PINS[*]}   (declared providers install first, before any dep resolution picks one)"
+elif [[ $UNATTENDED -eq 1 ]]; then
+    sudo pacman -S --needed --noconfirm --ask=4 "${PROVIDER_PINS[@]}"
+else
+    sudo pacman -S --needed "${PROVIDER_PINS[@]}"
+fi
+
+# --- 4. yay (AUR helper; one manual makepkg, everything else goes through it) ---
+say "yay"
+if command -v yay >/dev/null; then
+    echo "  already installed"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: git clone aur.archlinux.org/yay-bin + makepkg -si"
+else
+    tmp=$(mktemp -d)
+    git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin"
+    (cd "$tmp/yay-bin" && makepkg -si "${NC[@]}")
+    rm -rf "$tmp"
+fi
+
+# --- 4b. quarantine prerequisites (Story 2.10) --------------------------------
+# Two things the install gate needs before the first yay install:
+#  * jq — aur-quarantine's RPC parsing; must exist before any hold remediation,
+#    because the sync that would have installed it is exactly what a hold aborts.
+#  * exemption seed — metapac and yay skip the age delay everywhere, mirroring
+#    the live machines' standing judgment (trusted infrastructure that releases
+#    faster than the 14d window). Maintainer changes are still held wherever a
+#    baseline exists. Idempotent: dedupes against a decrypt-restored exempt.txt.
+say "Quarantine prerequisites"
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: pacman -S --needed jq lua51; seed exempt.txt with: metapac yay"
+else
+    # lua51 runs quarantine-policy.lua for the chaotic-aur alpm gate (2.28);
+    # it matches yay's embedded gopher-lua (5.1).
+    sudo pacman -S --needed "${NC[@]}" jq lua51
+    mkdir -p "$qstate"
+    for p in metapac yay; do
+        grep -qxF "$p" "$qstate/exempt.txt" 2>/dev/null || echo "$p" >>"$qstate/exempt.txt"
+    done
+    echo "  exempt seed: metapac yay (age delay skipped; identity checks unaffected)"
+fi
 
 # --- 5. metapac (itself an AUR package) --------------------------------------
 # Gated like every AUR install (Story 2.10), but exempt from the age delay via
@@ -817,9 +864,13 @@ elif [[ $UNATTENDED -eq 1 ]]; then
     Otherwise: fix the declarations."
         retry_delay=$((60 + attempt * 30))
         echo "bootstrap: sync attempt $attempt failed — retrying in ${retry_delay}s"
-        # Purge corrupt built archives (e.g. truncated by a disk-full episode):
-        # yay reuses cached builds, so one bad .pkg.tar.zst poisons every retry.
-        for f in "$HOME"/.cache/yay/*/*.pkg.tar.zst; do
+        # Purge corrupt built archives (truncated by a disk-full episode, or by
+        # a mid-build guest shutdown — 2026-08-20: three .pkg.tar left corrupt
+        # poisoned every retry of a 48-package -U batch): yay reuses cached
+        # builds. The glob covers every PKGEXT — this guest's makepkg writes
+        # uncompressed .pkg.tar, which the original .pkg.tar.zst-only glob
+        # missed, so the purge never fired.
+        for f in "$HOME"/.cache/yay/*/*.pkg.tar*; do
             [[ -f "$f" ]] || continue
             pacman -Qp "$f" >/dev/null 2>&1 || {
                 echo "  purging corrupt $(basename "$f")"

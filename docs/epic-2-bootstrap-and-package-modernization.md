@@ -1236,6 +1236,54 @@ guests — a signed-chain guest run would be the evidence).
 
 ---
 
+### Story 2.45: a quarantine-held chaotic upgrade kills the 3c system sync
+
+As the repo owner,
+I want an unattended bootstrap to survive the chaotic gate holding an
+*upgrade* of a package whose aged version is already installed,
+So that a resumed run can't be killed by whichever chaotic package happens to
+be inside its quarantine window that week — the aged version is already the
+correct answer, and "wait" should mean deferring the upgrade, not failing the
+whole run.
+
+Issue: [#144](https://github.com/amasover/dotfiles/issues/144) · Origin: the 2026-08-20 resumed guest
+run. The pre-build pass had installed the aged `ngrok 3.39.10-1` from its
+pinned AUR commit — exactly the tolerable-holds behavior 2.38 built. Step
+3c's full upgrade (`pacman -Syu`, Story 2.34) then saw chaotic-aur offering
+the 7-day-old 3.39.11-1, and the chaotic-quarantine-gate correctly held it —
+but an alpm PreTransaction hook's only veto is a nonzero exit, which aborts
+the *entire transaction* (taking the unrelated `chaotic-mirrorlist` upgrade
+with it), and 3c had no hold handling at all: the run died. 2.38's deferrals
+couldn't help because they act on the *requested* set (filtered metapac
+staging, sync-loop stepping); a `-Syu` upgrade of an already-installed
+package is never requested — pacman proposes it on its own.
+
+**Design (built with the story):** pacman's own mechanism for "not this one"
+is `--ignore`. Unattended 3c becomes a small retry loop: on failure with a
+recorded hold, classify it (`syu_hold_action`, clitest-covered seam) — an
+age hold on an *installed* package defers the upgrade (`defer_pkg`, so it
+lands in deferred.tsv and the drift-report buckets like every 2.38 hold) and
+re-runs with `--ignore <pkg>` accumulated; everything else (identity/rpc
+holds, age holds on not-installed packages, non-hold failures) dies with the
+remedy exactly as before. Attended runs are unchanged — the hold prints its
+remedies and the human decides. Fresh installs can't trip this (no chaotic
+repo yet at 3c, nothing installed to upgrade). The hold machinery
+(`held_install_file`, `defer_pkg`, `die_hold`) moved above 3c — definition
+order is execution order; the 6a sync loop shares it unchanged.
+
+**Acceptance criteria:**
+
+- Given an unattended run where the chaotic gate holds an upgrade of an installed package (age), when 3c runs, then the upgrade is deferred (`DEFERRED [age]` + deferred.tsv + drift-report bucket), the rest of the transaction completes, and the run continues
+- Given any other hold at 3c (identity, rpc, or an age hold on a package not installed), then the run dies with the same remedy text as before
+- Given a 3c failure with no hold recorded, then the run dies pointing at the pacman output (no silent retry loop)
+- Given the test contract, then the hold classifier ships with clitest coverage (`--syu-hold-action` seam) and the attended path is unchanged
+
+**Evidence artifact:** an unattended run log where 3c logs the gate's HOLD
+line followed by `DEFERRED [age]` and a completed system sync in the same
+phase, with the aged version still installed afterwards.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
