@@ -878,7 +878,14 @@ Slice-4 decisions (2026-08-15 build):
   PowerShell's line-oriented native pipeline would mangle raw pty CR-frames,
   and the display's anchors read pacman's `::`/`==>` lines, which appear pty
   or not. Cost: plain per-package lines instead of live progress bars in bar
-  mode's firehose.
+  mode's firehose. **Revised 2026-08-20** (first full attended `up` came out
+  colorless — the cost above was underestimated, and the caveats turned out
+  absorbed elsewhere): the guest glue now runs `ssh -t`, vm_ssh parity — a
+  pty when the local console provides one (guest tools emit color), a
+  warning + pty-less run when stdin is redirected. BatchMode coexists with
+  `-t` fine; the scrub (which slice 4 added) strips the pty's CR-frames and
+  caret echo from the logs; PowerShell's line buffering remains, so redraw
+  bursts reach the console as final frames in color rather than animating.
 - **Driver arg-handling tests: not absorbed.** Slice 4 kept the new driver
   code thin (the display/scrub logic lives in Python under pytest); the
   driver's own dispatch/guard tests remain Story 4.10's

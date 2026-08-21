@@ -64,13 +64,11 @@ Facts:
   (37–50 per run). Open question on the issue: whether `--needed` skips the explicit re-marking
   that keeps `unmanaged` honest.
 - **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119), reopened):
-  slices 1–3 merged (PRs #120/#121/#128). GitHub auto-closed #119 at the #128 merge — the PR
-  body's slice-4 sentence contains the literal closing keyword "closes #119" — reopened
-  2026-08-15. Still owed: **slice 4** (progress display + ANSI scrub + the driver-tests
-  decision) and the **evidence artifact** (bootstrap can't reach rc=0 until 2.38's holds land).
-  Slice 4 is PR [#134](https://github.com/amasover/dotfiles/pull/134); adversarial-review fixes
-  pushed 2026-08-16 (dead display sink now fails the phase, log-leg errors exit 3 — details in
-  the PR comment); needs a Windows smoke run before merge.
+  slices 1–4 merged (PRs #120/#121/#128/#134). Follow-up in PR: the slice-4 no-pty call revised —
+  attended runs came out colorless, so the guest glue now runs `ssh -t` (vm_ssh parity; decision
+  record updated in the epic's slice-4 block). Still owed: the **evidence artifact** (a full green
+  `up`; 2.38's holds landed, current blocker is per-package build failures like tidal-hifi's
+  sha256 mismatch) and attended bar/compact transcripts.
   Spun out so they don't close with #119: **2.41** libvirt glue switchover
   ([#132](https://github.com/amasover/dotfiles/issues/132)) and **4.10** driver tests
   ([#133](https://github.com/amasover/dotfiles/issues/133)). 2.37 still waits on 2.29/2.30.
