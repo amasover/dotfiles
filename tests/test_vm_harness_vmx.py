@@ -40,6 +40,11 @@ class TestBuildVmx:
     def test_headless_never_blocks_on_dialogs(self):
         assert 'msg.autoAnswer = "TRUE"' in _build()
 
+    def test_no_floppy(self):
+        # VMware defaults a floppy controller in; the guest kernel then logs
+        # "I/O error, dev fd0" on every boot probing the empty drive.
+        assert 'floppy0.present = "FALSE"' in _build()
+
     def test_sizing_parameters_land(self):
         text = _build(ram_mib=4096, cpus=4)
         assert 'memsize = "4096"' in text
