@@ -864,9 +864,13 @@ elif [[ $UNATTENDED -eq 1 ]]; then
     Otherwise: fix the declarations."
         retry_delay=$((60 + attempt * 30))
         echo "bootstrap: sync attempt $attempt failed — retrying in ${retry_delay}s"
-        # Purge corrupt built archives (e.g. truncated by a disk-full episode):
-        # yay reuses cached builds, so one bad .pkg.tar.zst poisons every retry.
-        for f in "$HOME"/.cache/yay/*/*.pkg.tar.zst; do
+        # Purge corrupt built archives (truncated by a disk-full episode, or by
+        # a mid-build guest shutdown — 2026-08-20: three .pkg.tar left corrupt
+        # poisoned every retry of a 48-package -U batch): yay reuses cached
+        # builds. The glob covers every PKGEXT — this guest's makepkg writes
+        # uncompressed .pkg.tar, which the original .pkg.tar.zst-only glob
+        # missed, so the purge never fired.
+        for f in "$HOME"/.cache/yay/*/*.pkg.tar*; do
             [[ -f "$f" ]] || continue
             pacman -Qp "$f" >/dev/null 2>&1 || {
                 echo "  purging corrupt $(basename "$f")"
