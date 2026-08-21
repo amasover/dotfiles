@@ -100,6 +100,26 @@ $ printf 'aur-quarantine: p maintainer changed (a -> b).\n' | .local/bin/setup/b
 no-verdict
 $
 
+--- bootstrap --syu-hold-action: the 2.45 upgrade-hold classifier (3c full upgrade) ---
+
+The 3c -Syu has no requested set to filter, so its only tolerable answer is an
+age hold on an already-installed package: --ignore the upgrade and re-run (the
+aged version stays). An age hold on a NOT-installed package (a dependency
+entering the transaction) and every identity/rpc hold stay fatal — same
+posture as die_hold.
+
+$ .local/bin/setup/bootstrap --syu-hold-action age 1
+ignore-upgrade
+$ .local/bin/setup/bootstrap --syu-hold-action age 0
+die
+$ .local/bin/setup/bootstrap --syu-hold-action maintainer-change 1
+die
+$ .local/bin/setup/bootstrap --syu-hold-action rpc 1
+die
+$ .local/bin/setup/bootstrap --syu-hold-action orphan 0
+die
+$
+
 --- bootstrap --sync-fatal: deterministic sync failures are recognized (2.26) ---
 
 Lines that repeat identically on every retry must die on attempt 1. The

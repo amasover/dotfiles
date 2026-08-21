@@ -64,13 +64,14 @@ Facts:
   (37–50 per run). Open question on the issue: whether `--needed` skips the explicit re-marking
   that keeps `unmanaged` honest.
 - **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119), reopened):
-  slices 1–4 merged (PRs #120/#121/#128/#134). **The evidence artifact landed 2026-08-21**: a
-  fully green `up` (`bootstrap rc=0` + `check rc=0`, unmanaged and missing both empty, four
-  honest age-deferrals) — logs `20260820-194838-*` / `20260821-*` on the Windows machine. Run on
-  `story/2.45-syu-upgrade-holds` (guest needed #145's 3c fix + the 2.42 retag done by hand), so
-  the from-`main` rerun after the open PRs merge is the formal close-out. Still open: attended
-  bar/compact display transcripts. Spun out: **2.41** ([#132](https://github.com/amasover/dotfiles/issues/132)),
-  **4.10** ([#133](https://github.com/amasover/dotfiles/issues/133)). 2.37 waits on 2.29/2.30.
+  slices 1–4 merged (PRs #120/#121/#128/#134), pty/color follow-up merged (#142). **The evidence
+  artifact landed 2026-08-21**: a fully green `up` (`bootstrap rc=0` + `check rc=0`, unmanaged
+  and missing both empty, four honest age-deferrals) — logs `20260820-194838-*` / `20260821-*`
+  on the Windows machine. Run on `story/2.45-syu-upgrade-holds` (guest needed #145's 3c fix +
+  the 2.42 retag done by hand), so the from-`main` rerun after #146 merges is the formal
+  close-out. Still open: attended bar/compact display transcripts. Spun out: **2.41**
+  ([#132](https://github.com/amasover/dotfiles/issues/132)), **4.10**
+  ([#133](https://github.com/amasover/dotfiles/issues/133)). 2.37 waits on 2.29/2.30.
 - **2.42 unmanaged-names parsing** ([#135](https://github.com/amasover/dotfiles/issues/135), PR
   open from `story/2.42-unmanaged-inline-toml`): metapac 0.10's inline-TOML `unmanaged` output
   made bootstrap 6b's dep-retag and the drift report's listing silent no-ops — caught live by
@@ -91,6 +92,12 @@ Facts:
   2026-08-16 (known-broken retry now gated on an aged fix newer than `broken_at` via
   `broken-fix`, filter fails closed on non-house TOML styles, CLI intake hardening; clitest
   115→129 — details in the PR comment).
+- **2.45 syu upgrade holds** ([#144](https://github.com/amasover/dotfiles/issues/144), PR open
+  from `story/2.45-syu-upgrade-holds`): a chaotic-gate age hold on an *upgrade* killed step 3c's
+  `pacman -Syu` on the 2026-08-20 resumed run — the aged ngrok was already installed, but 3c had
+  no hold handling and 2.38's deferrals only shape the *requested* set. Fixed: unattended 3c
+  retries with accumulated `--ignore` for age holds on installed packages (deferred + reported
+  like every 2.38 hold); everything else still dies. Owed: the evidence run log (spec in epic 2).
 - **2.39 quarantine pin is defeatable** ([#130](https://github.com/amasover/dotfiles/issues/130)):
   a stepped AUR commit doesn't pin what gets built — `playwright`'s `pkgver()` replaced the aged
   pin with the newest upstream. Spec now in epic 2. **Blocked**: the grill's policy-options
@@ -113,6 +120,9 @@ Facts:
   Interim: repo-local patch under `.config/dotfiles/aur-patches/` applied by `aur-quarantine
   build` + a bootstrap pre-build pass, both arcs **un-deferred**. Delete the patch when the
   upstream PR merges AND the AUR recipe ships it; the theme-future decision stays open.
+  Follow-up in PR: the patch stage's `makepkg --nobuild` verified source PGP sigs, which a
+  fresh guest's empty keyring can never satisfy (arc died "unknown public key", 2026-08-20 run)
+  — now `--skippgpcheck` there; checksums + the age pin stay the integrity gate.
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   live breakage until done — the 3.16 driver switch renamed Xorg outputs (`eDP1`→`eDP-1` etc.),
   so autorandr dock/undock auto-switching currently matches nothing and polybar's multi-monitor
