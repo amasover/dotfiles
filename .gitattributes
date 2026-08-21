@@ -10,3 +10,4 @@ tests/*.clitest.txt text eol=lf
 .local/bin/setup/vm-harness-guest text eol=lf
 .local/bin/setup/vm-harness-trust text eol=lf
 .local/bin/tools/vm-harness-display text eol=lf
+.local/bin/tools/metapac-unmanaged-names text eol=lf

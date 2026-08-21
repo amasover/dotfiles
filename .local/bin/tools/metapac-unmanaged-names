@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# metapac-unmanaged-names — extract package names from `metapac unmanaged`
+# output (Story 2.42, #135). stdin -> one name per line.
+#
+# metapac 0.10 prints one inline-TOML line per backend:
+#     arch = { packages = ["a", "b"] }
+# while older releases printed one quoted name per line. Both consumers
+# (bootstrap 6b's dep-retagging loop, metapac-drift-report's unmanaged
+# section) parsed only the legacy shape, so 0.10 turned them into silent
+# no-ops — caught live by the harness check's exactly-empty gate on the
+# 2026-08-20 run (lua51/qt5-charts/yaycache stayed explicit). One shared
+# seam now reads both shapes; feed it `metapac unmanaged 2>/dev/null` —
+# stderr must stay out, metapac's duplicate-package WARN lines also carry
+# quoted names.
+set -euo pipefail
+
+# First expression: the inline-TOML shape — reduce the line to its array
+# innards, then `t` skips the legacy expression (the substituted pattern
+# space starts with a quote and would match it a second time). Second: the
+# legacy shape — reduce to the quoted name. Then pick every quoted token out
+# of whichever survived. grep finding nothing is the empty-input case, not
+# an error.
+sed -n \
+    -e 's/^[A-Za-z_]* *= *{ *packages *= *\[\(.*\)\] *} *$/\1/p' -e t \
+    -e 's/^[[:space:]]*\("[^"]*"\).*/\1/p' \
+    | grep -oE '"[^"]+"' | tr -d '"' || true
