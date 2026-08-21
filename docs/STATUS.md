@@ -64,16 +64,18 @@ Facts:
   (37–50 per run). Open question on the issue: whether `--needed` skips the explicit re-marking
   that keeps `unmanaged` honest.
 - **2.36 Windows vm-harness** ([#119](https://github.com/amasover/dotfiles/issues/119), reopened):
-  slices 1–3 merged (PRs #120/#121/#128). GitHub auto-closed #119 at the #128 merge — the PR
-  body's slice-4 sentence contains the literal closing keyword "closes #119" — reopened
-  2026-08-15. Still owed: **slice 4** (progress display + ANSI scrub + the driver-tests
-  decision) and the **evidence artifact** (bootstrap can't reach rc=0 until 2.38's holds land).
-  Slice 4 is PR [#134](https://github.com/amasover/dotfiles/pull/134); adversarial-review fixes
-  pushed 2026-08-16 (dead display sink now fails the phase, log-leg errors exit 3 — details in
-  the PR comment); needs a Windows smoke run before merge.
-  Spun out so they don't close with #119: **2.41** libvirt glue switchover
-  ([#132](https://github.com/amasover/dotfiles/issues/132)) and **4.10** driver tests
-  ([#133](https://github.com/amasover/dotfiles/issues/133)). 2.37 still waits on 2.29/2.30.
+  slices 1–4 merged (PRs #120/#121/#128/#134). **The evidence artifact landed 2026-08-21**: a
+  fully green `up` (`bootstrap rc=0` + `check rc=0`, unmanaged and missing both empty, four
+  honest age-deferrals) — logs `20260820-194838-*` / `20260821-*` on the Windows machine. Run on
+  `story/2.45-syu-upgrade-holds` (guest needed #145's 3c fix + the 2.42 retag done by hand), so
+  the from-`main` rerun after the open PRs merge is the formal close-out. Still open: attended
+  bar/compact display transcripts. Spun out: **2.41** ([#132](https://github.com/amasover/dotfiles/issues/132)),
+  **4.10** ([#133](https://github.com/amasover/dotfiles/issues/133)). 2.37 waits on 2.29/2.30.
+- **2.42 unmanaged-names parsing** ([#135](https://github.com/amasover/dotfiles/issues/135), PR
+  open from `story/2.42-unmanaged-inline-toml`): metapac 0.10's inline-TOML `unmanaged` output
+  made bootstrap 6b's dep-retag and the drift report's listing silent no-ops — caught live by
+  the harness check's exactly-empty gate (lua51/qt5-charts/yaycache stayed explicit). One shared
+  seam (`tools/metapac-unmanaged-names`, clitest-covered, both shapes) now feeds both consumers.
 - **2.38 unattended holds** ([#124](https://github.com/amasover/dotfiles/issues/124),
   PR [#138](https://github.com/amasover/dotfiles/pull/138) merged 2026-08-16; issue stays open
   for the evidence run): implementation complete — known-broken CLI,
@@ -126,34 +128,23 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-16, Linux workstation)
+## Last session (2026-08-20/21, Windows machine)
 
-- **Adversarial review of both open PRs** (#138 and #134), fixes committed and pushed to both
-  branches the same session; full finding→fix mapping lives in a comment on each PR. The two
-  #138 majors were design-level: the known-broken auto-retry could only rebuild the already-
-  broken recipe (any third-party AUR push → ~14 days of fatal unattended runs — now gated on
-  `aur-quarantine broken-fix`: an aged commit newer than `broken_at`), and shim-signed's
-  "no auto-retry" note is not mechanism-enforced (**left as-is at Aaron's call** — an aged-in
-  fix may auto-install ahead of 2.43's audit; revisit via #136). The #134 major: a dead/missing
-  display child silently lost all phase output while the phase stamped rc=0 — now the phase
-  fails loudly and log-leg errors exit 3.
-- **Environment**: `python-pycdlib` installed on the workstation (seed-ISO tests now runnable
-  here); pytest still runs via `uvx pytest`. Windows gaps unchanged (4.7 #94 / 4.10 #133).
-- Prior-session context (spec-branch loss and rebuild, chaotic-aur enablement, valkey swap,
-  2.42 spin-out) is recorded on the relevant issues and epic entries; the `libnm` +
-  `networkmanager` undeclared drift is still Aaron's to triage (likely 3.9 #41 fallout).
-- **Spun out of the 2.38 validation run (2026-08-16)**: **2.43** shim-signed boot-chain audit
-  ([#136](https://github.com/amasover/dotfiles/issues/136) — is Secure Boot even in the chain?
-  the AUR recipe healed 2026-07-31 but it stays deferred until the audit) and **3.18** Arc
-  theme triage ([#137](https://github.com/amasover/dotfiles/issues/137) — release-less upstream,
-  unbuildable split-package pair, yet the live desktop runs Arc-Dark). Aaron's live
-  step done this session: `aur-quarantine auto playwright` — **the exempt list changed, so
-  `yadm encrypt` is owed before the next yadm push** (the 4.9 guard will block until then).
-- **2.43 executed after the PR merges**: boot-chain audit (findings on #136 — no Secure Boot,
-  Setup Mode, unsigned rEFInd booting directly; the ESP's shim is Ubuntu's **live dual-boot**,
-  corrected from "leftovers"), `shim-signed` dropped + deferral retired on the 2.43 branch, and
-  **2.44** (#139) opened with its stub — reframed at Aaron's direction to *fresh installs boot
-  Secure* (provisioning-time, rides the 2.29 recipe), not a fix for this machine.
+- **First fully green Windows-harness run** — `bootstrap rc=0` + `check rc=0`, unmanaged and
+  missing empty, four age-deferrals honestly reported (2.36 evidence; details in the 2.36 entry
+  above). Getting there took the whole session's chain: #142 (guest pty → color), #143 (arc PGP
+  in the patch stage, merged), #145 (2.45: 3c survives held chaotic upgrades — its DEFERRED/
+  --ignore path proved live three runs in a row, #144's evidence), a live-found purge-glob bug
+  (uncompressed .pkg.tar never purged — fixed on the 2.45 branch), and 2.42's silent retag no-op
+  (fixed on its own branch; the three packages were retagged by hand in the guest to green this
+  run).
+- **Run archaeology worth keeping**: a host sleep/power event cleanly shut the guest down
+  mid-sync; the corrupt debris (three truncated built archives + a torn brew-git source clone)
+  poisoned retries until purged. The guest-side bootstrap *survives* ssh resets (no pty) and
+  keeps converging — the host loses observability, not the run.
+- **Aaron's merge queue**: #142, #145, #146 (2.42) — after they land, one plain from-`main`
+  `destroy` + `up` is the formal 2.36/2.38 close-out run (also collects the attended display
+  transcripts and the fresh-run evidence for 2.19/2.26/2.27/2.34).
 
 ## Epics
 

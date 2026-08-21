@@ -847,15 +847,18 @@ say "Normalizing install reasons"
 if [[ $CHECK -eq 1 ]]; then
     echo "  would: pacman -D --asdeps every explicit-but-undeclared package that has a requirer"
 else
-    # The sed is coupled to metapac's output shape (quoted package names): if a
-    # metapac release reformats `unmanaged`, this loop silently becomes a no-op.
-    # The harness's exactly-empty unmanaged assert is what would catch that.
+    # Name extraction lives in tools/metapac-unmanaged-names (Story 2.42,
+    # #135): the inline sed here parsed only the pre-0.10 one-name-per-line
+    # shape, so metapac 0.10's inline TOML turned this loop into a silent
+    # no-op — exactly the failure its old comment predicted, caught live by
+    # the harness check's exactly-empty gate (2026-08-20: lua51/qt5-charts/
+    # yaycache stayed explicit). The shared seam reads both shapes.
     while IFS= read -r p; do
         [[ -n "$p" ]] || continue
         if [[ -n "$(pactree -r -d1 "$p" 2>/dev/null | sed -n 2p)" ]]; then
             sudo pacman -D -q --asdeps "$p" >/dev/null 2>&1 && echo "  dep-marked: $p"
         fi
-    done < <(metapac unmanaged 2>/dev/null | sed -n 's/^\s*"\([^"]*\)".*/\1/p')
+    done < <(metapac unmanaged 2>/dev/null | "$HOME/.local/bin/tools/metapac-unmanaged-names")
 fi
 
 # --- 6c. package-removal hook (Story 2.15) -------------------------------------

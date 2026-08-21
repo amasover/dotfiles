@@ -44,7 +44,8 @@ unmanaged=$(metapac unmanaged 2>/dev/null || true)
 if [[ -n "$unmanaged" ]]; then
     echo
     echo " [!] unmanaged (installed, declared nowhere — likely raw pacman -S):"
-    echo "$unmanaged" | sed -n 's/^[[:space:]]*"\([^"]*\)".*/     \1/p'
+    # Both metapac output shapes (0.10 inline TOML + legacy) — Story 2.42, #135.
+    echo "$unmanaged" | "$HOME/.local/bin/tools/metapac-unmanaged-names" | sed 's/^/     /'
     echo "     fix: declare in a purpose group, park in the inbox, or uninstall"
 else
     echo
