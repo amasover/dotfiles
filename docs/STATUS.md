@@ -172,11 +172,19 @@ Facts:
   verifies upstream checksums.txt, the watch shows release age with an AUR-window nudge,
   `update` converges pins + packages silently. First betterleaks dogfood scan dismissed two
   vm-harness-seed `pass_hash` false positives via `.gitleaksignore`.
-- **Guest yadm state**: home still on `story/5.5-polybar-guests` (now merged) — switch back
-  to `main` + `yadm pull` when convenient; two stashes parked on
-  `story/2.45-syu-upgrade-holds` (launch.sh — identical to `ad18e61`, droppable;
-  bashrc/bash_profile drift — keep until back on that branch); live `mimeapps.list` carries
-  one untracked line (`x-scheme-handler/claude-cli` handler) — fold in or leave as drift.
+- **Bars-look-wrong diagnosis** (#166, PR #167): the nord palette include has been
+  commented-with-a-stale-path since the original capture, and no fonts were ever declared —
+  latent until 5.5 made `-c` load-bearing. Fixed (include + `[bar/base]` + font decls +
+  `powerline-fonts` into desktop.toml), verified live by screenshot; launch.sh gained
+  TERM→SIGKILL escalation after a wedged bar deadlocked the launch flock.
+- **3.12 wpctl audio built** (#59, PR open): `audio-switch` (pactl ports + wpctl mute)
+  replaces `polybar_alsa_module`/`dot`, `volume-tail` replaces `pulseaudio-tail.sh`,
+  `volume-osd` backs the i3 keys; verified live on the guest (auto_null degradation, keys
+  step volume). Laptop still owes: delete `~/code/go/bin/{dot,volume}`, verify volnoti OSD
+  + real port switching. Aaron installed `powerline-fonts` live — dedupe its
+  `inbox-workstation.toml` capture against desktop.toml once #167 merges.
+- **Guest yadm**: two stashes parked on `story/2.45-syu-upgrade-holds` (launch.sh —
+  droppable; bashrc/bash_profile drift — keep until back on that branch).
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 
