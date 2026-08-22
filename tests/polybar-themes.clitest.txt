@@ -29,9 +29,11 @@ global/base and reaches the bars via `inherit = bar/global` — inherit gives
 per-key overrides, unlike include-file merging where a duplicate key is a
 fatal parse error:
 
-$ grep -c '^font-0 = Source Code Pro for Powerline' $TH/global/base
+$ grep -c '^font-0 = Powerline Extra Symbols:size=19' $TH/global/base
 1
-$ grep -c '^font-1 = FontAwesome' $TH/global/base
+$ grep -c '^font-1 = Hack' $TH/global/base
+1
+$ grep -c '^font-2 = FontAwesome' $TH/global/base
 1
 $ grep -c '^enable-ipc = true$' $TH/global/base
 1

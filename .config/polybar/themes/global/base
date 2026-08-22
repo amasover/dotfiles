@@ -3,13 +3,20 @@
 ; per-key override semantics, unlike include-file merging, where defining
 ; the same key twice is a FATAL parse error.
 [bar/global]
-; With no font-N declared, polybar renders with its builtin bitmap fallback,
-; which has neither the powerline arrows (U+e0b0..) nor the FontAwesome
-; icons. font-0 carries text + arrows (otf-source-code-pro-powerline, the
-; 2.47 vendored PKGBUILD), font-1 the icons (awesome-terminal-fonts,
-; declared in desktop.toml).
-font-0 = Source Code Pro for Powerline:size=11;2
-font-1 = FontAwesome:size=11;2
+; The laptop's historical look (pre-5.5 untracked config.ini): big arrows
+; from an arrows-only font first in the list, text from Hack, icons from
+; FontAwesome. Order is load-bearing — polybar serves each glyph from the
+; FIRST font that has it, and Powerline Extra Symbols contains ONLY the
+; powerline glyphs, so nothing else is hijacked by its size 19.
+; Portability: Powerline Extra Symbols is an untracked ~/.fonts copy on the
+; laptop (vendoring it 2.47-style is the open follow-up); machines without
+; it fall through to Hack (ttf-hack), which ships the powerline glyphs
+; natively — arrows render smaller but never drop. FontAwesome comes from
+; awesome-terminal-fonts; both packages declared in desktop.toml.
+; (module/vpn's format-font = 2 targets font-1 = Hack, as it always did.)
+font-0 = Powerline Extra Symbols:size=19;4
+font-1 = Hack:pixelsize=12;3
+font-2 = FontAwesome:size=12;3
 ; polybar-msg (theme selector, polybar-reload) needs ipc
 enable-ipc = true
 ; keeps bars out of i3 stacking fights
