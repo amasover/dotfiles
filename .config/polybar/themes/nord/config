@@ -167,4 +167,4 @@ format-padding = 1
 
 
 ; formatting
-vim:ft=dosini
+; vim:ft=dosini
