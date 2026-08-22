@@ -519,6 +519,64 @@ scope.
 
 ---
 
+### Story 3.21: Per-theme bar manifests — revive nord under the 5.5 launcher
+
+As the repo owner,
+I want the polybar launcher to learn each theme's own bar list, role gating, and gap needs,
+So that the nord island theme is selectable again and future themes aren't chained to the `bar/main` contract.
+
+Issue: [#173](https://github.com/amasover/dotfiles/issues/173)
+
+Origin: 2026-08-22 live preview during the #167/#168 convergence session. `launch.sh`
+and `polybar-theme-selector.sh` hardcode `bar/main`/`bar/main-bottom` (plus role-gated
+left/extra/split bars), so nord — which defines island bars
+(`bar/main-top-left/middle/right`) — can't be launched or picked. The preview also
+confirmed the islands are `override-redirect` windows that i3 neither reserves room for
+nor restacks: without a top gap they sit behind/over windows, which is what the old
+static `gaps top 10` (now commented out) was for. nord's `right-top-middle` bar also
+references `${env:MONITOR_RIGHT}`, which is not a 5.5 role.
+
+**Acceptance criteria:**
+
+- Given a theme directory with a manifest (bar names, optional role gate per bar, optional `gap-top`), when `launch.sh` runs, then exactly the manifest's bars launch (role-gated ones only when their role resolved) and `i3-msg` applies the theme's top gap (default 0)
+- Given a theme without a manifest, when `launch.sh` runs, then today's `bar/main` contract behaves unchanged (fallback, no regression for nord-arrow)
+- Given the selector, when it lists themes, then manifest-bearing themes are offered alongside `bar/main` themes, and picking nord launches its islands with the gap applied
+- Given nord's `right-top-middle`, when the manifest lands, then it is gated on the EXTRA role instead of the dead `MONITOR_RIGHT`
+- Given the manifest parsing, then it lives in a pure `tools/` seam with clitest coverage (no polybar, no i3)
+
+**Evidence artifact:** live toggle nord ↔ nord-arrow via the selector, both directions,
+with the gap following the theme.
+
+---
+
+### Story 3.22: nord-arrow-slim — SCP-arrow variant of nord-arrow, DRY
+
+As the repo owner,
+I want a third selectable theme that is nord-arrow with the slim Source Code Pro
+for Powerline arrows (the post-#167 look),
+So that I can toggle between the big-arrow and slim-arrow renderings instead of
+choosing one forever.
+
+Issue: [#174](https://github.com/amasover/dotfiles/issues/174)
+
+Origin: the 2026-08-22 font-restore decision (PR #171) — both looks turned out to be
+wanted. Constraint from the same session: polybar's include-file merging makes any
+duplicate key a fatal parse error, so variants must share via `inherit` (which has
+per-key override semantics), not by re-including overlapping sections.
+
+**Acceptance criteria:**
+
+- Given `themes/global/base`, when the variant lands, then the shared keys live once in `[bar/global-common]` and each font stack once in `[bar/global-big]` / `[bar/global-slim]` (both inheriting common); each theme entry config picks its stack with a two-line `[bar/global] inherit = ...`
+- Given nord-arrow's bars/colors/modules, when the variant lands, then they exist once (shared body include) — the variant entry config adds no duplicated bar definitions
+- Given the selector, when it lists themes, then `nord-arrow-slim` appears and toggling between it and nord-arrow visibly switches only the fonts/arrows
+- Given the inherit chain depth this introduces, then it is verified with `polybar --dump` through the full chain before landing
+- Blocked on [3.21](#story-321-per-theme-bar-manifests--revive-nord-under-the-55-launcher) merging (the entry/body split changes what the launcher's theme checks see); branches off `main` only
+
+**Evidence artifact:** selector screenshot with three themes + before/after bar
+screenshots of the two nord-arrow variants.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely

@@ -1377,6 +1377,36 @@ individually checksummed OTFs and carries `# custom-pkgs: no-watch`.
 
 ---
 
+### Story 2.48: Vendor PowerlineExtraSymbols.otf (the bar arrow font)
+
+As the repo owner,
+I want the arrows-only font that draws the bars' powerline chevrons repo-packaged,
+So that fresh machines render the restored look (PR #171) exactly instead of falling
+back to Hack's smaller built-in glyphs.
+
+Issue: [#172](https://github.com/amasover/dotfiles/issues/172)
+
+Origin: the 2026-08-22 font restore — the themes' `font-0` is "Powerline Extra
+Symbols", which exists only as an untracked `~/.fonts` copy on the laptop. Third use
+of the 2.46 pattern. Upstream
+[ryanoasis/powerline-extra-symbols](https://github.com/ryanoasis/powerline-extra-symbols)
+(MIT) ships the single OTF at the repo root and is frozen (master head 2019) →
+commit-pinned source, `# custom-pkgs: no-watch`. The font is arrows-only by design —
+that is what lets it sit first in the font list at size 19 without hijacking any
+other glyph (see `themes/global/base`).
+
+**Acceptance criteria:**
+
+- Given a fresh machine, when bootstrap 6d runs, then `otf-powerline-extra-symbols` installs the OTF under `/usr/share/fonts/OTF/` and `fc-match "Powerline Extra Symbols"` resolves to it
+- Given the frozen upstream, when the `update` watch runs, then the package is skipped silently (`no-watch`)
+- Given the laptop, when installed live, then the untracked `~/.fonts` copy is removed (already in the dated backup tarball) and the name joins pacman.conf's IgnorePkg
+- Given the 2.46 machinery, then no new logic ships
+
+**Evidence artifact:** live laptop install — `pacman -Q`, `fc-match` → `/usr/share/fonts/OTF/`,
+bars still rendering the big arrows after a relaunch.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
