@@ -1,0 +1,115 @@
+# monitor-roles (Story 5.5, #152) — positional polybar role assignment.
+# The assign subcommand is the seam: listactivemonitors text in, roles out.
+# merge-env is the override-file seam: role assignments in, filtered roles out.
+
+$ t=.local/bin/tools/monitor-roles
+$
+
+a bare guest: one monitor, no primary flag — it becomes MAIN:
+
+$ printf 'Monitors: 1\n 0: +Virtual-1 1280/339x800/212+0+0  Virtual-1\n' | $t assign
+MONITOR_MAIN=Virtual-1
+$
+
+an external to the right of the primary laptop panel is EXTRA:
+
+$ printf 'Monitors: 2\n 0: +*eDP-1 1920/294x1080/165+0+0  eDP-1\n 1: DP-1 2560/597x1440/336+1920+0  DP-1\n' | $t assign
+MONITOR_MAIN=eDP-1
+MONITOR_EXTRA=DP-1
+$
+
+an external positioned left of the primary is LEFT:
+
+$ printf 'Monitors: 2\n 0: +*eDP-1 1920/294x1080/165+2560+0  eDP-1\n 1: DP-1 2560/597x1440/336+0+0  DP-1\n' | $t assign
+MONITOR_MAIN=eDP-1
+MONITOR_LEFT=DP-1
+$
+
+a negative x offset (xrandr prints +-N for x<0) still counts as left of MAIN:
+
+$ printf 'Monitors: 2\n 0: +*eDP-1 1920/294x1080/165+0+0  eDP-1\n 1: DP-1 2560/597x1440/336+-2560+0  DP-1\n' | $t assign
+MONITOR_MAIN=eDP-1
+MONITOR_LEFT=DP-1
+$
+
+three monitors, one on each side of the primary:
+
+$ printf 'Monitors: 3\n 0: +*eDP-1 1920/294x1080/165+1920+0  eDP-1\n 1: DP-1 1920/509x1080/286+0+0  DP-1\n 2: DP-2 1920/509x1080/286+3840+0  DP-2\n' | $t assign
+MONITOR_MAIN=eDP-1
+MONITOR_LEFT=DP-1
+MONITOR_EXTRA=DP-2
+$
+
+no primary flag anywhere: the first listed monitor is MAIN:
+
+$ printf 'Monitors: 2\n 0: +HDMI-1 1920/509x1080/286+0+0  HDMI-1\n 1: DP-1 1920/509x1080/286+1920+0  DP-1\n' | $t assign
+MONITOR_MAIN=HDMI-1
+MONITOR_EXTRA=DP-1
+$
+
+virtual split monitors (xrandr --setmonitor names) parse like any other:
+
+$ printf 'Monitors: 2\n 0: +*DP1-1 3840/598x2160/336+0+0  DP1-1\n 1: DP1-2~1 1920/600x1080/170+3840+0  DP1-2\n' | $t assign
+MONITOR_MAIN=DP1-1
+MONITOR_EXTRA=DP1-2~1
+$
+
+a fourth monitor has no role and is warned about, never silently dropped:
+
+$ printf 'Monitors: 4\n 0: +*A 1920/1x1080/1+1920+0  A\n 1: B 1920/1x1080/1+0+0  B\n 2: C 1920/1x1080/1+3840+0  C\n 3: D 1920/1x1080/1+5760+0  D\n' | $t assign 2>/dev/null
+MONITOR_MAIN=A
+MONITOR_LEFT=B
+MONITOR_EXTRA=C
+$ printf 'Monitors: 4\n 0: +*A 1920/1x1080/1+1920+0  A\n 1: B 1920/1x1080/1+0+0  B\n 2: C 1920/1x1080/1+3840+0  C\n 3: D 1920/1x1080/1+5760+0  D\n' | $t assign 2>&1 >/dev/null
+monitor-roles: no role for D (only MAIN/LEFT/EXTRA exist)
+$
+
+output is eval'd, so a name with shell metacharacters is dropped, loudly:
+
+$ printf 'Monitors: 2\n 0: +*eDP-1 1920/294x1080/165+0+0  eDP-1\n 1: bad;name 1920/1x1080/1+1920+0  bad\n' | $t assign 2>/dev/null
+MONITOR_MAIN=eDP-1
+$ printf 'Monitors: 2\n 0: +*eDP-1 1920/294x1080/165+0+0  eDP-1\n 1: bad;name 1920/1x1080/1+1920+0  bad\n' | $t assign 2>&1 >/dev/null
+monitor-roles: dropping monitor with unsafe name: bad;name
+$
+
+a '*' inside a name is not a primary flag (and the name is unsafe anyway):
+
+$ printf 'Monitors: 2\n 0: +DP*w 1920/1x1080/1+0+0  DP*w\n 1: +*eDP-1 1920/1x1080/1+1920+0  eDP-1\n' | $t assign 2>/dev/null
+MONITOR_MAIN=eDP-1
+$
+
+empty input fails loudly:
+
+$ printf '' | $t assign 2>&1; echo "rc=$?"
+monitor-roles: no active monitors parsed
+rc=1
+$
+
+merge-env passes only well-formed MONITOR_* assignments through, keeps
+comments and blanks quiet, and warns about everything else:
+
+$ f=$(mktemp)
+$ printf 'MONITOR_SPLIT_TOP=DP1-2~1\nMONITOR_SPLIT_BOTTOM=DP1-2~2\n# a comment\n\nMONITOR_LEFT=\nPATH=/evil\nMONITOR_MAIN=$(boom)\n' > "$f"
+$ $t merge-env "$f" 2>/dev/null
+MONITOR_SPLIT_TOP=DP1-2~1
+MONITOR_SPLIT_BOTTOM=DP1-2~2
+MONITOR_LEFT=
+$ $t merge-env "$f" 2>&1 >/dev/null
+monitor-roles: merge-env ignoring line: PATH=/evil
+monitor-roles: merge-env ignoring line: MONITOR_MAIN=$(boom)
+$ rm -f "$f"
+$
+
+merge-env on an unreadable file fails loudly:
+
+$ $t merge-env /nonexistent/roles.env 2>&1; echo "rc=$?"
+monitor-roles: cannot read /nonexistent/roles.env
+rc=1
+$
+
+unknown subcommands are rejected:
+
+$ $t bogus 2>&1; echo "rc=$?"
+usage: monitor-roles [assign | merge-env FILE]
+rc=2
+$

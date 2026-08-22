@@ -17,6 +17,9 @@ hide_edge_borders both
 for_window [class="^.*"] border pixel 2
 gaps inner 8 
 gaps outer 2
+# room for the polybar top bars; single home for this value (launch.sh and the
+# theme selector used to fight over it via i3-msg at runtime)
+gaps top 10
 
 ###################
 ## COLOR PALETTE ##
@@ -318,7 +321,10 @@ bindsym $mod+Shift+0 move container to workspace $ws0
 # reload the configuration file
 # bindsym $mod+Shift+c reload
 # bindsym $mod+Shift+c exec echo -e "option 1\noption 2\noption 3" | rofi -dmenu
-bindsym $mod+Shift+c exec --no-startup-id dot polybar --select
+# theme picker was `dot polybar --select` (patrick-motard/dot) — that tool only
+# exists on the old laptop; the tracked selector works everywhere (epic-3 has a
+# story on dot's replacement)
+bindsym $mod+Shift+c exec --no-startup-id ~/.config/polybar/polybar-theme-selector.sh
 # restart i3 inplace (preserves your layout/session, can be used to upgrade i3)
 bindsym $mod+Shift+r restart
 # exit i3 (logs you out of your X session)
@@ -367,12 +373,14 @@ for_window [class="trust"] floating enable
 
 ## startup applications
 exec_always --no-startup-id sh -c "~/.config/polybar/launch.sh"
-exec --no-startup-id ~/.local/bin/polybar-reload
+# polybar-reload (laptop-era): polls root geometry, polybar-msg restart on
+# change. Superseded by the autorandr postswitch hook; in a VM it would fire
+# on every vm-autofit resize. Re-enable on the laptop if the hook isn't enough.
+# exec --no-startup-id ~/.local/bin/polybar-reload
 exec --no-startup-id emacs
 exec --no-startup-id parcellite
 exec --no-startup-id alacritty
 exec --no-startup-id alacritty
-exec_always --no-startup-id sh ~/.screenlayout/1440L-1080R.sh
 
 #teams
 exec --no-startup-id teams-for-linux

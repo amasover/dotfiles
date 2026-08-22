@@ -1,0 +1,7 @@
+#!/bin/sh
+# autorandr post-switch hook (Story 5.5, #152): after any layout change,
+# relaunch polybar so bar roles follow the new monitor topology. autorandr
+# exports AUTORANDR_CURRENT_PROFILE, which launch.sh uses to pick a
+# per-profile role override (~/.config/polybar/layouts/<profile>.env)
+# before falling back to the positional heuristic.
+exec "$HOME/.config/polybar/launch.sh"

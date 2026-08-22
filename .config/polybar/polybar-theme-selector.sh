@@ -1,19 +1,34 @@
 #!/usr/bin/env bash
+# rofi picker for polybar themes (bound to $mod+Shift+c in i3 config).
+# Persists the choice so autorandr-triggered relaunches keep it — launch.sh
+# reads the state file — then relaunches the bars.
 
-options=$(find ~/.config/polybar/themes -mindepth 1 -maxdepth 1 -type d -and -not -name '*global*' -printf '%f\n')
-rofi_theme=${1:-$HOME/.config/rofi/config.rasi}
-theme=$(echo -e "${options}" | rofi -dmenu -config $rofi_theme)
+themes_dir="$HOME/.config/polybar/themes"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/polybar"
+rofi_theme="${1:-$HOME/.config/rofi/config.rasi}"
 
-# make sure to not kill polybar theme didn't change (or wasnt chosen)
-if [[ -z $theme ]]; then
-    exit 1
-fi
-if [[ $theme == 'nord' ]]; then
+# A theme is usable only if its config defines the bars launch.sh launches;
+# launch.sh passes the config via -c, so an incompatible one means no bars.
+theme_config() {
+    local f
+    for f in "$1/config.ini" "$1/config"; do
+        [[ -f $f ]] && grep -q '^\[bar/main\]' "$f" && { printf '%s\n' "$f"; return 0; }
+    done
+    return 1
+}
 
-    i3-msg gaps top all set 80
-else
+options=""
+for d in "$themes_dir"/*/; do
+    name=$(basename "$d")
+    [[ $name == *global* ]] && continue
+    theme_config "${d%/}" >/dev/null && options+="${name}"$'\n'
+done
 
-    i3-msg gaps top all set 10
-fi
+theme=$(printf '%s' "$options" | rofi -dmenu -config "$rofi_theme")
+# don't kill polybar if no theme was chosen
+[[ -z $theme ]] && exit 1
 
-polybar_theme=~/.config/polybar/themes/$theme/config sh ~/.config/polybar/launch.sh
+cfg=$(theme_config "$themes_dir/$theme") || exit 1
+mkdir -p "$state_dir"
+printf '%s\n' "$cfg" >"$state_dir/theme"
+exec "$HOME/.config/polybar/launch.sh"
