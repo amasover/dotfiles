@@ -419,6 +419,13 @@ dashed names. Unaffected: i3's monitor block (commented out, already dashed).
 Re-saving autorandr profiles needs the physical monitors, so this is attended
 work done per docking setup, not a single repo edit.
 
+The historical 4K split-monitor setup (virtual-monitor geometry, the
+per-profile autorandr hooks, i3 workspace placement, and rebuild guidance) is
+preserved in
+[knowledge/reference/4k-split-monitor-layout.md](../knowledge/reference/4k-split-monitor-layout.md)
+— captured 2026-08-22 when the pre-5.5 global postswitch was archived off the
+laptop (raw hook contents also on [#129](https://github.com/amasover/dotfiles/issues/129)).
+
 **Evidence artifact:** `autorandr --detected` matching on each re-saved setup +
 the updated `launch.sh` layout table.
 
