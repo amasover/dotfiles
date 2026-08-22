@@ -140,20 +140,12 @@ Facts:
   merged; the chromium inbox→browsers triage commit missed that merge window and is rescued
   as PR [#160](https://github.com/amasover/dotfiles/pull/160) (chromium was declared via the
   2.9 inbox all along — not drift).
-- **5.5 polybar on guests** ([#152](https://github.com/amasover/dotfiles/issues/152), PR
-  [#161](https://github.com/amasover/dotfiles/pull/161) open from `story/5.5-polybar-guests`):
-  positional roles + autorandr postswitch hook + per-profile overrides, verified live
-  (Virtual-1). A 2026-08-22 adversarial review of the PR found the `-c` change made the
-  theme selector kill all bars, the hook reverted themes/gaps, plus a login race and silent
-  failure paths — all 16 findings fixed, pushed, and **live-verified on the guest 2026-08-22**
-  (reverse-flow: guest home switched to the branch via `yadm checkout`; relaunch, concurrent
-  lock, theme fallback + persistence, postswitch hook ± override `.env`, `i3-msg reload` all
-  pass). Ready to merge at Aaron's call. Side finds now tracked:
-  `polybar-reload` (Aaron pushed the laptop-only script to main 2026-08-22; its i3 `exec`
-  line is commented out on this branch — the postswitch hook covers relaunches, and in a VM
-  the poller would restart bars on every vm-autofit resize; re-enable on the laptop if
-  needed) and new story 3.20 (retire/replace the
-  laptop-only `dot` CLI; theme picker rebound off it).
+- **4.11 Claude Code plugins** ([#162](https://github.com/amasover/dotfiles/issues/162),
+  branch `story/4.11-claude-plugins`): mattpocock/skills + ayghri/i-have-adhd declared
+  declaratively — `setup/claude-plugins` jq-merges `extraKnownMarketplaces`/`enabledPlugins`
+  into `~/.claude/settings.json` (the file can't be yadm-tracked: Claude Code rewrites it),
+  bootstrap step 8c runs it. Applied + verified live on the guest (both plugins resolve via
+  `claude plugin details`; registration takes one launch per new marketplace).
 - **5.4 wrap-up note**: SPICE/libvirt half (pointer calibration is in `vm-autofit` but dormant;
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
   [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
@@ -166,24 +158,19 @@ Facts:
 
 ## Last session (2026-08-22, guest)
 
-- **PR #161 (5.5) adversarially reviewed and hardened**: multi-agent review, 16 verified
-  findings, all fixed on the branch. Headliners: `-c` becoming load-bearing made
-  `polybar-theme-selector.sh` (wrong config path; incompatible nord config) kill every bar;
-  the postswitch hook silently reverted a chosen theme + gaps on each layout change; i3's
-  `exec_always` raced the hook's launch.sh at login. Fix shape: monitor-roles grew eval-safe
-  output and a `merge-env` subcommand (overrides now merge on top of the heuristic; 21
-  clitest cases), launch.sh got flock + loud failure paths + theme persistence/validation,
-  gaps and theme each have one home, and the screenlayout `exec_always` is retired. The
-  reverse-flow live test then passed end to end (bars up as `auto: Virtual-1`); branch pushed,
-  PR body updated.
-- **Guest yadm state after the test**: home checked out on `story/5.5-polybar-guests`; two
-  stashes parked on `story/2.45-syu-upgrade-holds` (launch.sh — identical to `ad18e61`,
-  droppable; bashrc/bash_profile drift — keep until back on that branch); live
-  `mimeapps.list` carries one untracked line (`x-scheme-handler/claude-cli` handler) —
-  decide fold-into-branch vs leave as drift.
-- Review side effects: 3.19 ✅-marked (missed in the ad18e61 wrap-up); story 3.20 added to
-  epic-3 for the laptop-only `dot` CLI (patrick-motard/dot — the theme picker no longer
-  depends on it).
+- **5.5 done** (PR #161 merged): adversarial review's 16 findings fixed, then the
+  reverse-flow live test passed end to end on the guest (relaunch, concurrent lock, theme
+  fallback + persistence, postswitch hook ± override `.env`, `i3-msg reload`). Aaron pushed
+  the laptop-only `polybar-reload` script to main; its i3 `exec` line is commented out (the
+  postswitch hook covers relaunches; in a VM the poller would restart bars on every
+  vm-autofit resize — re-enable on the laptop if needed).
+- **4.11 started** (#162): standard Claude Code plugins (mattpocock/skills, i-have-adhd)
+  declared via `setup/claude-plugins` + bootstrap step 8c; applied and verified live.
+- **Guest yadm state**: home still on `story/5.5-polybar-guests` (now merged) — switch back
+  to `main` + `yadm pull` when convenient; two stashes parked on
+  `story/2.45-syu-upgrade-holds` (launch.sh — identical to `ad18e61`, droppable;
+  bashrc/bash_profile drift — keep until back on that branch); live `mimeapps.list` carries
+  one untracked line (`x-scheme-handler/claude-cli` handler) — fold in or leave as drift.
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 
