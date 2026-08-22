@@ -149,7 +149,10 @@ Facts:
   (reverse-flow: guest home switched to the branch via `yadm checkout`; relaunch, concurrent
   lock, theme fallback + persistence, postswitch hook ± override `.env`, `i3-msg reload` all
   pass). Ready to merge at Aaron's call. Side finds now tracked:
-  `polybar-reload` dead i3 line (epic-3 cleanup) and new story 3.20 (retire/replace the
+  `polybar-reload` (Aaron pushed the laptop-only script to main 2026-08-22; its i3 `exec`
+  line is commented out on this branch — the postswitch hook covers relaunches, and in a VM
+  the poller would restart bars on every vm-autofit resize; re-enable on the laptop if
+  needed) and new story 3.20 (retire/replace the
   laptop-only `dot` CLI; theme picker rebound off it).
 - **5.4 wrap-up note**: SPICE/libvirt half (pointer calibration is in `vm-autofit` but dormant;
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on

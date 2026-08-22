@@ -373,7 +373,10 @@ for_window [class="trust"] floating enable
 
 ## startup applications
 exec_always --no-startup-id sh -c "~/.config/polybar/launch.sh"
-exec --no-startup-id ~/.local/bin/polybar-reload
+# polybar-reload (laptop-era): polls root geometry, polybar-msg restart on
+# change. Superseded by the autorandr postswitch hook; in a VM it would fire
+# on every vm-autofit resize. Re-enable on the laptop if the hook isn't enough.
+# exec --no-startup-id ~/.local/bin/polybar-reload
 exec --no-startup-id emacs
 exec --no-startup-id parcellite
 exec --no-startup-id alacritty
