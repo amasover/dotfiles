@@ -194,18 +194,27 @@ outputs (tracked as [3.17](./epic-3-shell-editor-desktop-cleanup.md)).
 
 **Acceptance criteria:**
 
-- On a fresh single-monitor guest, the main bar appears on the primary monitor
+**Scope expanded 2026-08-22 (Aaron):** the default is positional roles, not a
+layout table — MAIN to the primary monitor, then extras to LEFT (positioned
+left of MAIN) or EXTRA. autorandr is the integration point for layout changes.
+
+- On a fresh single-monitor guest, the main bars appear on the only monitor
   with zero configuration.
-- Unknown layouts degrade to "main bar on primary monitor" instead of nothing —
-  the hardcoded-case-or-bust shape is gone.
-- Named multi-monitor layouts (the host's docking setups) still work; the
-  monitor-*name* fixes stay 3.17's — this story owns the launch logic and the
-  fallback, and coordinates with 3.17 rather than both rewriting the same file.
-- The layout-detection logic is exposed as a testable seam (invokable
-  subcommand or function file) with clitest coverage for the guest, unknown,
-  and named-layout paths — no X server required in tests.
-- Launch script rewrite is on the table if patching the case statement fights
-  the acceptance criteria; keep the rotated-log behavior either way.
+- Role assignment is a positional heuristic (`tools/monitor-roles`): primary →
+  `MONITOR_MAIN`, leftmost monitor left of MAIN → `MONITOR_LEFT`, next →
+  `MONITOR_EXTRA`; monitors beyond the roles get a loud warning. Exposed as a
+  stdin seam with clitest coverage — no X server in tests.
+- Bars launch only when their role is assigned — the six-blind-launches shape
+  is gone, and polybar gets the theme config via `-c` (nothing ever passed it
+  before; fresh machines fell back to polybar's built-in example bar).
+- Setups the heuristic can't infer (the virtual-split docking layouts) come
+  from per-autorandr-profile overrides, `~/.config/polybar/layouts/<profile>.env`,
+  selected by `$AUTORANDR_CURRENT_PROFILE`; a tracked `autorandr/postswitch`
+  hook relaunches on every layout change. Writing those override files is
+  3.17's attended docking work; the old case table survives as a reference
+  comment in launch.sh (Aaron's call).
+- Rotated-log behavior and the theme-selector contract (`polybar_theme` env)
+  are preserved.
 
 ### Story 5.6: Unattended host-driven runs authenticate the guest
 

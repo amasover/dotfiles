@@ -136,10 +136,16 @@ Facts:
   guest-as-daily-driver work — stories 5.1–5.6 ([#148](https://github.com/amasover/dotfiles/issues/148)–[#153](https://github.com/amasover/dotfiles/issues/153),
   all on the board): fresh-machine SSH keys, attended auth bootstrap, current-guest
   credential fix, dynamic resolution, polybar on guests, unattended host-driven auth.
-- **3.19 default browser** ([#158](https://github.com/amasover/dotfiles/issues/158), PR open
-  from `story/3.19-firefox-default-browser`): tracked `.config/mimeapps.list` + `BROWSER` in
-  `.profile`; verified live in the guest. Side find on the issue: the guest has `chromium`
-  explicitly installed but undeclared — next drift report should flag it.
+- **3.19 default browser** ([#158](https://github.com/amasover/dotfiles/issues/158)): #159
+  merged; the chromium inbox→browsers triage commit missed that merge window and is rescued
+  as PR [#160](https://github.com/amasover/dotfiles/pull/160) (chromium was declared via the
+  2.9 inbox all along — not drift).
+- **5.5 polybar on guests** ([#152](https://github.com/amasover/dotfiles/issues/152), PR open
+  from `story/5.5-polybar-guests`): scope expanded to positional roles + autorandr postswitch
+  hook + per-profile overrides; verified live (two bars on Virtual-1). Root causes were the
+  dead layout table AND polybar never receiving the theme config (`-c` was missing). Override
+  files for the split-4K docking layouts are 3.17's attended work. Side find: i3 config
+  references `~/.local/bin/polybar-reload`, which exists nowhere — dead line for epic-3 cleanup.
 - **5.4 wrap-up note**: SPICE/libvirt half (pointer calibration is in `vm-autofit` but dormant;
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
   [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
