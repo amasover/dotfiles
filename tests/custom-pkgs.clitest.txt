@@ -1,0 +1,122 @@
+# tools/custom-pkgs — vendored-PKGBUILD seams (Story 2.46). Host-independent:
+# fixture PKGBUILDs under $CLITMP, no network, no pacman/makepkg calls.
+#
+# Run from the repo root: clitest tests/custom-pkgs.clitest.txt
+
+$ t=.local/bin/tools/custom-pkgs; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/pkgbuilds/alpha" "$CLITMP/pkgbuilds/beta"; echo ok
+ok
+$ printf 'pkgname=alpha\npkgver=1.8.1\npkgrel=1\nurl="https://github.com/acme/alpha"\n' > "$CLITMP/pkgbuilds/alpha/PKGBUILD"
+$ printf 'pkgname=beta\npkgver=0.3.0\npkgrel=2\nurl="https://example.org/beta"\n' > "$CLITMP/pkgbuilds/beta/PKGBUILD"
+$
+
+list enumerates vendored dirs that contain a PKGBUILD:
+
+$ CUSTOM_PKGS_DIR="$CLITMP/pkgbuilds" $t list
+alpha
+beta
+$ mkdir "$CLITMP/pkgbuilds/empty-dir"; CUSTOM_PKGS_DIR="$CLITMP/pkgbuilds" $t list
+alpha
+beta
+$
+
+pkgver prints the full pacman version (pkgver-pkgrel):
+
+$ $t pkgver "$CLITMP/pkgbuilds/alpha/PKGBUILD"
+1.8.1-1
+$ $t pkgver "$CLITMP/pkgbuilds/beta/PKGBUILD"
+0.3.0-2
+$
+
+upstream derives owner/repo from the url= line; non-github urls fail loudly:
+
+$ $t upstream "$CLITMP/pkgbuilds/alpha/PKGBUILD"
+acme/alpha
+$ $t upstream "$CLITMP/pkgbuilds/beta/PKGBUILD" > "$CLITMP/out" 2>&1; echo "rc=$?"; sed "s|$CLITMP|TMP|" "$CLITMP/out"
+rc=1
+custom-pkgs: url in TMP/pkgbuilds/beta/PKGBUILD is not a github repo (https://example.org/beta)
+$
+
+verdict compares pinned vs upstream latest (sort -V; ahead counts as current):
+
+$ $t verdict 1.8.1 1.8.1
+current
+$ $t verdict 1.8.1 1.9.0
+outdated
+$ $t verdict 1.8.1 1.10.0
+outdated
+$ $t verdict 1.10.0 1.9.9
+current
+$
+
+set-version rewrites pkgver and resets pkgrel, touching nothing else:
+
+$ $t set-version "$CLITMP/pkgbuilds/beta/PKGBUILD" 0.4.0 && cat "$CLITMP/pkgbuilds/beta/PKGBUILD"
+pkgname=beta
+pkgver=0.4.0
+pkgrel=1
+url="https://example.org/beta"
+$ printf 'pkgname=x\n' > "$CLITMP/nopkgver"; $t set-version "$CLITMP/nopkgver" 1.0 > "$CLITMP/out" 2>&1; echo "rc=$?"; sed "s|$CLITMP|TMP|" "$CLITMP/out"
+rc=1
+custom-pkgs: no pkgver line in TMP/nopkgver
+$
+
+ensure-ignore: appends to an existing IgnorePkg line...
+
+$ printf '[options]\nIgnorePkg = foo bar\nColor\n' | $t ensure-ignore betterleaks
+[options]
+IgnorePkg = foo bar betterleaks
+Color
+$
+
+...creates the line under [options] when absent...
+
+$ printf '# comment\n[options]\nColor\n' | $t ensure-ignore betterleaks
+# comment
+[options]
+IgnorePkg = betterleaks
+Color
+$
+
+...is idempotent (name already listed, incl. as a non-first entry)...
+
+$ printf '[options]\nIgnorePkg = foo betterleaks bar\n' | $t ensure-ignore betterleaks
+[options]
+IgnorePkg = foo betterleaks bar
+$
+
+...does not false-match a name that only contains the target as a prefix...
+
+$ printf '[options]\nIgnorePkg = betterleaks-git\n' | $t ensure-ignore betterleaks
+[options]
+IgnorePkg = betterleaks-git betterleaks
+$
+
+...handles IgnorePkg living after other sections' lines, without duplicating:
+
+$ printf '[options]\nColor\nIgnorePkg = foo\n' | $t ensure-ignore betterleaks
+[options]
+Color
+IgnorePkg = foo betterleaks
+$ printf 'Color\n' | $t ensure-ignore betterleaks 2>&1; echo "rc=$?"
+custom-pkgs: no IgnorePkg or [options] anchor found on stdin
+rc=1
+$
+
+bump refuses unknown packages before touching anything:
+
+$ CUSTOM_PKGS_DIR="$CLITMP/pkgbuilds" $t bump nope 2.0 > "$CLITMP/out" 2>&1; echo "rc=$?"; sed "s|$CLITMP|TMP|" "$CLITMP/out"
+rc=1
+custom-pkgs: no vendored package 'nope' in TMP/pkgbuilds
+$
+
+flag/arg contract:
+
+$ $t frobnicate 2>&1; echo "rc=$?"
+custom-pkgs: unknown subcommand: frobnicate   (try: custom-pkgs -h)
+rc=1
+$ CUSTOM_PKGS_DIR="$CLITMP/pkgbuilds" $t sync --frob 2>&1; echo "rc=$?"
+custom-pkgs: unknown sync flag: --frob
+rc=1
+$ rm -r "$CLITMP"; echo done
+done
+$

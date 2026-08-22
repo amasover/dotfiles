@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# custom-pkgs — manage the repo's vendored PKGBUILDs (Story 2.46).
+#
+# Vendored packages live at .config/dotfiles/pkgbuilds/<name>/PKGBUILD: built
+# from upstream source pinned by version + checksum in this repo, installed
+# with makepkg — never from the AUR, even when an AUR package of the same
+# name exists (betterleaks does). Two consumers: setup/update's first step
+# offers upstream bumps interactively (`outdated` → `bump` → `sync`), and
+# bootstrap's vendored-packages step installs what's missing (`sync`) and
+# keeps the names in pacman's IgnorePkg (`ensure-ignore`) so a yay -Syu
+# can't swap in the AUR build.
+#
+# Usage:
+#   custom-pkgs list                  vendored package names
+#   custom-pkgs status                name, PKGBUILD version, installed version
+#   custom-pkgs outdated              packages behind upstream, one per line:
+#                                     "name<TAB>pinned<TAB>latest" (GitHub API)
+#   custom-pkgs check                 human report of outdated (rc 1 if any)
+#   custom-pkgs bump NAME VERSION     pkgver=VERSION, pkgrel=1, updpkgsums
+#   custom-pkgs sync [NAME] [--noconfirm] [--check]
+#                                     build+install packages whose installed
+#                                     version is older than the PKGBUILD's
+# Seams (pure, clitest-covered; no network, no pacman):
+#   custom-pkgs pkgver FILE           print pkgver-pkgrel from a PKGBUILD
+#   custom-pkgs upstream FILE         print owner/repo from the url= line
+#   custom-pkgs verdict PINNED LATEST print "current" or "outdated"
+#   custom-pkgs set-version FILE VER  rewrite pkgver/pkgrel (no checksums)
+#   custom-pkgs ensure-ignore NAME    pacman.conf on stdin → stdout with NAME
+#                                     present in [options] IgnorePkg
+#
+# CUSTOM_PKGS_DIR overrides the pkgbuilds dir (tests use a fixture dir).
+set -euo pipefail
+
+pkgs_dir="${CUSTOM_PKGS_DIR:-$HOME/.config/dotfiles/pkgbuilds}"
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/custom-pkgs"
+
+die() { echo "custom-pkgs: $*" >&2; exit 1; }
+
+pkgbuild_field() { # $1 = PKGBUILD, $2 = field name
+    sed -n "s/^$2=['\"]\{0,1\}\([^'\"]*\)['\"]\{0,1\}\$/\1/p" "$1" | head -1
+}
+
+cmd_pkgver() { # full pacman version: pkgver-pkgrel
+    local ver rel
+    ver=$(pkgbuild_field "$1" pkgver)
+    rel=$(pkgbuild_field "$1" pkgrel)
+    [[ -n $ver && -n $rel ]] || die "no pkgver/pkgrel in $1"
+    echo "$ver-$rel"
+}
+
+cmd_upstream() { # owner/repo out of url="https://github.com/owner/repo"
+    local url
+    url=$(pkgbuild_field "$1" url)
+    case "$url" in
+    https://github.com/*/*)
+        echo "${url#https://github.com/}" ;;
+    *)
+        die "url in $1 is not a github repo ($url)" ;;
+    esac
+}
+
+cmd_verdict() { # $1 = pinned, $2 = upstream latest → current | outdated
+    if [[ "$1" == "$2" || "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" == "$2" ]]; then
+        echo current
+    else
+        echo outdated
+    fi
+}
+
+cmd_set_version() { # $1 = PKGBUILD, $2 = new pkgver
+    grep -q '^pkgver=' "$1" || die "no pkgver line in $1"
+    sed -i "s/^pkgver=.*/pkgver=$2/; s/^pkgrel=.*/pkgrel=1/" "$1"
+}
+
+cmd_ensure_ignore() { # stdin pacman.conf → stdout with $1 in IgnorePkg
+    local pkg="$1" conf
+    conf=$(cat)
+    if awk -v p="$pkg" '/^IgnorePkg[ \t]*=/ { n = split($0, w, /[ \t=]+/)
+            for (i = 2; i <= n; i++) if (w[i] == p) found = 1 }
+            END { exit !found }' <<<"$conf"; then
+        printf '%s\n' "$conf"                                   # already listed
+    elif grep -q '^IgnorePkg[[:space:]]*=' <<<"$conf"; then
+        sed "0,/^IgnorePkg[[:space:]]*=.*/s//& $pkg/" <<<"$conf" # append to the line
+    elif grep -q '^\[options\]' <<<"$conf"; then
+        sed "0,/^\[options\]/s//&\nIgnorePkg = $pkg/" <<<"$conf" # new line under [options]
+    else
+        die "no IgnorePkg or [options] anchor found on stdin"
+    fi
+}
+
+cmd_list() {
+    local f
+    for f in "$pkgs_dir"/*/PKGBUILD; do
+        [[ -f $f ]] || continue
+        basename "$(dirname "$f")"
+    done
+}
+
+cmd_status() {
+    local name pinned inst
+    while IFS= read -r name; do
+        pinned=$(cmd_pkgver "$pkgs_dir/$name/PKGBUILD")
+        inst=$(pacman -Q "$name" 2>/dev/null | awk '{print $2}') || true
+        printf '%s\t%s\t%s\n' "$name" "$pinned" "${inst:-not-installed}"
+    done < <(cmd_list)
+}
+
+cmd_outdated() { # network: GitHub latest release per vendored package
+    local name pb pinned repo latest rc=0
+    while IFS= read -r name; do
+        pb="$pkgs_dir/$name/PKGBUILD"
+        pinned=$(pkgbuild_field "$pb" pkgver)
+        repo=$(cmd_upstream "$pb")
+        latest=$(curl -fsSL --max-time 15 "https://api.github.com/repos/$repo/releases/latest" \
+            | jq -r '.tag_name // empty') || { echo "custom-pkgs: $name: upstream check failed ($repo)" >&2; rc=2; continue; }
+        latest=${latest#v}
+        [[ -n $latest ]] || { echo "custom-pkgs: $name: no releases at $repo" >&2; rc=2; continue; }
+        if [[ "$(cmd_verdict "$pinned" "$latest")" == outdated ]]; then
+            printf '%s\t%s\t%s\n' "$name" "$pinned" "$latest"
+        fi
+    done < <(cmd_list)
+    return $rc
+}
+
+cmd_check() {
+    local out
+    out=$(cmd_outdated) || true
+    if [[ -n $out ]]; then
+        echo "vendored PKGBUILDs behind upstream ($pkgs_dir):"
+        awk -F'\t' '{printf "  %s: %s -> %s\n", $1, $2, $3}' <<<"$out"
+        return 1
+    fi
+    echo "vendored PKGBUILDs: all current"
+}
+
+cmd_bump() { # $1 = name, $2 = new version
+    local pb="$pkgs_dir/$1/PKGBUILD"
+    [[ -f $pb ]] || die "no vendored package '$1' in $pkgs_dir"
+    command -v updpkgsums >/dev/null || die "updpkgsums not found (pacman-contrib)"
+    cmd_set_version "$pb" "$2"
+    mkdir -p "$cache_dir/src"
+    (cd "$(dirname "$pb")" && SRCDEST="$cache_dir/src" updpkgsums)
+    echo "bumped $1 to $2 ($pb) — review + yadm/git commit the change"
+}
+
+cmd_sync() {
+    local only="" noconfirm=0 check=0 arg name pinned inst build nc
+    for arg in "$@"; do
+        case "$arg" in
+        --noconfirm) noconfirm=1 ;;
+        --check) check=1 ;;
+        -*) die "unknown sync flag: $arg" ;;
+        *) only="$arg" ;;
+        esac
+    done
+    command -v makepkg >/dev/null || die "makepkg not found"
+    while IFS= read -r name; do
+        [[ -z $only || $name == "$only" ]] || continue
+        pinned=$(cmd_pkgver "$pkgs_dir/$name/PKGBUILD")
+        inst=$(pacman -Q "$name" 2>/dev/null | awk '{print $2}') || true
+        if [[ -n $inst ]] && (($(vercmp "$inst" "$pinned") >= 0)); then
+            echo "  $name $inst already current (PKGBUILD $pinned)"
+            continue
+        fi
+        if ((check)); then
+            echo "  would: build+install $name $pinned (installed: ${inst:-none})"
+            continue
+        fi
+        echo "  building $name $pinned (installed: ${inst:-none})..."
+        build="$cache_dir/build/$name"
+        rm -rf "$build" && mkdir -p "$build" "$cache_dir/src"
+        cp "$pkgs_dir/$name/"* "$build/"
+        nc=()
+        ((noconfirm)) && nc=(--noconfirm)
+        (cd "$build" && SRCDEST="$cache_dir/src" makepkg -si "${nc[@]}") \
+            || die "$name build/install failed (build dir kept: $build)"
+        pacman -Qi "$name" >/dev/null || die "$name did not install"
+        echo "  installed $name $(pacman -Q "$name" | awk '{print $2}')"
+    done < <(cmd_list)
+}
+
+case "${1:-}" in
+list) cmd_list ;;
+status) cmd_status ;;
+outdated) cmd_outdated ;;
+check) cmd_check ;;
+bump) [[ $# -eq 3 ]] || die "usage: custom-pkgs bump NAME VERSION"; cmd_bump "$2" "$3" ;;
+sync) shift; cmd_sync "$@" ;;
+pkgver) cmd_pkgver "${2:?usage: custom-pkgs pkgver FILE}" ;;
+upstream) cmd_upstream "${2:?usage: custom-pkgs upstream FILE}" ;;
+verdict) [[ $# -eq 3 ]] || die "usage: custom-pkgs verdict PINNED LATEST"; cmd_verdict "$2" "$3" ;;
+set-version) [[ $# -eq 3 ]] || die "usage: custom-pkgs set-version FILE VERSION"; cmd_set_version "$2" "$3" ;;
+ensure-ignore) cmd_ensure_ignore "${2:?usage: custom-pkgs ensure-ignore NAME}" ;;
+-h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
+*) die "unknown subcommand: ${1:-<none>}   (try: custom-pkgs -h)" ;;
+esac
