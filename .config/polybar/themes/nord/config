@@ -41,7 +41,7 @@ wm-name=chicken
 monitor-strict = true
 inherit = bar/base
 monitor = ${env:MONITOR_MAIN}
-modules-right = alsa-switch pulseaudio-tail time calendar
+modules-right = audio-switch volume-tail time calendar
 modules-left = 
 modules-center =
 border = 2
@@ -167,20 +167,20 @@ format-foreground = ${colors.secondary-fg}
 format-background = ${colors.secondary-bg}
 label = "   %time%  "
 
-[module/alsa-switch]
+[module/audio-switch]
 type = custom/script
-click-left = ~/.local/bin/tools/polybar_alsa_module --switch
-exec = ~/.local/bin/tools/polybar_alsa_module --mutefg "BF616A" --mutebg "81A1C1" --bg "81A1C1" --fg "3B4252" --padleft " "
+click-left = ~/.local/bin/tools/audio-switch switch
+exec = ~/.local/bin/tools/audio-switch listen --mutefg BF616A --mutebg 81A1C1 --bg 81A1C1 --fg 3B4252 --padleft " "
 tail = true
 
-[module/pulseaudio-tail]
+[module/volume-tail]
 type = custom/script
-exec = ~/.local/bin/tools/pulseaudio-tail.sh --padright " "
+exec = ~/.local/bin/tools/volume-tail --padright " "
 tail = true
 click-right = exec pavucontrol &
-click-left = mute_toggle
-scroll-up = volume up 3
-scroll-down = volume down 3
+click-left = ~/.local/bin/tools/volume-tail --mute
+scroll-up = ~/.local/bin/tools/volume-tail --up 3
+scroll-down = ~/.local/bin/tools/volume-tail --down 3
 format-padding = 1
 
 

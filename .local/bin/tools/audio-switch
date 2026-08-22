@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# audio-switch — polybar output-port switcher, PipeWire-native (Story 3.12).
+#
+# Replaces polybar_alsa_module, which polled `dot sound port` (a 2019 Go
+# binary; on machines without it, `dot` resolves to graphviz) and switched
+# via `pacmd` (PulseAudio-daemon-only, gone under PipeWire). This talks to
+# PipeWire through pactl (pipewire-pulse) for ports and wpctl for mute —
+# no state file: the active port IS the state.
+#
+# Polybar wiring (module/audio-switch):
+#   exec       = audio-switch listen [--fg X --bg X --mutefg X --mutebg X --padleft S]
+#   click-left = audio-switch switch
+#
+# Usage:
+#   audio-switch listen [flags]   tail loop: icon for the active port, mute colors
+#   audio-switch switch           cycle the default sink to its next port
+#   audio-switch current          print the active port ("none" when the sink
+#                                 has no ports — VM guests' auto_null)
+# Seams (pure, clitest-covered; no pactl/wpctl):
+#   audio-switch parse-active SINK  < `pactl list sinks` → active port of SINK
+#   audio-switch parse-ports SINK   < `pactl list sinks` → SINK's ports, one/line
+#   audio-switch next-port CURRENT  < ports list → the port after CURRENT (wraps;
+#                                   unknown/empty CURRENT → first port)
+#   audio-switch render [flags] PORT MUTED   → the polybar format string
+set -euo pipefail
+
+fg="D8DEE9" bg="434C5E" mute_fg="BF616A" mute_bg="434C5E" padleft=""
+
+parse_flags() { # consumes leading color flags; leftover args land in ARGS
+    ARGS=()
+    while (($#)); do
+        case "$1" in
+        --fg) fg=$2; shift 2 ;;
+        --bg) bg=$2; shift 2 ;;
+        --mutefg) mute_fg=$2; shift 2 ;;
+        --mutebg) mute_bg=$2; shift 2 ;;
+        --padleft) padleft=$2; shift 2 ;;
+        *) ARGS+=("$1"); shift ;;
+        esac
+    done
+}
+
+cmd_parse_active() { # $1 = sink name; pactl list sinks on stdin
+    awk -v sink="$1" '
+        /^Sink #/ { in_s = 0 }
+        $1 == "Name:" && $2 == sink { in_s = 1 }
+        in_s && /^\tActive Port:/ { print $3; exit }'
+}
+
+cmd_parse_ports() { # $1 = sink name; pactl list sinks on stdin
+    awk -v sink="$1" '
+        /^Sink #/ { in_s = 0; in_p = 0 }
+        $1 == "Name:" && $2 == sink { in_s = 1 }
+        in_s && /^\tPorts:/ { in_p = 1; next }
+        in_s && in_p && /^\t\t[^\t]/ { p = $1; sub(/:$/, "", p); print p; next }
+        in_s && in_p && !/^\t\t/ { in_p = 0 }'
+}
+
+cmd_next_port() { # $1 = current port; ports on stdin. Wraps; unknown → first.
+    awk -v cur="$1" '
+        NR == 1 { first = $0 }
+        found { print; ok = 1; exit }
+        $0 == cur { found = 1 }
+        END { if (!ok && first != "") print first }'
+}
+
+cmd_render() { # $1 = port ("none" ok), $2 = muted (true/false)
+    local icon colors
+    case "$1" in
+    *headphone*) icon=$'' ;; # FontAwesome headphones
+    *) icon=$'' ;;           # FontAwesome volume-up (speaker)
+    esac
+    if [[ "$2" == true ]]; then
+        colors="%{ F#$mute_fg B#$mute_bg }"
+    else
+        colors="%{ F#$fg B#$bg }"
+    fi
+    printf '%s%s %s\n' "$padleft" "$colors" "$icon"
+}
+
+default_sink() { pactl get-default-sink; }
+
+cmd_current() {
+    local sink port
+    sink=$(default_sink)
+    port=$(pactl list sinks | cmd_parse_active "$sink")
+    echo "${port:-none}"
+}
+
+cmd_switch() {
+    local sink ports cur next
+    sink=$(default_sink)
+    ports=$(pactl list sinks | cmd_parse_ports "$sink")
+    if [[ -z $ports ]]; then
+        command -v notify-send >/dev/null && notify-send "Audio" "sink $sink has no switchable ports"
+        exit 0
+    fi
+    cur=$(pactl list sinks | cmd_parse_active "$sink")
+    next=$(cmd_next_port "$cur" <<<"$ports")
+    pactl set-sink-port "$sink" "$next"
+}
+
+cmd_listen() {
+    local muted port
+    while true; do
+        # the || keeps a transient pactl failure (pipewire restart, resume
+        # window) from set -e-killing the tail loop; renders the generic icon
+        port=$(cmd_current || echo none)
+        if wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | grep -q MUTED; then
+            muted=true
+        else
+            muted=false
+        fi
+        cmd_render "$port" "$muted"
+        sleep 1 &
+        wait $!
+    done
+}
+
+case "${1:-}" in
+listen) shift; parse_flags "$@"; cmd_listen ;;
+switch) cmd_switch ;;
+current) cmd_current ;;
+parse-active) cmd_parse_active "${2:?usage: audio-switch parse-active SINK < pactl-list-sinks}" ;;
+parse-ports) cmd_parse_ports "${2:?usage: audio-switch parse-ports SINK < pactl-list-sinks}" ;;
+next-port) cmd_next_port "${2-}" ;;
+render) shift; parse_flags "$@"; cmd_render "${ARGS[0]:?usage: audio-switch render [flags] PORT MUTED}" "${ARGS[1]:?MUTED (true/false) required}" ;;
+-h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
+*) echo "audio-switch: unknown subcommand: ${1:-<none>}   (try: audio-switch -h)" >&2; exit 1 ;;
+esac

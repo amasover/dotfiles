@@ -356,9 +356,10 @@ bar {
 
 for_window [title="i3-helm"] floating enable
 
-# uses golang github.com/itchyny/volume-go
-bindsym XF86AudioRaiseVolume exec --no-startup-id volume up 3 && sh -c "volnoti-show $(volume get)" #increase sound volume
-bindsym XF86AudioLowerVolume exec --no-startup-id volume down 3 && sh -c "volnoti-show $(volume get)" #decrease sound volume
+# wpctl via tools/volume-osd (Story 3.12); its volnoti OSD hook is dormant —
+# volnoti is installed nowhere and no daemon is started (opt-in later)
+bindsym XF86AudioRaiseVolume exec --no-startup-id ~/.local/bin/tools/volume-osd up
+bindsym XF86AudioLowerVolume exec --no-startup-id ~/.local/bin/tools/volume-osd down
 
 bindsym XF86AudioMute exec --no-startup-id wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
 # media play/pause via playerctl

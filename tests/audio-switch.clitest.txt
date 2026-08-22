@@ -1,0 +1,85 @@
+# tools/audio-switch + volume-tail/volume-osd seams (Story 3.12, #59).
+# Host-independent: fixture pactl output under $CLITMP; no pactl/wpctl runs.
+#
+# Run from the repo root: clitest tests/audio-switch.clitest.txt
+
+$ t=.local/bin/tools/audio-switch; CLITMP=$(mktemp -d); f=$CLITMP/sinks; echo ok
+ok
+$ printf 'Sink #54\n\tName: other.sink\n\tPorts:\n\t\tother-port: Other (priority: 1)\n\tActive Port: other-port\n' > "$f"
+$ printf 'Sink #55\n\tName: alsa_output.analog-stereo\n\tState: RUNNING\n\tPorts:\n\t\tanalog-output-speaker: Speaker (type: Speaker)\n\t\tanalog-output-headphones: Headphones (not available)\n\tActive Port: analog-output-speaker\n' >> "$f"
+$ printf 'Sink #56\n\tName: auto_null\n\tState: SUSPENDED\n\tActive Port: \n' >> "$f"
+$
+
+parse-active reads the named sink's active port, ignoring other sinks:
+
+$ $t parse-active alsa_output.analog-stereo < "$f"
+analog-output-speaker
+$ $t parse-active other.sink < "$f"
+other-port
+$
+
+parse-ports lists only the named sink's ports, in order; a sink without a
+Ports block (the guest's auto_null) yields nothing:
+
+$ $t parse-ports alsa_output.analog-stereo < "$f"
+analog-output-speaker
+analog-output-headphones
+$ $t parse-ports auto_null < "$f"
+$ $t parse-ports no-such-sink < "$f"
+$
+
+next-port cycles with wrap-around; unknown or empty current falls back to
+the first port; no ports in, nothing out:
+
+$ printf 'a\nb\nc\n' | $t next-port a
+b
+$ printf 'a\nb\nc\n' | $t next-port c
+a
+$ printf 'a\nb\nc\n' | $t next-port zzz
+a
+$ printf 'a\nb\nc\n' | $t next-port ''
+a
+$ printf '' | $t next-port a
+$
+
+render picks the icon by port name and the color pair by mute state (the
+icons are non-ASCII glyphs, scrubbed to GLYPH for stable comparison):
+
+$ scrub() { LC_ALL=C sed 's/[^ -~]\{1,\}/GLYPH/g'; }
+$ $t render --fg 3B4252 --bg 8FBCBB --mutefg BF616A --mutebg 8FBCBB analog-output-speaker false | scrub
+%{ F#3B4252 B#8FBCBB } GLYPH
+$ $t render --fg 3B4252 --bg 8FBCBB --mutefg BF616A --mutebg 8FBCBB analog-output-speaker true | scrub
+%{ F#BF616A B#8FBCBB } GLYPH
+$ $t render --padleft 'X' --fg A --bg B --mutefg C --mutebg D none false | scrub
+X%{ F#A B#B } GLYPH
+$
+
+the headphones port gets a different icon than a speaker port:
+
+$ [ "$($t render --fg A --bg B --mutefg C --mutebg D analog-output-headphones false)" != "$($t render --fg A --bg B --mutefg C --mutebg D analog-output-speaker false)" ] && echo icons-differ
+icons-differ
+$
+
+volume-tail/volume-osd pct: wpctl get-volume output to integer percent:
+
+$ printf 'Volume: 0.45\n' | .local/bin/tools/volume-tail pct
+45
+$ printf 'Volume: 1.00 [MUTED]\n' | .local/bin/tools/volume-tail pct
+100
+$ printf 'Volume: 0.33\n' | .local/bin/tools/volume-osd pct
+33
+$ printf 'garbage\n' | .local/bin/tools/volume-tail pct
+$
+
+the one-shot tools reject unknown verbs/flags — a typo'd click/scroll action
+in a theme must error, not detach an infinite tail loop per click:
+
+$ .local/bin/tools/volume-osd frob 2>&1; echo "rc=$?"
+usage: volume-osd up|down [step-pct]
+rc=2
+$ .local/bin/tools/volume-tail --frobnicate 2>&1; echo "rc=$?"
+usage: volume-tail [--padright S] | --up|--down [N] | --mute | pct
+rc=2
+$ rm -r "$CLITMP"; echo done
+done
+$
