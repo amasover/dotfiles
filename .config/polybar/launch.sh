@@ -93,11 +93,28 @@ theme_state="${XDG_STATE_HOME:-$HOME/.local/state}/polybar/theme"
 default_theme="$HOME/.config/polybar/themes/nord-arrow/config.ini"
 [[ -z ${polybar_theme:-} && -f $theme_state ]] && polybar_theme=$(<"$theme_state")
 polybar_theme="${polybar_theme:-$default_theme}"
-if [[ ! -f $polybar_theme ]] || ! grep -q '^\[bar/main\]' "$polybar_theme"; then
+# Usable = a per-theme bar manifest (themes/<name>/bars, Story 3.21) or the
+# historical bar/main contract.
+theme_ok() {
+    [[ -f $1 ]] || return 1
+    "$tools/theme-manifest" has-manifest "$(dirname "$1")" >/dev/null 2>&1 && return 0
+    grep -q '^\[bar/main\]' "$1"
+}
+if ! theme_ok "$polybar_theme"; then
     warn "theme config unusable (${polybar_theme:-empty}); using default"
     polybar_theme="$default_theme"
 fi
 export polybar_theme
+theme_dir=$(dirname "$polybar_theme")
+
+# The top gap is theme-owned: island themes (nord) float override-redirect
+# bars in a strip i3 must be told to leave free; full-width themes want 0.
+# launch.sh is the single writer of this value (i3 config carries no static
+# gaps top).
+gap=$("$tools/theme-manifest" gap-top "$theme_dir" 2>>"$log") || gap=0
+if command -v i3-msg >/dev/null 2>&1; then
+    i3-msg "gaps top all set ${gap}" >>"$log" 2>&1 || warn "could not set i3 top gap (${gap})"
+fi
 
 # TERM, bounded wait, then KILL: a bar wedged in its event loop can ignore
 # SIGTERM (seen live 2026-08-22 — killall -w parked forever), and the flock
@@ -120,12 +137,12 @@ launch() {
     fi
     polybar -r -l warning -c "$polybar_theme" "$1" >>"$log" 2>&1 9>&- &
 }
-launch main
-launch main-bottom
-[[ -n ${MONITOR_LEFT:-} ]]         && launch left
-[[ -n ${MONITOR_EXTRA:-} ]]        && launch extra
-[[ -n ${MONITOR_SPLIT_TOP:-} ]]    && launch split-one
-[[ -n ${MONITOR_SPLIT_BOTTOM:-} ]] && launch split-two
+# The theme's manifest names the bars (role-gated ones only launch when
+# their MONITOR_* role resolved); a theme without one gets the historical
+# main/main-bottom/left/extra/split contract from the tool's default.
+while IFS= read -r bar_name; do
+    launch "$bar_name"
+done < <("$tools/theme-manifest" launchable "$theme_dir" 2>>"$log")
 
 if command -v notify-send >/dev/null 2>&1; then
     notify-send "Polybar" "Bars up (${mode})" 9>&- &

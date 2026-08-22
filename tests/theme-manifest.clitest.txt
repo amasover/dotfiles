@@ -1,0 +1,96 @@
+# tools/theme-manifest — per-theme bar lists for the polybar launcher
+# (Story 3.21, #173). Host-independent: fixture manifests under $CLITMP.
+#
+# Run from the repo root: clitest tests/theme-manifest.clitest.txt
+
+$ t=.local/bin/tools/theme-manifest; TH=.config/polybar/themes; CLITMP=$(mktemp -d); echo ok
+ok
+$ mkdir -p "$CLITMP/plain" "$CLITMP/island" "$CLITMP/broken1" "$CLITMP/broken2" "$CLITMP/broken3"
+$ printf '# island theme\nbar top-left\nbar top-right\nbar side MONITOR_LEFT\n\ngap-top 55\n' > "$CLITMP/island/bars"
+$ printf 'frob top-left\n' > "$CLITMP/broken1/bars"
+$ printf 'bar x\ngap-top many\n' > "$CLITMP/broken2/bars"
+$ printf '# nothing but a gap\ngap-top 10\n' > "$CLITMP/broken3/bars"
+$
+
+a theme without a manifest gets the historical default contract:
+
+$ $t has-manifest "$CLITMP/plain"; echo "rc=$?"
+default
+rc=1
+$ $t bars "$CLITMP/plain"
+main	-
+main-bottom	-
+left	MONITOR_LEFT
+extra	MONITOR_EXTRA
+split-one	MONITOR_SPLIT_TOP
+split-two	MONITOR_SPLIT_BOTTOM
+$ $t gap-top "$CLITMP/plain"
+0
+$
+
+a manifest names its bars (role column optional), comments/blanks ignored:
+
+$ $t has-manifest "$CLITMP/island"; echo "rc=$?"
+manifest
+rc=0
+$ $t bars "$CLITMP/island"
+top-left	-
+top-right	-
+side	MONITOR_LEFT
+$ $t gap-top "$CLITMP/island"
+55
+$
+
+launchable resolves role gates against the current env:
+
+$ $t launchable "$CLITMP/island"
+top-left
+top-right
+$ MONITOR_LEFT=eDP-1 $t launchable "$CLITMP/island"
+top-left
+top-right
+side
+$ MONITOR_LEFT= $t launchable "$CLITMP/island"
+top-left
+top-right
+$ MONITOR_SPLIT_TOP=DP-1 $t launchable "$CLITMP/plain" | xargs
+main main-bottom split-one
+$
+
+malformed manifests are fatal, not silently wrong:
+
+$ $t bars "$CLITMP/broken1" 2>"$CLITMP/err"; echo "rc=$?"; sed 's/.*: //' "$CLITMP/err"
+rc=2
+unknown directive 'frob'
+$ $t gap-top "$CLITMP/broken2" 2>"$CLITMP/err"; echo "rc=$?"; sed 's/.*: //' "$CLITMP/err"
+rc=2
+gap-top needs a number
+$ $t bars "$CLITMP/broken3" >/dev/null 2>&1; echo "rc=$?"
+rc=2
+$ $t bars "$CLITMP/nope" >/dev/null 2>&1; echo "rc=$?"
+rc=2
+$
+
+the real theme manifests parse, and every bar they name is defined in the
+theme's own config (the -c contract):
+
+$ $t bars "$TH/nord-arrow" >/dev/null && $t bars "$TH/nord" >/dev/null && echo both-parse
+both-parse
+$ $t gap-top "$TH/nord-arrow"; $t gap-top "$TH/nord"
+0
+55
+$ $t bars "$TH/nord-arrow" | cut -f1 | while read -r b; do grep -q "^\[bar/$b\]" "$TH/nord-arrow/config.ini" || echo "missing: $b"; done; echo checked
+checked
+$ $t bars "$TH/nord" | cut -f1 | while read -r b; do grep -q "^\[bar/$b\]" "$TH/nord/config" || echo "missing: $b"; done; echo checked
+checked
+$
+
+nord's third-monitor bar rides the EXTRA role — no dead MONITOR_RIGHT remains:
+
+$ grep -c 'env:MONITOR_RIGHT' "$TH/nord/config" || true
+0
+$ grep -c 'env:MONITOR_EXTRA' "$TH/nord/config"
+1
+$ rm -r "$CLITMP"; echo done
+done
+$

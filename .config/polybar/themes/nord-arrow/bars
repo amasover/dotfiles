@@ -1,0 +1,10 @@
+# nord-arrow full-width bars (Story 3.21, #173) — the launcher's historical
+# default contract, made explicit. gap-top 0: full-width bars reserve their
+# own space (wm-restack), no i3 gap needed.
+bar main
+bar main-bottom
+bar left MONITOR_LEFT
+bar extra MONITOR_EXTRA
+bar split-one MONITOR_SPLIT_TOP
+bar split-two MONITOR_SPLIT_BOTTOM
+gap-top 0

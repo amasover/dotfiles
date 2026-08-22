@@ -1,0 +1,10 @@
+# nord island bars (Story 3.21, #173) — read by tools/theme-manifest for
+# launch.sh. The islands are override-redirect windows i3 neither reserves
+# room for nor restacks; the gap reserves the strip they float in
+# (offset-y 20 + ~32px bar height).
+bar main-top-left
+bar main-top-middle
+bar main-top-right
+bar left-top-middle MONITOR_LEFT
+bar right-top-middle MONITOR_EXTRA
+gap-top 55
