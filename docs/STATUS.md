@@ -133,9 +133,12 @@ Facts:
   missing, and `package-inventory.md` still calls the machine AMD. Detailed on the issue.
 
 - **Epic 5 charter** (PR pending from `docs/epic-5-guest-daily-driver`): new epic for
-  guest-as-daily-driver work — stories 5.1–5.5 (fresh-machine SSH keys, host-driven GitHub
-  auth, current-guest credential fix, dynamic resolution, polybar on guests). Specs in the
-  epic doc; issues not yet opened — the guest has no GitHub auth (that's 5.3's problem).
+  guest-as-daily-driver work — stories 5.1–5.6 ([#148](https://github.com/amasover/dotfiles/issues/148)–[#153](https://github.com/amasover/dotfiles/issues/153),
+  all on the board): fresh-machine SSH keys, attended auth bootstrap, current-guest
+  credential fix, dynamic resolution, polybar on guests, unattended host-driven auth.
+- **5.3 guest git credentials** ([#150](https://github.com/amasover/dotfiles/issues/150)):
+  done live in the VMware guest 2026-08-22 — device-flow login, verified push, GCM decision
+  on the issue; recipe PR from `story/5.3-guest-git-credentials` pending.
 
 ## Standing warnings
 

@@ -68,6 +68,8 @@ As the repo owner,
 I want every fresh machine to generate its own SSH keypair during bootstrap,
 So that machines have distinct, revocable identities instead of restoring a shared key from the encrypted archive.
 
+Issue: [#148](https://github.com/amasover/dotfiles/issues/148)
+
 **Current state (2026-08-22, VMware guest):** `~/.ssh` holds only
 `authorized_keys` (the host's way in). `.ssh/**` is a YADM-encrypted path, so a
 key exists only if the encrypted payload ships one — fresh guests get nothing.
@@ -93,6 +95,11 @@ As the repo owner,
 I want a harness-driven `up` to leave the guest authenticated to GitHub when the host is,
 So that a fresh guest can push branches and open PRs without a manual login ritual.
 
+Issue: [#149](https://github.com/amasover/dotfiles/issues/149)
+
+This story owns the **attended** path and the identity half
+(`~/.gitconfig-local`); the fully unattended path is Story 5.6.
+
 **Current state:** the tracked `.gitconfig` already routes `github.com` through
 `gh auth git-credential`, so guest auth reduces to "gh has a token." The guest
 has none; the host does.
@@ -105,9 +112,11 @@ has none; the host does.
   `vm-harness destroy` is acceptable, a long-lived broad token is not.
 - Nothing credential-shaped lands in tracked files, harness logs, or transcripts.
 - Unattended runs on a host *without* auth skip the step cleanly and say so.
-- Mechanism options (host mints a scoped token and injects it; host registers
-  the guest's 5.1 pubkey via its own gh; attended device-flow step) are weighed
-  in the story, with the choice recorded.
+- The attended mechanism — a bootstrap step drives the `gh auth login --web`
+  device flow and surfaces the one-time code in the run output (verified live
+  2026-08-22: the Enter prompt wants a raw-mode `\r` when driven through a pty;
+  a real terminal needs no tricks) — is implemented here. Unattended mechanisms
+  (host-minted token injection, host-side pubkey registration) belong to 5.6.
 - "Other auth bootstraps" (AWS, etc.) are explicitly deferred to follow-on
   stories once the GitHub shape works.
 
@@ -116,6 +125,8 @@ has none; the host does.
 As the repo owner,
 I want git pushes to work from the guest I'm sitting in today,
 So that guest-side work (including this epic) doesn't detour through the host for every commit.
+
+Issue: [#150](https://github.com/amasover/dotfiles/issues/150)
 
 **Current state (2026-08-22):** `gh` is not logged in. The global
 `credential.helper = git-credential-manager` with `credentialStore =
@@ -148,6 +159,8 @@ As the repo owner,
 I want the guest's X resolution to track the VMware/SPICE window size,
 So that resizing the viewer doesn't leave me on a fixed 1280x800 letterboxed desktop.
 
+Issue: [#151](https://github.com/amasover/dotfiles/issues/151)
+
 **Current state (2026-08-22, VMware guest):** open-vm-tools is installed but
 `vmtoolsd` is not running — the service was never enabled, and nothing in
 `.xinitrc` or the i3 config starts the user-session agent. Display is stuck at
@@ -170,6 +183,8 @@ As the repo owner,
 I want polybar to appear on any guest without per-machine edits,
 So that a fresh guest has a working desktop instead of a "monitor configuration not recognized" notification.
 
+Issue: [#152](https://github.com/amasover/dotfiles/issues/152)
+
 **Current state (2026-08-22):** `.config/polybar/launch.sh` matches the active
 monitor list against seven hardcoded host layouts (`eDP1 `, `*DP1-1 eDP1 DP1-3 `,
 …). The guest's `Virtual-1` matches nothing, so the script falls through to a
@@ -191,6 +206,37 @@ outputs (tracked as [3.17](./epic-3-shell-editor-desktop-cleanup.md)).
   and named-layout paths — no X server required in tests.
 - Launch script rewrite is on the table if patching the case statement fights
   the acceptance criteria; keep the rotated-log behavior either way.
+
+### Story 5.6: Unattended host-driven runs authenticate the guest
+
+As the repo owner,
+I want a fully unattended `vm-harness up` on an authenticated host to leave the guest able to push,
+So that automated runs can create branches and PRs without a human at a browser.
+
+Issue: [#153](https://github.com/amasover/dotfiles/issues/153)
+
+**Current state:** the attended device flow (5.2/5.3) needs a browser, and
+harness runs are unattended by design (the whole 2.38 discipline). The host's
+`gh` is authenticated; the guest's is not.
+
+**Acceptance criteria:**
+
+- A fully unattended `up` on an authenticated host produces a guest that can
+  push to the dotfiles repo, with zero interactive steps.
+- The mechanism decision is recorded, choosing between: the host registers the
+  guest's own 5.1 pubkey with GitHub via the **host's** `gh api /user/keys`
+  (current preference — no token ever enters the guest, revocation is
+  per-machine), or the host injects a minimally-scoped, short-lived token for
+  HTTPS.
+- `vm-harness destroy` cleans up what auth created where practical (e.g.
+  deregisters the guest's key), or the leftover is documented as inert.
+- On a host without GitHub auth, the step skips cleanly, says so in the run
+  report, and the run stays green.
+- Nothing credential-shaped lands in harness logs, transcripts, or tracked
+  files; the bootstrap stays on `gh`'s sanctioned commands (scripting GitHub's
+  raw OAuth endpoints directly is credential-harvester-shaped — see #149).
+- Depends on 5.1 for the key-based shape; coordinates with 5.2 instead of
+  duplicating its identity work.
 
 ---
 
