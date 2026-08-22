@@ -1,0 +1,87 @@
+# polybar theme configs — color references must resolve (nord-colors bug).
+# The nord-arrow capture shipped with its palette include commented out and
+# pointing at a pre-themes-dir path; every ${colors.nordX} then fell back to
+# polybar's defaults (black/white bars) once 5.5 made -c load-bearing. These
+# checks are pure text over the tracked files: no polybar, no host state.
+#
+# Run from the repo root: clitest tests/polybar-themes.clitest.txt
+
+$ TH=.config/polybar/themes; CLITMP=$(mktemp -d); echo ok
+ok
+$
+
+both themes include the palette by its real (themes/nord) path, uncommented:
+
+$ grep -c '^include-file = \$HOME/.config/polybar/themes/nord/colors$' $TH/nord-arrow/config.ini
+1
+$ grep -c '^include-file = \$HOME/.config/polybar/themes/nord/colors$' $TH/nord/config
+1
+$
+
+nord's bars inherit bar/base — the section must exist (was lost in capture):
+
+$ grep -c '^\[bar/base\]' $TH/nord/config
+1
+$
+
+the shared baseline (fonts, ipc, wm-restack, cursors) is defined ONCE in
+global/base and reaches the bars via `inherit = bar/global` — inherit gives
+per-key overrides, unlike include-file merging where a duplicate key is a
+fatal parse error:
+
+$ grep -c '^font-0 = Source Code Pro for Powerline' $TH/global/base
+1
+$ grep -c '^font-1 = FontAwesome' $TH/global/base
+1
+$ grep -c '^enable-ipc = true$' $TH/global/base
+1
+$ grep -c '^wm-restack = i3$' $TH/global/base
+1
+$ grep -c '^inherit = bar/global$' $TH/nord-arrow/config.ini $TH/nord/config
+.config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord/config:1
+$
+
+every ${colors.X} reference on a live (uncommented) line resolves to a
+palette key or an inline [colors] key — nord-arrow:
+
+$ sed -n 's/^\([a-zA-Z0-9-]*\)[ =].*/\1/p' $TH/nord/colors | sort -u > "$CLITMP/palette"
+$ { cat "$CLITMP/palette"; sed -n '/^\[colors\]/,/^\[bar/{s/^\([a-zA-Z0-9-]*\)[[:space:]]*=.*/\1/p;}' $TH/nord-arrow/config.ini; } | sort -u > "$CLITMP/defined"
+$ grep -v '^[[:space:]]*[;#]' $TH/nord-arrow/config.ini | grep -o '\${colors\.[a-zA-Z0-9_-]*}' | sed 's/^..colors\.//; s/}$//' | sort -u > "$CLITMP/refs"
+$ comm -23 "$CLITMP/refs" "$CLITMP/defined"
+$
+
+...and nord:
+
+$ { cat "$CLITMP/palette"; sed -n '/^\[colors\]/,/^\[bar/{s/^\([a-zA-Z0-9-]*\)[[:space:]]*=.*/\1/p;}' $TH/nord/config; } | sort -u > "$CLITMP/defined"
+$ grep -v '^[[:space:]]*[;#]' $TH/nord/config | grep -o '\${colors\.[a-zA-Z0-9_-]*}' | sed 's/^..colors\.//; s/}$//' | sort -u > "$CLITMP/refs"
+$ comm -23 "$CLITMP/refs" "$CLITMP/defined"
+$
+
+the palette itself only chains to keys it defines (secondary-bg = ${colors.nord0} etc.):
+
+$ grep -o '\${colors\.[a-zA-Z0-9_-]*}' $TH/nord/colors | sed 's/^..colors\.//; s/}$//' | sort -u > "$CLITMP/refs"
+$ comm -23 "$CLITMP/refs" "$CLITMP/palette"
+$
+
+under -c the theme file is the whole config, so each theme must pull in the
+shared base and module library itself (updates-arch lives in the latter):
+
+$ grep -c '^include-file = \$HOME/.config/polybar/themes/global/base$' $TH/nord-arrow/config.ini $TH/nord/config
+.config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord/config:1
+$ grep -c '^include-file = \$HOME/.config/polybar/themes/global/modules$' $TH/nord-arrow/config.ini $TH/nord/config
+.config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord/config:1
+$
+
+global/modules' own ${colors.X} refs resolve against the palette, and every
+module it defines is spelled the same where the themes list it:
+
+$ grep -o '\${colors\.[a-zA-Z0-9_-]*}' $TH/global/modules | sed 's/^..colors\.//; s/}$//' | sort -u > "$CLITMP/refs"
+$ comm -23 "$CLITMP/refs" "$CLITMP/palette"
+$ grep -c 'yadm-checker\.sh' $TH/nord/config
+0
+$ rm -r "$CLITMP"; echo done
+done
+$
