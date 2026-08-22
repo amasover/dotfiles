@@ -103,11 +103,11 @@ export polybar_theme
 # SIGTERM (seen live 2026-08-22 — killall -w parked forever), and the flock
 # above would then deadlock every future launch behind it.
 killall -q polybar
-for _ in $(seq 50); do pgrep -x polybar >/dev/null || break; sleep 0.1; done
-if pgrep -x polybar >/dev/null; then
+for _ in $(seq 50); do pgrep -u "$UID" -x polybar >/dev/null || break; sleep 0.1; done
+if pgrep -u "$UID" -x polybar >/dev/null; then
     warn "a polybar ignored SIGTERM for 5s; escalating to SIGKILL"
     killall -q -KILL polybar
-    for _ in $(seq 20); do pgrep -x polybar >/dev/null || break; sleep 0.1; done
+    for _ in $(seq 20); do pgrep -u "$UID" -x polybar >/dev/null || break; sleep 0.1; done
 fi
 
 # -c is load-bearing: no config.ini lives in ~/.config/polybar, so without an

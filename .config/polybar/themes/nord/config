@@ -1,3 +1,7 @@
+# Shared module library (updates-arch etc.) — under the 5.5 launcher the theme
+# file IS the whole config, so it must pull the shared modules in itself.
+include-file = $HOME/.config/polybar/themes/global/modules
+
 [colors]
 include-file = $HOME/.config/polybar/themes/nord/colors
 
@@ -9,6 +13,11 @@ background = ${colors.nord0}
 foreground = ${colors.nord4}
 font-0 = Source Code Pro for Powerline:size=11;2
 font-1 = FontAwesome:size=11;2
+# restored from the pre-capture config, same loss as the fonts above
+enable-ipc = true
+wm-restack = i3
+cursor-click = pointer
+cursor-scroll = ns-resize
 
 [bar/main-top-middle]
 ; require monitor to be connected to load bar
@@ -58,7 +67,8 @@ monitor-strict = true
 inherit = bar/base
 monitor = ${env:MONITOR_MAIN}
 modules-right = 
-modules-left = yadm-checker.sh updates-arch
+; module name fixed: the section in global/modules is yadm-checker-dot-sh
+modules-left = yadm-checker-dot-sh updates-arch
 modules-center = 
 border = 2
 width = 13.5%

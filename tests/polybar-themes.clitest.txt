@@ -55,6 +55,30 @@ the palette itself only chains to keys it defines (secondary-bg = ${colors.nord0
 
 $ grep -o '\${colors\.[a-zA-Z0-9_-]*}' $TH/nord/colors | sed 's/^..colors\.//; s/}$//' | sort -u > "$CLITMP/refs"
 $ comm -23 "$CLITMP/refs" "$CLITMP/palette"
+$
+
+capture losses restored to the themes: ipc (polybar-msg needs it), i3
+restack, and the shared module library include (updates-arch lives there —
+under -c the theme file is the whole config, nothing else pulls it in):
+
+$ grep -c '^include-file = \$HOME/.config/polybar/themes/global/modules$' $TH/nord-arrow/config.ini $TH/nord/config
+.config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord/config:1
+$ grep -c '^enable-ipc = true$' $TH/nord-arrow/config.ini $TH/nord/config
+.config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord/config:1
+$ grep -c '^wm-restack = i3$' $TH/nord-arrow/config.ini $TH/nord/config
+.config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord/config:1
+$
+
+global/modules' own ${colors.X} refs resolve against the palette, and every
+module it defines is spelled the same where the themes list it:
+
+$ grep -o '\${colors\.[a-zA-Z0-9_-]*}' $TH/global/modules | sed 's/^..colors\.//; s/}$//' | sort -u > "$CLITMP/refs"
+$ comm -23 "$CLITMP/refs" "$CLITMP/palette"
+$ grep -c 'yadm-checker\.sh' $TH/nord/config
+0
 $ rm -r "$CLITMP"; echo done
 done
 $
