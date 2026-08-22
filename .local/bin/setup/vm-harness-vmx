@@ -88,6 +88,10 @@ def build_vmx(
         ("msg.autoAnswer", "TRUE"),
         ("sound.present", "FALSE"),
         ("usb.present", "FALSE"),
+        # VMware presents a floppy controller unless told otherwise; the guest
+        # kernel probes the empty drive and logs "I/O error, dev fd0" on every
+        # boot (seen after the 26H1 upgrade, 2026-08-21).
+        ("floppy0.present", "FALSE"),
         ("vmci0.present", "TRUE"),
     ]
     return "".join(f'{k} = "{v}"\n' for k, v in entries)
