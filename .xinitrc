@@ -57,6 +57,13 @@ fi
 # speakers whenever headphones are plugged in.
 /usr/bin/amixer -c 0 sset "Auto-Mute Mode" Disabled
 
+# VMware guest (Story 5.4): the tools session agent makes the resolution
+# follow the viewer window. xinit sessions never process /etc/xdg/autostart,
+# so the package's vmware-user.desktop entry does nothing here.
+if [ "$(systemd-detect-virt 2>/dev/null)" = "vmware" ] && command -v vmware-user-suid-wrapper >/dev/null 2>&1; then
+    vmware-user-suid-wrapper &
+fi
+
 #DISPLAY=:0.1 i3 &
 #exec i3 -V -d all &>> "$HOME/i3.log"
 exec i3
