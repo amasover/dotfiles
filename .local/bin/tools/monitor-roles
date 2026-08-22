@@ -1,0 +1,62 @@
+#!/bin/sh
+# monitor-roles — assign polybar monitor roles positionally (Story 5.5, #152).
+#
+# Reads `xrandr --listactivemonitors` and emits eval-able assignments:
+#   MONITOR_MAIN   the primary monitor ('*' flag), else the first listed
+#   MONITOR_LEFT   the leftmost monitor positioned left of MAIN, if any
+#   MONITOR_EXTRA  the next remaining monitor, if any
+# Monitors beyond those roles get a stderr warning, never a silent drop.
+# Split-4K roles (MONITOR_SPLIT_TOP/BOTTOM) can't be inferred — they come
+# from per-autorandr-profile override files (see polybar/launch.sh).
+#
+#   monitor-roles          query xrandr and assign
+#   monitor-roles assign   read listactivemonitors text on stdin (test seam)
+
+usage() {
+    echo "usage: monitor-roles [assign]" >&2
+    exit 2
+}
+
+assign() {
+    awk '
+        /^[[:space:]]*[0-9]+:/ {
+            n++
+            name = $2
+            gsub(/^[+*]+/, "", name)
+            split($3, g, "+")
+            names[n] = name
+            xs[n] = g[2] + 0
+            prim[n] = ($2 ~ /\*/)
+        }
+        END {
+            if (n == 0) {
+                print "monitor-roles: no active monitors parsed" > "/dev/stderr"
+                exit 1
+            }
+            main = 1
+            for (i = 1; i <= n; i++) if (prim[i]) { main = i; break }
+            printf "MONITOR_MAIN=%s\n", names[main]
+            left = ""; extra = ""
+            for (k = 1; k < n; k++) {
+                best = 0
+                for (i = 1; i <= n; i++) {
+                    if (i == main || used[i]) continue
+                    if (!best || xs[i] < xs[best]) best = i
+                }
+                if (!best) break
+                used[best] = 1
+                if (left == "" && xs[best] < xs[main]) left = names[best]
+                else if (extra == "") extra = names[best]
+                else printf "monitor-roles: no role for %s (only MAIN/LEFT/EXTRA exist)\n", names[best] > "/dev/stderr"
+            }
+            if (left != "") printf "MONITOR_LEFT=%s\n", left
+            if (extra != "") printf "MONITOR_EXTRA=%s\n", extra
+        }
+    '
+}
+
+case "${1-}" in
+    "") xrandr --listactivemonitors | assign ;;
+    assign) assign ;;
+    *) usage ;;
+esac
