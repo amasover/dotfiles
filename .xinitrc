@@ -57,6 +57,15 @@ fi
 # speakers whenever headphones are plugged in.
 /usr/bin/amixer -c 0 sset "Auto-Mute Mode" Disabled
 
+# VMware guest (Story 5.4): xinit sessions never process /etc/xdg/autostart,
+# so the tools session agent (clipboard, drag-and-drop) must start here. Host
+# resizes land as KMS preferred-mode hints that only full desktop environments
+# apply on their own — vm-autofit is the reactor for this bare i3 session.
+if [ "$(systemd-detect-virt 2>/dev/null)" = "vmware" ] && command -v vmware-user-suid-wrapper >/dev/null 2>&1; then
+    vmware-user-suid-wrapper &
+    "$HOME"/.local/bin/tools/vm-autofit watch &
+fi
+
 #DISPLAY=:0.1 i3 &
 #exec i3 -V -d all &>> "$HOME/i3.log"
 exec i3

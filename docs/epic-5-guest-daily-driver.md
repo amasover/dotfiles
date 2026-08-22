@@ -120,13 +120,13 @@ has none; the host does.
 - "Other auth bootstraps" (AWS, etc.) are explicitly deferred to follow-on
   stories once the GitHub shape works.
 
-### Story 5.3: Fix git credentials inside the current guest
+### Story 5.3: Fix git credentials inside the current guest ✅
 
 As the repo owner,
 I want git pushes to work from the guest I'm sitting in today,
 So that guest-side work (including this epic) doesn't detour through the host for every commit.
 
-Issue: [#150](https://github.com/amasover/dotfiles/issues/150)
+Issue: [#150](https://github.com/amasover/dotfiles/issues/150) (closed, PR [#155](https://github.com/amasover/dotfiles/pull/155))
 
 **Current state (2026-08-22):** `gh` is not logged in. The global
 `credential.helper = git-credential-manager` with `credentialStore =

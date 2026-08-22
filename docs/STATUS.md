@@ -136,10 +136,16 @@ Facts:
   guest-as-daily-driver work — stories 5.1–5.6 ([#148](https://github.com/amasover/dotfiles/issues/148)–[#153](https://github.com/amasover/dotfiles/issues/153),
   all on the board): fresh-machine SSH keys, attended auth bootstrap, current-guest
   credential fix, dynamic resolution, polybar on guests, unattended host-driven auth.
-- **5.3 guest git credentials** ([#150](https://github.com/amasover/dotfiles/issues/150)):
-  done live in the VMware guest 2026-08-22 — device-flow login, verified push, GCM decision
-  on the issue; recipe PR [#155](https://github.com/amasover/dotfiles/pull/155) open
-  (closes #150 on merge). Epic charter PR: [#154](https://github.com/amasover/dotfiles/pull/154).
+- **5.4 guest resolution** ([#151](https://github.com/amasover/dotfiles/issues/151), PR open
+  from `story/5.4-guest-resolution`): root cause was nothing-runs — vmtoolsd disabled AND the
+  session agent's xdg-autostart entry ignored by xinit sessions. Live: agent started by hand
+  2026-08-22; still owed from Aaron: `sudo systemctl enable --now vmtoolsd.service` (agent
+  blocked) + attended resize confirmation. Durable: seed enables per-hypervisor services,
+  xinitrc starts the agent behind a systemd-detect-virt guard.
+- **2.42 follow-up**: `tools/metapac-unmanaged-names` merged (#146) as mode 100644 — not
+  executable on fresh checkouts, so the seam 2.42 built fails with permission denied
+  (5 clitest cases fail on `main`). Exec-bit fix PR pending; find noted on
+  [#135](https://github.com/amasover/dotfiles/issues/135).
 
 ## Standing warnings
 

@@ -83,6 +83,14 @@ class TestUserConfiguration:
         cmds = "\n".join(self._cfg("vmware", pubkey="")["custom_commands"])
         assert "authorized_keys" not in cmds
 
+    def test_vmware_enables_vmtoolsd(self):
+        cmds = "\n".join(self._cfg("vmware")["custom_commands"])
+        assert "systemctl enable vmtoolsd.service" in cmds
+
+    def test_qemu_enables_no_tools_service(self):
+        cmds = "\n".join(self._cfg("qemu")["custom_commands"])
+        assert "vmtoolsd" not in cmds
+
 
 class TestUserData:
     def _ud(self, live_ssh_pubkey=None):

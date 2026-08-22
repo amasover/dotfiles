@@ -26,9 +26,14 @@ import sys
 from pathlib import Path
 
 HYPERVISORS = {
-    # device: where the disk appears in the guest; tools: guest-tools package.
-    "qemu": {"device": "/dev/vda", "tools": "qemu-guest-agent"},
-    "vmware": {"device": "/dev/nvme0n1", "tools": "open-vm-tools"},
+    # device: where the disk appears in the guest; tools: guest-tools package;
+    # services: tools services to enable (qemu-guest-agent's unit is
+    # udev-activated by its virtio port, so nothing to enable there).
+    "qemu": {"device": "/dev/vda", "tools": "qemu-guest-agent", "services": []},
+    # vmtoolsd ships disabled; without it nothing VMware-side runs in the
+    # guest — resolution autofit, timesync, host commands (Story 5.4).
+    "vmware": {"device": "/dev/nvme0n1", "tools": "open-vm-tools",
+               "services": ["vmtoolsd.service"]},
 }
 
 ARCHINSTALL_VERSION = "2.8.6"  # the RELEASE dialect the ISO ships (runbook: schema skew)
@@ -112,6 +117,7 @@ def build_user_configuration(
     device = hv["device"]
     custom_commands = [
         "systemctl enable sshd",
+        *[f"systemctl enable {s}" for s in hv["services"]],
         # Serial console on every boot: kernel messages land in the serial log,
         # and the getty gives a login even when ssh is down.
         "sed -i 's|^options |options console=tty0 console=ttyS0 |' /boot/loader/entries/*.conf",
