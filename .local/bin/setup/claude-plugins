@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# claude-plugins — declare the standard Claude Code plugins in user settings.
+#
+# Claude Code installs plugins declaratively: marketplaces listed under
+# extraKnownMarketplaces in ~/.claude/settings.json are registered on next
+# launch, and plugins listed under enabledPlugins (id form
+# "plugin@marketplace", marketplace = the name in the repo's
+# .claude-plugin/marketplace.json) are enabled from them. Claude Code also
+# rewrites settings.json itself (model/theme/effort choices), so the file
+# can't live in yadm without constant drift — instead this script owns the
+# plugin declaration and jq-merges it in, leaving every other key alone.
+# Re-runnable: merging an already-declared plugin changes nothing.
+#
+# Usage:
+#   claude-plugins apply [file]    merge the declaration into file
+#                                  (default ~/.claude/settings.json; created
+#                                  if missing), atomically
+#   claude-plugins --check [file]  print whether the declaration is present;
+#                                  mutates nothing. Exit 0 = present, 1 = not
+#   claude-plugins merge           pure filter: settings JSON on stdin,
+#                                  merged JSON on stdout (the tested seam)
+#
+# The declared set (extend here, one home):
+declaration() {
+    cat <<'EOF'
+{
+  "extraKnownMarketplaces": {
+    "mattpocock": { "source": { "source": "github", "repo": "mattpocock/skills" } },
+    "i-have-adhd": { "source": { "source": "github", "repo": "ayghri/i-have-adhd" } }
+  },
+  "enabledPlugins": {
+    "mattpocock-skills@mattpocock": true,
+    "i-have-adhd@i-have-adhd": true
+  }
+}
+EOF
+}
+set -euo pipefail
+
+command -v jq >/dev/null || { echo "claude-plugins: jq not found" >&2; exit 1; }
+
+# stdin: current settings JSON; stdout: settings with the declaration merged.
+# Our entries win for our keys; everything else (other plugins included) is
+# left untouched. Empty/missing input starts from {}.
+merge() {
+    jq --slurpfile decl <(declaration) '
+        . as $s | $decl[0] as $d
+        | $s
+        | .extraKnownMarketplaces = (($s.extraKnownMarketplaces // {}) + $d.extraKnownMarketplaces)
+        | .enabledPlugins         = (($s.enabledPlugins // {})         + $d.enabledPlugins)
+    '
+}
+
+settings_or_empty() { # $1 = settings path; {} when absent or empty
+    if [[ -s $1 ]]; then cat "$1"; else echo '{}'; fi
+}
+
+case "${1:-apply}" in
+merge)
+    merge
+    ;;
+--check)
+    file="${2:-$HOME/.claude/settings.json}"
+    if [[ "$(settings_or_empty "$file")" == "$(settings_or_empty "$file" | merge)" ]]; then
+        echo "  already declared ($file)"
+    else
+        echo "  would: merge plugin declaration into $file"
+        exit 1
+    fi
+    ;;
+apply)
+    file="${2:-$HOME/.claude/settings.json}"
+    if [[ "$(settings_or_empty "$file")" == "$(settings_or_empty "$file" | merge)" ]]; then
+        echo "  already declared ($file)"
+        exit 0
+    fi
+    mkdir -p "$(dirname "$file")"
+    tmp=$(mktemp "$(dirname "$file")/.settings.XXXXXX")
+    settings_or_empty "$file" | merge >"$tmp"
+    mv "$tmp" "$file"
+    echo "  declared Claude Code plugins in $file (registered on next claude launch)"
+    ;;
+-h | --help)
+    sed -n '2,/^declaration/{/^declaration/d; s/^# \{0,1\}//p;}' "$0"
+    ;;
+*)
+    echo "claude-plugins: unknown argument: $1   (try: claude-plugins -h)" >&2
+    exit 1
+    ;;
+esac

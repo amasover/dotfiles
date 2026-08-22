@@ -177,13 +177,13 @@ Issue: [#151](https://github.com/amasover/dotfiles/issues/151) (closed, PR [#156
 - The libvirt harness guest gets the equivalent treatment (spice-vdagent — not
   currently installed there; verify) or an explicit deferral note.
 
-### Story 5.5: Polybar comes up on fresh guests
+### Story 5.5: Polybar comes up on fresh guests ✅
 
 As the repo owner,
 I want polybar to appear on any guest without per-machine edits,
 So that a fresh guest has a working desktop instead of a "monitor configuration not recognized" notification.
 
-Issue: [#152](https://github.com/amasover/dotfiles/issues/152)
+Issue: [#152](https://github.com/amasover/dotfiles/issues/152) (closed, PR #161)
 
 **Current state (2026-08-22):** `.config/polybar/launch.sh` matches the active
 monitor list against seven hardcoded host layouts (`eDP1 `, `*DP1-1 eDP1 DP1-3 `,

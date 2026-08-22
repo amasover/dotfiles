@@ -971,6 +971,18 @@ else
     ln -sf "$theme_src" "$theme_dst"
 fi
 
+# --- 8c. Claude Code plugins (Story 4.11) --------------------------------------
+# Declarative: setup/claude-plugins jq-merges the standard marketplace +
+# plugin declaration into ~/.claude/settings.json (created if missing);
+# Claude Code registers and enables them on its next launch. Idempotent, so
+# this doubles as repair; every other settings key is left alone.
+say "Claude Code plugins"
+if [[ $CHECK -eq 1 ]]; then
+    "$HOME/.local/bin/setup/claude-plugins" --check || true
+else
+    "$HOME/.local/bin/setup/claude-plugins" apply
+fi
+
 # --- 9. login shell ------------------------------------------------------------
 say "Login shell"
 if [[ "${SHELL:-}" == */zsh ]]; then
