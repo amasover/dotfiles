@@ -3,8 +3,10 @@
 #
 # Replaces the XF86Audio bindings' `volume up/down 3` (itchyny/volume-go, a
 # 2019 Go binary no bootstrap can rebuild) + `volnoti-show $(volume get)`.
-# wpctl does the adjustment; the volnoti OSD still shows where installed
-# (the laptop) and is skipped silently where not (guests).
+# wpctl does the adjustment. The volnoti OSD is retired as of 2026-08: no
+# machine has volnoti installed, no metapac group declares it, and nothing
+# ever started its daemon — the volnoti-show hook below is kept as opt-in
+# for whenever that changes, and is skipped silently everywhere today.
 #
 # Usage:
 #   volume-osd up|down [step-pct]   adjust (default 3%), up capped at 100

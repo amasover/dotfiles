@@ -24,7 +24,7 @@ case "${1:-}" in
 --mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
 pct) cmd_pct ;;
 -h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
---padright | "" | *)
+--padright | "")
     padright=""
     [[ "${1:-}" == --padright ]] && padright="${2-}"
     while true; do
@@ -32,5 +32,11 @@ pct) cmd_pct ;;
         sleep 0.2 &
         wait $!
     done
+    ;;
+*)
+    # a typo'd flag in a theme's click/scroll action must not detach an
+    # infinite tail loop per click — fail loudly instead
+    echo "usage: volume-tail [--padright S] | --up|--down [N] | --mute | pct" >&2
+    exit 2
     ;;
 esac

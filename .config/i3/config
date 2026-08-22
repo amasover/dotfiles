@@ -356,7 +356,8 @@ bar {
 
 for_window [title="i3-helm"] floating enable
 
-# wpctl via tools/volume-osd (Story 3.12); volnoti OSD shows where installed
+# wpctl via tools/volume-osd (Story 3.12); its volnoti OSD hook is dormant —
+# volnoti is installed nowhere and no daemon is started (opt-in later)
 bindsym XF86AudioRaiseVolume exec --no-startup-id ~/.local/bin/tools/volume-osd up
 bindsym XF86AudioLowerVolume exec --no-startup-id ~/.local/bin/tools/volume-osd down
 

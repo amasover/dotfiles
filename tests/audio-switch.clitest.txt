@@ -71,10 +71,14 @@ $ printf 'Volume: 0.33\n' | .local/bin/tools/volume-osd pct
 $ printf 'garbage\n' | .local/bin/tools/volume-tail pct
 $
 
-volume-osd rejects unknown verbs:
+the one-shot tools reject unknown verbs/flags — a typo'd click/scroll action
+in a theme must error, not detach an infinite tail loop per click:
 
 $ .local/bin/tools/volume-osd frob 2>&1; echo "rc=$?"
 usage: volume-osd up|down [step-pct]
+rc=2
+$ .local/bin/tools/volume-tail --frobnicate 2>&1; echo "rc=$?"
+usage: volume-tail [--padright S] | --up|--down [N] | --mute | pct
 rc=2
 $ rm -r "$CLITMP"; echo done
 done

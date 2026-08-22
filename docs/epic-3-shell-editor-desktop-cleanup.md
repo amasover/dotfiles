@@ -276,7 +276,7 @@ of the two 2019 binaries in `~/code/go/bin/`:
 **Acceptance criteria:**
 
 - Given the polybar switcher, when rewritten against `wpctl`/`pamixer`, then the current-output icon and click-to-switch both work on the live machine and no `dot`/`pacmd` calls remain
-- Given the i3 volume keys, when rebound to `wpctl` (or `pamixer`), then volume up/down and the volnoti OSD still work
+- Given the i3 volume keys, when rebound to `wpctl` (or `pamixer`), then volume up/down still work. (The volnoti OSD half was found already dead everywhere during the 2026-08-22 review — volnoti is installed on no machine, declared in no metapac group, and no daemon was ever started; `volume-osd` keeps the `volnoti-show` hook as opt-in, and reviving it is out of this story's scope.)
 - Given no consumers remain (grep repo + live `$HOME`), when the story lands, then `tools/dot-update` is deleted, the duplicate `dot-src` aliases go (with or ahead of the 3.1 dedupe), and the 2019 binaries are retired from `~/code/go/bin/`
 - Given `pulseaudio-tail.sh` already speaks PipeWire, when the audio modules are touched, then it is renamed to match (folds in the cosmetic 3.4 follow-up)
 - Given Story 2.13 excludes audio Go tools from the bootstrap, when this lands, then a fresh machine needs no Go audio artifacts at all — the last old-install audio gap closes

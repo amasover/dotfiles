@@ -103,7 +103,9 @@ cmd_switch() {
 cmd_listen() {
     local muted port
     while true; do
-        port=$(cmd_current)
+        # the || keeps a transient pactl failure (pipewire restart, resume
+        # window) from set -e-killing the tail loop; renders the generic icon
+        port=$(cmd_current || echo none)
         if wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | grep -q MUTED; then
             muted=true
         else
