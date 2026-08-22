@@ -132,6 +132,11 @@ Facts:
   `vulkan-radeon`, `lib32-vulkan-radeon`) on what is now an Intel laptop, `vulkan-intel` is
   missing, and `package-inventory.md` still calls the machine AMD. Detailed on the issue.
 
+- **Epic 5 charter** (PR pending from `docs/epic-5-guest-daily-driver`): new epic for
+  guest-as-daily-driver work — stories 5.1–5.5 (fresh-machine SSH keys, host-driven GitHub
+  auth, current-guest credential fix, dynamic resolution, polybar on guests). Specs in the
+  epic doc; issues not yet opened — the guest has no GitHub auth (that's 5.3's problem).
+
 ## Standing warnings
 
 - **Chat transcripts are sensitive.** Org package names and the work email have each leaked into a
@@ -164,3 +169,4 @@ Facts:
 | [2](./epic-2-bootstrap-and-package-modernization.md) | Bootstrap & package modernization | 2 |
 | [3](./epic-3-shell-editor-desktop-cleanup.md) | Shell / editor / desktop cleanup | 3 |
 | [4](./epic-4-workflow-and-governance.md) | Workflow & governance (operating model) | 1 |
+| [5](./epic-5-guest-daily-driver.md) | Guest as daily driver (auth, display, desktop-in-guest) | Rebuild era |
