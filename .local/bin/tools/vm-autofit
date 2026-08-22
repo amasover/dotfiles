@@ -1,0 +1,50 @@
+#!/bin/sh
+# vm-autofit — apply the hypervisor's resolution hint to the guest display.
+#
+# In a KMS guest (vmwgfx, virtio-gpu) a host window resize lands as a new
+# *preferred mode* on the DRM connector plus a drm change uevent. Full desktop
+# environments react to that and apply the mode; a bare i3/xinit session has
+# no reactor, so the screen stays at the old size (Story 5.4, #151).
+#
+#   vm-autofit apply [output]   apply the pending hint once (xrandr --auto)
+#   vm-autofit react [output]   apply once, then once more per stdin line
+#   vm-autofit watch [output]   react to drm change uevents until killed
+#
+# react is the testable seam: watch is udevadm monitor piped into react.
+
+set -u
+
+usage() {
+    echo "usage: vm-autofit apply|react|watch [output]" >&2
+    exit 2
+}
+
+cmd=${1-}
+out=${2-}
+
+apply() {
+    if [ -n "$out" ]; then
+        xrandr --output "$out" --auto
+    else
+        xrandr --auto
+    fi
+}
+
+case "$cmd" in
+    apply)
+        apply
+        ;;
+    react)
+        apply
+        while read -r _; do apply; done
+        ;;
+    watch)
+        # --line-buffered: without it grep batches events and the resize lags.
+        udevadm monitor --udev --subsystem-match=drm \
+            | grep --line-buffered '^UDEV' \
+            | "$0" react ${out:+"$out"}
+        ;;
+    *)
+        usage
+        ;;
+esac
