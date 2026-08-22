@@ -928,6 +928,36 @@ else
     sudo ln -sfT "$hook_src" "$hook_dst"
 fi
 
+# --- 6d. vendored packages (Story 2.46) ----------------------------------------
+# Packages built from this repo's own PKGBUILDs (.config/dotfiles/pkgbuilds/),
+# never from the AUR: tools/custom-pkgs builds+installs whatever is missing or
+# older than its PKGBUILD, and each name gets pinned into pacman's IgnorePkg —
+# betterleaks exists on the AUR too, and without the pin a yay -Syu would
+# "upgrade" the vendored build to a third party's. These names are never
+# declared in metapac groups (metapac validates names against repos/AUR and
+# yay would pull the AUR build); the drift report knows they're vendored.
+say "Vendored packages"
+custom_pkgs="$HOME/.local/bin/tools/custom-pkgs"
+while IFS= read -r vp; do
+    # shellcheck disable=SC2094  # cmp only reads pacman.conf; nothing writes it here
+    if "$custom_pkgs" ensure-ignore "$vp" </etc/pacman.conf | cmp -s - /etc/pacman.conf; then
+        echo "  IgnorePkg: $vp already pinned"
+    elif [[ $CHECK -eq 1 ]]; then
+        echo "  would: add $vp to IgnorePkg in /etc/pacman.conf"
+    else
+        vp_tmp=$(mktemp)
+        "$custom_pkgs" ensure-ignore "$vp" </etc/pacman.conf >"$vp_tmp"
+        sudo install -m644 -o root -g root "$vp_tmp" /etc/pacman.conf
+        rm -f "$vp_tmp"
+        echo "  IgnorePkg: pinned $vp"
+    fi
+done < <("$custom_pkgs" list)
+if [[ $CHECK -eq 1 ]]; then
+    "$custom_pkgs" sync --check
+else
+    "$custom_pkgs" sync "${NC[@]}"
+fi
+
 # --- 7. AUR trust baseline (Story 2.10) ----------------------------------------
 # The portable baseline (maintainers.tsv + exempt.txt) rides the encrypted
 # archive: step 1's decrypt restores this machine's trust state *before* the

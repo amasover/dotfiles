@@ -16,6 +16,33 @@ done
 sudo -v
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 
+# --- vendored PKGBUILD watch (Story 2.46) ---
+# First step: for each vendored package (.config/dotfiles/pkgbuilds/), ask
+# GitHub whether upstream released past the pinned pkgver; a yes rewrites the
+# tracked PKGBUILD (pkgver + checksums via updpkgsums), rebuilds, installs.
+# The bump is tracked-config drift — commit it via yadm/git afterwards.
+custom_pkgs=$HOME/.local/bin/tools/custom-pkgs
+print $'\nChecking vendored PKGBUILDs against upstream...'
+vp_outdated=$("$custom_pkgs" outdated) || print '  (some upstream checks failed — see above)'
+if [[ -n "$vp_outdated" ]]; then
+    for vp_line in ${(f)vp_outdated}; do
+        IFS=$'\t' read -r vp_name vp_pinned vp_latest <<< "$vp_line"
+        vp_ans=
+        vared -p "  $vp_name: PKGBUILD pins $vp_pinned, upstream released $vp_latest. Update + rebuild? (y/n): " -c vp_ans
+        if [[ "$vp_ans" == y* ]]; then
+            if "$custom_pkgs" bump "$vp_name" "$vp_latest" && "$custom_pkgs" sync "$vp_name"; then
+                print "  $vp_name updated — commit the PKGBUILD bump (yadm add ~/.config/dotfiles/pkgbuilds/$vp_name/PKGBUILD)"
+            else
+                print "  WARNING: $vp_name bump/rebuild failed — review the PKGBUILD before committing"
+            fi
+        else
+            print "  skipped $vp_name (PKGBUILD stays at $vp_pinned)"
+        fi
+    done
+else
+    print '  all current'
+fi
+
 vared -p $'\nUpdate Spacemacs? (will kill any running emacs) (y/n): ' -c update_emacs
 
 if [[ "${update_emacs}" == "y" ]]; then
