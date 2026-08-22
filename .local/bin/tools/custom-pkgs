@@ -5,26 +5,43 @@
 # from upstream source pinned by version + checksum in this repo, installed
 # with makepkg — never from the AUR, even when an AUR package of the same
 # name exists (betterleaks does). Two consumers: setup/update's first step
-# offers upstream bumps interactively (`outdated` → `bump` → `sync`), and
-# bootstrap's vendored-packages step installs what's missing (`sync`) and
-# keeps the names in pacman's IgnorePkg (`ensure-ignore`) so a yay -Syu
-# can't swap in the AUR build.
+# (ensure-pins → interactive upstream bumps → silent convergence sync) and
+# bootstrap step 6d (ensure-pins + sync on fresh machines).
+#
+# Watch exemptions: a PKGBUILD containing a `# custom-pkgs: no-watch` line,
+# or whose url= is not a github repo, is skipped by outdated/check silently
+# (dead or unwatchable upstreams — e.g. Story 2.14's openconnect-service).
+#
+# Retiring a vendored package (rare, manual): delete its pkgbuilds/<name>/
+# dir, remove the name from IgnorePkg in /etc/pacman.conf on each machine,
+# then uninstall it or re-declare it in a metapac group. The drift report
+# flipping the name to "unmanaged" afterwards is the expected signal.
 #
 # Usage:
 #   custom-pkgs list                  vendored package names
 #   custom-pkgs status                name, PKGBUILD version, installed version
-#   custom-pkgs outdated              packages behind upstream, one per line:
-#                                     "name<TAB>pinned<TAB>latest" (GitHub API)
+#   custom-pkgs outdated              watchable packages behind upstream, one
+#                                     per line: "name<TAB>pinned<TAB>latest<TAB>age-days"
 #   custom-pkgs check                 human report of outdated (rc 1 if any)
-#   custom-pkgs bump NAME VERSION     pkgver=VERSION, pkgrel=1, updpkgsums
+#   custom-pkgs bump NAME VERSION     pkgver=VERSION, pkgrel=1, updpkgsums,
+#                                     then verify the new checksum against
+#                                     upstream's checksums.txt — mismatch is
+#                                     fatal; an upstream without one warns
+#                                     and stays trust-on-first-download
 #   custom-pkgs sync [NAME] [--noconfirm] [--check]
 #                                     build+install packages whose installed
 #                                     version is older than the PKGBUILD's
+#   custom-pkgs ensure-pins [--check] pin every vendored name into
+#                                     /etc/pacman.conf IgnorePkg (sudo)
 # Seams (pure, clitest-covered; no network, no pacman):
 #   custom-pkgs pkgver FILE           print pkgver-pkgrel from a PKGBUILD
 #   custom-pkgs upstream FILE         print owner/repo from the url= line
+#   custom-pkgs watchable FILE        print watch | no-watch | non-github
 #   custom-pkgs verdict PINNED LATEST print "current" or "outdated"
 #   custom-pkgs set-version FILE VER  rewrite pkgver/pkgrel (no checksums)
+#   custom-pkgs checksum-verdict ASSET SHA256
+#                                     checksums.txt on stdin → verified |
+#                                     mismatch | absent
 #   custom-pkgs ensure-ignore NAME    pacman.conf on stdin → stdout with NAME
 #                                     present in [options] IgnorePkg
 #
@@ -59,6 +76,16 @@ cmd_upstream() { # owner/repo out of url="https://github.com/owner/repo"
     esac
 }
 
+cmd_watchable() { # watch | no-watch (explicit marker) | non-github
+    if grep -q '^# custom-pkgs: no-watch' "$1"; then
+        echo no-watch
+    elif [[ "$(pkgbuild_field "$1" url)" == https://github.com/*/* ]]; then
+        echo watch
+    else
+        echo non-github
+    fi
+}
+
 cmd_verdict() { # $1 = pinned, $2 = upstream latest → current | outdated
     if [[ "$1" == "$2" || "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" == "$2" ]]; then
         echo current
@@ -70,6 +97,18 @@ cmd_verdict() { # $1 = pinned, $2 = upstream latest → current | outdated
 cmd_set_version() { # $1 = PKGBUILD, $2 = new pkgver
     grep -q '^pkgver=' "$1" || die "no pkgver line in $1"
     sed -i "s/^pkgver=.*/pkgver=$2/; s/^pkgrel=.*/pkgrel=1/" "$1"
+}
+
+cmd_checksum_verdict() { # $1 = asset filename, $2 = sha256; checksums.txt on stdin
+    local found
+    found=$(awk -v a="$1" '$2 == a { print $1; exit }') || true
+    if [[ -z $found ]]; then
+        echo absent
+    elif [[ $found == "$2" ]]; then
+        echo verified
+    else
+        echo mismatch
+    fi
 }
 
 cmd_ensure_ignore() { # stdin pacman.conf → stdout with $1 in IgnorePkg
@@ -86,6 +125,25 @@ cmd_ensure_ignore() { # stdin pacman.conf → stdout with $1 in IgnorePkg
     else
         die "no IgnorePkg or [options] anchor found on stdin"
     fi
+}
+
+cmd_ensure_pins() { # [--check]: converge /etc/pacman.conf pins for all names
+    local check=0 vp tmp
+    [[ "${1:-}" == --check ]] && check=1
+    while IFS= read -r vp; do
+        # shellcheck disable=SC2094  # cmp only reads pacman.conf; the write goes via sudo install below
+        if cmd_ensure_ignore "$vp" </etc/pacman.conf | cmp -s - /etc/pacman.conf; then
+            echo "  IgnorePkg: $vp already pinned"
+        elif ((check)); then
+            echo "  would: add $vp to IgnorePkg in /etc/pacman.conf"
+        else
+            tmp=$(mktemp)
+            cmd_ensure_ignore "$vp" </etc/pacman.conf >"$tmp"
+            sudo install -m644 -o root -g root "$tmp" /etc/pacman.conf
+            rm -f "$tmp"
+            echo "  IgnorePkg: pinned $vp"
+        fi
+    done < <(cmd_list)
 }
 
 cmd_list() {
@@ -105,41 +163,69 @@ cmd_status() {
     done < <(cmd_list)
 }
 
-cmd_outdated() { # network: GitHub latest release per vendored package
-    local name pb pinned repo latest rc=0
+cmd_outdated() { # network: GitHub latest release + age per watchable package
+    local name pb pinned repo resp latest published age rc=0 now
+    now=$(date +%s)
     while IFS= read -r name; do
         pb="$pkgs_dir/$name/PKGBUILD"
+        [[ "$(cmd_watchable "$pb")" == watch ]] || continue
         pinned=$(pkgbuild_field "$pb" pkgver)
         repo=$(cmd_upstream "$pb")
-        latest=$(curl -fsSL --max-time 15 "https://api.github.com/repos/$repo/releases/latest" \
-            | jq -r '.tag_name // empty') || { echo "custom-pkgs: $name: upstream check failed ($repo)" >&2; rc=2; continue; }
+        resp=$(curl -fsSL --max-time 15 "https://api.github.com/repos/$repo/releases/latest") \
+            || { echo "custom-pkgs: $name: upstream check failed ($repo)" >&2; rc=2; continue; }
+        latest=$(jq -r '.tag_name // empty' <<<"$resp")
         latest=${latest#v}
         [[ -n $latest ]] || { echo "custom-pkgs: $name: no releases at $repo" >&2; rc=2; continue; }
+        published=$(jq -r '.published_at // empty' <<<"$resp")
+        age=$(((now - $(date -d "${published:-@$now}" +%s)) / 86400))
         if [[ "$(cmd_verdict "$pinned" "$latest")" == outdated ]]; then
-            printf '%s\t%s\t%s\n' "$name" "$pinned" "$latest"
+            printf '%s\t%s\t%s\t%s\n' "$name" "$pinned" "$latest" "$age"
         fi
     done < <(cmd_list)
     return $rc
 }
 
 cmd_check() {
-    local out
+    local out window="${AUR_QUARANTINE_DAYS:-14}"
     out=$(cmd_outdated) || true
     if [[ -n $out ]]; then
         echo "vendored PKGBUILDs behind upstream ($pkgs_dir):"
-        awk -F'\t' '{printf "  %s: %s -> %s\n", $1, $2, $3}' <<<"$out"
+        awk -F'\t' -v w="$window" '{
+            nudge = ($4 < w) ? sprintf(" — younger than the %dd AUR quarantine window", w) : ""
+            printf "  %s: %s -> %s (released %sd ago%s)\n", $1, $2, $3, $4, nudge
+        }' <<<"$out"
         return 1
     fi
     echo "vendored PKGBUILDs: all current"
 }
 
 cmd_bump() { # $1 = name, $2 = new version
-    local pb="$pkgs_dir/$1/PKGBUILD"
+    local pb="$pkgs_dir/$1/PKGBUILD" srcinfo remote asset sha sums_url sums verdict
     [[ -f $pb ]] || die "no vendored package '$1' in $pkgs_dir"
     command -v updpkgsums >/dev/null || die "updpkgsums not found (pacman-contrib)"
     cmd_set_version "$pb" "$2"
     mkdir -p "$cache_dir/src"
     (cd "$(dirname "$pb")" && SRCDEST="$cache_dir/src" updpkgsums)
+    # Verify the freshly computed checksum against upstream's own
+    # checksums.txt (goreleaser convention: next to the release asset).
+    # Mismatch = tampered tarball or CDN — fatal. No checksums.txt = the
+    # upstream publishes none; the pin stays trust-on-first-download, loudly.
+    srcinfo=$(cd "$(dirname "$pb")" && makepkg --printsrcinfo)
+    remote=$(sed -n 's/^\tsource = //p' <<<"$srcinfo" | head -1)
+    remote=${remote##*::}
+    asset=${remote##*/}
+    sha=$(sed -n 's/^\tsha256sums = //p' <<<"$srcinfo" | head -1)
+    sums_url="${remote%/*}/checksums.txt"
+    if sums=$(curl -fsSL --max-time 15 "$sums_url"); then
+        verdict=$(cmd_checksum_verdict "$asset" "$sha" <<<"$sums")
+        case "$verdict" in
+        verified) echo "  checksum verified against upstream checksums.txt" ;;
+        mismatch) die "checksum MISMATCH for $asset vs $sums_url — DO NOT COMMIT; investigate, then revert with git/yadm checkout" ;;
+        absent) echo "  WARNING: $asset not listed in upstream checksums.txt — checksum is trust-on-first-download" ;;
+        esac
+    else
+        echo "  WARNING: no upstream checksums.txt at $sums_url — checksum is trust-on-first-download"
+    fi
     echo "bumped $1 to $2 ($pb) — review + yadm/git commit the change"
 }
 
@@ -186,10 +272,13 @@ outdated) cmd_outdated ;;
 check) cmd_check ;;
 bump) [[ $# -eq 3 ]] || die "usage: custom-pkgs bump NAME VERSION"; cmd_bump "$2" "$3" ;;
 sync) shift; cmd_sync "$@" ;;
+ensure-pins) cmd_ensure_pins "${2:-}" ;;
 pkgver) cmd_pkgver "${2:?usage: custom-pkgs pkgver FILE}" ;;
 upstream) cmd_upstream "${2:?usage: custom-pkgs upstream FILE}" ;;
+watchable) cmd_watchable "${2:?usage: custom-pkgs watchable FILE}" ;;
 verdict) [[ $# -eq 3 ]] || die "usage: custom-pkgs verdict PINNED LATEST"; cmd_verdict "$2" "$3" ;;
 set-version) [[ $# -eq 3 ]] || die "usage: custom-pkgs set-version FILE VERSION"; cmd_set_version "$2" "$3" ;;
+checksum-verdict) [[ $# -eq 3 ]] || die "usage: custom-pkgs checksum-verdict ASSET SHA256 < checksums.txt"; cmd_checksum_verdict "$2" "$3" ;;
 ensure-ignore) cmd_ensure_ignore "${2:?usage: custom-pkgs ensure-ignore NAME}" ;;
 -h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
 *) die "unknown subcommand: ${1:-<none>}   (try: custom-pkgs -h)" ;;

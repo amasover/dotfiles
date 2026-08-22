@@ -10,7 +10,8 @@
 # checksums.txt (which also carries a sigstore attestation, verifiable with
 # `cosign verify-blob` if ever in doubt).
 # Update flow: `custom-pkgs check` (run by setup/update's first step) watches
-# upstream releases; `custom-pkgs bump` rewrites pkgver + checksums.
+# upstream releases; `custom-pkgs bump` rewrites pkgver + checksums and
+# verifies the fresh checksum against the release's checksums.txt.
 pkgname=betterleaks
 pkgver=1.8.1
 pkgrel=1

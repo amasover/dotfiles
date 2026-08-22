@@ -109,6 +109,26 @@ rc=1
 custom-pkgs: no vendored package 'nope' in TMP/pkgbuilds
 $
 
+watchable: explicit no-watch marker wins, github url watches, other urls skip:
+
+$ $t watchable "$CLITMP/pkgbuilds/alpha/PKGBUILD"
+watch
+$ $t watchable "$CLITMP/pkgbuilds/beta/PKGBUILD"
+non-github
+$ printf '# custom-pkgs: no-watch\n' >> "$CLITMP/pkgbuilds/beta/PKGBUILD"; $t watchable "$CLITMP/pkgbuilds/beta/PKGBUILD"
+no-watch
+$
+
+checksum-verdict: upstream checksums.txt on stdin (sha256sum format):
+
+$ printf 'aaaa  pkg-1.0-linux-x64.tar.gz\nbbbb  pkg-1.0-darwin.tar.gz\n' | $t checksum-verdict pkg-1.0-linux-x64.tar.gz aaaa
+verified
+$ printf 'aaaa  pkg-1.0-linux-x64.tar.gz\n' | $t checksum-verdict pkg-1.0-linux-x64.tar.gz ffff
+mismatch
+$ printf 'aaaa  pkg-1.0-darwin.tar.gz\n' | $t checksum-verdict pkg-1.0-linux-x64.tar.gz aaaa
+absent
+$
+
 flag/arg contract:
 
 $ $t frobnicate 2>&1; echo "rc=$?"
