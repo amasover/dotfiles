@@ -16,6 +16,42 @@ done
 sudo -v
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 
+# --- vendored packages (Story 2.46): pins, upstream watch, convergence ---
+# The steady-state applier (bootstrap 6d only covers fresh machines):
+#   1. ensure every vendored name is pinned in pacman's IgnorePkg;
+#   2. offer upstream bumps interactively — the prompt IS the quarantine, so
+#      it shows the release age with a nudge when it's younger than the AUR
+#      window (AUR_QUARANTINE_DAYS, default 14); a yes rewrites the tracked
+#      PKGBUILD (pkgver + checksums, verified against upstream's
+#      checksums.txt) — commit the bump via yadm/git afterwards;
+#   3. a silent convergence sync: installs the bumps from step 2 and any
+#      PKGBUILD bump pulled from another machine, without re-asking — the
+#      bump prompt or merged PR was the approval.
+custom_pkgs=$HOME/.local/bin/tools/custom-pkgs
+print $'\nVendored packages: pins, upstream watch, convergence...'
+"$custom_pkgs" ensure-pins
+vp_window=${AUR_QUARANTINE_DAYS:-14}
+vp_outdated=$("$custom_pkgs" outdated) || print '  (some upstream checks failed — see above)'
+if [[ -n "$vp_outdated" ]]; then
+    for vp_line in ${(f)vp_outdated}; do
+        IFS=$'\t' read -r vp_name vp_pinned vp_latest vp_age <<< "$vp_line"
+        vp_nudge=''
+        (( vp_age < vp_window )) && vp_nudge=" — younger than your ${vp_window}d AUR quarantine window"
+        vp_ans=
+        vared -p "  $vp_name: PKGBUILD pins $vp_pinned, upstream released $vp_latest (${vp_age}d ago$vp_nudge). Update + rebuild? (y/n): " -c vp_ans
+        if [[ "$vp_ans" == y* ]]; then
+            if "$custom_pkgs" bump "$vp_name" "$vp_latest"; then
+                print "  $vp_name bumped — commit it (yadm add ~/.config/dotfiles/pkgbuilds/$vp_name/PKGBUILD)"
+            else
+                print "  WARNING: $vp_name bump failed — review the PKGBUILD before committing"
+            fi
+        else
+            print "  skipped $vp_name (PKGBUILD stays at $vp_pinned)"
+        fi
+    done
+fi
+"$custom_pkgs" sync
+
 vared -p $'\nUpdate Spacemacs? (will kill any running emacs) (y/n): ' -c update_emacs
 
 if [[ "${update_emacs}" == "y" ]]; then

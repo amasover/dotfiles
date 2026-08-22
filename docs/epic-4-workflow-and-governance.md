@@ -309,7 +309,7 @@ does.
 **Evidence artifact:** a green driver-test run + the recorded runner/gating
 decisions.
 
-### Story 4.11: Standard Claude Code plugins ship with the dotfiles
+### Story 4.11: Standard Claude Code plugins ship with the dotfiles ✅
 
 As the repo owner,
 I want the Claude Code plugins I rely on (mattpocock/skills, ayghri/i-have-adhd)
@@ -317,7 +317,7 @@ declared in the dotfiles and installed on every machine,
 So that a fresh machine's Claude Code has the same skills without per-machine
 `/plugin` ceremony.
 
-Issue: [#162](https://github.com/amasover/dotfiles/issues/162)
+Issue: [#162](https://github.com/amasover/dotfiles/issues/162) (closed, PR #163)
 
 Mechanism: Claude Code installs plugins declaratively — marketplaces under
 `extraKnownMarketplaces` in `~/.claude/settings.json` are registered on launch

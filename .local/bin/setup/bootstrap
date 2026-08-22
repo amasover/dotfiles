@@ -928,6 +928,24 @@ else
     sudo ln -sfT "$hook_src" "$hook_dst"
 fi
 
+# --- 6d. vendored packages (Story 2.46) ----------------------------------------
+# Packages built from this repo's own PKGBUILDs (.config/dotfiles/pkgbuilds/),
+# never from the AUR: tools/custom-pkgs builds+installs whatever is missing or
+# older than its PKGBUILD, and each name gets pinned into pacman's IgnorePkg —
+# betterleaks exists on the AUR too, and without the pin a yay -Syu would
+# "upgrade" the vendored build to a third party's. These names are never
+# declared in metapac groups (metapac validates names against repos/AUR and
+# yay would pull the AUR build); the drift report knows they're vendored.
+say "Vendored packages"
+custom_pkgs="$HOME/.local/bin/tools/custom-pkgs"
+if [[ $CHECK -eq 1 ]]; then
+    "$custom_pkgs" ensure-pins --check
+    "$custom_pkgs" sync --check
+else
+    "$custom_pkgs" ensure-pins
+    "$custom_pkgs" sync "${NC[@]}"
+fi
+
 # --- 7. AUR trust baseline (Story 2.10) ----------------------------------------
 # The portable baseline (maintainers.tsv + exempt.txt) rides the encrypted
 # archive: step 1's decrypt restores this machine's trust state *before* the

@@ -10,6 +10,7 @@
 # Run standalone anytime, or via `setup/update` (end of run). Never mutates:
 # `metapac sync`/`clean` stay manual, prompted commands (see
 # docs/decision-bootstrap-architecture.md — drift loop).
+# shellcheck disable=SC2001  # `sed 's/^/     /'` is this file's indent idiom
 set -euo pipefail
 
 groups_dir="$HOME/.config/metapac/groups"
@@ -39,17 +40,30 @@ echo "=============================================================="
 echo " metapac drift report ($(date +%F\ %H:%M)) — read-only"
 echo "=============================================================="
 
-# 1. unmanaged — metapac itself is the authority here.
+# 1. unmanaged — metapac itself is the authority here, minus vendored
+# packages (Story 2.46): those are built from .config/dotfiles/pkgbuilds/ and
+# deliberately never declared (metapac would resolve the name to the AUR).
 unmanaged=$(metapac unmanaged 2>/dev/null || true)
+un_names=""
 if [[ -n "$unmanaged" ]]; then
+    # Both metapac output shapes (0.10 inline TOML + legacy) — Story 2.42, #135.
+    un_names=$(echo "$unmanaged" | "$HOME/.local/bin/tools/metapac-unmanaged-names")
+fi
+vendored=$("$HOME/.local/bin/tools/custom-pkgs" list 2>/dev/null || true)
+un_vendored=$(comm -12 <(sort <<<"$un_names") <(sort <<<"$vendored") | sed '/^$/d')
+un_real=$(comm -23 <(sort <<<"$un_names") <(sort <<<"$vendored") | sed '/^$/d')
+if [[ -n "$un_real" ]]; then
     echo
     echo " [!] unmanaged (installed, declared nowhere — likely raw pacman -S):"
-    # Both metapac output shapes (0.10 inline TOML + legacy) — Story 2.42, #135.
-    echo "$unmanaged" | "$HOME/.local/bin/tools/metapac-unmanaged-names" | sed 's/^/     /'
+    sed 's/^/     /' <<<"$un_real"
     echo "     fix: declare in a purpose group, park in the inbox, or uninstall"
 else
     echo
     echo " [ok] unmanaged: none"
+fi
+if [[ -n "$un_vendored" ]]; then
+    echo " [ok] vendored (built from .config/dotfiles/pkgbuilds — expected):"
+    sed 's/^/     /' <<<"$un_vendored"
 fi
 
 # 2. declared-but-missing — declared in some group, not installed at all.

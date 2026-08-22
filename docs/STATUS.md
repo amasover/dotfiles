@@ -19,8 +19,9 @@ Facts:
 - **Trunk branch:** `main` (`master` is retired and deleted; never diff/PR against it).
 - **Tracking source of truth:** [GitHub Projects board](https://github.com/users/amasover/projects/1/views/1)
   (status) + issues (discussion). Epic `.md` files hold specs only; ✅ on a story heading = issue closed.
-- **Secret scanning:** `betterleaks` (gitleaks fallback on the Linux machine) before every
-  commit/PR ([recipe](../knowledge/recipes/secret-scan.md)), always paired with a manual
+- **Secret scanning:** `betterleaks` (gitleaks fallback only where it isn't installed yet;
+  the guest has it via the 2.46 vendored PKGBUILD) before every commit/PR
+  ([recipe](../knowledge/recipes/secret-scan.md)), always paired with a manual
   privacy pass by eye — the scanner misses employer/personal/host details.
 
 ## How to start a session
@@ -140,12 +141,13 @@ Facts:
   merged; the chromium inbox→browsers triage commit missed that merge window and is rescued
   as PR [#160](https://github.com/amasover/dotfiles/pull/160) (chromium was declared via the
   2.9 inbox all along — not drift).
-- **4.11 Claude Code plugins** ([#162](https://github.com/amasover/dotfiles/issues/162),
-  branch `story/4.11-claude-plugins`): mattpocock/skills + ayghri/i-have-adhd declared
-  declaratively — `setup/claude-plugins` jq-merges `extraKnownMarketplaces`/`enabledPlugins`
-  into `~/.claude/settings.json` (the file can't be yadm-tracked: Claude Code rewrites it),
-  bootstrap step 8c runs it. Applied + verified live on the guest (both plugins resolve via
-  `claude plugin details`; registration takes one launch per new marketplace).
+- **2.46 vendored PKGBUILDs** ([#164](https://github.com/amasover/dotfiles/issues/164), PR
+  [#165](https://github.com/amasover/dotfiles/pull/165) open from `story/2.46-vendored-pkgbuilds`):
+  betterleaks built from the repo's own PKGBUILD (bin-style, checksum-pinned) and installed
+  live on the guest; `tools/custom-pkgs` owns watch/bump/sync/pins; `update` is the
+  steady-state applier. Design grilled 2026-08-22 — the epic-2 spec carries the ten
+  decisions. Never declare vendored names in metapac groups (an AUR `betterleaks` exists;
+  IgnorePkg guards the swap).
 - **5.4 wrap-up note**: SPICE/libvirt half (pointer calibration is in `vm-autofit` but dormant;
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
   [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
@@ -164,8 +166,12 @@ Facts:
   the laptop-only `polybar-reload` script to main; its i3 `exec` line is commented out (the
   postswitch hook covers relaunches; in a VM the poller would restart bars on every
   vm-autofit resize — re-enable on the laptop if needed).
-- **4.11 started** (#162): standard Claude Code plugins (mattpocock/skills, i-have-adhd)
-  declared via `setup/claude-plugins` + bootstrap step 8c; applied and verified live.
+- **4.11 done** (#162, PR #163 merged): standard Claude Code plugins (mattpocock/skills,
+  i-have-adhd) declared via `setup/claude-plugins` + bootstrap step 8c; verified live.
+- **2.46 built + grilled** (#164, PR #165): vendored betterleaks installed live; `bump`
+  verifies upstream checksums.txt, the watch shows release age with an AUR-window nudge,
+  `update` converges pins + packages silently. First betterleaks dogfood scan dismissed two
+  vm-harness-seed `pass_hash` false positives via `.gitleaksignore`.
 - **Guest yadm state**: home still on `story/5.5-polybar-guests` (now merged) — switch back
   to `main` + `yadm pull` when convenient; two stashes parked on
   `story/2.45-syu-upgrade-holds` (launch.sh — identical to `ad18e61`, droppable;

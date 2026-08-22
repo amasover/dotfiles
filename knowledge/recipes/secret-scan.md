@@ -30,12 +30,16 @@ scan is `git diff --staged | betterleaks stdin` (the hook's form, below). A
 dismissing a false positive, take the fingerprint from a `dir`/`git` JSON
 report, not from hook output.
 
-Install: `winget install Betterleaks.Betterleaks` (Windows). Not yet in the
-official Arch repos (checked 2026-08-09), so the Linux workstation keeps
-`gitleaks` (`pacman -S gitleaks`) as its scanner until betterleaks is packaged;
-`security.toml` still declares gitleaks for that reason. If neither scanner is
-installed, use the manual fallback below and ask Aaron to install one. Do not
-install automatically without approval.
+Install: `winget install Betterleaks.Betterleaks` (Windows). On Arch it
+installs from the repo's **vendored PKGBUILD** (Story 2.46 —
+`.config/dotfiles/pkgbuilds/betterleaks/`, applied by bootstrap step 6d or
+`tools/custom-pkgs sync`); it is still not in the official repos, and the
+same-named AUR package is a third party's build guarded against via pacman's
+IgnorePkg — never install betterleaks from the AUR or declare it in a metapac
+group. `gitleaks` (`pacman -S gitleaks`, declared in `security.toml`) remains
+the accepted fallback on machines that predate the vendored package. If
+neither scanner is installed, use the manual fallback below and ask Aaron to
+install one. Do not install automatically without approval.
 
 ## Enforced automatically: pre-commit hook (Story 4.4, #35; betterleaks-first since 4.8, #117)
 

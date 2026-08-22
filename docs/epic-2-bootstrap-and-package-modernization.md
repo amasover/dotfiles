@@ -1284,6 +1284,67 @@ phase, with the aged version still installed afterwards.
 
 ---
 
+### Story 2.46: Vendored PKGBUILDs — betterleaks everywhere, upstream watch in update
+
+As the repo owner,
+I want packages I build from my own PKGBUILDs (starting with betterleaks) installed
+on every machine and watched for upstream releases,
+So that my standard secret scanner is simply present, its build is mine — pinned by
+version and checksum, never a third party's AUR upload — and `update` tells me when
+upstream moved so I can choose to bump.
+
+Issue: [#164](https://github.com/amasover/dotfiles/issues/164)
+
+Origin: betterleaks is the standard scanner (Story 4.8) but existed only as a
+manual install on the Windows machine — the Linux guest ran the gitleaks
+fallback until this story. Story 2.14 designed the vendoring pattern
+(tracked PKGBUILD + setup step, never declared in metapac groups); this story
+is its first implementation, plus the watch. 2.14/2.17 should reuse
+`tools/custom-pkgs` when they land.
+
+Mechanism: `.config/dotfiles/pkgbuilds/<name>/PKGBUILD` (betterleaks is
+bin-style by choice — upstream's official release binary, sha256 pinned from
+the release's own checksums.txt). `tools/custom-pkgs` owns the lifecycle:
+`outdated`/`check` ask GitHub for the latest release + age per watchable
+package, `bump` rewrites pkgver + checksums (updpkgsums) and then verifies
+the fresh checksum against upstream's checksums.txt (mismatch fatal; an
+upstream without one warns and stays trust-on-first-download), `sync`
+builds+installs via makepkg from a cache-dir copy, `ensure-pins`/
+`ensure-ignore` own the pacman.conf IgnorePkg pins. Consumers: `setup/update`
+is the **steady-state applier** — first step ensures pins, offers upstream
+bumps interactively (the prompt is the quarantine, so it shows release age
+with a nudge when younger than `AUR_QUARANTINE_DAYS`, default 14), then runs
+a silent convergence sync so a bump pulled from another machine installs
+without re-asking; bootstrap step 6d does pins + sync for fresh machines.
+Watch exemptions are explicit: a `# custom-pkgs: no-watch` PKGBUILD line or
+a non-github `url=` is skipped silently (2.14's dead upstream drops in
+without touching the tool). The pin matters: an AUR `betterleaks` EXISTS,
+and installed-but-foreign packages are otherwise offered AUR "upgrades" by
+yay -Syu. The names stay out of metapac groups (metapac ≥0.10 resolves names
+against repos/AUR — declaring would hand installs to the AUR build); the
+drift report instead splits vendored names out of `unmanaged` into their own
+`[ok]` line. The pkgbuilds/ dir is an install-everywhere contract —
+class-gated packages (2.16's Uplink) get their own gated steps when their
+stories land, with 2.30's vocabulary. Retirement is manual and documented in
+the tool header (drop the dir, un-pin, uninstall or re-declare).
+
+**Acceptance criteria:**
+
+- Given a fresh machine, when bootstrap step 6d runs, then every vendored package is built from its pinned PKGBUILD and installed, and its name is in pacman.conf's IgnorePkg (`--check` prints both intents without mutating)
+- Given upstream released past the pinned pkgver, when `update` starts, then the watch names the package, pinned and latest versions, and the release age — nudging when younger than the AUR quarantine window — and prompts; yes = PKGBUILD bumped (pkgver, pkgrel=1, checksums verified against upstream's checksums.txt — mismatch aborts, absent file warns TOFU) with a commit reminder; no = skipped with the pin unchanged
+- Given a PKGBUILD bump arrived via yadm pull (or the prompt above), when `update` runs, then the silent convergence sync installs it without re-asking, and the IgnorePkg pins are re-ensured — `update`, not bootstrap, is the steady-state applier
+- Given a vendored package with a `# custom-pkgs: no-watch` line or a non-github url, when the watch runs, then it is skipped silently (no per-run noise, no aborted run)
+- Given the pure seams (`pkgver`, `upstream`, `watchable`, `verdict`, `set-version`, `checksum-verdict`, `ensure-ignore`), then each is clitest-covered with no network, pacman, or makepkg dependency, including ensure-ignore's three pacman.conf shapes and the substring-name false-match guard
+- Given betterleaks is installed but never declared, when the drift report runs, then it appears under `[ok] vendored`, not `[!] unmanaged`
+
+**Evidence artifact:** live guest run — `custom-pkgs sync` installing
+betterleaks 1.8.1 (`betterleaks version` = 1.8.1), IgnorePkg pinned, `check`
+reporting all-current, and a clean `betterleaks dir` scan of this repo (its
+first dogfood run; two false positives dismissed via `.gitleaksignore` with
+reasons).
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

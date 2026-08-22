@@ -1,0 +1,30 @@
+# Vendored PKGBUILD (Story 2.46) — maintained in this repo, not from the AUR.
+# Upstream: https://github.com/betterleaks/betterleaks (MIT). betterleaks is
+# the repo's standard secret scanner (Story 4.8); an AUR package of the same
+# name EXISTS but is a third party's build — never declare this name in a
+# metapac group, and keep it in pacman's IgnorePkg so a yay -Syu can't
+# "upgrade" it to the AUR build (tools/custom-pkgs + bootstrap own both).
+#
+# Bin-style by choice: repackages upstream's official release binary rather
+# than compiling. The sha256 below is pinned from the release's own
+# checksums.txt (which also carries a sigstore attestation, verifiable with
+# `cosign verify-blob` if ever in doubt).
+# Update flow: `custom-pkgs check` (run by setup/update's first step) watches
+# upstream releases; `custom-pkgs bump` rewrites pkgver + checksums and
+# verifies the fresh checksum against the release's checksums.txt.
+pkgname=betterleaks
+pkgver=1.8.1
+pkgrel=1
+pkgdesc="Find leaked secrets everywhere (gitleaks' successor, official binary)"
+arch=('x86_64')
+url="https://github.com/betterleaks/betterleaks"
+license=('MIT')
+depends=('glibc')
+source=("$pkgname-$pkgver-linux-x64.tar.gz::$url/releases/download/v$pkgver/${pkgname}_${pkgver}_linux_x64.tar.gz")
+sha256sums=('efa407244e1ea8e35f582b8a42becdeac08bdead04f68eb752adda722d583c2a')
+
+package() {
+    # the release tarball is flat: betterleaks, LICENSE, README.md in $srcdir
+    install -Dm755 "$srcdir/$pkgname" "$pkgdir/usr/bin/$pkgname"
+    install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
