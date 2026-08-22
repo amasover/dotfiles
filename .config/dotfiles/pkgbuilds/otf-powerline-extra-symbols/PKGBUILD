@@ -1,0 +1,32 @@
+# Vendored PKGBUILD (Story 2.48) — maintained in this repo, not from the AUR.
+# Upstream: https://github.com/ryanoasis/powerline-extra-symbols (MIT).
+# The polybar themes' font-0 is "Powerline Extra Symbols" — an arrows-only
+# font, which is exactly what lets it sit FIRST in the font list at size 19
+# without hijacking any other glyph (see themes/global/base). Until this
+# package it existed only as an untracked ~/.fonts copy on the laptop
+# (verified byte-identical to this pin). Never declare this name in a metapac
+# group; tools/custom-pkgs + bootstrap 6d own install and the IgnorePkg pin.
+#
+# Upstream is frozen (master head 2019-08-17, no releases) — nothing to watch:
+# custom-pkgs: no-watch
+_commit=ae05de7c51f6609479f4f1a4a0f6f65631731c1b
+pkgname=otf-powerline-extra-symbols
+pkgver=20190817
+pkgrel=1
+pkgdesc="Powerline Extra Symbols — arrows-only glyph font (pinned from ryanoasis/powerline-extra-symbols)"
+arch=('any')
+url="https://github.com/ryanoasis/powerline-extra-symbols"
+license=('MIT')
+source=(
+  "PowerlineExtraSymbols.otf::https://raw.githubusercontent.com/ryanoasis/powerline-extra-symbols/$_commit/PowerlineExtraSymbols.otf"
+  "$pkgname-LICENSE::https://raw.githubusercontent.com/ryanoasis/powerline-extra-symbols/$_commit/LICENSE"
+)
+sha256sums=('e4b1ea52892ba6434cf133e1837596c642be3f390436edceb75f27ac7ffdcc73'
+            '544307a58e6826c24145b2af1c3578b53e2e21ae0e6c67ab4c6abd544304d26a')
+
+package() {
+    install -Dm644 "$srcdir/PowerlineExtraSymbols.otf" \
+        "$pkgdir/usr/share/fonts/OTF/PowerlineExtraSymbols.otf"
+    install -Dm644 "$srcdir/$pkgname-LICENSE" \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
