@@ -100,6 +100,11 @@ Known archive candidates (add as found):
   generations superseded — it references bitmap-era fonts (Fixed/unifont/Siji)
   and its entry-point role died with the 5.5 `-c` launcher (#152). Archive or
   delete. (Spotted during the 2026-08-22 review of PR #167.)
+- `.fonts/siji.pcf` + `.fonts/fonts.dir` (2019): tracked font blobs — siji is
+  already declared as the `siji-git` package in desktop.toml, and `fonts.dir`
+  is a stale X font index. The other two `.fonts` blobs were retired by the
+  2.48 PR once their vendored packages landed; these two follow the same
+  question. (Spotted 2026-08-22 during 2.48.)
 
 **Evidence artifact:** Desktop config inventory
 
