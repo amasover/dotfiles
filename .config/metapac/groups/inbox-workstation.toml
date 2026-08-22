@@ -9,7 +9,6 @@ packages = [
   "shfmt",
   "clitest",
   "playwright",
-  "chromium",
   "1password-cli",
   "gpu-screen-recorder-ui",
   "python-pycdlib",
