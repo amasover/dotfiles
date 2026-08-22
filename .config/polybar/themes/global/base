@@ -1,0 +1,20 @@
+; Shared bar baseline (#166): every theme includes this file and its
+; [bar/base] does `inherit = bar/global`, overriding freely — inherit gives
+; per-key override semantics, unlike include-file merging, where defining
+; the same key twice is a FATAL parse error.
+[bar/global]
+; With no font-N declared, polybar renders with its builtin bitmap fallback,
+; which has neither the powerline arrows (U+e0b0..) nor the FontAwesome
+; icons. font-0 carries text + arrows (otf-source-code-pro-powerline, the
+; 2.47 vendored PKGBUILD), font-1 the icons (awesome-terminal-fonts,
+; declared in desktop.toml).
+font-0 = Source Code Pro for Powerline:size=11;2
+font-1 = FontAwesome:size=11;2
+; polybar-msg (theme selector, polybar-reload) needs ipc
+enable-ipc = true
+; keeps bars out of i3 stacking fights
+wm-restack = i3
+cursor-click = pointer
+cursor-scroll = ns-resize
+
+; vim:ft=dosini

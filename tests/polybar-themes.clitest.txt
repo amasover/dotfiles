@@ -24,13 +24,20 @@ $ grep -c '^\[bar/base\]' $TH/nord/config
 1
 $
 
-both themes declare real fonts (none declared = polybar's builtin bitmap
-fallback, which drops every powerline/FontAwesome glyph):
+the shared baseline (fonts, ipc, wm-restack, cursors) is defined ONCE in
+global/base and reaches the bars via `inherit = bar/global` — inherit gives
+per-key overrides, unlike include-file merging where a duplicate key is a
+fatal parse error:
 
-$ grep -c '^font-0 = Source Code Pro for Powerline' $TH/nord-arrow/config.ini $TH/nord/config
-.config/polybar/themes/nord-arrow/config.ini:1
-.config/polybar/themes/nord/config:1
-$ grep -c '^font-1 = FontAwesome' $TH/nord-arrow/config.ini $TH/nord/config
+$ grep -c '^font-0 = Source Code Pro for Powerline' $TH/global/base
+1
+$ grep -c '^font-1 = FontAwesome' $TH/global/base
+1
+$ grep -c '^enable-ipc = true$' $TH/global/base
+1
+$ grep -c '^wm-restack = i3$' $TH/global/base
+1
+$ grep -c '^inherit = bar/global$' $TH/nord-arrow/config.ini $TH/nord/config
 .config/polybar/themes/nord-arrow/config.ini:1
 .config/polybar/themes/nord/config:1
 $
@@ -57,17 +64,13 @@ $ grep -o '\${colors\.[a-zA-Z0-9_-]*}' $TH/nord/colors | sed 's/^..colors\.//; s
 $ comm -23 "$CLITMP/refs" "$CLITMP/palette"
 $
 
-capture losses restored to the themes: ipc (polybar-msg needs it), i3
-restack, and the shared module library include (updates-arch lives there —
-under -c the theme file is the whole config, nothing else pulls it in):
+under -c the theme file is the whole config, so each theme must pull in the
+shared base and module library itself (updates-arch lives in the latter):
 
+$ grep -c '^include-file = \$HOME/.config/polybar/themes/global/base$' $TH/nord-arrow/config.ini $TH/nord/config
+.config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord/config:1
 $ grep -c '^include-file = \$HOME/.config/polybar/themes/global/modules$' $TH/nord-arrow/config.ini $TH/nord/config
-.config/polybar/themes/nord-arrow/config.ini:1
-.config/polybar/themes/nord/config:1
-$ grep -c '^enable-ipc = true$' $TH/nord-arrow/config.ini $TH/nord/config
-.config/polybar/themes/nord-arrow/config.ini:1
-.config/polybar/themes/nord/config:1
-$ grep -c '^wm-restack = i3$' $TH/nord-arrow/config.ini $TH/nord/config
 .config/polybar/themes/nord-arrow/config.ini:1
 .config/polybar/themes/nord/config:1
 $
