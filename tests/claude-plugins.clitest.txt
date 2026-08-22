@@ -1,0 +1,67 @@
+# setup/claude-plugins — merge seam and apply/check behavior (Story 4.11).
+# Host-independent: every case works on an explicit file under $CLITMP or the
+# pure merge filter on stdin; ~/.claude is never touched.
+#
+# Run from the repo root: clitest tests/claude-plugins.clitest.txt
+
+$ CP=.local/bin/setup/claude-plugins; CLITMP=$(mktemp -d); echo ok
+ok
+$
+# merge on empty settings: both declaration keys land, ids use each repo's
+# own marketplace name
+$ echo '{}' | $CP merge | jq -r '.enabledPlugins | keys[]' | sort
+i-have-adhd@i-have-adhd
+mattpocock-skills@mattpocock
+$ echo '{}' | $CP merge | jq -r '.extraKnownMarketplaces["mattpocock"].source.repo'
+mattpocock/skills
+$ echo '{}' | $CP merge | jq -r '.extraKnownMarketplaces["i-have-adhd"].source.source'
+github
+$
+# unrelated settings keys survive the merge untouched
+$ echo '{"model":"opus","theme":"dark"}' | $CP merge | jq -r '.model + " " + .theme'
+opus dark
+$
+# pre-existing plugin entries we don't declare are preserved alongside ours
+$ echo '{"enabledPlugins":{"other@somewhere":true},"extraKnownMarketplaces":{"mine":{"source":{"source":"github","repo":"me/mine"}}}}' | $CP merge | jq -r '.enabledPlugins | keys | length'
+3
+$ echo '{"enabledPlugins":{"other@somewhere":true}}' | $CP merge | jq -r '.enabledPlugins["other@somewhere"]'
+true
+$
+# a disabled declared plugin is re-enabled (our entry wins for our keys)
+$ echo '{"enabledPlugins":{"i-have-adhd@i-have-adhd":false}}' | $CP merge | jq -r '.enabledPlugins["i-have-adhd@i-have-adhd"]'
+true
+$
+# idempotent: merging twice equals merging once
+$ echo '{}' | $CP merge | $CP merge | jq -S . > "$CLITMP/twice"; echo '{}' | $CP merge | jq -S . | diff - "$CLITMP/twice" && rm "$CLITMP/twice" && echo same
+same
+$
+# apply creates a missing file and reports; second apply is a no-op
+$ $CP apply "$CLITMP/settings.json" | sed "s|$CLITMP|TMP|"
+  declared Claude Code plugins in TMP/settings.json (registered on next claude launch)
+$ $CP apply "$CLITMP/settings.json" | sed "s|$CLITMP|TMP|"
+  already declared (TMP/settings.json)
+$ jq -r '.enabledPlugins["mattpocock-skills@mattpocock"]' "$CLITMP/settings.json"
+true
+$
+# no stray tempfiles left next to the settings file
+$ ls "$CLITMP" | sort
+settings.json
+$
+# --check: exit 1 + "would" on an undeclared file, exit 0 after apply
+$ $CP --check "$CLITMP/other.json" > "$CLITMP/chk.out"; echo "rc=$?"; sed "s|$CLITMP|TMP|" "$CLITMP/chk.out" && rm "$CLITMP/chk.out"
+rc=1
+  would: merge plugin declaration into TMP/other.json
+$ $CP --check "$CLITMP/settings.json" > /dev/null; echo "rc=$?"
+rc=0
+$
+# check mutates nothing
+$ ls "$CLITMP" | sort
+settings.json
+$
+# unknown argument fails loudly
+$ $CP frobnicate 2>&1; echo "rc=$?"
+claude-plugins: unknown argument: frobnicate   (try: claude-plugins -h)
+rc=1
+$ rm -r "$CLITMP"; echo done
+done
+$

@@ -141,20 +141,13 @@ Facts:
   merged; the chromium inbox→browsers triage commit missed that merge window and is rescued
   as PR [#160](https://github.com/amasover/dotfiles/pull/160) (chromium was declared via the
   2.9 inbox all along — not drift).
-- **5.5 polybar on guests** ([#152](https://github.com/amasover/dotfiles/issues/152), PR
-  [#161](https://github.com/amasover/dotfiles/pull/161) open from `story/5.5-polybar-guests`):
-  positional roles + autorandr postswitch hook + per-profile overrides, verified live
-  (Virtual-1). A 2026-08-22 adversarial review of the PR found the `-c` change made the
-  theme selector kill all bars, the hook reverted themes/gaps, plus a login race and silent
-  failure paths — all 16 findings fixed, pushed, and **live-verified on the guest 2026-08-22**
-  (reverse-flow: guest home switched to the branch via `yadm checkout`; relaunch, concurrent
-  lock, theme fallback + persistence, postswitch hook ± override `.env`, `i3-msg reload` all
-  pass). Ready to merge at Aaron's call. Side finds now tracked:
-  `polybar-reload` (Aaron pushed the laptop-only script to main 2026-08-22; its i3 `exec`
-  line is commented out on this branch — the postswitch hook covers relaunches, and in a VM
-  the poller would restart bars on every vm-autofit resize; re-enable on the laptop if
-  needed) and new story 3.20 (retire/replace the
-  laptop-only `dot` CLI; theme picker rebound off it).
+- **2.46 vendored PKGBUILDs** ([#164](https://github.com/amasover/dotfiles/issues/164), PR
+  [#165](https://github.com/amasover/dotfiles/pull/165) open from `story/2.46-vendored-pkgbuilds`):
+  betterleaks built from the repo's own PKGBUILD (bin-style, checksum-pinned) and installed
+  live on the guest; `tools/custom-pkgs` owns watch/bump/sync/pins; `update` is the
+  steady-state applier. Design grilled 2026-08-22 — the epic-2 spec carries the ten
+  decisions. Never declare vendored names in metapac groups (an AUR `betterleaks` exists;
+  IgnorePkg guards the swap).
 - **5.4 wrap-up note**: SPICE/libvirt half (pointer calibration is in `vm-autofit` but dormant;
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
   [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
@@ -167,27 +160,23 @@ Facts:
 
 ## Last session (2026-08-22, guest)
 
-- **5.5 done** (PR #161 merged): review fixes + reverse-flow live verification all passed;
-  the laptop-only `polybar-reload` (Aaron pushed it to main) has its i3 `exec` line
-  commented out — the postswitch hook covers relaunches.
-- **4.11 Claude Code plugins** (#162, PR [#163](https://github.com/amasover/dotfiles/pull/163)
-  **still open** — believed merged, isn't): `setup/claude-plugins` + bootstrap step 8c,
-  verified live. Merge it; its STATUS/bootstrap edits will need a trivial conflict
-  resolution against 2.46's.
-- **2.46 started** (#164, this branch): vendored PKGBUILDs — betterleaks (bin-style,
-  checksum-pinned from upstream's checksums.txt) installed live via `tools/custom-pkgs
-  sync`, IgnorePkg pinned (an AUR `betterleaks` exists; never declare the name in metapac
-  groups), upstream watch as `update`'s interactive first step, bootstrap step 6d, drift
-  report vendored-aware. First betterleaks dogfood scan dismissed two vm-harness-seed
-  `pass_hash` false positives via `.gitleaksignore`. Design grilled 2026-08-22 (10
-  decisions, spec updated): bump verifies upstream checksums.txt, watch shows release age
-  with an AUR-window nudge, `update` is the steady-state applier (pins → watch → silent
-  convergence sync), `# custom-pkgs: no-watch` exempts dead upstreams, gitleaks
-  retirement noted on #164.
-- **Guest yadm state**: home still on `story/5.5-polybar-guests` (now merged) — switch to
-  `main` + `yadm pull` when convenient; two stashes parked on `story/2.45-syu-upgrade-holds`
-  (launch.sh — droppable; bashrc/bash_profile drift — keep); live `mimeapps.list` carries
-  one untracked `x-scheme-handler/claude-cli` line — fold in or leave as drift.
+- **5.5 done** (PR #161 merged): adversarial review's 16 findings fixed, then the
+  reverse-flow live test passed end to end on the guest (relaunch, concurrent lock, theme
+  fallback + persistence, postswitch hook ± override `.env`, `i3-msg reload`). Aaron pushed
+  the laptop-only `polybar-reload` script to main; its i3 `exec` line is commented out (the
+  postswitch hook covers relaunches; in a VM the poller would restart bars on every
+  vm-autofit resize — re-enable on the laptop if needed).
+- **4.11 done** (#162, PR #163 merged): standard Claude Code plugins (mattpocock/skills,
+  i-have-adhd) declared via `setup/claude-plugins` + bootstrap step 8c; verified live.
+- **2.46 built + grilled** (#164, PR #165): vendored betterleaks installed live; `bump`
+  verifies upstream checksums.txt, the watch shows release age with an AUR-window nudge,
+  `update` converges pins + packages silently. First betterleaks dogfood scan dismissed two
+  vm-harness-seed `pass_hash` false positives via `.gitleaksignore`.
+- **Guest yadm state**: home still on `story/5.5-polybar-guests` (now merged) — switch back
+  to `main` + `yadm pull` when convenient; two stashes parked on
+  `story/2.45-syu-upgrade-holds` (launch.sh — identical to `ad18e61`, droppable;
+  bashrc/bash_profile drift — keep until back on that branch); live `mimeapps.list` carries
+  one untracked line (`x-scheme-handler/claude-cli` handler) — fold in or leave as drift.
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 

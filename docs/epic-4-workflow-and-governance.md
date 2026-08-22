@@ -309,6 +309,37 @@ does.
 **Evidence artifact:** a green driver-test run + the recorded runner/gating
 decisions.
 
+### Story 4.11: Standard Claude Code plugins ship with the dotfiles
+
+As the repo owner,
+I want the Claude Code plugins I rely on (mattpocock/skills, ayghri/i-have-adhd)
+declared in the dotfiles and installed on every machine,
+So that a fresh machine's Claude Code has the same skills without per-machine
+`/plugin` ceremony.
+
+Issue: [#162](https://github.com/amasover/dotfiles/issues/162)
+
+Mechanism: Claude Code installs plugins declaratively — marketplaces under
+`extraKnownMarketplaces` in `~/.claude/settings.json` are registered on launch
+and plugins under `enabledPlugins` (`plugin@marketplace`, marketplace = the
+`name` in the repo's `.claude-plugin/marketplace.json`) are installed from
+them. But Claude Code also rewrites `settings.json` itself (model/theme/effort
+choices), so yadm can't track the file without constant drift. Instead
+`setup/claude-plugins` owns the declaration and jq-merges it in (other keys
+and other plugins untouched, atomic write, idempotent); bootstrap runs it as
+step 8c. Registration is one new marketplace per launch, so both plugins are
+live by the second `claude` run.
+
+**Acceptance criteria:**
+
+- Given a settings.json without the declaration (or no file at all), when `setup/claude-plugins apply` runs, then both marketplaces and both plugins are declared and every pre-existing key — including plugins this repo doesn't declare — survives byte-for-byte
+- Given the declaration is already present, then `apply` is a no-op and `--check` exits 0; `bootstrap --check` reports the state without mutating
+- Given the merge seam, then `claude-plugins merge` (stdin → stdout) is covered by clitest cases needing no host state
+- Given a machine with the declaration, when `claude` launches, then `claude plugin details` resolves both plugins with their component inventories (25 skills; 1 skill + SessionStart hook)
+
+**Evidence artifact:** the clitest run plus `claude plugin details` output for
+both plugins on the workstation.
+
 ---
 
 ## Acceptance Criteria (Epic Level)
