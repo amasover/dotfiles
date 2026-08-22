@@ -185,7 +185,7 @@ As the repo owner,
 I want every PR checked by CI against the repo's documented validation standards,
 So that validation is enforced instead of remembered — the 4.4 move (automate the scan), applied to the rest of the validation expectations, across parallel human/agent sessions.
 
-Issue: [#94](https://github.com/amasover/dotfiles/issues/94) · One GitHub Actions workflow on an `archlinux:latest` container (matches the real tooling; pacman-native). Origin: 2026-07-10 discussion after 2.28 landed 43 tracked test cases with only conventions enforcing that they run. Spec refreshed 2026-08-22: the test surface has since grown to ~280 clitest cases plus five vm-harness pytest modules — and no single machine runs them all (the laptop has no pytest; the Windows machine ran the pytest suites in their PRs), which is exactly the gap CI closes. Scanner standard is betterleaks since 4.8.
+Issue: [#94](https://github.com/amasover/dotfiles/issues/94) · One GitHub Actions workflow on an `archlinux:latest` container (matches the real tooling; pacman-native). Origin: 2026-07-10 discussion after 2.28 landed 43 tracked test cases with only conventions enforcing that they run. Spec refreshed 2026-08-22: the test surface has since grown to ~280 clitest cases plus five vm-harness pytest modules — and no single machine ran them all (the laptop had no pytest until 2026-08-22 — first local run: 110 passed; the Windows machine ran the pytest suites in their PRs), which is exactly the gap CI closes. Scanner standard is betterleaks since 4.8.
 
 **Acceptance criteria:**
 
