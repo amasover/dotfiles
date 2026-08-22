@@ -448,13 +448,13 @@ machine now gets no theme. Same shape as Story 3.10's recorder consolidation.
 **Evidence artifact:** the recorded decision + a run/guest showing the
 intended theme state.
 
-### Story 3.19: Firefox is the default browser
+### Story 3.19: Firefox is the default browser ✅
 
 As the repo owner,
 I want Firefox declared as the default browser in tracked config,
 So that `xdg-open` and link-clicking apps open the browser I chose instead of whichever one sorts first.
 
-Issue: [#158](https://github.com/amasover/dotfiles/issues/158)
+Issue: [#158](https://github.com/amasover/dotfiles/issues/158) (closed, PR #159)
 
 **Current state (2026-08-22, VMware guest):** no `mimeapps.list` exists in any
 xdg location and no tracked shell config sets `BROWSER`, so
@@ -471,6 +471,37 @@ alphabetical `mimeinfo.cache` fallback, not a choice anyone made.
 - Verified live: `xdg-settings get default-web-browser` answers
   `firefox.desktop`.
 - Firefox itself stays declared via `browsers.toml` (already true).
+
+---
+
+### Story 3.20: Decide the fate of the `dot` CLI (patrick-motard/dot)
+
+As the repo owner,
+I want the remaining `dot` subcommand consumers inventoried and replaced or retired,
+So that daily workflows stop depending on a 2019 tool that exists only on the old laptop and that no bootstrap installs.
+
+Origin: 2026-08-22, Story 5.5 review. The i3 theme-picker binding ran
+`dot polybar --select`, but `dot` ([patrick-motard/dot](https://github.com/patrick-motard/dot),
+last pushed December 2019) is installed only on the old laptop — on the guest
+the binding was dead. The 5.5 fixes rebound `$mod+Shift+c` to the tracked
+`polybar-theme-selector.sh` directly; the audio consumers (`dot sound port`)
+are already [Story 3.12](#story-312-replace-2019-go-audio-tools-dot-volume-go-with-wpctl)'s
+scope.
+
+**Acceptance criteria:**
+
+- Given the repo and the laptop's live `$HOME`, when `dot` usage is
+  inventoried (configs, scripts, i3/polybar modules, shell history if handy),
+  then every remaining consumer is listed with its subcommand and a
+  replace/retire decision.
+- Given consumers already replaced elsewhere (theme picker in 5.5, audio in
+  3.12), when the last consumer is gone, then `dot` is retired from the laptop
+  and any `dot`-related aliases or scripts leave the repo.
+- Given a duty worth keeping that no existing story covers, then it gets a
+  tracked, bootstrap-installable replacement — no new framework without a
+  documented decision.
+
+**Evidence artifact:** the consumer inventory + the recorded decision per consumer.
 
 ---
 

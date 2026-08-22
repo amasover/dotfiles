@@ -140,12 +140,15 @@ Facts:
   merged; the chromium inbox→browsers triage commit missed that merge window and is rescued
   as PR [#160](https://github.com/amasover/dotfiles/pull/160) (chromium was declared via the
   2.9 inbox all along — not drift).
-- **5.5 polybar on guests** ([#152](https://github.com/amasover/dotfiles/issues/152), PR open
-  from `story/5.5-polybar-guests`): scope expanded to positional roles + autorandr postswitch
-  hook + per-profile overrides; verified live (two bars on Virtual-1). Root causes were the
-  dead layout table AND polybar never receiving the theme config (`-c` was missing). Override
-  files for the split-4K docking layouts are 3.17's attended work. Side find: i3 config
-  references `~/.local/bin/polybar-reload`, which exists nowhere — dead line for epic-3 cleanup.
+- **5.5 polybar on guests** ([#152](https://github.com/amasover/dotfiles/issues/152), PR
+  [#161](https://github.com/amasover/dotfiles/pull/161) open from `story/5.5-polybar-guests`):
+  positional roles + autorandr postswitch hook + per-profile overrides, verified live
+  (Virtual-1). A 2026-08-22 adversarial review of the PR found the `-c` change made the
+  theme selector kill all bars, the hook reverted themes/gaps, plus a login race and silent
+  failure paths — all 16 findings fixed on the branch (spec updated in epic-5); the launch
+  relaunch needs live re-verification on the guest before merge. Side finds now tracked:
+  `polybar-reload` dead i3 line (epic-3 cleanup) and new story 3.20 (retire/replace the
+  laptop-only `dot` CLI; theme picker rebound off it).
 - **5.4 wrap-up note**: SPICE/libvirt half (pointer calibration is in `vm-autofit` but dormant;
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
   [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
@@ -156,23 +159,22 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-20/21, Windows machine)
+## Last session (2026-08-22, guest)
 
-- **First fully green Windows-harness run** — `bootstrap rc=0` + `check rc=0`, unmanaged and
-  missing empty, four age-deferrals honestly reported (2.36 evidence; details in the 2.36 entry
-  above). Getting there took the whole session's chain: #142 (guest pty → color), #143 (arc PGP
-  in the patch stage, merged), #145 (2.45: 3c survives held chaotic upgrades — its DEFERRED/
-  --ignore path proved live three runs in a row, #144's evidence), a live-found purge-glob bug
-  (uncompressed .pkg.tar never purged — fixed on the 2.45 branch), and 2.42's silent retag no-op
-  (fixed on its own branch; the three packages were retagged by hand in the guest to green this
-  run).
-- **Run archaeology worth keeping**: a host sleep/power event cleanly shut the guest down
-  mid-sync; the corrupt debris (three truncated built archives + a torn brew-git source clone)
-  poisoned retries until purged. The guest-side bootstrap *survives* ssh resets (no pty) and
-  keeps converging — the host loses observability, not the run.
-- **Aaron's merge queue**: #142, #145, #146 (2.42) — after they land, one plain from-`main`
-  `destroy` + `up` is the formal 2.36/2.38 close-out run (also collects the attended display
-  transcripts and the fresh-run evidence for 2.19/2.26/2.27/2.34).
+- **PR #161 (5.5) adversarially reviewed and hardened**: multi-agent review, 16 verified
+  findings, all fixed on the branch. Headliners: `-c` becoming load-bearing made
+  `polybar-theme-selector.sh` (wrong config path; incompatible nord config) kill every bar;
+  the postswitch hook silently reverted a chosen theme + gaps on each layout change; i3's
+  `exec_always` raced the hook's launch.sh at login. Fix shape: monitor-roles grew eval-safe
+  output and a `merge-env` subcommand (overrides now merge on top of the heuristic; 21
+  clitest cases), launch.sh got flock + loud failure paths + theme persistence/validation,
+  gaps and theme each have one home, and the screenlayout `exec_always` is retired. Needs a
+  live bar relaunch on the guest to re-verify before merge.
+- Review side effects: 3.19 ✅-marked (missed in the ad18e61 wrap-up); story 3.20 added to
+  epic-3 for the laptop-only `dot` CLI (patrick-motard/dot — the theme picker no longer
+  depends on it).
+- Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
+  2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 
 ## Epics
 
