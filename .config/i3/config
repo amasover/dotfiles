@@ -19,7 +19,7 @@ gaps inner 8
 gaps outer 2
 # room for the polybar top bars; single home for this value (launch.sh and the
 # theme selector used to fight over it via i3-msg at runtime)
-gaps top 10
+#gaps top 10 TODO: commenting this out for now, uncomment if it causes problems later
 
 ###################
 ## COLOR PALETTE ##
