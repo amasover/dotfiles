@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # vm-autofit — apply the hypervisor's resolution hint to the guest display.
 #
 # In a KMS guest (vmwgfx, virtio-gpu) a host window resize lands as a new
@@ -7,12 +7,18 @@
 # no reactor, so the screen stays at the old size (Story 5.4, #151).
 #
 #   vm-autofit apply [output]   apply the pending hint once (xrandr --auto)
-#   vm-autofit react [output]   apply once, then once more per stdin line
+#   vm-autofit react [output]   apply once, then once more per stdin burst
 #   vm-autofit watch [output]   react to drm change uevents until killed
 #
 # react is the testable seam: watch is udevadm monitor piped into react.
+# Prior art: https://github.com/h0ek/x-resize (same design against X RandR
+# events; the coalesce and the SPICE calibration below are adapted from it).
 
 set -u
+
+# Trailing-edge coalesce: a window drag fires a burst of uevents; drain the
+# burst and apply once when it goes quiet, so the final size always wins.
+COALESCE=0.3
 
 usage() {
     echo "usage: vm-autofit apply|react|watch [output]" >&2
@@ -22,16 +28,46 @@ usage() {
 cmd=${1-}
 out=${2-}
 
+connected_outputs() {
+    xrandr -q | awk '/ connected/ {print $1}'
+}
+
+# SPICE/QEMU guests only: after a resolution change an absolute-pointer
+# tablet keeps the old axis range and the cursor drifts off-target. Recalibrate
+# it to the new size, then a no-op transform makes Xorg rebuild input maps.
+# Requires xinput AND the evdev driver claiming the tablet (an Xorg InputClass
+# + xf86-input-evdev; libinput has no calibration property and is skipped) —
+# neither is declared yet, so on VMware and plain guests this is a quiet no-op.
+# UNTESTED live until a libvirt/SPICE guest run (noted on #151).
+calibrate_pointer() {
+    command -v xinput >/dev/null 2>&1 || return 0
+    tablets=$(xinput list --name-only 2>/dev/null \
+        | grep -Fx -e 'QEMU QEMU USB Tablet' -e 'spice vdagent tablet') || return 0
+    size=$(xrandr -q | sed -n 's/.*current \([0-9]*\) x \([0-9]*\).*/\1 \2/p' | head -1)
+    [ -n "$size" ] || return 0
+    w=${size% *}
+    h=${size#* }
+    printf '%s\n' "$tablets" | while read -r dev; do
+        xinput list-props "$dev" 2>/dev/null | grep -q 'Evdev Axis Calibration' || continue
+        xinput set-prop "$dev" 'Evdev Axis Calibration' 0 $((w - 1)) 0 $((h - 1)) 2>/dev/null || :
+        xinput set-prop "$dev" 'Evdev Axis Inversion' 0 0 2>/dev/null || :
+    done
+    connected_outputs | while read -r o; do
+        xrandr --output "$o" --transform 1,0,0,0,1,0,0,0,1 2>/dev/null || :
+    done
+}
+
 apply() {
     if [ -n "$out" ]; then
         xrandr --output "$out" --auto
     else
         # bare `xrandr --auto` never re-modes an output that is already
         # enabled, so the new preferred mode must be applied per output.
-        xrandr -q | awk '/ connected/ {print $1}' | while read -r o; do
+        connected_outputs | while read -r o; do
             xrandr --output "$o" --auto
         done
     fi
+    calibrate_pointer
 }
 
 case "$cmd" in
@@ -40,7 +76,10 @@ case "$cmd" in
         ;;
     react)
         apply
-        while read -r _; do apply; done
+        while read -r _; do
+            while read -r -t "$COALESCE" _; do :; done
+            apply
+        done
         ;;
     watch)
         # --line-buffered: without it grep batches events and the resize lags.

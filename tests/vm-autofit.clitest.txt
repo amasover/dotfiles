@@ -1,13 +1,18 @@
 # vm-autofit (Story 5.4, #151) — the resolution-hint reactor's testable seams.
-# A stubbed xrandr on PATH records calls; no X server involved.
+# Stubbed xrandr + xinput on PATH record calls; no X server involved. The
+# xinput stub lists a tablet only when XINPUT_TABLET is set, so calibration
+# stays deterministic on any machine the suite runs on.
 
-$ d=$(mktemp -d) && printf '#!/bin/sh\necho "xrandr $*" >> "$XLOG"\nif [ "$1" = -q ]; then\n  echo "Virtual-1 connected 1280x800+0+0 (normal) 0mm x 0mm"\n  echo "VGA-1 disconnected (normal)"\nfi\n' > "$d/xrandr" && chmod +x "$d/xrandr" && export XLOG="$d/calls.log" PATH="$d:$PATH"
+$ d=$(mktemp -d) && printf '#!/bin/sh\necho "xrandr $*" >> "$XLOG"\nif [ "$1" = -q ]; then\n  echo "Screen 0: minimum 320 x 200, current 1280 x 800, maximum 8192 x 8192"\n  echo "Virtual-1 connected 1280x800+0+0 (normal) 0mm x 0mm"\n  echo "VGA-1 disconnected (normal)"\nfi\n' > "$d/xrandr" && chmod +x "$d/xrandr"
+$ printf '#!/bin/sh\necho "xinput $*" >> "$XLOG"\ncase "$1" in\n  list) [ -n "${XINPUT_TABLET-}" ] && echo "$XINPUT_TABLET" ;;\n  list-props) [ -n "${XINPUT_TABLET-}" ] && echo "  Evdev Axis Calibration (270): 0, 1279, 0, 799" ;;\nesac\nexit 0\n' > "$d/xinput" && chmod +x "$d/xinput" && export XLOG="$d/calls.log" PATH="$d:$PATH"
 $
 
-apply with an explicit output targets it:
+apply with an explicit output targets it; with no tablet listed, calibration
+stops after the device scan:
 
 $ : > "$XLOG"; .local/bin/tools/vm-autofit apply Virtual-1; cat "$XLOG"
 xrandr --output Virtual-1 --auto
+xinput list --name-only
 $
 
 apply without an output enumerates connected outputs and re-modes each
@@ -17,20 +22,41 @@ outputs are left alone:
 $ : > "$XLOG"; .local/bin/tools/vm-autofit apply; cat "$XLOG"
 xrandr -q
 xrandr --output Virtual-1 --auto
+xinput list --name-only
 $
 
-react applies once up front (a hint may already be pending), then once per
-event line:
+with a SPICE tablet present (and evdev exposing the calibration property),
+apply recalibrates the axes to the current size and forces an input-map
+rebuild with a no-op transform:
 
-$ : > "$XLOG"; printf 'e1\ne2\n' | .local/bin/tools/vm-autofit react Virtual-1; wc -l < "$XLOG" | tr -d ' '
+$ : > "$XLOG"; XINPUT_TABLET='spice vdagent tablet' .local/bin/tools/vm-autofit apply Virtual-1; cat "$XLOG"
+xrandr --output Virtual-1 --auto
+xinput list --name-only
+xrandr -q
+xinput list-props spice vdagent tablet
+xinput set-prop spice vdagent tablet Evdev Axis Calibration 0 1279 0 799
+xinput set-prop spice vdagent tablet Evdev Axis Inversion 0 0
+xrandr -q
+xrandr --output Virtual-1 --transform 1,0,0,0,1,0,0,0,1
+$
+
+react applies once up front (a hint may already be pending); a burst of
+events coalesces into a single trailing-edge apply, so the final size wins:
+
+$ : > "$XLOG"; printf 'e1\ne2\ne3\n' | .local/bin/tools/vm-autofit react Virtual-1; grep -c -- '--auto' "$XLOG"
+2
+$
+
+events separated by more than the coalesce window each get their own apply:
+
+$ : > "$XLOG"; { printf 'e1\n'; sleep 1; printf 'e2\n'; } | .local/bin/tools/vm-autofit react Virtual-1; grep -c -- '--auto' "$XLOG"
 3
 $
 
-react on immediate EOF still catches the pending hint (enumeration + one
-per-output apply):
+react on immediate EOF still catches the pending hint:
 
-$ : > "$XLOG"; printf '' | .local/bin/tools/vm-autofit react; wc -l < "$XLOG" | tr -d ' '
-2
+$ : > "$XLOG"; printf '' | .local/bin/tools/vm-autofit react Virtual-1; grep -c -- '--auto' "$XLOG"
+1
 $
 
 unknown and missing subcommands are rejected loudly:
