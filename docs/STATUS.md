@@ -179,7 +179,11 @@ Facts:
   sync`, IgnorePkg pinned (an AUR `betterleaks` exists; never declare the name in metapac
   groups), upstream watch as `update`'s interactive first step, bootstrap step 6d, drift
   report vendored-aware. First betterleaks dogfood scan dismissed two vm-harness-seed
-  `pass_hash` false positives via `.gitleaksignore`.
+  `pass_hash` false positives via `.gitleaksignore`. Design grilled 2026-08-22 (10
+  decisions, spec updated): bump verifies upstream checksums.txt, watch shows release age
+  with an AUR-window nudge, `update` is the steady-state applier (pins → watch → silent
+  convergence sync), `# custom-pkgs: no-watch` exempts dead upstreams, gitleaks
+  retirement noted on #164.
 - **Guest yadm state**: home still on `story/5.5-polybar-guests` (now merged) — switch to
   `main` + `yadm pull` when convenient; two stashes parked on `story/2.45-syu-upgrade-holds`
   (launch.sh — droppable; bashrc/bash_profile drift — keep); live `mimeapps.list` carries
