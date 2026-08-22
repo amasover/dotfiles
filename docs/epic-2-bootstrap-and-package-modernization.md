@@ -1345,6 +1345,38 @@ reasons).
 
 ---
 
+### Story 2.47: Vendor Source Code Pro for Powerline (second custom-pkgs package)
+
+As the repo owner,
+I want the polybar themes' powerline-patched text font built from a repo-pinned PKGBUILD,
+So that fresh machines render the bars without depending on an untracked user-font copy.
+
+Issue: [#169](https://github.com/amasover/dotfiles/issues/169)
+
+Origin: the 2026-08-22 adversarial review of PR #167 found its `powerline-fonts`
+declaration ships only `PowerlineSymbols.otf` — no patched families. The
+"Source Code Pro for Powerline" family the themes declare (`font-0`) existed
+only as untracked `~/.local/share/fonts` copies. Homebrew's cask
+(`font-source-code-pro-for-powerline`) installs on Linux but was rejected:
+version `:latest` with no checksum (everything 2.46 rejects), and its install
+path fires bare `sudo` (struck faillock from the agent shell, the 2026-07-30
+footgun). Second use of the 2.46 pattern; upstream
+[powerline/fonts](https://github.com/powerline/fonts) is frozen (last commit
+2024-03-22, no releases), so the PKGBUILD pins commit `a029626` with
+individually checksummed OTFs and carries `# custom-pkgs: no-watch`.
+
+**Acceptance criteria:**
+
+- Given a fresh machine, when bootstrap step 6d runs, then `otf-source-code-pro-powerline` builds from the pinned PKGBUILD, the SourceCodePro OTFs land under `/usr/share/fonts/OTF/`, and `fc-match "Source Code Pro for Powerline"` resolves to the packaged copy
+- Given the frozen upstream, when the `update` watch runs, then the package is skipped silently (`no-watch`)
+- Given the laptop, when the package is installed live, then the untracked user copies are removed (after the dated backup tarball) and the name is pinned in pacman.conf IgnorePkg
+- Given the 2.46 machinery, then no new logic ships — `custom-pkgs list/status/sync` pick the package up from its directory alone (existing clitest seams stay the test surface)
+
+**Evidence artifact:** live laptop install — `pacman -Q otf-source-code-pro-powerline`,
+`fc-match` resolving to `/usr/share/fonts/OTF/`, IgnorePkg pinned, user copies gone.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
