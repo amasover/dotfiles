@@ -53,6 +53,10 @@ packages = [
   "parcellite",
   "perl-anyevent-i3",
   "polybar-wireguard-git",
+  # polybar themes declare "Source Code Pro for Powerline" (font-0); today it
+  # only exists as an untracked ~/.local/share/fonts copy — this makes fresh
+  # machines get the family from the repo package (#166)
+  "powerline-fonts",
   "redshift",
   "rofi",
   "scrot",

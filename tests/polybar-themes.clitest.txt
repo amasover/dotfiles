@@ -24,6 +24,17 @@ $ grep -c '^\[bar/base\]' $TH/nord/config
 1
 $
 
+both themes declare real fonts (none declared = polybar's builtin bitmap
+fallback, which drops every powerline/FontAwesome glyph):
+
+$ grep -c '^font-0 = Source Code Pro for Powerline' $TH/nord-arrow/config.ini $TH/nord/config
+.config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord/config:1
+$ grep -c '^font-1 = FontAwesome' $TH/nord-arrow/config.ini $TH/nord/config
+.config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord/config:1
+$
+
 every ${colors.X} reference on a live (uncommented) line resolves to a
 palette key or an inline [colors] key — nord-arrow:
 
