@@ -26,7 +26,11 @@ apply() {
     if [ -n "$out" ]; then
         xrandr --output "$out" --auto
     else
-        xrandr --auto
+        # bare `xrandr --auto` never re-modes an output that is already
+        # enabled, so the new preferred mode must be applied per output.
+        xrandr -q | awk '/ connected/ {print $1}' | while read -r o; do
+            xrandr --output "$o" --auto
+        done
     fi
 }
 
