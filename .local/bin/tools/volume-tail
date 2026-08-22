@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# volume-tail — polybar volume readout, PipeWire-native (Story 3.12).
+#
+# Renamed from pulseaudio-tail.sh (it has spoken wpctl for a while; the name
+# and the pamixer polling were the leftovers). Prints the default sink's
+# volume percent on a tail loop for a custom/script module; adjust/mute are
+# one-shot flags the module's click/scroll actions can call.
+#
+# Usage:
+#   volume-tail [--padright S]   tail loop (percent every 0.2s)
+#   volume-tail --up|--down [N]  adjust by N percent (default 3), capped at 100
+#   volume-tail --mute           toggle mute
+# Seam (pure, clitest-covered):
+#   volume-tail pct              `wpctl get-volume` output on stdin → integer percent
+set -euo pipefail
+
+cmd_pct() { # "Volume: 0.45 [MUTED]" → 45
+    awk '$1 == "Volume:" { printf "%d\n", $2 * 100 + 0.5; exit }'
+}
+
+case "${1:-}" in
+--up) wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ "${2:-3}%+" ;;
+--down) wpctl set-volume @DEFAULT_AUDIO_SINK@ "${2:-3}%-" ;;
+--mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+pct) cmd_pct ;;
+-h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
+--padright | "" | *)
+    padright=""
+    [[ "${1:-}" == --padright ]] && padright="${2-}"
+    while true; do
+        printf '%s%s\n' "$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | cmd_pct)" "$padright"
+        sleep 0.2 &
+        wait $!
+    done
+    ;;
+esac

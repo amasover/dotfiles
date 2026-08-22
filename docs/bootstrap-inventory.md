@@ -205,11 +205,15 @@ plus the broken `.fehbg`.
 ## Remaining follow-ups
 
 - **Fix `polybar_alsa_module` switch**: `pacmd` (PulseAudio) → `wpctl`/`pamixer` (PipeWire);
-  the `dot sound port` read works, the click-to-switch likely doesn't. → now **Story 3.12**
-  ([#59](https://github.com/amasover/dotfiles/issues/59)).
+  the `dot sound port` read works, the click-to-switch likely doesn't. → **done**, Story 3.12
+  ([#59](https://github.com/amasover/dotfiles/issues/59)): `tools/audio-switch` (pactl ports +
+  wpctl mute) replaced `polybar_alsa_module`; no `dot`/`pacmd` calls remain in the repo.
 - **Retire `volume-go`** (`~/code/go/bin/volume`, 2019) in favor of `wpctl`/`pamixer`;
-  it still backs i3 volume up/down keys. → Story 3.12 ([#59](https://github.com/amasover/dotfiles/issues/59)).
-- **Rename `pulseaudio-tail.sh`** to reflect PipeWire (cosmetic). → folded into Story 3.12.
+  it still backs i3 volume up/down keys. → **done**, Story 3.12: i3 keys run
+  `tools/volume-osd` (wpctl; volnoti OSD where installed). The stale 2019 binaries under
+  `~/code/go/bin/` still need deleting **on the laptop** when it next converges.
+- **Rename `pulseaudio-tail.sh`** to reflect PipeWire (cosmetic). → **done**, Story 3.12:
+  now `tools/volume-tail`, wpctl end to end (pamixer polling gone).
 - **Old-install audit (2026-07-03):** the retired 2019 `install` also placed git-clone
   artifacts nothing reinstalls — oh-my-zsh custom plugins (`zsh-autosuggestions`,
   `zsh-nvm`→nvm), Vundle (`vendor_repos` clones it but nothing calls vendor_repos; its
