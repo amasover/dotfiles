@@ -293,7 +293,6 @@ export ANSIBLE_PLAYBOOKS_DIR=~/code/ansible-playbooks
 alias check-mode="aws s3 ls"
 
 alias dotfiles="cd ~/.config/dotfiles/"
-alias dot-src="cd $GOPATH/src/github.com/patrick-motard/dot"
 alias copy-monitors='xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" ORS=" " | pbcopy'
 
 
