@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# volume-osd — i3 volume keys, PipeWire-native (Story 3.12).
+#
+# Replaces the XF86Audio bindings' `volume up/down 3` (itchyny/volume-go, a
+# 2019 Go binary no bootstrap can rebuild) + `volnoti-show $(volume get)`.
+# wpctl does the adjustment; the volnoti OSD still shows where installed
+# (the laptop) and is skipped silently where not (guests).
+#
+# Usage:
+#   volume-osd up|down [step-pct]   adjust (default 3%), up capped at 100
+# Seam (pure, clitest-covered):
+#   volume-osd pct                  `wpctl get-volume` output on stdin → percent
+set -euo pipefail
+
+cmd_pct() { awk '$1 == "Volume:" { printf "%d\n", $2 * 100 + 0.5; exit }'; }
+
+case "${1:-}" in
+up) wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ "${2:-3}%+" ;;
+down) wpctl set-volume @DEFAULT_AUDIO_SINK@ "${2:-3}%-" ;;
+pct) cmd_pct; exit 0 ;;
+*) echo "usage: volume-osd up|down [step-pct]" >&2; exit 2 ;;
+esac
+
+if command -v volnoti-show >/dev/null 2>&1; then
+    volnoti-show "$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | cmd_pct)"
+fi
