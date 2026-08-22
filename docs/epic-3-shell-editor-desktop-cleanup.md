@@ -94,6 +94,13 @@ Issue: [#30](https://github.com/amasover/dotfiles/issues/30)
 - Given monitor or machine-specific layout config exists, when retained, then it is documented as machine-specific
 - Given screenshots or themes exist, when retained, then they support documentation, active usage, or historical context
 
+Known archive candidates (add as found):
+
+- `.config/polybar/config.bak2` (Aug 2019): pre-themes-dir polybar config, two
+  generations superseded — it references bitmap-era fonts (Fixed/unifont/Siji)
+  and its entry-point role died with the 5.5 `-c` launcher (#152). Archive or
+  delete. (Spotted during the 2026-08-22 review of PR #167.)
+
 **Evidence artifact:** Desktop config inventory
 
 ---
