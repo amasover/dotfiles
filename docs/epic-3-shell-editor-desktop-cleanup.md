@@ -448,6 +448,30 @@ machine now gets no theme. Same shape as Story 3.10's recorder consolidation.
 **Evidence artifact:** the recorded decision + a run/guest showing the
 intended theme state.
 
+### Story 3.19: Firefox is the default browser
+
+As the repo owner,
+I want Firefox declared as the default browser in tracked config,
+So that `xdg-open` and link-clicking apps open the browser I chose instead of whichever one sorts first.
+
+Issue: [#158](https://github.com/amasover/dotfiles/issues/158)
+
+**Current state (2026-08-22, VMware guest):** no `mimeapps.list` exists in any
+xdg location and no tracked shell config sets `BROWSER`, so
+`xdg-settings get default-web-browser` answers `chromium.desktop` — purely the
+alphabetical `mimeinfo.cache` fallback, not a choice anyone made.
+
+**Acceptance criteria:**
+
+- A tracked `.config/mimeapps.list` maps the browser mime types and URL
+  schemes (`text/html`, `xhtml+xml`, `http`, `https`, `about`, `unknown`) to
+  `firefox.desktop`.
+- `BROWSER=firefox` is exported from `.profile` for the CLI tools that check
+  the variable before xdg (`gh auth login --web` among them).
+- Verified live: `xdg-settings get default-web-browser` answers
+  `firefox.desktop`.
+- Firefox itself stays declared via `browsers.toml` (already true).
+
 ---
 
 ## Acceptance Criteria (Epic Level)

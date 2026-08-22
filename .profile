@@ -2,6 +2,10 @@
 ## environment variables
 ## This file is sourced in .zprofile so th at zsh gets these variables as well
 
+## default browser (Story 3.19): xdg associations live in .config/mimeapps.list;
+## BROWSER covers the CLI tools (gh, etc.) that check the variable before xdg
+export BROWSER=firefox
+
 ## GOLANG
 export GOPATH=~/code/go
 # add go bin folder to path so that compiled bin files can be

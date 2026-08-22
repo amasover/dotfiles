@@ -153,13 +153,13 @@ writes `~/.gitconfig-local`) belongs with 5.2's identity/auth bootstrap.
 - No plaintext credential store (`store` helper / `~/.git-credentials`) is
   introduced.
 
-### Story 5.4: Guest resolution follows the viewer window
+### Story 5.4: Guest resolution follows the viewer window ✅
 
 As the repo owner,
 I want the guest's X resolution to track the VMware/SPICE window size,
 So that resizing the viewer doesn't leave me on a fixed 1280x800 letterboxed desktop.
 
-Issue: [#151](https://github.com/amasover/dotfiles/issues/151)
+Issue: [#151](https://github.com/amasover/dotfiles/issues/151) (closed, PR [#156](https://github.com/amasover/dotfiles/pull/156))
 
 **Current state (2026-08-22, VMware guest):** open-vm-tools is installed but
 `vmtoolsd` is not running — the service was never enabled, and nothing in
