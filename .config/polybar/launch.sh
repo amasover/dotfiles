@@ -1,97 +1,47 @@
 #!/usr/bin/env bash
+#
+# polybar launcher (Story 5.5, #152)
+#
+# Roles, not layouts: MONITOR_MAIN / MONITOR_LEFT / MONITOR_EXTRA (plus the
+# split-4K MONITOR_SPLIT_TOP/BOTTOM) tell the theme's bars where to sit.
+# Role resolution order:
+#   1. a per-autorandr-profile override, ~/.config/polybar/layouts/<profile>.env
+#      (profile from $AUTORANDR_CURRENT_PROFILE inside autorandr hooks, else
+#      `autorandr --current`) — write one for any setup the heuristic can't
+#      infer, the virtual-split docking layouts above all;
+#   2. the positional heuristic in tools/monitor-roles: primary → MAIN, the
+#      leftmost monitor left of MAIN → LEFT, the next remaining → EXTRA.
+# Bars launch only when their role is assigned; a bare guest (Virtual-1)
+# gets the MAIN bars with zero configuration.
+#
+# The pre-3.16 hardcoded layouts, kept for reference when writing 3.17's
+# override files (the output names predate the modesetting-driver rename):
+#   laptop:      "eDP1 "                          -> MAIN=eDP1
+#   laptop_4k:   "*DP1-1 DP1-2~1 DP1-2~2 eDP1 "   -> MAIN=DP1-1 SPLIT_TOP=DP1-2~1 SPLIT_BOTTOM=DP1-2~2 LEFT=eDP1
+#   home:        "*eDP1 DP1-1~1 DP1-1~2 DP1-2 "   -> MAIN=DP1-2 SPLIT_TOP=DP1-1~1 SPLIT_BOTTOM=DP1-1~2 LEFT=eDP1
+#   three:       "*eDP-1 DP-1-1 DP-1-3 "          -> MAIN=eDP-1 SPLIT_TOP=DP-1-1 SPLIT_BOTTOM=DP-1-3
+#   displaylink: "*DP1-1 eDP1 DP1-3 "             -> MAIN=eDP1 SPLIT_TOP=DVI-I-1-1
+#   dragon:      "eDP1 DP1 "                      -> MAIN=eDP1 SPLIT_TOP=DP1
 
-# description:
-#   This script is useful for auto detection of multiple monitor layouts
+unset MONITOR_MAIN MONITOR_LEFT MONITOR_EXTRA MONITOR_SPLIT_TOP MONITOR_SPLIT_BOTTOM
 
-#   This script inspects names of monitors connected to computer
-#   and assigns them to right, left, and main monitor environment
-#   variables, so that Polybar can properly put it's left/right/middle
-#   bars in the right place.
-
-#   If your monitors are in a different configuration, edit the
-#   strings in the case statement.
-
-# get list of connected monitors, space separated
-#active_monitors=$(xrandr -q | grep " connected" | awk "{print $"${1:-1}"}" ORS=" ")
-active_monitors=$(xrandr --listactivemonitors | tail -n +2 | awk '{print $2}' ORS=" " | sed 's/+//g')
-echo "$active_monitors"
-test=echo $(echo $active_monitors | sed 's/*//g')
-echo "$test"
-
-# my monitor configurations
-# replace with your own (based on the output above)
-
-laptop="eDP1 "
-laptop_star="*eDP1 "
-laptop_4k="*DP1-1 DP1-2~1 DP1-2~2 eDP1 "
-three="*eDP-1 DP-1-1 DP-1-3 "
-displaylink="*DP1-1 eDP1 DP1-3 "
-dragon="eDP1 DP1 "
-home="*eDP1 DP1-1~1 DP1-1~2 DP1-2 "
-
-echo "active monitors is $active_monitors"
-echo "laptop 4k is $laptop_4k"
-
-function export_monitor_vars() {
-    export MONITOR_MAIN=$1
-    export MONITOR_SPLIT_TOP=$2 #one
-    export MONITOR_SPLIT_BOTTOM=$3 #two
-    export MONITOR_LEFT=$4
-    export MONITOR_EXTRA=$5
-    echo "monitor split top $MONITOR_SPLIT_TOP"
-    echo "monitor split bottom $MONITOR_SPLIT_BOTTOM"
-}
-
-function set_monitor_vars() {
-    case "${active_monitors}" in
-        "$laptop" )
-            export_monitor_vars "eDP1" "" "" ""
-            mode="just laptop screen"
-            ;;
-        "$laptop_star" )
-            export_monitor_vars "eDP1" "" "" ""
-            mode="just laptop screen(star)"
-            ;;
-        "$laptop_4k" )
-            export_monitor_vars "DP1-1" "DP1-2~1" "DP1-2~2" "eDP1" ""
-            mode="4k split with laptop monitor"
-            ;;
-        "$home" )
-            export_monitor_vars "DP1-2" "DP1-1~1" "DP1-1~2" "eDP1" ""
-            mode="4k split with laptop monitor (home)"
-            ;;
-        "$three" )
-            export_monitor_vars "eDP-1" "DP-1-1" "DP-1-3" "" ""
-            mode="three"
-            ;;
-        "$displaylink" )
-            export_monitor_vars "eDP1" "DVI-I-1-1" "" "" ""
-            mode="displaylink"
-            ;;
-        "$dragon" )
-            export_monitor_vars "eDP1" "DP1" "" "" ""
-            mode="dragon"
-            ;;
-        * )
-            notify-send "Polybar" "Monitor configuration not recognized. See ~/.config/polybar/launch.sh for details"
-            notify-send "Polybar" "$(xrandr --listactivemonitors)"
-            ;;
-    esac
-}
-
-set_monitor_vars
-notify-send "Polybar" "Bars initialized on ${mode} monitors."
+profile="${AUTORANDR_CURRENT_PROFILE:-$(autorandr --current 2>/dev/null | head -n1)}"
+layout_env="$HOME/.config/polybar/layouts/${profile}.env"
+if [[ -n "$profile" && -f "$layout_env" ]]; then
+    # shellcheck source=/dev/null
+    source "$layout_env"
+    mode="profile ${profile}"
+else
+    eval "$("$HOME/.local/bin/tools/monitor-roles")"
+    mode="auto: ${MONITOR_MAIN}${MONITOR_LEFT:+ left=${MONITOR_LEFT}}${MONITOR_EXTRA:+ extra=${MONITOR_EXTRA}}"
+fi
+export MONITOR_MAIN MONITOR_LEFT MONITOR_EXTRA MONITOR_SPLIT_TOP MONITOR_SPLIT_BOTTOM
 
 killall -q -w polybar
+while pgrep -u "$UID" -x polybar >/dev/null; do sleep 1; done
 
-echo killed old polybar
-
-while pgrep -u $UID -x polybar >/dev/null; do sleep 1; done
-
-echo done
 # TODO set this theme somewhere else, probably via dot?
 if [[ -z $polybar_theme ]]; then
-
     i3-msg gaps top all set 10
     export polybar_theme=$HOME/.config/polybar/themes/nord-arrow/config.ini
 fi
@@ -101,15 +51,18 @@ log_dir="${XDG_CACHE_HOME:-$HOME/.cache}/polybar"
 mkdir -p "$log_dir"
 log="$log_dir/polybar.log"
 [[ -f $log ]] && mv "$log" "$log.$(date +%Y%m%d-%H%M%S)"
+# shellcheck disable=SC2012  # filenames are our own timestamps, ls -t is fine
 ls -1t "$log_dir"/polybar.log.* 2>/dev/null | tail -n +6 | xargs -r rm -f
 
-polybar -r -l warning main        >>"$log" 2>&1 &
-#polybar -r right &
-polybar -r -l warning left        >>"$log" 2>&1 &
-polybar -r -l warning extra       >>"$log" 2>&1 &
-polybar -r -l warning main-bottom >>"$log" 2>&1 &
-polybar -r -l warning split-one   >>"$log" 2>&1 &
-polybar -r -l warning split-two   >>"$log" 2>&1 &
-#polybar -r left-bottom &
+# -c is load-bearing: no config.ini lives in ~/.config/polybar, so without an
+# explicit config polybar silently falls back to its built-in example bar.
+launch() { polybar -r -l warning -c "$polybar_theme" "$1" >>"$log" 2>&1 & }
+launch main
+launch main-bottom
+[[ -n ${MONITOR_LEFT:-} ]]         && launch left
+[[ -n ${MONITOR_EXTRA:-} ]]        && launch extra
+[[ -n ${MONITOR_SPLIT_TOP:-} ]]    && launch split-one
+[[ -n ${MONITOR_SPLIT_BOTTOM:-} ]] && launch split-two
 
-echo "Bars launched..."
+command -v notify-send >/dev/null 2>&1 && notify-send "Polybar" "Bars up (${mode})"
+echo "Bars launched (${mode})"
