@@ -152,13 +152,14 @@ Facts:
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
   [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
 
-- **2.47 vendored SCP-Powerline font** ([#169](https://github.com/amasover/dotfiles/issues/169),
-  PR open from `story/2.47-scp-powerline-pkgbuild`): second custom-pkgs package —
-  14 SourceCodePro OTFs pinned to frozen powerline/fonts `a029626` (`no-watch`);
-  installed live on the laptop (fc-match → `/usr/share/fonts/OTF`, IgnorePkg pinned
-  incl. betterleaks, untracked user copies removed after `~/fonts-local-backup-20260822.tar.gz`).
-  Companion commit on #167's branch swaps its `powerline-fonts` declaration for `ttf-hack`
-  (installed live; extra's powerline-fonts is only PowerlineSymbols.otf).
+- **Bar font restore** (PR [#171](https://github.com/amasover/dotfiles/pull/171) open from
+  `fix/bar-font-restore`): the laptop's historical stack (arrows-only Powerline Extra
+  Symbols 19 / Hack text / FontAwesome icons) restored in `themes/global/base` after the
+  convergence surfaced the guest-validated fonts as a look regression; live-validated
+  against the reference screenshot. After merge, reconcile the laptop:
+  `yadm checkout -- .config/polybar/themes/global/base && yadm pull`. Open follow-up (no
+  story yet): vendor `PowerlineExtraSymbols.otf` 2.47-style so fresh machines get the
+  exact arrows (today they fall back to Hack's smaller built-in powerline glyphs).
 
 ## Standing warnings
 
@@ -166,33 +167,34 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-22, guest)
+## Last session (2026-08-22, laptop)
 
-- **5.5 done** (PR #161 merged): adversarial review's 16 findings fixed, then the
-  reverse-flow live test passed end to end on the guest (relaunch, concurrent lock, theme
-  fallback + persistence, postswitch hook ± override `.env`, `i3-msg reload`). Aaron pushed
-  the laptop-only `polybar-reload` script to main; its i3 `exec` line is commented out (the
-  postswitch hook covers relaunches; in a VM the poller would restart bars on every
-  vm-autofit resize — re-enable on the laptop if needed).
-- **4.11 done** (#162, PR #163 merged): standard Claude Code plugins (mattpocock/skills,
-  i-have-adhd) declared via `setup/claude-plugins` + bootstrap step 8c; verified live.
-- **2.46 built + grilled** (#164, PR #165): vendored betterleaks installed live; `bump`
-  verifies upstream checksums.txt, the watch shows release age with an AUR-window nudge,
-  `update` converges pins + packages silently. First betterleaks dogfood scan dismissed two
-  vm-harness-seed `pass_hash` false positives via `.gitleaksignore`.
-- **Bars-look-wrong diagnosis** (#166, PR #167): the nord palette include has been
-  commented-with-a-stale-path since the original capture, and no fonts were ever declared —
-  latent until 5.5 made `-c` load-bearing. Fixed (include + `[bar/base]` + font decls +
-  `powerline-fonts` into desktop.toml), verified live by screenshot; launch.sh gained
-  TERM→SIGKILL escalation after a wedged bar deadlocked the launch flock.
-- **3.12 wpctl audio built** (#59, PR open): `audio-switch` (pactl ports + wpctl mute)
-  replaces `polybar_alsa_module`/`dot`, `volume-tail` replaces `pulseaudio-tail.sh`,
-  `volume-osd` backs the i3 keys; verified live on the guest (auto_null degradation, keys
-  step volume). Laptop still owes: delete `~/code/go/bin/{dot,volume}`, verify volnoti OSD
-  + real port switching. Aaron installed `powerline-fonts` live — dedupe its
-  `inbox-workstation.toml` capture against desktop.toml once #167 merges.
-- **Guest yadm**: two stashes parked on `story/2.45-syu-upgrade-holds` (launch.sh —
-  droppable; bashrc/bash_profile drift — keep until back on that branch).
+- **PRs #167 (nord themes) + #168 (3.12 wpctl audio) adversarially reviewed vs the live
+  laptop, fixed, and merged.** Review finds fixed on the branches before merge: the themes
+  now carry everything the capture lost (`enable-ipc`, `wm-restack`, cursors, the
+  `global/modules` include), DRY'd into `themes/global/base` `[bar/global]` + `inherit`
+  (include-file merging makes duplicate keys FATAL — proven live); volnoti recorded as
+  dormant everywhere; `volume-tail` rejects unknown flags; listen loop survives transient
+  pactl failures; #168 downgraded to "part of #59" until laptop evidence existed.
+- **2.47 done** (#169, PR #170): `otf-source-code-pro-powerline` vendored (14 OTFs pinned
+  to frozen powerline/fonts `a029626`, `no-watch`) + installed live; IgnorePkg now pins
+  both vendored names. `ttf-hack` replaced #167's wrong `powerline-fonts` declaration
+  (extra's package is only PowerlineSymbols.otf). User font copies removed after backup
+  (`~/fonts-local-backup-20260822.tar.gz`). Brew's font cask was rejected: `:latest`,
+  no checksum, and it fires bare `sudo` (struck faillock once from the agent shell).
+- **Laptop converged to main**: untracked `~/.config/polybar/config.ini` and the global
+  autorandr postswitch archived (`.pre-5.5` / `.pre-3.16` — the 4K split-monitor layout
+  they encoded is preserved in
+  [knowledge/reference/4k-split-monitor-layout.md](../knowledge/reference/4k-split-monitor-layout.md)
+  and on #129); `yadm pull`; bars relaunched on the 5.5 `-c` path (IPC sockets live,
+  `updates-arch` rendering, zero log errors). **3.12/#59 closed** with laptop evidence:
+  real port switch round trip, volume keys stepping wpctl, `~/code/go/bin/{dot,volume}`
+  deleted. The i3 reload's exec_always did not relaunch bars once (launch.sh by hand did;
+  unexplained, watch for recurrence).
+- **4.7 spec refreshed** (CI test surface = clitest + pytest + the old pair; betterleaks):
+  pytest newly installed on the laptop — first local run 110/110.
+- **Guest yadm** (unchanged): two stashes parked on `story/2.45-syu-upgrade-holds`
+  (launch.sh — droppable; bashrc/bash_profile drift — keep until back on that branch).
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 

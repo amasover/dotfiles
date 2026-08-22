@@ -260,13 +260,13 @@ rather than the stale AUR build.
 
 ---
 
-### Story 3.12: Replace 2019 Go audio tools (dot, volume-go) with wpctl
+### Story 3.12: Replace 2019 Go audio tools (dot, volume-go) with wpctl ✅
 
 As the repo owner,
 I want the volume keys and the polybar output switcher talking to PipeWire directly,
 So that the audio stack stops depending on unmaintained 2019 Go binaries that no bootstrap can rebuild.
 
-Issue: [#59](https://github.com/amasover/dotfiles/issues/59)
+Issue: [#59](https://github.com/amasover/dotfiles/issues/59) (closed, PR [#168](https://github.com/amasover/dotfiles/pull/168))
 
 Origin: Story 3.4 follow-ups, sharpened by the 2026-07-03 old-install audit. Live consumers
 of the two 2019 binaries in `~/code/go/bin/`:

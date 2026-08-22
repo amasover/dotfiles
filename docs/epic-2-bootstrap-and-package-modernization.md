@@ -1345,13 +1345,13 @@ reasons).
 
 ---
 
-### Story 2.47: Vendor Source Code Pro for Powerline (second custom-pkgs package)
+### Story 2.47: Vendor Source Code Pro for Powerline (second custom-pkgs package) ✅
 
 As the repo owner,
 I want the polybar themes' powerline-patched text font built from a repo-pinned PKGBUILD,
 So that fresh machines render the bars without depending on an untracked user-font copy.
 
-Issue: [#169](https://github.com/amasover/dotfiles/issues/169)
+Issue: [#169](https://github.com/amasover/dotfiles/issues/169) (closed, PR [#170](https://github.com/amasover/dotfiles/pull/170))
 
 Origin: the 2026-08-22 adversarial review of PR #167 found its `powerline-fonts`
 declaration ships only `PowerlineSymbols.otf` — no patched families. The
