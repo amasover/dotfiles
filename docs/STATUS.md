@@ -19,8 +19,9 @@ Facts:
 - **Trunk branch:** `main` (`master` is retired and deleted; never diff/PR against it).
 - **Tracking source of truth:** [GitHub Projects board](https://github.com/users/amasover/projects/1/views/1)
   (status) + issues (discussion). Epic `.md` files hold specs only; ✅ on a story heading = issue closed.
-- **Secret scanning:** `betterleaks` (gitleaks fallback on the Linux machine) before every
-  commit/PR ([recipe](../knowledge/recipes/secret-scan.md)), always paired with a manual
+- **Secret scanning:** `betterleaks` (gitleaks fallback only where it isn't installed yet;
+  the guest has it via the 2.46 vendored PKGBUILD) before every commit/PR
+  ([recipe](../knowledge/recipes/secret-scan.md)), always paired with a manual
   privacy pass by eye — the scanner misses employer/personal/host details.
 
 ## How to start a session
@@ -166,24 +167,23 @@ Facts:
 
 ## Last session (2026-08-22, guest)
 
-- **PR #161 (5.5) adversarially reviewed and hardened**: multi-agent review, 16 verified
-  findings, all fixed on the branch. Headliners: `-c` becoming load-bearing made
-  `polybar-theme-selector.sh` (wrong config path; incompatible nord config) kill every bar;
-  the postswitch hook silently reverted a chosen theme + gaps on each layout change; i3's
-  `exec_always` raced the hook's launch.sh at login. Fix shape: monitor-roles grew eval-safe
-  output and a `merge-env` subcommand (overrides now merge on top of the heuristic; 21
-  clitest cases), launch.sh got flock + loud failure paths + theme persistence/validation,
-  gaps and theme each have one home, and the screenlayout `exec_always` is retired. The
-  reverse-flow live test then passed end to end (bars up as `auto: Virtual-1`); branch pushed,
-  PR body updated.
-- **Guest yadm state after the test**: home checked out on `story/5.5-polybar-guests`; two
-  stashes parked on `story/2.45-syu-upgrade-holds` (launch.sh — identical to `ad18e61`,
-  droppable; bashrc/bash_profile drift — keep until back on that branch); live
-  `mimeapps.list` carries one untracked line (`x-scheme-handler/claude-cli` handler) —
-  decide fold-into-branch vs leave as drift.
-- Review side effects: 3.19 ✅-marked (missed in the ad18e61 wrap-up); story 3.20 added to
-  epic-3 for the laptop-only `dot` CLI (patrick-motard/dot — the theme picker no longer
-  depends on it).
+- **5.5 done** (PR #161 merged): review fixes + reverse-flow live verification all passed;
+  the laptop-only `polybar-reload` (Aaron pushed it to main) has its i3 `exec` line
+  commented out — the postswitch hook covers relaunches.
+- **4.11 Claude Code plugins** (#162, PR [#163](https://github.com/amasover/dotfiles/pull/163)
+  **still open** — believed merged, isn't): `setup/claude-plugins` + bootstrap step 8c,
+  verified live. Merge it; its STATUS/bootstrap edits will need a trivial conflict
+  resolution against 2.46's.
+- **2.46 started** (#164, this branch): vendored PKGBUILDs — betterleaks (bin-style,
+  checksum-pinned from upstream's checksums.txt) installed live via `tools/custom-pkgs
+  sync`, IgnorePkg pinned (an AUR `betterleaks` exists; never declare the name in metapac
+  groups), upstream watch as `update`'s interactive first step, bootstrap step 6d, drift
+  report vendored-aware. First betterleaks dogfood scan dismissed two vm-harness-seed
+  `pass_hash` false positives via `.gitleaksignore`.
+- **Guest yadm state**: home still on `story/5.5-polybar-guests` (now merged) — switch to
+  `main` + `yadm pull` when convenient; two stashes parked on `story/2.45-syu-upgrade-holds`
+  (launch.sh — droppable; bashrc/bash_profile drift — keep); live `mimeapps.list` carries
+  one untracked `x-scheme-handler/claude-cli` line — fold in or leave as drift.
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 
