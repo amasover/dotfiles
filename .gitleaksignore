@@ -1,0 +1,7 @@
+# 2026-08-22 — archinstall credential-config builder: `pass_hash` is a Python
+# variable reference (function parameter), not a literal secret. Flagged by
+# betterleaks' generic-password rule on first vendored-betterleaks scan
+# (Story 2.46); gitleaks' older ruleset never matched it. (Aaron's agent,
+# verified by reading the code.)
+.local/bin/setup/vm-harness-seed:generic-password:182
+.local/bin/setup/vm-harness-seed:generic-password:183
