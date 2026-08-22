@@ -53,10 +53,6 @@ packages = [
   "parcellite",
   "perl-anyevent-i3",
   "polybar-wireguard-git",
-  # polybar themes declare "Source Code Pro for Powerline" (font-0); today it
-  # only exists as an untracked ~/.local/share/fonts copy — this makes fresh
-  # machines get the family from the repo package (#166)
-  "powerline-fonts",
   "redshift",
   "rofi",
   "scrot",
@@ -64,6 +60,13 @@ packages = [
   "systemd-lock-handler",
   "terminus-font",
   "thunar",
+  # "Hack" is named by i3 config, rofi, dunst, and .spacemacs; until 2026-08-22
+  # it was satisfied only by an untracked ~/.local/share/fonts copy (#166).
+  # NOTE: the polybar themes' "Source Code Pro for Powerline" (font-0) is NOT
+  # declared here — no repo package ships the patched families (extra's
+  # powerline-fonts is only PowerlineSymbols.otf); it comes from the vendored
+  # PKGBUILD otf-source-code-pro-powerline (Story 2.47, tools/custom-pkgs).
+  "ttf-hack",
   "ttf-liberation",
   "ttf-nerd-fonts-symbols",
   "ttf-nerd-fonts-symbols-common",
