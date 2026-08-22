@@ -1,7 +1,8 @@
 # monitor-roles (Story 5.5, #152) — positional polybar role assignment.
 # The assign subcommand is the seam: listactivemonitors text in, roles out.
+# merge-env is the override-file seam: role assignments in, filtered roles out.
 
-$ t=.local/bin/tools/monitor-roles; chmod +x $t 2>/dev/null; true
+$ t=.local/bin/tools/monitor-roles
 $
 
 a bare guest: one monitor, no primary flag — it becomes MAIN:
@@ -20,6 +21,13 @@ $
 an external positioned left of the primary is LEFT:
 
 $ printf 'Monitors: 2\n 0: +*eDP-1 1920/294x1080/165+2560+0  eDP-1\n 1: DP-1 2560/597x1440/336+0+0  DP-1\n' | $t assign
+MONITOR_MAIN=eDP-1
+MONITOR_LEFT=DP-1
+$
+
+a negative x offset (xrandr prints +-N for x<0) still counts as left of MAIN:
+
+$ printf 'Monitors: 2\n 0: +*eDP-1 1920/294x1080/165+0+0  eDP-1\n 1: DP-1 2560/597x1440/336+-2560+0  DP-1\n' | $t assign
 MONITOR_MAIN=eDP-1
 MONITOR_LEFT=DP-1
 $
@@ -56,6 +64,20 @@ $ printf 'Monitors: 4\n 0: +*A 1920/1x1080/1+1920+0  A\n 1: B 1920/1x1080/1+0+0 
 monitor-roles: no role for D (only MAIN/LEFT/EXTRA exist)
 $
 
+output is eval'd, so a name with shell metacharacters is dropped, loudly:
+
+$ printf 'Monitors: 2\n 0: +*eDP-1 1920/294x1080/165+0+0  eDP-1\n 1: bad;name 1920/1x1080/1+1920+0  bad\n' | $t assign 2>/dev/null
+MONITOR_MAIN=eDP-1
+$ printf 'Monitors: 2\n 0: +*eDP-1 1920/294x1080/165+0+0  eDP-1\n 1: bad;name 1920/1x1080/1+1920+0  bad\n' | $t assign 2>&1 >/dev/null
+monitor-roles: dropping monitor with unsafe name: bad;name
+$
+
+a '*' inside a name is not a primary flag (and the name is unsafe anyway):
+
+$ printf 'Monitors: 2\n 0: +DP*w 1920/1x1080/1+0+0  DP*w\n 1: +*eDP-1 1920/1x1080/1+1920+0  eDP-1\n' | $t assign 2>/dev/null
+MONITOR_MAIN=eDP-1
+$
+
 empty input fails loudly:
 
 $ printf '' | $t assign 2>&1; echo "rc=$?"
@@ -63,9 +85,31 @@ monitor-roles: no active monitors parsed
 rc=1
 $
 
+merge-env passes only well-formed MONITOR_* assignments through, keeps
+comments and blanks quiet, and warns about everything else:
+
+$ f=$(mktemp)
+$ printf 'MONITOR_SPLIT_TOP=DP1-2~1\nMONITOR_SPLIT_BOTTOM=DP1-2~2\n# a comment\n\nMONITOR_LEFT=\nPATH=/evil\nMONITOR_MAIN=$(boom)\n' > "$f"
+$ $t merge-env "$f" 2>/dev/null
+MONITOR_SPLIT_TOP=DP1-2~1
+MONITOR_SPLIT_BOTTOM=DP1-2~2
+MONITOR_LEFT=
+$ $t merge-env "$f" 2>&1 >/dev/null
+monitor-roles: merge-env ignoring line: PATH=/evil
+monitor-roles: merge-env ignoring line: MONITOR_MAIN=$(boom)
+$ rm -f "$f"
+$
+
+merge-env on an unreadable file fails loudly:
+
+$ $t merge-env /nonexistent/roles.env 2>&1; echo "rc=$?"
+monitor-roles: cannot read /nonexistent/roles.env
+rc=1
+$
+
 unknown subcommands are rejected:
 
 $ $t bogus 2>&1; echo "rc=$?"
-usage: monitor-roles [assign]
+usage: monitor-roles [assign | merge-env FILE]
 rc=2
 $
