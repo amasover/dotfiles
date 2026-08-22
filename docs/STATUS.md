@@ -145,8 +145,10 @@ Facts:
   positional roles + autorandr postswitch hook + per-profile overrides, verified live
   (Virtual-1). A 2026-08-22 adversarial review of the PR found the `-c` change made the
   theme selector kill all bars, the hook reverted themes/gaps, plus a login race and silent
-  failure paths — all 16 findings fixed on the branch (spec updated in epic-5); the launch
-  relaunch needs live re-verification on the guest before merge. Side finds now tracked:
+  failure paths — all 16 findings fixed, pushed, and **live-verified on the guest 2026-08-22**
+  (reverse-flow: guest home switched to the branch via `yadm checkout`; relaunch, concurrent
+  lock, theme fallback + persistence, postswitch hook ± override `.env`, `i3-msg reload` all
+  pass). Ready to merge at Aaron's call. Side finds now tracked:
   `polybar-reload` dead i3 line (epic-3 cleanup) and new story 3.20 (retire/replace the
   laptop-only `dot` CLI; theme picker rebound off it).
 - **5.4 wrap-up note**: SPICE/libvirt half (pointer calibration is in `vm-autofit` but dormant;
@@ -168,8 +170,14 @@ Facts:
   `exec_always` raced the hook's launch.sh at login. Fix shape: monitor-roles grew eval-safe
   output and a `merge-env` subcommand (overrides now merge on top of the heuristic; 21
   clitest cases), launch.sh got flock + loud failure paths + theme persistence/validation,
-  gaps and theme each have one home, and the screenlayout `exec_always` is retired. Needs a
-  live bar relaunch on the guest to re-verify before merge.
+  gaps and theme each have one home, and the screenlayout `exec_always` is retired. The
+  reverse-flow live test then passed end to end (bars up as `auto: Virtual-1`); branch pushed,
+  PR body updated.
+- **Guest yadm state after the test**: home checked out on `story/5.5-polybar-guests`; two
+  stashes parked on `story/2.45-syu-upgrade-holds` (launch.sh — identical to `ad18e61`,
+  droppable; bashrc/bash_profile drift — keep until back on that branch); live
+  `mimeapps.list` carries one untracked line (`x-scheme-handler/claude-cli` handler) —
+  decide fold-into-branch vs leave as drift.
 - Review side effects: 3.19 ✅-marked (missed in the ad18e61 wrap-up); story 3.20 added to
   epic-3 for the laptop-only `dot` CLI (patrick-motard/dot — the theme picker no longer
   depends on it).
