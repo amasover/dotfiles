@@ -138,7 +138,8 @@ Facts:
   credential fix, dynamic resolution, polybar on guests, unattended host-driven auth.
 - **5.3 guest git credentials** ([#150](https://github.com/amasover/dotfiles/issues/150)):
   done live in the VMware guest 2026-08-22 — device-flow login, verified push, GCM decision
-  on the issue; recipe PR from `story/5.3-guest-git-credentials` pending.
+  on the issue; recipe PR [#155](https://github.com/amasover/dotfiles/pull/155) open
+  (closes #150 on merge). Epic charter PR: [#154](https://github.com/amasover/dotfiles/pull/154).
 
 ## Standing warnings
 
