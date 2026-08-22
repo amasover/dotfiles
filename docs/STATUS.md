@@ -136,16 +136,13 @@ Facts:
   guest-as-daily-driver work — stories 5.1–5.6 ([#148](https://github.com/amasover/dotfiles/issues/148)–[#153](https://github.com/amasover/dotfiles/issues/153),
   all on the board): fresh-machine SSH keys, attended auth bootstrap, current-guest
   credential fix, dynamic resolution, polybar on guests, unattended host-driven auth.
-- **5.4 guest resolution** ([#151](https://github.com/amasover/dotfiles/issues/151), PR open
-  from `story/5.4-guest-resolution`): root cause was nothing-runs — vmtoolsd disabled AND the
-  session agent's xdg-autostart entry ignored by xinit sessions. Live: agent started by hand
-  2026-08-22; still owed from Aaron: `sudo systemctl enable --now vmtoolsd.service` (agent
-  blocked) + attended resize confirmation. Durable: seed enables per-hypervisor services,
-  xinitrc starts the agent behind a systemd-detect-virt guard.
-- **2.42 follow-up**: `tools/metapac-unmanaged-names` merged (#146) as mode 100644 — not
-  executable on fresh checkouts, so the seam 2.42 built fails with permission denied
-  (5 clitest cases fail on `main`). Exec-bit fix PR pending; find noted on
-  [#135](https://github.com/amasover/dotfiles/issues/135).
+- **3.19 default browser** ([#158](https://github.com/amasover/dotfiles/issues/158), PR open
+  from `story/3.19-firefox-default-browser`): tracked `.config/mimeapps.list` + `BROWSER` in
+  `.profile`; verified live in the guest. Side find on the issue: the guest has `chromium`
+  explicitly installed but undeclared — next drift report should flag it.
+- **5.4 wrap-up note**: SPICE/libvirt half (pointer calibration is in `vm-autofit` but dormant;
+  needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
+  [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
 
 ## Standing warnings
 
