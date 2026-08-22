@@ -152,6 +152,14 @@ Facts:
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
   [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
 
+- **2.47 vendored SCP-Powerline font** ([#169](https://github.com/amasover/dotfiles/issues/169),
+  PR open from `story/2.47-scp-powerline-pkgbuild`): second custom-pkgs package —
+  14 SourceCodePro OTFs pinned to frozen powerline/fonts `a029626` (`no-watch`);
+  installed live on the laptop (fc-match → `/usr/share/fonts/OTF`, IgnorePkg pinned
+  incl. betterleaks, untracked user copies removed after `~/fonts-local-backup-20260822.tar.gz`).
+  Companion commit on #167's branch swaps its `powerline-fonts` declaration for `ttf-hack`
+  (installed live; extra's powerline-fonts is only PowerlineSymbols.otf).
+
 ## Standing warnings
 
 - **Chat transcripts are sensitive.** Org package names and the work email have each leaked into a

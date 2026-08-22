@@ -1,0 +1,59 @@
+# Vendored PKGBUILD (Story 2.47) — maintained in this repo, not from the AUR.
+# Upstream: https://github.com/powerline/fonts (OFL-1.1 for Source Code Pro).
+# The polybar themes declare "Source Code Pro for Powerline" (font-0); no repo
+# package ships the powerline-patched families (extra's powerline-fonts is
+# only PowerlineSymbols.otf), so this vendors the 14 SourceCodePro OTFs pinned
+# to a commit with per-file checksums. Never declare this name in a metapac
+# group; tools/custom-pkgs + bootstrap 6d own install and the IgnorePkg pin.
+#
+# Upstream is frozen (last commit 2024-03-22, no releases) — nothing to watch:
+# custom-pkgs: no-watch
+_commit=a029626780dd4af32f15a3e708a5b00528c22f1d
+pkgname=otf-source-code-pro-powerline
+pkgver=20240322
+pkgrel=1
+pkgdesc="Source Code Pro patched for powerline glyphs (pinned from powerline/fonts)"
+arch=('any')
+url="https://github.com/powerline/fonts"
+license=('OFL-1.1')
+source=(
+  "Source-Code-Pro-Black-for-Powerline.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Black%20for%20Powerline.otf"
+  "Source-Code-Pro-Bold-for-Powerline.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Bold%20for%20Powerline.otf"
+  "Source-Code-Pro-ExtraLight-for-Powerline.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20ExtraLight%20for%20Powerline.otf"
+  "Source-Code-Pro-Light-for-Powerline.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Light%20for%20Powerline.otf"
+  "Source-Code-Pro-Medium-for-Powerline.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Medium%20for%20Powerline.otf"
+  "Source-Code-Pro-Powerline-BlackItalic.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Powerline%20BlackItalic.otf"
+  "Source-Code-Pro-Powerline-BoldItalic.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Powerline%20BoldItalic.otf"
+  "Source-Code-Pro-Powerline-ExtraLightItalic.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Powerline%20ExtraLightItalic.otf"
+  "Source-Code-Pro-Powerline-Italic.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Powerline%20Italic.otf"
+  "Source-Code-Pro-Powerline-LightItalic.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Powerline%20LightItalic.otf"
+  "Source-Code-Pro-Powerline-MediumItalic.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Powerline%20MediumItalic.otf"
+  "Source-Code-Pro-Powerline-SemiboldItalic.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Powerline%20SemiboldItalic.otf"
+  "Source-Code-Pro-Semibold-for-Powerline.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20Semibold%20for%20Powerline.otf"
+  "Source-Code-Pro-for-Powerline.otf::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/Source%20Code%20Pro%20for%20Powerline.otf"
+  "$pkgname-LICENSE.txt::https://raw.githubusercontent.com/powerline/fonts/$_commit/SourceCodePro/LICENSE.txt"
+)
+sha256sums=('2298e076fc562cc380a522f45cfd669f9d0bbd9468c7478ad730153762638bfa'
+            '23cf5e123f14a53036ea4e71aa609b8dce51df07eb3498229b668a8fa6a7c677'
+            '9e6a158f1a268e318f90c7aa4f01f1f2d9f368d6c36a3b4314036798fde2ef29'
+            '2c89ddbe320c78ac36d953015e14249b9022f3ac7e2a3f1034bb5fad90b49b44'
+            'adebe13b05307693bdebabe68595bb41ca69a32809f857d71b5407c1673ec01b'
+            '8beadc88a20d0affc4d63e0dfa25cdb43d2f044b1b5d0d38c8f3552d27a5b44f'
+            '4ac3c1eac3bdeb6f112b4ade768a5982c69cbc572a8e759d9ab1abf3e81d21a5'
+            'bc7210ad4faa36328895c90abd4b58b9da3e3d567a0b21701c79040ac1d8f125'
+            '4c538ec9c323dc46adcd3216b28512642e278647b1069695ddd00c3b1fef0dcd'
+            '3b372bfec58417007f2a63e1d8a0a7e45ec7b74225850b7e1337536186f4a3e1'
+            '780293ec53a41c5160cc6c9eefc9ce62907762346ecf77b005f8ab17b91fc009'
+            '17bfd78cd43c0c7531a48dc0d608e40c40445960d5bae99f8ad0e793d76defe2'
+            '3c06c79015b068874c8b2a35bbbcf0b35120104183168871eeaad59358ce5f5e'
+            'f089e2eb25f4c652bd8fe41b3e24170b6dde8a43752749d6d229a6dc1ede408f'
+            '9d97398e252a50bedebf67240d7946e50b092be06a1a1b1ba0d131ddc023010e')
+
+package() {
+    local f
+    for f in "$srcdir"/*.otf; do
+        install -Dm644 "$f" "$pkgdir/usr/share/fonts/OTF/${f##*/}"
+    done
+    install -Dm644 "$srcdir/$pkgname-LICENSE.txt" \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE.txt"
+}
