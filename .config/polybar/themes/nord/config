@@ -1,3 +1,13 @@
+[colors]
+include-file = $HOME/.config/polybar/themes/nord/colors
+
+# every bar inherits these; the section was lost in the pre-themes-dir
+# capture (bars said `inherit = bar/base` but no such section existed —
+# fatal once anything actually parses this config with -c)
+[bar/base]
+background = ${colors.nord0}
+foreground = ${colors.nord4}
+
 [bar/main-top-middle]
 ; require monitor to be connected to load bar
 monitor-strict = true
