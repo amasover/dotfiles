@@ -1,0 +1,18 @@
+{
+  "policies": {
+    "Preferences": {
+      "gfx.webrender.all": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "gfx.x11-egl.force-disabled": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "layers.acceleration.force-enabled": {
+        "Value": true,
+        "Status": "locked"
+      }
+    }
+  }
+}

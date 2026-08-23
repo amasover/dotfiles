@@ -164,6 +164,12 @@ Facts:
   common keys sync-guarded by clitest), bars/colors/modules shared once via
   `themes/nord-arrow/body`, manifest symlinked. Three-way toggle live-validated. Laptop
   home runs the branch; after merge: `yadm checkout main && yadm pull`.
+- **5.7 VMware Firefox acceleration** ([#189](https://github.com/amasover/dotfiles/issues/189),
+  PR [#190](https://github.com/amasover/dotfiles/pull/190) open): live guest now has
+  VMware 3D + Xorg SVGA3D and Firefox hardware WebRender/WebGL through GLX;
+  tracked VMX + guest-only enterprise policy are implemented and focused tests
+  are green. Owed: review/merge.
+
 
 ## Standing warnings
 
@@ -171,7 +177,13 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-23, laptop)
+## Last session (2026-08-23, VMware guest)
+
+- **5.7 built and live-validated** (#189): enabling VMware 3D fixed system GL; Firefox
+  still blocklisted Mesa SVGA under EGL, but the three-pref GLX policy produced hardware
+  WebRender + WebGL 1/2 on SVGA3D. A full 2334×1112 scrolling run held 60 Hz (p99
+  17.44 ms, zero frames over 25 ms). Policy symlink is live under `/etc/firefox/policies`;
+  source/reconciler are reverse-tested in live home pending branch merge.
 
 - **Evening block — theme system built out**: font restore merged (#171); **2.48 done**
   (#172, PR #175 — `otf-powerline-extra-symbols` vendored + installed, the two

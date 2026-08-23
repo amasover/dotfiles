@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# firefox-vmware-policy — install Firefox's VMware-only acceleration policy.
+#
+# Firefox 154 sees Mesa's SVGA driver as software GL and blocklists hardware
+# WebRender. The VMware guest works through GLX when hardware WebRender is
+# forced; Firefox's default EGL path fails to create a WebRender context.
+#
+# Usage:
+#   firefox-vmware-policy reconcile [--check] [--root DIR] [--virt NAME]
+#
+# Production detects virtualization and writes below /. Tests inject a fixture
+# root and virtualization name; fixture roots never invoke sudo.
+set -euo pipefail
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+}
+
+die() {
+    echo "firefox-vmware-policy: FATAL: $*" >&2
+    exit 1
+}
+
+cmd=${1:-}
+[[ $cmd == reconcile ]] || {
+    usage >&2
+    exit 2
+}
+shift
+
+check=0
+root=/
+virt=
+while (($#)); do
+    case $1 in
+        --check)
+            check=1
+            shift
+            ;;
+        --root)
+            (($# >= 2)) || die "--root needs a directory"
+            root=$2
+            shift 2
+            ;;
+        --virt)
+            (($# >= 2)) || die "--virt needs a name"
+            virt=$2
+            shift 2
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *) die "unknown argument: $1" ;;
+    esac
+done
+
+[[ $root == /* ]] || die "--root must be absolute"
+if [[ -z $virt ]]; then
+    virt=$(systemd-detect-virt 2>/dev/null || true)
+    [[ -n $virt ]] || virt=none
+fi
+
+src=${FIREFOX_VMWARE_POLICY_SOURCE:-"$HOME/.config/dotfiles/firefox/policies-vmware.json"}
+dst=${root%/}/etc/firefox/policies/policies.json
+current=$(readlink "$dst" 2>/dev/null || true)
+sudo_cmd=()
+[[ $root == / ]] && sudo_cmd=(sudo)
+
+if [[ $virt == vmware ]]; then
+    [[ -f $src ]] || die "tracked policy missing: $src"
+    if [[ $current == "$src" ]]; then
+        echo "Firefox VMware policy: already installed"
+    elif [[ -e $dst || -L $dst ]]; then
+        die "refusing to overwrite unmanaged policy: $dst"
+    elif ((check)); then
+        echo "Firefox VMware policy: would link $dst -> $src"
+    else
+        "${sudo_cmd[@]}" install -d -m 755 "${dst%/*}"
+        "${sudo_cmd[@]}" ln -s "$src" "$dst"
+        echo "Firefox VMware policy: installed"
+    fi
+elif [[ $current == "$src" ]]; then
+    if ((check)); then
+        echo "Firefox VMware policy: would remove managed link on $virt"
+    else
+        "${sudo_cmd[@]}" rm "$dst"
+        echo "Firefox VMware policy: removed managed link on $virt"
+    fi
+elif [[ -e $dst || -L $dst ]]; then
+    echo "Firefox VMware policy: leaving unmanaged policy on $virt"
+else
+    echo "Firefox VMware policy: not needed on $virt"
+fi

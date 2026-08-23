@@ -1,0 +1,50 @@
+# tools/firefox-vmware-policy — VMware-only Firefox policy reconciliation
+# (Story 5.7, #189). Host-independent: fixture roots never invoke sudo.
+#
+# Run from the repo root: clitest tests/firefox-vmware-policy.clitest.txt
+
+$ t=.local/bin/tools/firefox-vmware-policy; CLITMP=$(mktemp -d); export FIREFOX_VMWARE_POLICY_SOURCE="$CLITMP/policies-vmware.json"; printf '{}\n' > "$FIREFOX_VMWARE_POLICY_SOURCE"; echo ready
+ready
+$
+
+VMware installs the tracked policy and converges idempotently:
+
+$ $t reconcile --root "$CLITMP/vm" --virt vmware
+Firefox VMware policy: installed
+$ readlink "$CLITMP/vm/etc/firefox/policies/policies.json" | sed "s|$CLITMP|<tmp>|"
+<tmp>/policies-vmware.json
+$ $t reconcile --root "$CLITMP/vm" --virt vmware
+Firefox VMware policy: already installed
+$
+
+Check mode reports without mutating:
+
+$ $t reconcile --check --root "$CLITMP/check" --virt vmware | sed "s|$CLITMP|<tmp>|g"
+Firefox VMware policy: would link <tmp>/check/etc/firefox/policies/policies.json -> <tmp>/policies-vmware.json
+$ test ! -e "$CLITMP/check/etc/firefox/policies/policies.json"; echo "rc=$?"
+rc=0
+$
+
+A non-VMware machine removes only this tool's managed link:
+
+$ $t reconcile --check --root "$CLITMP/vm" --virt kvm
+Firefox VMware policy: would remove managed link on kvm
+$ $t reconcile --root "$CLITMP/vm" --virt kvm
+Firefox VMware policy: removed managed link on kvm
+$ test ! -e "$CLITMP/vm/etc/firefox/policies/policies.json"; echo "rc=$?"
+rc=0
+$
+
+Unmanaged policy files are preserved on non-VMware and fatal on VMware:
+
+$ mkdir -p "$CLITMP/unmanaged/etc/firefox/policies"; printf 'mine\n' > "$CLITMP/unmanaged/etc/firefox/policies/policies.json"
+$ $t reconcile --root "$CLITMP/unmanaged" --virt none
+Firefox VMware policy: leaving unmanaged policy on none
+$ $t reconcile --root "$CLITMP/unmanaged" --virt vmware 2>"$CLITMP/err"; echo "rc=$?"; sed -e 's/^firefox-vmware-policy: FATAL: //' -e "s|$CLITMP|<tmp>|g" "$CLITMP/err"
+rc=1
+refusing to overwrite unmanaged policy: <tmp>/unmanaged/etc/firefox/policies/policies.json
+$ cat "$CLITMP/unmanaged/etc/firefox/policies/policies.json"
+mine
+$ rm -rf "$CLITMP"; echo done
+done
+$
