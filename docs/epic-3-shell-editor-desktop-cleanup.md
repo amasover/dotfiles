@@ -618,6 +618,51 @@ and tail placement traded the ordering for static colors (vetoed).
 **Evidence artifact:** guest screenshot (unchanged order, clean blend) + laptop
 screenshot (full chain), the 4-state hw-junctions tests, and the knowledge note.
 
+### Story 3.24: meridian harness — Claude subscription proxy as a user service, omp wired through it
+
+As the repo owner,
+I want meridian running as a tracked systemd user service and oh-my-pi routed through it,
+So that third-party harness experiments use the sanctioned Agent-SDK channel on my
+subscription — never raw OAuth reuse — and the whole setup rebuilds from dotfiles.
+
+Issue: [#181](https://github.com/amasover/dotfiles/issues/181)
+
+Context: policy research 2026-08-23 — direct subscription-OAuth reuse in third-party
+clients (oh-my-pi's `Anthropic oauth` provider) has been ToS-prohibited and enforced
+since early 2026; the Agent-SDK path drawing on the signed-in subscription's limits is
+the supported channel (per the May/June 2026 updates; re-verify before extending, the
+policy flipped four times in six months).
+
+**Acceptance criteria:**
+
+- Given the tracked unit (`.config/systemd/user/meridian.service`), then it pins no interpreter/version paths (`/usr/bin/env meridian`; AUR owns the binary), binds loopback only, and uses the documented placeholder key (a non-loopback bind needs 3.25's real auth)
+- Given omp, then `.omp/agent/models.yml` override-routes the built-in anthropic provider to `http://127.0.0.1:3456` with the Pi adapter header — omp's config-apiKey precedence guarantees no stored OAuth token is forwarded upstream
+- Given a fresh machine, then bootstrap step 8d enables tracked user units (tolerating starts that wait on `claude login`), and both packages install from the `development` group (triaged out of the inbox)
+- Given `~/.omp/agent/`, then only `models.yml` + `config.yml` are tracked — `agent.db` (credentials) and the state DBs stay machine-local, never synced
+
+**Evidence artifact:** `systemctl --user is-active meridian` + a 200 from
+`/v1/models` on the guest; clitest config assertions.
+
+---
+
+### Story 3.25: meridian + Claude on the home server (handoff)
+
+As the repo owner,
+I want meridian and its Claude auth hosted on the home server,
+So that any machine on my network can point a coding harness at one shared endpoint.
+
+Issue: [#182](https://github.com/amasover/dotfiles/issues/182)
+
+Handoff scope (decide in-story): system unit vs lingering user unit; headless server
+auth (`claude login` / omp auth-broker); a real `MERIDIAN_API_KEY` + TLS or a
+tailnet/wireguard-only bind — 3.24's placeholder-key/loopback stance explicitly does
+not transfer off-box; per-client config pattern (models.yml baseUrl per machine);
+usage-limit sharing (every machine drains one subscription); and a fresh ToS posture
+check at build time. Blocked on home-server availability.
+
+**Evidence artifact:** a client machine completing an omp session against the
+server endpoint, and the security decisions recorded.
+
 ---
 
 ## Acceptance Criteria (Epic Level)
