@@ -105,7 +105,8 @@ border-color = ${colors.nord2}
 ; require monitor to be connected to load bar
 monitor-strict = true
 inherit = bar/base
-monitor = ${env:MONITOR_RIGHT}
+# EXTRA is the 5.5 third-monitor role; MONITOR_RIGHT was a pre-5.5 name (3.21)
+monitor = ${env:MONITOR_EXTRA:""}
 modules-right = 
 modules-left = 
 modules-center = i3

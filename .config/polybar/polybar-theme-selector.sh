@@ -7,12 +7,17 @@ themes_dir="$HOME/.config/polybar/themes"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/polybar"
 rofi_theme="${1:-$HOME/.config/rofi/config.rasi}"
 
-# A theme is usable only if its config defines the bars launch.sh launches;
-# launch.sh passes the config via -c, so an incompatible one means no bars.
+# A theme is usable if it carries a bar manifest (themes/<name>/bars,
+# Story 3.21) or its config defines the historical bar/main contract;
+# launch.sh applies the same test, so the picker and launcher agree.
 theme_config() {
     local f
     for f in "$1/config.ini" "$1/config"; do
-        [[ -f $f ]] && grep -q '^\[bar/main\]' "$f" && { printf '%s\n' "$f"; return 0; }
+        [[ -f $f ]] || continue
+        if [[ -f "$1/bars" ]] || grep -q '^\[bar/main\]' "$f"; then
+            printf '%s\n' "$f"
+            return 0
+        fi
     done
     return 1
 }
