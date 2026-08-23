@@ -592,28 +592,31 @@ battery — automatically, with no per-machine config.
 
 Issue: [#179](https://github.com/amasover/dotfiles/issues/179)
 
-Mechanism (chosen after a dead end — see
-[knowledge/errors/polybar-env-in-module-lists.md](../knowledge/errors/polybar-env-in-module-lists.md)):
+Mechanism (v2 — Aaron vetoed reordering; the original mid-chain order stays):
 polybar itself already disables `internal/temperature` when no thermal zone exists and
 `internal/battery` when no BAT* device does — VMware guests expose neither — so the
-probe is free. What was missing: the segments' powerline chevrons were standalone
-`custom/text` modules that survived as orphans, and removing middle segments broke the
-adjacency-paired chevron colors. Fix shape: temperature/battery move to the **tail** of
-bar/main's right chain (battery at the screen edge), each carries its entry chevrons in
-its own `format-*-prefix` (inline color tags), the orphan chevron modules are deleted,
-and the one interior chevron that changed neighbors (`-time`) is re-paired to
-volume-tail's background. Being last, their absence alters no surviving junction — the
-chain just ends at the date.
+probe is free. Each segment's entry chevrons ride its own `format-*-prefix`, dying with
+the module (the standalone chevron `custom/text` modules that survived as orphans are
+deleted). With the order preserved (volume → temp → battery → time), exactly **two**
+junction colors depend on which neighbors exist: battery's entry-chevron background and
+the time-chevron's background. `tools/hw-junctions emit` probes the hardware and writes
+them to `~/.cache/polybar/hw-junctions`; launch.sh regenerates it every launch and the
+nord-arrow body splices it via a dedicated `[hw]` section's single `include-file`
+(sidestepping the duplicate-key fatality), referenced as `${hw.bat-prev}`/
+`${hw.time-prev}`. Temperature always follows volume, so its prefix is static. Two dead
+ends recorded: `${env:}` refs don't substitute inside module lists
+([knowledge/errors/polybar-env-in-module-lists.md](../knowledge/errors/polybar-env-in-module-lists.md)),
+and tail placement traded the ordering for static colors (vetoed).
 
 **Acceptance criteria:**
 
-- Given a machine with no thermal zone and no battery (the VMware guest), when bars launch, then neither segment nor any of its chevrons renders and every remaining junction blends (screenshot evidence)
-- Given a machine with both (the laptop), then temp + battery render at the tail with correct chevron transitions — verify on the laptop's next convergence
-- Given the known caveat, then a battery-without-thermal-zone machine would show one off-color junction (battery's entry chevron pairs with temperature's background) — documented in the body, no such machine exists today
-- Given the design is body-level, then clitest asserts the tail placement, the four format prefixes, and the absence of the orphan chevron modules
+- Given a machine with no thermal zone and no battery (the VMware guest), when bars launch, then neither segment nor any chevron renders, the volume→time junction blends, and the module order is unchanged (screenshot evidence)
+- Given a machine with both (the laptop), then volume → temp → battery → time renders with the original chevron transitions — verify on the laptop's next convergence
+- Given any of the four presence states, then `hw-junctions emit` yields the correct two junction colors (clitest, fixture sysroots)
+- Given the design, then clitest asserts the preserved order, the four format prefixes, the `${hw.*}` references, the `[hw]` include, and the absence of the orphan chevron modules
 
-**Evidence artifact:** guest screenshot (clean shortened chain) + laptop screenshot
-(full chain), and the knowledge note on the discarded `${env:}` approach.
+**Evidence artifact:** guest screenshot (unchanged order, clean blend) + laptop
+screenshot (full chain), the 4-state hw-junctions tests, and the knowledge note.
 
 ---
 

@@ -33,8 +33,10 @@ interpolation; the value is used verbatim. Module lists are split on spaces
   - let hardware modules self-disable (internal/temperature with no thermal
     zone, internal/battery with no BAT*) and attach their powerline chevrons
     via `format-*-prefix` so the chrome dies with the module — chosen for
-    3.23, with the gateable segments placed at the chain's tail so their
-    absence never re-pairs a surviving junction's chevron colors.
+    3.23. The adjacency-dependent junction colors (only two, with the order
+    preserved) come from a launcher-generated file spliced through a
+    dedicated section's single `include-file` (`[hw]` +
+    `~/.cache/polybar/hw-junctions`, `tools/hw-junctions`).
 - Same whole-value rule bites `${colors.x}` inside format strings: inline
   `%{F#...}` tags need literal hex values, not palette references.
 
