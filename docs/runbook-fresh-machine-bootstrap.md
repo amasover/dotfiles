@@ -59,8 +59,8 @@ shows its own plan and prompts (makepkg, metapac sync, chsh). What it does, in o
    (replaces the deleted vendored `install_oh_my_zsh`); then symlinks the tracked
    patched agnoster theme (`~/.config/dotfiles/oh-my-zsh-custom/themes/`) into
    `~/.oh-my-zsh/custom/themes/`, where it shadows the bundled one (Story 2.20).
-10. **Vim plugins** — clones Vundle, then installs every active `Plugin`
-    declaration from `.vimrc`; `--check` reports missing clones without mutation.
+10. **Vim plugins** — installs checksum-pinned vim-plug, then every active
+    `Plug` declaration from `.vimrc`; `--check` verifies pin and clone state.
 11. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
 
 ## Class table

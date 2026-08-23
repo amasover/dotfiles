@@ -1,51 +1,76 @@
-# setup/vim-plugins — manifest parsing and apply/check behavior (Story 2.49).
-# Host-independent: fake git/vim commands mutate only $CLITMP; no network or
-# live ~/.vim state is used.
+# setup/vim-plugins — vim-plug pin, manifest, and apply/update/check behavior
+# (Story 2.49). Host-independent: fake Vim mutates only $CLITMP; vim-plug is
+# downloaded through a local file URL, with no network or live ~/.vim state.
 #
 # Run from the repo root: clitest tests/vim-plugins.clitest.txt
 
-$ VP=.local/bin/setup/vim-plugins; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin"; printf "%s\n" "Plugin 'VundleVim/Vundle.vim'" "Plugin 'owner/foo'" "\"Plugin 'ignored/nope'" "Plugin 'owner/bar', {'rtp': 'vim/'}" > "$CLITMP/vimrc"; echo ready
+$ VP=.local/bin/setup/vim-plugins; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin" "$CLITMP/source"; printf "%s\n" "Plug 'owner/foo'" "\"Plug 'ignored/nope'" "Plug 'owner/bar', {'rtp': 'vim/'}" > "$CLITMP/vimrc"; printf 'pinned vim-plug fixture\n' > "$CLITMP/source/plug.vim"; PSHA=$(sha256sum "$CLITMP/source/plug.vim" | cut -d' ' -f1); RUN() { PATH="$CLITMP/bin:$PATH" FAKE_LOG="$CLITMP/call" VIM_PLUGIN_HOME="$CLITMP/vim" VIM_PLUG_URL="file://$CLITMP/source/plug.vim" VIM_PLUG_SHA256="$PSHA" "$VP" "$@"; }; echo ready
 ready
 $
-# list derives the same install-directory names Vundle uses and ignores comments
-$ $VP list "$CLITMP/vimrc"
-Vundle.vim
+# list derives vim-plug's default directory names and ignores comments
+$ RUN list "$CLITMP/vimrc"
 foo
 bar
 $
-# check reports every missing clone and mutates nothing
-$ VIM_BUNDLE_DIR="$CLITMP/bundle" $VP --check "$CLITMP/vimrc"; echo "rc=$?"
-  would: install Vim plugins: Vundle.vim foo bar
+# check reports the pinned manager and every missing clone; mutates nothing
+$ RUN --check "$CLITMP/vimrc"; echo "rc=$?"
+  would: reconcile Vim plugins: vim-plug foo bar
 rc=1
-$ test ! -e "$CLITMP/bundle"; echo "rc=$?"
+$ test ! -e "$CLITMP/vim"; echo "rc=$?"
 rc=0
 $
-# fake git records the clone and creates Vundle; fake vim records the generated
-# minimal vimrc and creates the two remaining plugin clones
-$ printf '%s\n' '#!/usr/bin/env bash' 'dest=${@: -1}' 'mkdir -p "$dest/.git"' 'printf "%s\n" "$*" > "$FAKE_LOG.git"' > "$CLITMP/bin/git"; printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" > "$FAKE_LOG.vim"' 'while (($#)); do if [[ $1 == -Nu ]]; then cfg=$2; break; fi; shift; done' 'grep "^Plugin " "$cfg" > "$FAKE_LOG.plugins"' 'mkdir -p "$VIM_BUNDLE_DIR/foo/.git" "$VIM_BUNDLE_DIR/bar/.git"' > "$CLITMP/bin/vim"; chmod +x "$CLITMP/bin/git" "$CLITMP/bin/vim"; echo fakes
-fakes
-$ PATH="$CLITMP/bin:$PATH" VIM_BUNDLE_DIR="$CLITMP/bundle" FAKE_LOG="$CLITMP/call" $VP apply "$CLITMP/vimrc" | sed "s|$CLITMP|TMP|g"
-  cloned Vundle into TMP/bundle/Vundle.vim
+# fake Vim records the generated minimal vimrc and creates declared clones for
+# both install and update actions
+$ printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" > "$FAKE_LOG.vim"' 'while (($#)); do if [[ $1 == -Nu ]]; then cfg=$2; break; fi; shift; done' 'grep "^Plug " "$cfg" > "$FAKE_LOG.plugins"' 'case "$*" in *"PlugUpdate --sync"*) echo update > "$FAKE_LOG.action" ;; *) echo install > "$FAKE_LOG.action" ;; esac' 'mkdir -p "$VIM_PLUGGED_DIR/foo/.git" "$VIM_PLUGGED_DIR/bar/.git"' > "$CLITMP/bin/vim"; chmod +x "$CLITMP/bin/vim"; echo fake
+fake
+$ RUN apply "$CLITMP/vimrc" | sed "s|$CLITMP|TMP|g"
+  installed pinned vim-plug (88e31471818e9a29a8a20a0ee61360cfd7bdc1cd)
   installed Vim plugins from TMP/vimrc
-$ sed "s|$CLITMP|TMP|g" "$CLITMP/call.git"
-clone https://github.com/VundleVim/Vundle.vim.git TMP/bundle/Vundle.vim
-$ cat "$CLITMP/call.plugins"
-Plugin 'VundleVim/Vundle.vim'
-Plugin 'owner/foo'
-Plugin 'owner/bar', {'rtp': 'vim/'}
-$
-# converged apply/check are no-ops; removing one clone makes check red again
-$ VIM_BUNDLE_DIR="$CLITMP/bundle" $VP apply "$CLITMP/vimrc" | sed "s|$CLITMP|TMP|g"
-  already installed (3 plugins in TMP/bundle)
-$ VIM_BUNDLE_DIR="$CLITMP/bundle" $VP --check "$CLITMP/vimrc" >/dev/null; echo "rc=$?"
+$ cmp "$CLITMP/source/plug.vim" "$CLITMP/vim/autoload/plug.vim"; echo "rc=$?"
 rc=0
-$ rm -r "$CLITMP/bundle/foo/.git"; VIM_BUNDLE_DIR="$CLITMP/bundle" $VP --check "$CLITMP/vimrc"; echo "rc=$?"
-  would: install Vim plugins: foo
+$ cat "$CLITMP/call.plugins"
+Plug 'owner/foo'
+Plug 'owner/bar', {'rtp': 'vim/'}
+$ grep -o 'PlugInstall --sync' "$CLITMP/call.vim"
+PlugInstall --sync
+$ cat "$CLITMP/call.action"
+install
+$
+# converged apply/check are no-ops; update routes through PlugUpdate --sync
+$ RUN apply "$CLITMP/vimrc" | sed "s|$CLITMP|TMP|g"
+  already installed (vim-plug + 2 plugins in TMP/vim/plugged)
+$ RUN --check "$CLITMP/vimrc" >/dev/null; echo "rc=$?"
+rc=0
+$ RUN update "$CLITMP/vimrc" | sed "s|$CLITMP|TMP|g"
+  updated Vim plugins from TMP/vimrc
+$ grep -o 'PlugUpdate --sync' "$CLITMP/call.vim"
+PlugUpdate --sync
+$ cat "$CLITMP/call.action"
+update
+$
+# manager checksum drift is red, then repaired atomically from the pin
+$ printf tampered > "$CLITMP/vim/autoload/plug.vim"; RUN --check "$CLITMP/vimrc"; echo "rc=$?"
+  would: reconcile Vim plugins: vim-plug
 rc=1
+$ RUN apply "$CLITMP/vimrc" | sed "s|$CLITMP|TMP|g"
+  installed pinned vim-plug (88e31471818e9a29a8a20a0ee61360cfd7bdc1cd)
+  installed Vim plugins from TMP/vimrc
+$ ls -A "$CLITMP/vim/autoload"
+plug.vim
+$
+# missing plugin drift and a bad manager download fail loudly
+$ rm -r "$CLITMP/vim/plugged/foo/.git"; RUN --check "$CLITMP/vimrc"; echo "rc=$?"
+  would: reconcile Vim plugins: foo
+rc=1
+$ BADSHA=0000000000000000000000000000000000000000000000000000000000000000; VIM_PLUGIN_HOME="$CLITMP/bad" VIM_PLUG_URL="file://$CLITMP/source/plug.vim" VIM_PLUG_SHA256="$BADSHA" $VP apply "$CLITMP/vimrc" 2>&1 | sed "s|$CLITMP|TMP|g"; echo "rc=${PIPESTATUS[0]}"
+vim-plugins: vim-plug checksum mismatch for commit 88e31471818e9a29a8a20a0ee61360cfd7bdc1cd
+rc=1
+$ test ! -e "$CLITMP/bad/autoload/plug.vim"; echo "rc=$?"
+rc=0
 $
 # malformed/unknown input fails loudly
 $ printf 'set number\n' > "$CLITMP/empty-vimrc"; out=$($VP list "$CLITMP/empty-vimrc" 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
-vim-plugins: no active Plugin declarations in TMP/empty-vimrc
+vim-plugins: no active Plug declarations in TMP/empty-vimrc
 rc=1
 $ $VP frobnicate "$CLITMP/vimrc" 2>&1; echo "rc=$?"
 vim-plugins: unknown argument: frobnicate   (try: vim-plugins -h)

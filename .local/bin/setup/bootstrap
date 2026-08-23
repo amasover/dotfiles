@@ -1002,7 +1002,7 @@ else
 fi
 
 # --- 8d. Vim plugins (Story 2.49) ----------------------------------------------
-# setup/vim-plugins clones Vundle, then installs every active Plugin declaration
+# setup/vim-plugins pins vim-plug, then installs every active Plug declaration
 # from the tracked vimrc. Its check mode names drift without touching ~/.vim.
 say "Vim plugins"
 if [[ $CHECK -eq 1 ]]; then

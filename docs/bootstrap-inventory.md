@@ -32,7 +32,7 @@ bootstrap rewrite is **Story 2.3** — see [bootstrap architecture notes](./boot
 | --- | --- | --- | --- |
 | `install` | **unsafe + legacy** | Original 2019 full-machine bootstrap. | `pacman -Syu`, `pacman-optimize` (removed from pacman-contrib ~2019), `trizen`/`yay` AUR installs, `rustup`, `pip install --user`, `go get`, `git clone` (Vundle/Spacemacs), `yadm reset --hard origin/master`, `yadm remote set-url`, `xdg-settings`, `systemctl enable/start docker`, `usermod -aG`, **`reboot`**. |
 | `lib.sh` | **legacy** | Shared helper sourced by `install`/`update`. Single function `install_pacman_packages`. | `yay -S` per line of the `arch-packages/pacman` manifest. |
-| `update` | **current** | Daily "update everything" driver (modified 2026-06-23). | `yay -Syu` (system + AUR), `git pull` oh-my-zsh & Spacemacs, `antibody update`, `nvm`/`npm`/`yarn`/`pipx`/`uv` updates, `az extension update`, `tenv` (terraform/atmos), `vim VundleUpdate`. Interactive (Spacemacs prompt); holds sudo open via keepalive loop. |
+| `update` | **current** | Daily "update everything" driver. | `yay -Syu` (system + AUR), `git pull` oh-my-zsh & Spacemacs, `antibody update`, `nvm`/`npm`/`yarn`/`pipx`/`uv` updates, Azure extensions, `tenv`, and `setup/vim-plugins update`. Interactive (Spacemacs prompt); holds sudo open via keepalive loop. |
 
 ### `install` — RETIRED (Story 2.3, 2026-07-03)
 
@@ -88,7 +88,7 @@ fix is the Story 2.3 rewrite, not piecemeal patching. Do not promote as current.
 | `zsh_history_fix` | **current** | Repair a corrupt `~/.zsh_history`. | rewrites history file. |
 | `mute_toggle` | **current** | Toggle mute via `volume` (volume-go). | depends on the `volume` Go binary (installed by old `install` go-get). |
 | `sp` | **current** | Third-party Spotify CLI over dbus (Wander Nauta, MIT). | none destructive; needs Spotify running. |
-| `setup/vim-plugins` | **current** | Install/check the active Vundle declarations in `.vimrc`; bootstrap step 8d owns it. | `git clone` for missing plugins only. |
+| `setup/vim-plugins` | **current** | Pin/check vim-plug and reconcile active `Plug` declarations in `.vimrc`; bootstrap step 8d and the update loop share it. | Downloads the checksum-pinned manager; clones/updates declared plugins. |
 
 ### Current but tied to the i3/polybar/X desktop stack (Epic 3 fate)
 
@@ -215,11 +215,12 @@ plus the broken `.fehbg`.
 - **Rename `pulseaudio-tail.sh`** to reflect PipeWire (cosmetic). → **done**, Story 3.12:
   now `tools/volume-tail`, wpctl end to end (pamixer polling gone).
 - **Old-install audit (2026-07-03):** the retired 2019 `install` placed git-clone
-  artifacts the bootstrap did not recreate. Vim/Vundle moved to **Story 2.49**
-  ([#186](https://github.com/amasover/dotfiles/issues/186)): `setup/vim-plugins`
-  owns the manager and declared plugins; the unused `tools/vendor_repos` and its
-  dead polybar community-module clone are gone. The remaining oh-my-zsh custom
-  plugins (`zsh-autosuggestions`, `zsh-nvm`→nvm) and Spacemacs `~/.emacs.d`
+  artifacts the bootstrap did not recreate. Vim plugin management moved to
+  **Story 2.49** ([#186](https://github.com/amasover/dotfiles/issues/186)):
+  `setup/vim-plugins` owns pinned vim-plug and the declared plugins; the unused
+  `tools/vendor_repos` and its dead polybar community-module clone are gone.
+  The remaining oh-my-zsh custom plugins (`zsh-autosuggestions`,
+  `zsh-nvm`→nvm) and Spacemacs `~/.emacs.d`
   stay with **Story 2.13** ([#60](https://github.com/amasover/dotfiles/issues/60)).
 - **Dead desktop config** (Epic 3 / Story 3.3): termite dropdown binding in i3
   ([config:166](../.config/i3/config#L166)); dead `$mod+p` rofi-lpass binding (off lastpass);

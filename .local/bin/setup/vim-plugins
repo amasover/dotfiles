@@ -1,20 +1,28 @@
 #!/usr/bin/env bash
-# vim-plugins — install the Vundle plugins declared in ~/.vimrc.
+# vim-plugins — reconcile the vim-plug plugins declared in ~/.vimrc.
 #
 # Usage:
-#   vim-plugins apply [vimrc]    install missing plugins (default ~/.vimrc)
-#   vim-plugins --check [vimrc]  report missing plugins without mutation
-#   vim-plugins list [vimrc]     print Vundle's install-directory names
+#   vim-plugins apply [vimrc]    install/repair vim-plug and missing plugins
+#   vim-plugins update [vimrc]   update every declared plugin
+#   vim-plugins --check [vimrc]  report drift without mutation
+#   vim-plugins list [vimrc]     print vim-plug's install-directory names
 #
-# Vundle itself must exist before Vim can read the plugin declarations. Apply
-# clones it first, then loads only the Vundle block from the tracked vimrc; this
-# avoids fresh-machine errors from later config such as `colorscheme nord` while
-# nord has not been installed yet.
+# vim-plug is downloaded from one commit and checksum, not mutable master.
+# Apply/update load only the Plug block from the tracked vimrc; later settings
+# such as `colorscheme nord` therefore cannot break a fresh installation.
 set -euo pipefail
+
+plug_commit=88e31471818e9a29a8a20a0ee61360cfd7bdc1cd
+plug_url=${VIM_PLUG_URL:-"https://raw.githubusercontent.com/junegunn/vim-plug/$plug_commit/plug.vim"}
+plug_sha256=${VIM_PLUG_SHA256:-7e2b20cd909da9c456498684c98f03c63829170f01e34595dd8e1818a217d37c}
 
 die() {
     echo "vim-plugins: $*" >&2
     exit 1
+}
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
 }
 
 plugin_names() {
@@ -23,85 +31,131 @@ plugin_names() {
         spec=${spec%/}
         spec=${spec%.git}
         printf '%s\n' "${spec##*/}"
-    done < <(sed -nE "s/^[[:space:]]*Plugin[[:space:]]+['\"]([^'\"]+)['\"].*/\1/p" "$vimrc")
+    done < <(sed -nE "s/^[[:space:]]*Plug[[:space:]]+['\"]([^'\"]+)['\"].*/\1/p" "$vimrc")
 }
 
 action=${1:-apply}
+case "$action" in
+apply | update | --check | list) ;;
+-h | --help)
+    usage
+    exit 0
+    ;;
+*) die "unknown argument: $action   (try: vim-plugins -h)" ;;
+esac
+
 vimrc=${2:-$HOME/.vimrc}
-bundle_dir=${VIM_BUNDLE_DIR:-$HOME/.vim/bundle}
+vim_dir=${VIM_PLUGIN_HOME:-$HOME/.vim}
+plug_file="$vim_dir/autoload/plug.vim"
+plugged_dir="$vim_dir/plugged"
 [[ -f "$vimrc" ]] || die "vimrc not found: $vimrc"
 
 mapfile -t plugins < <(plugin_names "$vimrc")
-((${#plugins[@]} > 0)) || die "no active Plugin declarations in $vimrc"
+((${#plugins[@]} > 0)) || die "no active Plug declarations in $vimrc"
 
 if [[ "$action" == list ]]; then
     printf '%s\n' "${plugins[@]}"
     exit 0
 fi
 
+command -v sha256sum >/dev/null || die "sha256sum not found"
+
+manager_ok() {
+    [[ -f "$plug_file" ]] \
+        && printf '%s  %s\n' "$plug_sha256" "$plug_file" | sha256sum -c - >/dev/null 2>&1
+}
+
 missing=()
 find_missing() {
     local name
     missing=()
     for name in "${plugins[@]}"; do
-        [[ -e "$bundle_dir/$name/.git" ]] || missing+=("$name")
+        [[ -e "$plugged_dir/$name/.git" ]] || missing+=("$name")
     done
 }
-find_missing
 
-case "$action" in
---check)
-    if ((${#missing[@]} == 0)); then
-        echo "  already installed (${#plugins[@]} plugins in $bundle_dir)"
+drift=()
+find_drift() {
+    find_missing
+    drift=()
+    manager_ok || drift+=(vim-plug)
+    drift+=("${missing[@]}")
+}
+
+find_drift
+if [[ "$action" == --check ]]; then
+    if ((${#drift[@]} == 0)); then
+        echo "  already installed (vim-plug + ${#plugins[@]} plugins in $plugged_dir)"
     else
-        echo "  would: install Vim plugins: ${missing[*]}"
+        echo "  would: reconcile Vim plugins: ${drift[*]}"
         exit 1
     fi
-    ;;
-apply)
-    if ((${#missing[@]} == 0)); then
-        echo "  already installed (${#plugins[@]} plugins in $bundle_dir)"
-        exit 0
-    fi
+    exit 0
+fi
 
-    command -v git >/dev/null || die "git not found"
-    command -v vim >/dev/null || die "vim not found"
+tmp_plug=
+bootstrap_vimrc=
+cleanup() {
+    [[ -z "$tmp_plug" ]] || rm -f "$tmp_plug"
+    [[ -z "$bootstrap_vimrc" ]] || rm -f "$bootstrap_vimrc"
+}
+trap cleanup EXIT
 
-    vundle_dir="$bundle_dir/Vundle.vim"
-    if [[ ! -e "$vundle_dir/.git" ]]; then
-        [[ ! -e "$vundle_dir" ]] || die "$vundle_dir exists but is not a Git clone"
-        mkdir -p "$bundle_dir"
-        git clone https://github.com/VundleVim/Vundle.vim.git "$vundle_dir"
-        echo "  cloned Vundle into $vundle_dir"
-    fi
+ensure_manager() {
+    manager_ok && return
+    command -v curl >/dev/null || die "curl not found"
+    mkdir -p "${plug_file%/*}"
+    tmp_plug=$(mktemp "${plug_file%/*}/.plug.vim.XXXXXX")
+    curl -fsSL "$plug_url" -o "$tmp_plug" \
+        || die "failed to download vim-plug commit $plug_commit"
+    printf '%s  %s\n' "$plug_sha256" "$tmp_plug" | sha256sum -c - >/dev/null 2>&1 \
+        || die "vim-plug checksum mismatch for commit $plug_commit"
+    chmod 0644 "$tmp_plug"
+    mv "$tmp_plug" "$plug_file"
+    tmp_plug=
+    echo "  installed pinned vim-plug ($plug_commit)"
+}
 
+build_bootstrap_vimrc() {
     bootstrap_vimrc=$(mktemp)
-    trap 'rm -f "$bootstrap_vimrc"' EXIT
     {
         cat <<'EOF'
 set nocompatible
-filetype off
-execute 'set runtimepath+=' . fnameescape($VIM_BUNDLE_DIR . '/Vundle.vim')
-call vundle#begin($VIM_BUNDLE_DIR)
+execute 'set runtimepath^=' . fnameescape($VIM_PLUGIN_HOME)
+call plug#begin($VIM_PLUGGED_DIR)
 EOF
-        sed -nE "/^[[:space:]]*Plugin[[:space:]]+['\"]/p" "$vimrc"
+        sed -nE "/^[[:space:]]*Plug[[:space:]]+['\"]/p" "$vimrc"
         cat <<'EOF'
-call vundle#end()
-filetype plugin indent on
+call plug#end()
 EOF
     } >"$bootstrap_vimrc"
+}
 
-    export VIM_BUNDLE_DIR="$bundle_dir"
-    vim -Nu "$bootstrap_vimrc" -i NONE -n -es '+PluginInstall' '+qall'
+run_plug() {
+    local command=$1
+    command -v vim >/dev/null || die "vim not found"
+    build_bootstrap_vimrc
+    export VIM_PLUGIN_HOME="$vim_dir" VIM_PLUGGED_DIR="$plugged_dir"
+    vim -Nu "$bootstrap_vimrc" -i NONE -n -es "+$command --sync" '+qall'
+}
 
-    find_missing
-    ((${#missing[@]} == 0)) || die "Vundle returned without installing: ${missing[*]}"
+case "$action" in
+apply)
+    if ((${#drift[@]} == 0)); then
+        echo "  already installed (vim-plug + ${#plugins[@]} plugins in $plugged_dir)"
+        exit 0
+    fi
+    ensure_manager
+    run_plug PlugInstall
+    find_drift
+    ((${#drift[@]} == 0)) || die "vim-plug returned with unresolved drift: ${drift[*]}"
     echo "  installed Vim plugins from $vimrc"
     ;;
--h | --help)
-    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
-    ;;
-*)
-    die "unknown argument: $action   (try: vim-plugins -h)"
+update)
+    ensure_manager
+    run_plug PlugUpdate
+    find_drift
+    ((${#drift[@]} == 0)) || die "vim-plug returned with unresolved drift: ${drift[*]}"
+    echo "  updated Vim plugins from $vimrc"
     ;;
 esac

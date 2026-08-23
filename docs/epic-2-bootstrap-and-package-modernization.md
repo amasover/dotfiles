@@ -314,7 +314,7 @@ artifacts that are live and load-bearing but installed by nothing:
   the deleted 2019 installer ever created it. Needs a disposition (bootstrap / runbook /
   retire with the Story 3.2 editor call), not silence.
 
-Deliberately out of scope: Vim/Vundle moved to focused Story 2.49
+Deliberately out of scope: Vim plugin management moved to focused Story 2.49
 ([#186](https://github.com/amasover/dotfiles/issues/186)); the 2019 Go audio
 binaries (`dot`, `volume`) were retired by Story 3.12
 ([#59](https://github.com/amasover/dotfiles/issues/59)) instead of teaching the
@@ -1405,39 +1405,41 @@ bars still rendering the big arrows after a relaunch.
 ### Story 2.49: Install declared Vim plugins during bootstrap
 
 As the repo owner,
-I want bootstrap to install the Vundle plugins declared by `.vimrc`,
+I want bootstrap to install pinned vim-plug and the plugins declared by `.vimrc`,
 So that Vim starts with its Nord theme and working plugins on a fresh machine
-instead of requiring an undocumented manual `:PluginInstall`.
+instead of requiring undocumented manager and `:PlugInstall` steps.
 
 Issue: [#186](https://github.com/amasover/dotfiles/issues/186)
 
 Origin: the 2026-08-23 guest parity check found that `.vimrc` is restored but
-`~/.vim/bundle/` is not. This concrete Vim gap is split from Story 2.13, which
-retains the unresolved oh-my-zsh plugin and Spacemacs decisions. The old
-`tools/vendor_repos` was not called by bootstrap and mixed Vundle with a dead
-polybar community-module clone.
+its plugin manager and clones are not. This concrete Vim gap is split from
+Story 2.13, which retains the unresolved oh-my-zsh plugin and Spacemacs
+decisions. The old `tools/vendor_repos` was not called by bootstrap and mixed
+Vundle with a dead polybar community-module clone.
 
-Mechanism: `setup/vim-plugins` treats active Vundle `Plugin` lines in `.vimrc`
-as the single manifest. It derives Vundle's basename install paths for check
-mode, clones Vundle first, then generates a temporary minimal vimrc containing
-only the manager setup and active declarations. This avoids loading later
-settings such as `colorscheme nord` before their plugins exist.
+Mechanism: `setup/vim-plugins` installs vim-plug from one commit and SHA-256,
+then treats active `Plug` lines in `.vimrc` as the single plugin manifest. Its
+minimal generated vimrc can install or update plugins before later settings
+such as `colorscheme nord` load. `setup/update` delegates its Vim step to the
+same helper rather than carrying a second manager command.
 
 **Acceptance criteria:**
 
-- Given a fresh machine with no `~/.vim/bundle`, when bootstrap step 8d runs,
-  then Vundle and all eight active `.vimrc` plugins install
-- Given the installed set, then a repeat apply is a no-op; `--check` exits zero,
-  while a missing clone is named and makes `--check` exit nonzero without mutation
-- Given `.vimrc` changes, then active `Plugin` declarations are picked up without
+- Given a fresh machine with no `~/.vim/autoload/plug.vim` or
+  `~/.vim/plugged`, when bootstrap step 8d runs, then the checksum-pinned
+  vim-plug file and all seven active `.vimrc` plugins install
+- Given the installed set, then a repeat apply is a no-op; `--check` verifies
+  the manager checksum and every clone, naming drift without mutation
+- Given `.vimrc` changes, then active `Plug` declarations are picked up without
   maintaining a second plugin list, and commented examples stay ignored
-- Given the old `tools/vendor_repos`, then it is removed; the dead polybar
-  community-module clone is not recreated
-- Given the update loop, then `VundleUpdate` remains its steady-state updater;
-  bootstrap installs missing plugins but does not advance existing clones
+- Given the old `tools/vendor_repos`, then it is removed; neither its Vundle
+  clone nor the dead polybar community-module clone is recreated
+- Given the update loop, then it calls `setup/vim-plugins update`, which runs
+  synchronous `PlugUpdate` for declared plugins while the manager stays pinned
 
-**Evidence artifact:** host-independent clitest coverage plus an isolated real
-Vundle install of the tracked `.vimrc` set, followed by a green `--check`.
+**Evidence artifact:** host-independent pin/apply/update/check clitest coverage;
+an isolated real vim-plug install, update, and full vimrc load; then the same
+changeover verified on the laptop.
 
 ---
 
