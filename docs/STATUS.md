@@ -203,14 +203,14 @@ Facts:
   the theme/launcher files discarded; my untracked audio-tool copies removed for main's),
   `custom-pkgs` pins + sync installed both vendored font packages, `ttf-hack` installed
   (the only declared-but-missing), bars relaunched on the manifest launcher — zero
-  font/color log errors, screenshot-verified. Open guest triage: `powerline-fonts`
-  (wrong pkg per 2.47) still installed + inbox-captured — uninstall & drop the inbox
-  line, or keep; `.local/share/fonts` (133 files) is still yadm-TRACKED (old "added
-  powerline fonts" commit) — retiring it is a 3.3-style archive-candidate decision now
-  that the vendored packages cover the bar fonts. Two stashes still parked on
-  `story/2.45-syu-upgrade-holds` (launch.sh — droppable; bashrc/bash_profile — keep).
-  Stray `2026-08-22_16_28_39_1920x1080.png` is tracked at the repo/home ROOT — looks
-  like an accidental laptop commit; delete or move under screenshots/.
+  font/color log errors, screenshot-verified. `powerline-fonts`
+  uninstalled at Aaron's call — the 2.15 removal hook auto-dropped its inbox line;
+  guest yadm drift is now ZERO. Still open: `.local/share/fonts` (133 files) is
+  yadm-TRACKED (old "added powerline fonts" commit) — retiring it is a 3.3-style
+  archive-candidate decision now that the vendored packages cover the bar fonts. Two
+  stashes still parked on `story/2.45-syu-upgrade-holds` (launch.sh — droppable;
+  bashrc/bash_profile — keep). The root `2026-08-22_16_28_39_1920x1080.png` is
+  intentional (Aaron): reference image of the system's intended look.
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 
