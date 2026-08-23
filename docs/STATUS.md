@@ -149,9 +149,9 @@ Facts:
   decisions. Never declare vendored names in metapac groups (an AUR `betterleaks` exists;
   IgnorePkg guards the swap).
 - **2.49 Vim plugin bootstrap** ([#186](https://github.com/amasover/dotfiles/issues/186),
-  PR [#188](https://github.com/amasover/dotfiles/pull/188)): checksum-pinned
-  vim-plug + active `.vimrc` `Plug` declarations, shared by bootstrap and update.
-  Laptop changeover is live and Vundle removed; guest evidence remains.
+  PR [#188](https://github.com/amasover/dotfiles/pull/188)): metapac owns vim-plug
+  plus four packaged plugins; the helper owns three fallbacks. Laptop is live
+  and duplicate clones are gone; guest evidence remains.
 - **5.4 wrap-up note**: SPICE/libvirt half (pointer calibration is in `vm-autofit` but dormant;
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
   [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
@@ -239,9 +239,9 @@ Facts:
   bashrc/bash_profile — keep). The root `2026-08-22_16_28_39_1920x1080.png` is
   intentional (Aaron): reference image of the system's intended look.
 - **Guest parity follow-ups submitted**: 3.26 (#185, PR #187 merged) tracks Firefox's
-  portal dark preference and Alacritty Nord config. 2.49 (#186, PR #188) changed
-  Vundle to pinned vim-plug: clitest 372/372; isolated and laptop install/update/load
-  green; Nord + vim-plug + GitGutter loaded; obsolete `~/.vim/bundle` removed.
+  portal dark preference and Alacritty Nord config. 2.49 (#186, PR #188) is now
+  package-first: four AUR plugins installed via yay/pkexec, Nord already packaged,
+  three fallbacks under vim-plug; clitest 367/367 and all seven runtime probes green.
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 
