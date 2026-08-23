@@ -1377,14 +1377,14 @@ individually checksummed OTFs and carries `# custom-pkgs: no-watch`.
 
 ---
 
-### Story 2.48: Vendor PowerlineExtraSymbols.otf (the bar arrow font)
+### Story 2.48: Vendor PowerlineExtraSymbols.otf (the bar arrow font) ✅
 
 As the repo owner,
 I want the arrows-only font that draws the bars' powerline chevrons repo-packaged,
 So that fresh machines render the restored look (PR #171) exactly instead of falling
 back to Hack's smaller built-in glyphs.
 
-Issue: [#172](https://github.com/amasover/dotfiles/issues/172)
+Issue: [#172](https://github.com/amasover/dotfiles/issues/172) (closed, PR [#175](https://github.com/amasover/dotfiles/pull/175))
 
 Origin: the 2026-08-22 font restore — the themes' `font-0` is "Powerline Extra
 Symbols", which exists only as an untracked `~/.fonts` copy on the laptop. Third use

@@ -152,14 +152,14 @@ Facts:
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
   [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
 
-- **Bar font restore** (PR [#171](https://github.com/amasover/dotfiles/pull/171) open from
-  `fix/bar-font-restore`): the laptop's historical stack (arrows-only Powerline Extra
-  Symbols 19 / Hack text / FontAwesome icons) restored in `themes/global/base` after the
-  convergence surfaced the guest-validated fonts as a look regression; live-validated
-  against the reference screenshot. After merge, reconcile the laptop:
-  `yadm checkout -- .config/polybar/themes/global/base && yadm pull`. Open follow-up (no
-  story yet): vendor `PowerlineExtraSymbols.otf` 2.47-style so fresh machines get the
-  exact arrows (today they fall back to Hack's smaller built-in powerline glyphs).
+- **3.22 nord-arrow-slim** ([#174](https://github.com/amasover/dotfiles/issues/174), PR
+  [#177](https://github.com/amasover/dotfiles/pull/177) open from `story/3.22-nord-arrow-slim`):
+  third selectable theme — nord-arrow's bars with the slim SCP arrows. Font stacks are
+  complete `themes/global/base-big`/`base-slim` files (**polybar resolves at most two
+  `inherit` hops** — fixture-proven, so the planned shared-parent section was dropped;
+  common keys sync-guarded by clitest), bars/colors/modules shared once via
+  `themes/nord-arrow/body`, manifest symlinked. Three-way toggle live-validated. Laptop
+  home runs the branch; after merge: `yadm checkout main && yadm pull`.
 
 ## Standing warnings
 
@@ -169,6 +169,12 @@ Facts:
 
 ## Last session (2026-08-22, laptop)
 
+- **Evening block — theme system built out**: font restore merged (#171); **2.48 done**
+  (#172, PR #175 — `otf-powerline-extra-symbols` vendored + installed, the two
+  yadm-tracked `.fonts` blobs it supersedes retired; correction: those blobs were
+  tracked, not untracked); **3.21 done** (#173, PR #176 — `tools/theme-manifest`:
+  per-theme bar lists, role gates, theme-owned `gap-top` via launch.sh, nord revived
+  and toggling live). 3.22 in flight above.
 - **PRs #167 (nord themes) + #168 (3.12 wpctl audio) adversarially reviewed vs the live
   laptop, fixed, and merged.** Review finds fixed on the branches before merge: the themes
   now carry everything the capture lost (`enable-ipc`, `wm-restack`, cursors, the

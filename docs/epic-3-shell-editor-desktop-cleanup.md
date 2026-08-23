@@ -524,13 +524,13 @@ scope.
 
 ---
 
-### Story 3.21: Per-theme bar manifests — revive nord under the 5.5 launcher
+### Story 3.21: Per-theme bar manifests — revive nord under the 5.5 launcher ✅
 
 As the repo owner,
 I want the polybar launcher to learn each theme's own bar list, role gating, and gap needs,
 So that the nord island theme is selectable again and future themes aren't chained to the `bar/main` contract.
 
-Issue: [#173](https://github.com/amasover/dotfiles/issues/173)
+Issue: [#173](https://github.com/amasover/dotfiles/issues/173) (closed, PR [#176](https://github.com/amasover/dotfiles/pull/176))
 
 Origin: 2026-08-22 live preview during the #167/#168 convergence session. `launch.sh`
 and `polybar-theme-selector.sh` hardcode `bar/main`/`bar/main-bottom` (plus role-gated
