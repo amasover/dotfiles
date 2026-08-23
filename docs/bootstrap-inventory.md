@@ -88,7 +88,7 @@ fix is the Story 2.3 rewrite, not piecemeal patching. Do not promote as current.
 | `zsh_history_fix` | **current** | Repair a corrupt `~/.zsh_history`. | rewrites history file. |
 | `mute_toggle` | **current** | Toggle mute via `volume` (volume-go). | depends on the `volume` Go binary (installed by old `install` go-get). |
 | `sp` | **current** | Third-party Spotify CLI over dbus (Wander Nauta, MIT). | none destructive; needs Spotify running. |
-| `vendor_repos` | **current** | Clone vendored repos (polybar-scripts, Vundle). Idempotent (skips if `.git`). | `git clone`. |
+| `setup/vim-plugins` | **current** | Install/check the active Vundle declarations in `.vimrc`; bootstrap step 8d owns it. | `git clone` for missing plugins only. |
 
 ### Current but tied to the i3/polybar/X desktop stack (Epic 3 fate)
 
@@ -214,11 +214,13 @@ plus the broken `.fehbg`.
   `~/code/go/bin/` still need deleting **on the laptop** when it next converges.
 - **Rename `pulseaudio-tail.sh`** to reflect PipeWire (cosmetic). → **done**, Story 3.12:
   now `tools/volume-tail`, wpctl end to end (pamixer polling gone).
-- **Old-install audit (2026-07-03):** the retired 2019 `install` also placed git-clone
-  artifacts nothing reinstalls — oh-my-zsh custom plugins (`zsh-autosuggestions`,
-  `zsh-nvm`→nvm), Vundle (`vendor_repos` clones it but nothing calls vendor_repos; its
-  polybar-scripts entry is dead — not cloned live, referenced by no config), Spacemacs
-  `~/.emacs.d`. → **Story 2.13** ([#60](https://github.com/amasover/dotfiles/issues/60)).
+- **Old-install audit (2026-07-03):** the retired 2019 `install` placed git-clone
+  artifacts the bootstrap did not recreate. Vim/Vundle moved to **Story 2.49**
+  ([#186](https://github.com/amasover/dotfiles/issues/186)): `setup/vim-plugins`
+  owns the manager and declared plugins; the unused `tools/vendor_repos` and its
+  dead polybar community-module clone are gone. The remaining oh-my-zsh custom
+  plugins (`zsh-autosuggestions`, `zsh-nvm`→nvm) and Spacemacs `~/.emacs.d`
+  stay with **Story 2.13** ([#60](https://github.com/amasover/dotfiles/issues/60)).
 - **Dead desktop config** (Epic 3 / Story 3.3): termite dropdown binding in i3
   ([config:166](../.config/i3/config#L166)); dead `$mod+p` rofi-lpass binding (off lastpass);
   stale polybar themes (`*.bak`, non-active themes).

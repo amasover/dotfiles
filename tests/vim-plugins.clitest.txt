@@ -1,0 +1,55 @@
+# setup/vim-plugins — manifest parsing and apply/check behavior (Story 2.49).
+# Host-independent: fake git/vim commands mutate only $CLITMP; no network or
+# live ~/.vim state is used.
+#
+# Run from the repo root: clitest tests/vim-plugins.clitest.txt
+
+$ VP=.local/bin/setup/vim-plugins; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin"; printf "%s\n" "Plugin 'VundleVim/Vundle.vim'" "Plugin 'owner/foo'" "\"Plugin 'ignored/nope'" "Plugin 'owner/bar', {'rtp': 'vim/'}" > "$CLITMP/vimrc"; echo ready
+ready
+$
+# list derives the same install-directory names Vundle uses and ignores comments
+$ $VP list "$CLITMP/vimrc"
+Vundle.vim
+foo
+bar
+$
+# check reports every missing clone and mutates nothing
+$ VIM_BUNDLE_DIR="$CLITMP/bundle" $VP --check "$CLITMP/vimrc"; echo "rc=$?"
+  would: install Vim plugins: Vundle.vim foo bar
+rc=1
+$ test ! -e "$CLITMP/bundle"; echo "rc=$?"
+rc=0
+$
+# fake git records the clone and creates Vundle; fake vim records the generated
+# minimal vimrc and creates the two remaining plugin clones
+$ printf '%s\n' '#!/usr/bin/env bash' 'dest=${@: -1}' 'mkdir -p "$dest/.git"' 'printf "%s\n" "$*" > "$FAKE_LOG.git"' > "$CLITMP/bin/git"; printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" > "$FAKE_LOG.vim"' 'while (($#)); do if [[ $1 == -Nu ]]; then cfg=$2; break; fi; shift; done' 'grep "^Plugin " "$cfg" > "$FAKE_LOG.plugins"' 'mkdir -p "$VIM_BUNDLE_DIR/foo/.git" "$VIM_BUNDLE_DIR/bar/.git"' > "$CLITMP/bin/vim"; chmod +x "$CLITMP/bin/git" "$CLITMP/bin/vim"; echo fakes
+fakes
+$ PATH="$CLITMP/bin:$PATH" VIM_BUNDLE_DIR="$CLITMP/bundle" FAKE_LOG="$CLITMP/call" $VP apply "$CLITMP/vimrc" | sed "s|$CLITMP|TMP|g"
+  cloned Vundle into TMP/bundle/Vundle.vim
+  installed Vim plugins from TMP/vimrc
+$ sed "s|$CLITMP|TMP|g" "$CLITMP/call.git"
+clone https://github.com/VundleVim/Vundle.vim.git TMP/bundle/Vundle.vim
+$ cat "$CLITMP/call.plugins"
+Plugin 'VundleVim/Vundle.vim'
+Plugin 'owner/foo'
+Plugin 'owner/bar', {'rtp': 'vim/'}
+$
+# converged apply/check are no-ops; removing one clone makes check red again
+$ VIM_BUNDLE_DIR="$CLITMP/bundle" $VP apply "$CLITMP/vimrc" | sed "s|$CLITMP|TMP|g"
+  already installed (3 plugins in TMP/bundle)
+$ VIM_BUNDLE_DIR="$CLITMP/bundle" $VP --check "$CLITMP/vimrc" >/dev/null; echo "rc=$?"
+rc=0
+$ rm -r "$CLITMP/bundle/foo/.git"; VIM_BUNDLE_DIR="$CLITMP/bundle" $VP --check "$CLITMP/vimrc"; echo "rc=$?"
+  would: install Vim plugins: foo
+rc=1
+$
+# malformed/unknown input fails loudly
+$ printf 'set number\n' > "$CLITMP/empty-vimrc"; out=$($VP list "$CLITMP/empty-vimrc" 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+vim-plugins: no active Plugin declarations in TMP/empty-vimrc
+rc=1
+$ $VP frobnicate "$CLITMP/vimrc" 2>&1; echo "rc=$?"
+vim-plugins: unknown argument: frobnicate   (try: vim-plugins -h)
+rc=1
+$ rm -r "$CLITMP"; echo done
+done
+$

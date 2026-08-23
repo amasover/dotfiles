@@ -1001,7 +1001,17 @@ else
     "$HOME/.local/bin/setup/claude-plugins" apply
 fi
 
-# --- 8d. user services (Story 3.24) --------------------------------------------
+# --- 8d. Vim plugins (Story 2.49) ----------------------------------------------
+# setup/vim-plugins clones Vundle, then installs every active Plugin declaration
+# from the tracked vimrc. Its check mode names drift without touching ~/.vim.
+say "Vim plugins"
+if [[ $CHECK -eq 1 ]]; then
+    "$HOME/.local/bin/setup/vim-plugins" --check || true
+else
+    "$HOME/.local/bin/setup/vim-plugins" apply
+fi
+
+# --- 8e. user services (Story 3.24) --------------------------------------------
 # systemd user units tracked in yadm (currently meridian.service — the Claude
 # subscription proxy for oh-my-pi). Enable is idempotent; the unit is useless
 # until `claude login` has run, which is a first-session step, so failures to

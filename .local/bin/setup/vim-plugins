@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# vim-plugins — install the Vundle plugins declared in ~/.vimrc.
+#
+# Usage:
+#   vim-plugins apply [vimrc]    install missing plugins (default ~/.vimrc)
+#   vim-plugins --check [vimrc]  report missing plugins without mutation
+#   vim-plugins list [vimrc]     print Vundle's install-directory names
+#
+# Vundle itself must exist before Vim can read the plugin declarations. Apply
+# clones it first, then loads only the Vundle block from the tracked vimrc; this
+# avoids fresh-machine errors from later config such as `colorscheme nord` while
+# nord has not been installed yet.
+set -euo pipefail
+
+die() {
+    echo "vim-plugins: $*" >&2
+    exit 1
+}
+
+plugin_names() {
+    local vimrc=$1 spec
+    while IFS= read -r spec; do
+        spec=${spec%/}
+        spec=${spec%.git}
+        printf '%s\n' "${spec##*/}"
+    done < <(sed -nE "s/^[[:space:]]*Plugin[[:space:]]+['\"]([^'\"]+)['\"].*/\1/p" "$vimrc")
+}
+
+action=${1:-apply}
+vimrc=${2:-$HOME/.vimrc}
+bundle_dir=${VIM_BUNDLE_DIR:-$HOME/.vim/bundle}
+[[ -f "$vimrc" ]] || die "vimrc not found: $vimrc"
+
+mapfile -t plugins < <(plugin_names "$vimrc")
+((${#plugins[@]} > 0)) || die "no active Plugin declarations in $vimrc"
+
+if [[ "$action" == list ]]; then
+    printf '%s\n' "${plugins[@]}"
+    exit 0
+fi
+
+missing=()
+find_missing() {
+    local name
+    missing=()
+    for name in "${plugins[@]}"; do
+        [[ -e "$bundle_dir/$name/.git" ]] || missing+=("$name")
+    done
+}
+find_missing
+
+case "$action" in
+--check)
+    if ((${#missing[@]} == 0)); then
+        echo "  already installed (${#plugins[@]} plugins in $bundle_dir)"
+    else
+        echo "  would: install Vim plugins: ${missing[*]}"
+        exit 1
+    fi
+    ;;
+apply)
+    if ((${#missing[@]} == 0)); then
+        echo "  already installed (${#plugins[@]} plugins in $bundle_dir)"
+        exit 0
+    fi
+
+    command -v git >/dev/null || die "git not found"
+    command -v vim >/dev/null || die "vim not found"
+
+    vundle_dir="$bundle_dir/Vundle.vim"
+    if [[ ! -e "$vundle_dir/.git" ]]; then
+        [[ ! -e "$vundle_dir" ]] || die "$vundle_dir exists but is not a Git clone"
+        mkdir -p "$bundle_dir"
+        git clone https://github.com/VundleVim/Vundle.vim.git "$vundle_dir"
+        echo "  cloned Vundle into $vundle_dir"
+    fi
+
+    bootstrap_vimrc=$(mktemp)
+    trap 'rm -f "$bootstrap_vimrc"' EXIT
+    {
+        cat <<'EOF'
+set nocompatible
+filetype off
+execute 'set runtimepath+=' . fnameescape($VIM_BUNDLE_DIR . '/Vundle.vim')
+call vundle#begin($VIM_BUNDLE_DIR)
+EOF
+        sed -nE "/^[[:space:]]*Plugin[[:space:]]+['\"]/p" "$vimrc"
+        cat <<'EOF'
+call vundle#end()
+filetype plugin indent on
+EOF
+    } >"$bootstrap_vimrc"
+
+    export VIM_BUNDLE_DIR="$bundle_dir"
+    vim -Nu "$bootstrap_vimrc" -i NONE -n -es '+PluginInstall' '+qall'
+
+    find_missing
+    ((${#missing[@]} == 0)) || die "Vundle returned without installing: ${missing[*]}"
+    echo "  installed Vim plugins from $vimrc"
+    ;;
+-h | --help)
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+    ;;
+*)
+    die "unknown argument: $action   (try: vim-plugins -h)"
+    ;;
+esac

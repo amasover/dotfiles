@@ -300,9 +300,7 @@ As the repo owner,
 I want the git-cloned artifacts that `.zshrc` and the editors depend on placed by the bootstrap (or explicitly runbook'd),
 So that a fresh machine boots into a working shell and editors, not just the right package set.
 
-Issue: [#60](https://github.com/amasover/dotfiles/issues/60) · Blocked on Story 2.3
-([#25](https://github.com/amasover/dotfiles/issues/25), PR [#58](https://github.com/amasover/dotfiles/pull/58))
-merging — it owns `setup/bootstrap`; branch off `main` afterwards (no stacked PRs).
+Issue: [#60](https://github.com/amasover/dotfiles/issues/60)
 
 Origin: 2026-07-03 audit of the retired 2019 `install` script against the live machine
 ("what did the old script install that survives and nothing reinstalls?"). metapac covers
@@ -312,23 +310,20 @@ artifacts that are live and load-bearing but installed by nothing:
 - **oh-my-zsh custom plugins** — `~/.oh-my-zsh/custom/plugins/{zsh-autosuggestions,zsh-nvm}`;
   both are in `.zshrc` `plugins=(…)`, and zsh-nvm is what provides nvm/node at all. On a
   fresh machine the bootstrap's oh-my-zsh step leaves plugin-not-found warnings and no nvm.
-- **Vundle** — `~/.vim/bundle/Vundle.vim`, required by `.vimrc`. `tools/vendor_repos`
-  clones it idempotently, but nothing calls vendor_repos. (Its other entry — polybar-scripts
-  community-modules — is dead: not cloned live, referenced by no polybar config.)
 - **Spacemacs** — `~/.emacs.d` is a live clone and `setup/update` still pulls it, but only
   the deleted 2019 installer ever created it. Needs a disposition (bootstrap / runbook /
   retire with the Story 3.2 editor call), not silence.
 
-Deliberately out of scope: the 2019 Go audio binaries (`dot`, `volume`) — Story 3.12
-([#59](https://github.com/amasover/dotfiles/issues/59)) retires them in favor of wpctl
-instead of teaching the bootstrap to rebuild them; the python3.7–3.10-era
-`pip install --user` leftovers stay dead; one-time niceties (default browser via
-`xdg-settings`) are runbook material at most.
+Deliberately out of scope: Vim/Vundle moved to focused Story 2.49
+([#186](https://github.com/amasover/dotfiles/issues/186)); the 2019 Go audio
+binaries (`dot`, `volume`) were retired by Story 3.12
+([#59](https://github.com/amasover/dotfiles/issues/59)) instead of teaching the
+bootstrap to rebuild them; the python3.7–3.10-era `pip install --user`
+leftovers stay dead; one-time niceties are runbook material at most.
 
 **Acceptance criteria:**
 
 - Given a fresh machine after `bootstrap`, when an interactive zsh starts, then both custom plugins are present, no plugin-not-found warnings appear, and nvm resolves
-- Given `vendor_repos` half-overlaps this story, when it lands, then vendored clones have exactly one owner (bootstrap absorbs or calls vendor_repos) and the dead polybar-scripts entry is dropped or justified
 - Given Spacemacs is legacy-era, when this story lands, then `~/.emacs.d` has an explicit disposition with Aaron rather than an implicit gap
 - Given the fresh-machine runbook is the operator contract, when gaps close, then its step list reflects the new coverage and the remaining manual one-times
 - Given Story 2.7's harness exists, when this lands, then a VM run (or at minimum `--check`) demonstrates the added steps
@@ -1404,6 +1399,45 @@ other glyph (see `themes/global/base`).
 
 **Evidence artifact:** live laptop install — `pacman -Q`, `fc-match` → `/usr/share/fonts/OTF/`,
 bars still rendering the big arrows after a relaunch.
+
+---
+
+### Story 2.49: Install declared Vim plugins during bootstrap
+
+As the repo owner,
+I want bootstrap to install the Vundle plugins declared by `.vimrc`,
+So that Vim starts with its Nord theme and working plugins on a fresh machine
+instead of requiring an undocumented manual `:PluginInstall`.
+
+Issue: [#186](https://github.com/amasover/dotfiles/issues/186)
+
+Origin: the 2026-08-23 guest parity check found that `.vimrc` is restored but
+`~/.vim/bundle/` is not. This concrete Vim gap is split from Story 2.13, which
+retains the unresolved oh-my-zsh plugin and Spacemacs decisions. The old
+`tools/vendor_repos` was not called by bootstrap and mixed Vundle with a dead
+polybar community-module clone.
+
+Mechanism: `setup/vim-plugins` treats active Vundle `Plugin` lines in `.vimrc`
+as the single manifest. It derives Vundle's basename install paths for check
+mode, clones Vundle first, then generates a temporary minimal vimrc containing
+only the manager setup and active declarations. This avoids loading later
+settings such as `colorscheme nord` before their plugins exist.
+
+**Acceptance criteria:**
+
+- Given a fresh machine with no `~/.vim/bundle`, when bootstrap step 8d runs,
+  then Vundle and all eight active `.vimrc` plugins install
+- Given the installed set, then a repeat apply is a no-op; `--check` exits zero,
+  while a missing clone is named and makes `--check` exit nonzero without mutation
+- Given `.vimrc` changes, then active `Plugin` declarations are picked up without
+  maintaining a second plugin list, and commented examples stay ignored
+- Given the old `tools/vendor_repos`, then it is removed; the dead polybar
+  community-module clone is not recreated
+- Given the update loop, then `VundleUpdate` remains its steady-state updater;
+  bootstrap installs missing plugins but does not advance existing clones
+
+**Evidence artifact:** host-independent clitest coverage plus an isolated real
+Vundle install of the tracked `.vimrc` set, followed by a green `--check`.
 
 ---
 
