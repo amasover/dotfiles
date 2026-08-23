@@ -141,6 +141,10 @@ Facts:
   merged; the chromium inbox→browsers triage commit missed that merge window and is rescued
   as PR [#160](https://github.com/amasover/dotfiles/pull/160) (chromium was declared via the
   2.9 inbox all along — not drift).
+- **3.26 desktop appearance defaults** ([#185](https://github.com/amasover/dotfiles/issues/185),
+  PR [#187](https://github.com/amasover/dotfiles/pull/187)): tracks the laptop's
+  dconf-backed dark preference in i3 startup and its Nord/Hack Alacritty TOML.
+  Laptop config/syntax checks pass; guest Firefox portal + visual evidence remains.
 - **2.46 vendored PKGBUILDs** ([#164](https://github.com/amasover/dotfiles/issues/164), PR
   [#165](https://github.com/amasover/dotfiles/pull/165) open from `story/2.46-vendored-pkgbuilds`):
   betterleaks built from the repo's own PKGBUILD (bin-style, checksum-pinned) and installed
@@ -216,6 +220,18 @@ Facts:
   override-routed through it (no raw OAuth forwarding by construction), packages
   triaged inbox→development, bootstrap 8d enables user units. Verified: service
   active, /v1/models 200. **3.25** (#182) is the home-server handoff story.
+  Post-merge fix (PR open): omp's "authentication_error" was the AUR package's bundled
+  claude.exe — a strip-gutted bun standalone booting as bare bun; the unit now pins
+  `MERIDIAN_CLAUDE_PATH=/usr/bin/claude` (green end-to-end via curl /v1/messages).
+  Lesson recorded: knowledge/errors/aur-strip-guts-bun-standalones.md (vendored
+  PKGBUILDs shipping bun/deno standalones need `options=(!strip)`). omp's saved
+  model-role pref folded into tracked config.yml. Correction: the 05:19 "guest
+  reconciled" claim was wrong — the yadm ff-merge had silently aborted (untracked
+  config.yml collision; the abort line was tail-truncated), which also left omp without
+  models.yml ("no models"). Re-merged cleanly + recovered; oh-my-pi-bin removed from
+  the tracked inbox (now declared in development); live inbox holds a fresh `bun`
+  capture awaiting Aaron's triage. Footgun pattern recorded:
+  knowledge/errors/yadm-cwd-and-truncation-traps.md.
 - **3.23 done** (#179, PR #180 merged): temp/battery bar segments self-gate in their
   historical order — chevrons in each module's format-prefix, the two adjacency-
   dependent junction colors launcher-generated (`tools/hw-junctions` → `[hw]` include).
@@ -234,6 +250,10 @@ Facts:
   stashes still parked on `story/2.45-syu-upgrade-holds` (launch.sh — droppable;
   bashrc/bash_profile — keep). The root `2026-08-22_16_28_39_1920x1080.png` is
   intentional (Aaron): reference image of the system's intended look.
+- **Guest parity follow-up split into tracked work**: 3.26 (#185, PR #187) covers
+  Firefox's missing portal dark preference and the untracked Alacritty Nord config;
+  2.49 (#186) owns installing the `.vimrc` Vundle set during bootstrap, split out
+  of 2.13's broader shell/editor-artifact story.
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 
