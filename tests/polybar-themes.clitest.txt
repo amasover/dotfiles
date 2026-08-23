@@ -101,21 +101,30 @@ $ grep -c 'yadm-checker\.sh' $TH/nord/config
 0
 $
 
-hardware segments are self-gating (Story 3.23): temperature/battery sit at
-the TAIL of bar/main's right chain — polybar disables each when the hardware
-is absent and, being last, their absence changes no surviving junction — and
-their chevrons ride their own format-prefix so they vanish with the module:
+hardware segments self-gate IN PLACE (Story 3.23): temperature/battery keep
+their historical spot (volume → temp → battery → time), polybar disables
+each where the hardware is absent, their chevrons ride their own
+format-prefix, and the two adjacency-dependent junction colors come from the
+launcher-generated [hw] include (tools/hw-junctions):
 
-$ grep '^modules-right' $TH/nord-arrow/body | grep -c 'calendar temperature battery$'
+$ grep '^modules-right' $TH/nord-arrow/body | grep -c 'volume-tail temperature battery '
 1
 $ grep -c '^format-prefix' $TH/nord-arrow/body
 1
-$ grep -c '^format-warn-prefix\|^format-charging-prefix\|^format-discharging-prefix\|^format-full-prefix' $TH/nord-arrow/body
+$ grep -c '^format-warn-prefix\|^format-charging-prefix \|^format-discharging-prefix \|^format-full-prefix ' $TH/nord-arrow/body
 4
+$ grep -c 'hw\.bat-prev' $TH/nord-arrow/body
+3
+$ grep -c 'hw\.time-prev' $TH/nord-arrow/body
+1
+$ grep -A1 '^\[hw\]' $TH/nord-arrow/body | grep -c 'include-file = \$HOME/.cache/polybar/hw-junctions'
+1
+$ grep -c 'hw-junctions emit' .config/polybar/launch.sh
+1
 $
 
-...and the standalone chevron modules they replaced are gone (an orphan
-would render as a stray arrow when the module is disabled):
+...and the standalone chevron modules the prefixes replaced are gone (an
+orphan would render as a stray arrow when its module is disabled):
 
 $ grep -c 'module/.-temp\|module/.-bat\]' $TH/nord-arrow/body || true
 0

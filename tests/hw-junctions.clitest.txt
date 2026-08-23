@@ -1,0 +1,53 @@
+# tools/hw-junctions — junction colors for self-gating bar segments
+# (Story 3.23, #179). Host-independent: fixture sysroots under $CLITMP.
+#
+# Run from the repo root: clitest tests/hw-junctions.clitest.txt
+
+$ t=.local/bin/tools/hw-junctions; CLITMP=$(mktemp -d); echo ok
+ok
+$ mkdir -p "$CLITMP/both/class/thermal/thermal_zone0" "$CLITMP/both/class/power_supply/BAT0"
+$ mkdir -p "$CLITMP/temponly/class/thermal/thermal_zone0" "$CLITMP/temponly/class/power_supply"
+$ mkdir -p "$CLITMP/batonly/class/thermal" "$CLITMP/batonly/class/power_supply/BAT1"
+$ mkdir -p "$CLITMP/none/class/thermal" "$CLITMP/none/class/power_supply"
+$
+
+laptop (both): battery follows temperature (nord8), time follows battery (nord9):
+
+$ $t emit "$CLITMP/both" | grep -v '^;'
+bat-prev = #88C0D0
+time-prev = #81A1C1
+$
+
+temp without battery: time follows temperature (nord8); bat-prev still
+emitted (harmless — the battery module that would read it is disabled):
+
+$ $t emit "$CLITMP/temponly" | grep -v '^;'
+bat-prev = #88C0D0
+time-prev = #88C0D0
+$
+
+battery without temp: battery follows volume (nord7), time follows battery:
+
+$ $t emit "$CLITMP/batonly" | grep -v '^;'
+bat-prev = #8FBCBB
+time-prev = #81A1C1
+$
+
+VM (neither): both junctions collapse to volume's nord7:
+
+$ $t emit "$CLITMP/none" | grep -v '^;'
+bat-prev = #8FBCBB
+time-prev = #8FBCBB
+$
+
+the generated content is bare keys plus one comment (the including [hw]
+section supplies the header), and junk subcommands fail loudly:
+
+$ $t emit "$CLITMP/none" | head -1 | grep -c '^;'
+1
+$ $t frob 2>&1; echo "rc=$?"
+hw-junctions: unknown subcommand: frob   (try: hw-junctions -h)
+rc=1
+$ rm -r "$CLITMP"; echo done
+done
+$
