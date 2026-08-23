@@ -148,6 +148,10 @@ Facts:
   steady-state applier. Design grilled 2026-08-22 — the epic-2 spec carries the ten
   decisions. Never declare vendored names in metapac groups (an AUR `betterleaks` exists;
   IgnorePkg guards the swap).
+- **2.49 Vim plugin bootstrap** ([#186](https://github.com/amasover/dotfiles/issues/186),
+  PR [#188](https://github.com/amasover/dotfiles/pull/188)): `setup/vim-plugins`
+  installs/checks all active `.vimrc` Vundle declarations; bootstrap step 8d owns
+  it and the unused mixed-purpose `vendor_repos` is gone. Guest evidence remains.
 - **5.4 wrap-up note**: SPICE/libvirt half (pointer calibration is in `vm-autofit` but dormant;
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
   [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
@@ -167,7 +171,7 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-22, laptop)
+## Last session (2026-08-23, laptop)
 
 - **Evening block — theme system built out**: font restore merged (#171); **2.48 done**
   (#172, PR #175 — `otf-powerline-extra-symbols` vendored + installed, the two
@@ -234,6 +238,9 @@ Facts:
   stashes still parked on `story/2.45-syu-upgrade-holds` (launch.sh — droppable;
   bashrc/bash_profile — keep). The root `2026-08-22_16_28_39_1920x1080.png` is
   intentional (Aaron): reference image of the system's intended look.
+- **2.49 Vim plugin bootstrap opened** (#186, PR #188): split the concrete
+  Vim/Vundle gap from 2.13's shell/Spacemacs decisions. Clitest is 362/362;
+  isolated real install and the laptop's eight-plugin check both pass.
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 
