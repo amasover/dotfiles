@@ -32,7 +32,11 @@ module-margin-left = 0
 module-margin-right = 0
 modules-left = i3 -i3
 modules-center =
-modules-right =  filesystem  -volume2 -volume audio-switch volume-tail -temp2 -temp temperature -bat battery -time time -calendar2 -calendar calendar
+# temperature/battery sit at the TAIL and carry their chevrons in their own
+# format-prefix (Story 3.23): polybar disables each when the hardware is
+# absent (no thermal zone / no BAT*), so segment AND chevrons vanish
+# together and — being last — no surviving junction changes color.
+modules-right =  filesystem  -volume2 -volume audio-switch volume-tail -time time -calendar2 -calendar calendar temperature battery
 # -memory2 -memory memory -cpu2 -cpu cpu
 
 
@@ -191,12 +195,6 @@ content-foreground = ${colors.nord8}
 content-background = ${colors.nord10}
 content = ""
 
-[module/-bat]
-type = custom/text
-content-foreground = ${colors.nord9}
-content-background = ${colors.nord8}
-content = ""
-
 [module/-bat2]
 type = custom/text
 content-foreground = ${colors.nord10}
@@ -206,7 +204,8 @@ content = ""
 [module/-time]
 type = custom/text
 content-foreground = ${colors.nord10}
-content-background = ${colors.nord9}
+; follows volume-tail (nord7) since temp/bat moved to the tail (3.23)
+content-background = ${colors.nord7}
 content = ""
 
 [module/-time2]
@@ -219,18 +218,6 @@ content = ""
 type = custom/text
 content-foreground = ${colors.nord10}
 content-background = ${colors.nord2}
-content = ""
-
-[module/-temp]
-type = custom/text
-content-foreground = ${colors.nord8}
-content-background = ${colors.nord4}
-content = ""
-
-[module/-temp2]
-type = custom/text
-content-foreground = ${colors.nord4}
-content-background = ${colors.nord7}
 content = ""
 
 [module/-cpu]
@@ -420,6 +407,11 @@ format-charging    = <animation-charging><label-charging>
 format-discharging = <ramp-capacity><label-discharging>
 format-full        = <ramp-capacity><label-full>
 
+; entry chevron pairs with temperature's nord8 — a machine with a battery
+; but no thermal zone would show one off-color junction (none exist today)
+format-charging-prefix = "%{F#81A1C1 B#88C0D0}%{F- B-}"
+format-discharging-prefix = "%{F#81A1C1 B#88C0D0}%{F- B-}"
+format-full-prefix = "%{F#81A1C1 B#88C0D0}%{F- B-}"
 format-charging-background = ${colors.nord9}
 format-charging-foreground = ${colors.nord0}
 format-charging-padding = 1
@@ -468,6 +460,10 @@ thermal-zone = 0
 warn-temperature = 70
 format-background = ${colors.nord8}
 format-foreground = ${colors.nord0}
+; entry chevrons live here so they disappear WITH the module on machines
+; without a thermal zone; hexes = nord2 (calendar bg) > nord4 band > nord8 (3.23)
+format-prefix = "%{F#D8DEE9 B#434C5E}%{F#88C0D0 B#D8DEE9}%{F- B-}"
+format-warn-prefix = "%{F#D8DEE9 B#434C5E}%{F#88C0D0 B#D8DEE9}%{F- B-}"
 format = <ramp> <label>
 format-warn = <ramp> <label-warn>
 format-warn-background = ${colors.nord8}

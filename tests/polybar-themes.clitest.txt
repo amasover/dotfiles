@@ -99,6 +99,26 @@ $ grep -o '\${colors\.[a-zA-Z0-9_-]*}' $TH/global/modules | sed 's/^..colors\.//
 $ comm -23 "$CLITMP/refs" "$CLITMP/palette"
 $ grep -c 'yadm-checker\.sh' $TH/nord/config
 0
+$
+
+hardware segments are self-gating (Story 3.23): temperature/battery sit at
+the TAIL of bar/main's right chain — polybar disables each when the hardware
+is absent and, being last, their absence changes no surviving junction — and
+their chevrons ride their own format-prefix so they vanish with the module:
+
+$ grep '^modules-right' $TH/nord-arrow/body | grep -c 'calendar temperature battery$'
+1
+$ grep -c '^format-prefix' $TH/nord-arrow/body
+1
+$ grep -c '^format-warn-prefix\|^format-charging-prefix\|^format-discharging-prefix\|^format-full-prefix' $TH/nord-arrow/body
+4
+$
+
+...and the standalone chevron modules they replaced are gone (an orphan
+would render as a stray arrow when the module is disabled):
+
+$ grep -c 'module/.-temp\|module/.-bat\]' $TH/nord-arrow/body || true
+0
 $ rm -r "$CLITMP"; echo done
 done
 $
