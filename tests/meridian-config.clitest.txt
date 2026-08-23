@@ -27,6 +27,13 @@ $ grep -c '^Environment=MERIDIAN_DEFAULT_AGENT=pi$' "$U"
 1
 $
 
+the SDK must spawn the system claude, never the AUR package's bundled
+claude.exe (strip-gutted bun standalone that exits 1 on every spawn):
+
+$ grep -c '^Environment=MERIDIAN_CLAUDE_PATH=/usr/bin/claude$' "$U"
+1
+$
+
 omp's anthropic provider is an override-only entry aimed at meridian — the
 config apiKey guarantees no stored OAuth token is forwarded upstream:
 
