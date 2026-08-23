@@ -199,6 +199,11 @@ Facts:
   unexplained, watch for recurrence).
 - **4.7 spec refreshed** (CI test surface = clitest + pytest + the old pair; betterleaks):
   pytest newly installed on the laptop — first local run 110/110.
+- **3.24 meridian harness** (#181, PR open): meridian (AUR) live as a tracked systemd
+  user unit (no pinned paths, loopback, placeholder key), omp's anthropic provider
+  override-routed through it (no raw OAuth forwarding by construction), packages
+  triaged inbox→development, bootstrap 8d enables user units. Verified: service
+  active, /v1/models 200. **3.25** (#182) is the home-server handoff story.
 - **3.23 done** (#179, PR #180 merged): temp/battery bar segments self-gate in their
   historical order — chevrons in each module's format-prefix, the two adjacency-
   dependent junction colors launcher-generated (`tools/hw-junctions` → `[hw]` include).

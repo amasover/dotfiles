@@ -33,8 +33,13 @@ packages = [
   "graphviz",
   "groovy",
   "mercurial",
+  # meridian + oh-my-pi (Story 3.24): the Claude-subscription proxy (Agent
+  # SDK bridge, systemd user unit meridian.service) and the omp harness it
+  # feeds — config tracked at .omp/agent/models.yml
+  "meridian",
   "mono-msbuild",
   "nodejs-vmd",
+  "oh-my-pi-bin",
   "nuget",
   "podman",
   "podman-compose",

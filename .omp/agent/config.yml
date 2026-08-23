@@ -1,0 +1,6 @@
+symbolPreset: nerd
+composer: 
+  shape: box
+theme: 
+  dark: dark-nord
+setupVersion: 2

@@ -1001,6 +1001,26 @@ else
     "$HOME/.local/bin/setup/claude-plugins" apply
 fi
 
+# --- 8d. user services (Story 3.24) --------------------------------------------
+# systemd user units tracked in yadm (currently meridian.service — the Claude
+# subscription proxy for oh-my-pi). Enable is idempotent; the unit is useless
+# until `claude login` has run, which is a first-session step, so failures to
+# start are tolerated — systemd's Restart=on-failure picks it up post-login.
+say "User services"
+# shellcheck disable=SC2043  # single-element today; the list grows per story
+for unit in meridian.service; do
+    if [[ ! -f "$HOME/.config/systemd/user/$unit" ]]; then
+        echo "  $unit not tracked on this checkout — skipping"
+    elif systemctl --user is-enabled "$unit" >/dev/null 2>&1; then
+        echo "  $unit already enabled"
+    elif [[ $CHECK -eq 1 ]]; then
+        echo "  would: systemctl --user enable --now $unit"
+    else
+        systemctl --user daemon-reload
+        systemctl --user enable --now "$unit" || echo "  $unit enabled but not started (claude login pending?)"
+    fi
+done
+
 # --- 9. login shell ------------------------------------------------------------
 say "Login shell"
 if [[ "${SHELL:-}" == */zsh ]]; then
