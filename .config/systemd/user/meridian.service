@@ -21,6 +21,12 @@ Environment=MERIDIAN_API_KEY=x
 # omp mimics Claude Code's User-Agent, so meridian cannot auto-detect it;
 # default every session to the Pi adapter (omp also sends the header)
 Environment=MERIDIAN_DEFAULT_AGENT=pi
+# Use the system claude (claude-code pkg), NOT meridian's bundled claude.exe:
+# the AUR build's bundled binary is a bun-compiled standalone gutted by
+# makepkg's default strip — it boots as bare bun and every SDK spawn dies
+# with exit 1, surfaced misleadingly as authentication_error (diagnosed
+# 2026-08-23; see knowledge/errors/aur-strip-guts-bun-standalones.md).
+Environment=MERIDIAN_CLAUDE_PATH=/usr/bin/claude
 ExecStart=/usr/bin/env meridian
 Restart=on-failure
 RestartSec=3
