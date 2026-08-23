@@ -46,11 +46,8 @@ set clipboard^=unnamedplus
 """""""""""""""""""""""""""""""""""
 call plug#begin('~/.vim/plugged')
 
-Plug 'vim-airline/vim-airline'
-Plug 'nordtheme/vim'
-Plug 'airblade/vim-gitgutter'
+" Plugins without acceptable Arch/AUR packages.
 Plug 'tpope/vim-repeat'
-Plug 'fatih/vim-go'
 Plug 'hashivim/vim-terraform'
 Plug 'svermeulen/vim-easyclip'
 

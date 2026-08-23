@@ -88,7 +88,7 @@ fix is the Story 2.3 rewrite, not piecemeal patching. Do not promote as current.
 | `zsh_history_fix` | **current** | Repair a corrupt `~/.zsh_history`. | rewrites history file. |
 | `mute_toggle` | **current** | Toggle mute via `volume` (volume-go). | depends on the `volume` Go binary (installed by old `install` go-get). |
 | `sp` | **current** | Third-party Spotify CLI over dbus (Wander Nauta, MIT). | none destructive; needs Spotify running. |
-| `setup/vim-plugins` | **current** | Pin/check vim-plug and reconcile active `Plug` declarations in `.vimrc`; bootstrap step 8d and the update loop share it. | Downloads the checksum-pinned manager; clones/updates declared plugins. |
+| `setup/vim-plugins` | **current** | Check packaged vim-plug and reconcile the three fallback `Plug` declarations; bootstrap step 8d and the update loop share it. | Clones/updates fallback plugins only. |
 
 ### Current but tied to the i3/polybar/X desktop stack (Epic 3 fate)
 
@@ -217,8 +217,8 @@ plus the broken `.fehbg`.
 - **Old-install audit (2026-07-03):** the retired 2019 `install` placed git-clone
   artifacts the bootstrap did not recreate. Vim plugin management moved to
   **Story 2.49** ([#186](https://github.com/amasover/dotfiles/issues/186)):
-  `setup/vim-plugins` owns pinned vim-plug and the declared plugins; the unused
-  `tools/vendor_repos` and its dead polybar community-module clone are gone.
+  metapac owns the packaged manager/plugins and `setup/vim-plugins` owns only
+  fallbacks; the unused `tools/vendor_repos` and dead polybar clone are gone.
   The remaining oh-my-zsh custom plugins (`zsh-autosuggestions`,
   `zsh-nvm`→nvm) and Spacemacs `~/.emacs.d`
   stay with **Story 2.13** ([#60](https://github.com/amasover/dotfiles/issues/60)).

@@ -178,7 +178,7 @@ tenv tf use latest-allowed
 tenv atmos install latest-allowed
 tenv atmos use latest-allowed
 
-echo $'\n\nUpdating all vim-plug packages for Vim...'
+echo $'\n\nUpdating Vim fallback plugins...'
 "$HOME/.local/bin/setup/vim-plugins" update
 
 echo $'\n\n Updating aider...'

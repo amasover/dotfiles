@@ -1,20 +1,16 @@
 #!/usr/bin/env bash
-# vim-plugins — reconcile the vim-plug plugins declared in ~/.vimrc.
+# vim-plugins — reconcile the vim-plug fallback plugins declared in ~/.vimrc.
 #
 # Usage:
-#   vim-plugins apply [vimrc]    install/repair vim-plug and missing plugins
-#   vim-plugins update [vimrc]   update every declared plugin
-#   vim-plugins --check [vimrc]  report drift without mutation
+#   vim-plugins apply [vimrc]    install missing fallback plugins
+#   vim-plugins update [vimrc]   update every fallback plugin
+#   vim-plugins --check [vimrc]  report manager/plugin drift without mutation
 #   vim-plugins list [vimrc]     print vim-plug's install-directory names
 #
-# vim-plug is downloaded from one commit and checksum, not mutable master.
-# Apply/update load only the Plug block from the tracked vimrc; later settings
-# such as `colorscheme nord` therefore cannot break a fresh installation.
+# The `vim-plug` AUR package owns the manager. Most Vim plugins are packages
+# too; only active Plug lines reach this helper. Apply/update load a minimal
+# vimrc, so later settings cannot break first installation.
 set -euo pipefail
-
-plug_commit=88e31471818e9a29a8a20a0ee61360cfd7bdc1cd
-plug_url=${VIM_PLUG_URL:-"https://raw.githubusercontent.com/junegunn/vim-plug/$plug_commit/plug.vim"}
-plug_sha256=${VIM_PLUG_SHA256:-7e2b20cd909da9c456498684c98f03c63829170f01e34595dd8e1818a217d37c}
 
 die() {
     echo "vim-plugins: $*" >&2
@@ -46,7 +42,7 @@ esac
 
 vimrc=${2:-$HOME/.vimrc}
 vim_dir=${VIM_PLUGIN_HOME:-$HOME/.vim}
-plug_file="$vim_dir/autoload/plug.vim"
+manager_file=${VIM_PLUG_RUNTIME:-/usr/share/vim/vimfiles/autoload/plug.vim}
 plugged_dir="$vim_dir/plugged"
 [[ -f "$vimrc" ]] || die "vimrc not found: $vimrc"
 
@@ -58,11 +54,8 @@ if [[ "$action" == list ]]; then
     exit 0
 fi
 
-command -v sha256sum >/dev/null || die "sha256sum not found"
-
-manager_ok() {
-    [[ -f "$plug_file" ]] \
-        && printf '%s  %s\n' "$plug_sha256" "$plug_file" | sha256sum -c - >/dev/null 2>&1
+manager_present() {
+    [[ -f "$manager_file" ]]
 }
 
 missing=()
@@ -78,14 +71,14 @@ drift=()
 find_drift() {
     find_missing
     drift=()
-    manager_ok || drift+=(vim-plug)
+    manager_present || drift+=(vim-plug-package)
     drift+=("${missing[@]}")
 }
 
 find_drift
 if [[ "$action" == --check ]]; then
     if ((${#drift[@]} == 0)); then
-        echo "  already installed (vim-plug + ${#plugins[@]} plugins in $plugged_dir)"
+        echo "  already installed (packaged vim-plug + ${#plugins[@]} fallback plugins)"
     else
         echo "  would: reconcile Vim plugins: ${drift[*]}"
         exit 1
@@ -93,69 +86,30 @@ if [[ "$action" == --check ]]; then
     exit 0
 fi
 
-tmp_plug=
-bootstrap_vimrc=
-cleanup() {
-    [[ -z "$tmp_plug" ]] || rm -f "$tmp_plug"
-    [[ -z "$bootstrap_vimrc" ]] || rm -f "$bootstrap_vimrc"
-}
-trap cleanup EXIT
-
-ensure_manager() {
-    manager_ok && return
-    command -v curl >/dev/null || die "curl not found"
-    mkdir -p "${plug_file%/*}"
-    tmp_plug=$(mktemp "${plug_file%/*}/.plug.vim.XXXXXX")
-    curl -fsSL "$plug_url" -o "$tmp_plug" \
-        || die "failed to download vim-plug commit $plug_commit"
-    printf '%s  %s\n' "$plug_sha256" "$tmp_plug" | sha256sum -c - >/dev/null 2>&1 \
-        || die "vim-plug checksum mismatch for commit $plug_commit"
-    chmod 0644 "$tmp_plug"
-    mv "$tmp_plug" "$plug_file"
-    tmp_plug=
-    echo "  installed pinned vim-plug ($plug_commit)"
-}
-
-build_bootstrap_vimrc() {
-    bootstrap_vimrc=$(mktemp)
-    {
-        cat <<'EOF'
-set nocompatible
-execute 'set runtimepath^=' . fnameescape($VIM_PLUGIN_HOME)
-call plug#begin($VIM_PLUGGED_DIR)
-EOF
-        sed -nE "/^[[:space:]]*Plug[[:space:]]+['\"]/p" "$vimrc"
-        cat <<'EOF'
-call plug#end()
-EOF
-    } >"$bootstrap_vimrc"
-}
+manager_present \
+    || die "vim-plug runtime missing ($manager_file) — install the declared vim-plug package"
 
 run_plug() {
     local command=$1
     command -v vim >/dev/null || die "vim not found"
-    build_bootstrap_vimrc
-    export VIM_PLUGIN_HOME="$vim_dir" VIM_PLUGGED_DIR="$plugged_dir"
-    vim -Nu "$bootstrap_vimrc" -i NONE -n -es "+$command --sync" '+qall'
+    vim -Nu "$vimrc" -i NONE -n -es "+$command --sync" '+qall'
 }
 
 case "$action" in
 apply)
     if ((${#drift[@]} == 0)); then
-        echo "  already installed (vim-plug + ${#plugins[@]} plugins in $plugged_dir)"
+        echo "  already installed (packaged vim-plug + ${#plugins[@]} fallback plugins)"
         exit 0
     fi
-    ensure_manager
     run_plug PlugInstall
     find_drift
     ((${#drift[@]} == 0)) || die "vim-plug returned with unresolved drift: ${drift[*]}"
-    echo "  installed Vim plugins from $vimrc"
+    echo "  installed fallback Vim plugins from $vimrc"
     ;;
 update)
-    ensure_manager
     run_plug PlugUpdate
     find_drift
     ((${#drift[@]} == 0)) || die "vim-plug returned with unresolved drift: ${drift[*]}"
-    echo "  updated Vim plugins from $vimrc"
+    echo "  updated fallback Vim plugins from $vimrc"
     ;;
 esac

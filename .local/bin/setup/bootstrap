@@ -1002,8 +1002,8 @@ else
 fi
 
 # --- 8d. Vim plugins (Story 2.49) ----------------------------------------------
-# setup/vim-plugins pins vim-plug, then installs every active Plug declaration
-# from the tracked vimrc. Its check mode names drift without touching ~/.vim.
+# setup/vim-plugins uses packaged vim-plug to install active fallback Plug
+# declarations. Its check mode names drift without touching ~/.vim.
 say "Vim plugins"
 if [[ $CHECK -eq 1 ]]; then
     "$HOME/.local/bin/setup/vim-plugins" --check || true
