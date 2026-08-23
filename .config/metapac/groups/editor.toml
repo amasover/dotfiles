@@ -12,5 +12,9 @@ packages = [
   "neovim",
   "nord-vim",
   "omnisharp-roslyn-bin",
+  "vim-airline",
+  "vim-gitgutter",
+  "vim-go",
+  "vim-plug",
   "visual-studio-code-bin",
 ]

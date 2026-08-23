@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# vim-plugins — reconcile the vim-plug fallback plugins declared in ~/.vimrc.
+#
+# Usage:
+#   vim-plugins apply [vimrc]    install missing fallback plugins
+#   vim-plugins update [vimrc]   update every fallback plugin
+#   vim-plugins --check [vimrc]  report manager/plugin drift without mutation
+#   vim-plugins list [vimrc]     print vim-plug's install-directory names
+#
+# The `vim-plug` AUR package owns the manager. Most Vim plugins are packages
+# too; only active Plug lines reach this helper. Apply/update load a minimal
+# vimrc, so later settings cannot break first installation.
+set -euo pipefail
+
+die() {
+    echo "vim-plugins: $*" >&2
+    exit 1
+}
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+}
+
+plugin_names() {
+    local vimrc=$1 spec
+    while IFS= read -r spec; do
+        spec=${spec%/}
+        spec=${spec%.git}
+        printf '%s\n' "${spec##*/}"
+    done < <(sed -nE "s/^[[:space:]]*Plug[[:space:]]+['\"]([^'\"]+)['\"].*/\1/p" "$vimrc")
+}
+
+action=${1:-apply}
+case "$action" in
+apply | update | --check | list) ;;
+-h | --help)
+    usage
+    exit 0
+    ;;
+*) die "unknown argument: $action   (try: vim-plugins -h)" ;;
+esac
+
+vimrc=${2:-$HOME/.vimrc}
+vim_dir=${VIM_PLUGIN_HOME:-$HOME/.vim}
+manager_file=${VIM_PLUG_RUNTIME:-/usr/share/vim/vimfiles/autoload/plug.vim}
+plugged_dir="$vim_dir/plugged"
+[[ -f "$vimrc" ]] || die "vimrc not found: $vimrc"
+
+mapfile -t plugins < <(plugin_names "$vimrc")
+((${#plugins[@]} > 0)) || die "no active Plug declarations in $vimrc"
+
+if [[ "$action" == list ]]; then
+    printf '%s\n' "${plugins[@]}"
+    exit 0
+fi
+
+manager_present() {
+    [[ -f "$manager_file" ]]
+}
+
+missing=()
+find_missing() {
+    local name
+    missing=()
+    for name in "${plugins[@]}"; do
+        [[ -e "$plugged_dir/$name/.git" ]] || missing+=("$name")
+    done
+}
+
+drift=()
+find_drift() {
+    find_missing
+    drift=()
+    manager_present || drift+=(vim-plug-package)
+    drift+=("${missing[@]}")
+}
+
+find_drift
+if [[ "$action" == --check ]]; then
+    if ((${#drift[@]} == 0)); then
+        echo "  already installed (packaged vim-plug + ${#plugins[@]} fallback plugins)"
+    else
+        echo "  would: reconcile Vim plugins: ${drift[*]}"
+        exit 1
+    fi
+    exit 0
+fi
+
+manager_present \
+    || die "vim-plug runtime missing ($manager_file) — install the declared vim-plug package"
+
+run_plug() {
+    local command=$1
+    command -v vim >/dev/null || die "vim not found"
+    vim -Nu "$vimrc" -i NONE -n -es "+$command --sync" '+qall'
+}
+
+case "$action" in
+apply)
+    if ((${#drift[@]} == 0)); then
+        echo "  already installed (packaged vim-plug + ${#plugins[@]} fallback plugins)"
+        exit 0
+    fi
+    run_plug PlugInstall
+    find_drift
+    ((${#drift[@]} == 0)) || die "vim-plug returned with unresolved drift: ${drift[*]}"
+    echo "  installed fallback Vim plugins from $vimrc"
+    ;;
+update)
+    run_plug PlugUpdate
+    find_drift
+    ((${#drift[@]} == 0)) || die "vim-plug returned with unresolved drift: ${drift[*]}"
+    echo "  updated fallback Vim plugins from $vimrc"
+    ;;
+esac

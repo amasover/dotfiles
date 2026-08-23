@@ -665,13 +665,13 @@ server endpoint, and the security decisions recorded.
 
 ---
 
-### Story 3.26: Track dark-mode and Alacritty Nord defaults
+### Story 3.26: Track dark-mode and Alacritty Nord defaults ✅
 
 As the repo owner,
 I want the laptop's dark-mode preference and Alacritty theme represented in tracked config,
 So that a fresh i3 session gives Firefox and the terminal the same appearance as the laptop.
 
-Issue: [#185](https://github.com/amasover/dotfiles/issues/185)
+Issue: [#185](https://github.com/amasover/dotfiles/issues/185) (closed, PR [#187](https://github.com/amasover/dotfiles/pull/187))
 
 Origin: a 2026-08-23 guest/laptop comparison found two untracked inputs. The
 laptop's explicit dconf value

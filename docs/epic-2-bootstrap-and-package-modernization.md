@@ -300,9 +300,7 @@ As the repo owner,
 I want the git-cloned artifacts that `.zshrc` and the editors depend on placed by the bootstrap (or explicitly runbook'd),
 So that a fresh machine boots into a working shell and editors, not just the right package set.
 
-Issue: [#60](https://github.com/amasover/dotfiles/issues/60) · Blocked on Story 2.3
-([#25](https://github.com/amasover/dotfiles/issues/25), PR [#58](https://github.com/amasover/dotfiles/pull/58))
-merging — it owns `setup/bootstrap`; branch off `main` afterwards (no stacked PRs).
+Issue: [#60](https://github.com/amasover/dotfiles/issues/60)
 
 Origin: 2026-07-03 audit of the retired 2019 `install` script against the live machine
 ("what did the old script install that survives and nothing reinstalls?"). metapac covers
@@ -312,23 +310,20 @@ artifacts that are live and load-bearing but installed by nothing:
 - **oh-my-zsh custom plugins** — `~/.oh-my-zsh/custom/plugins/{zsh-autosuggestions,zsh-nvm}`;
   both are in `.zshrc` `plugins=(…)`, and zsh-nvm is what provides nvm/node at all. On a
   fresh machine the bootstrap's oh-my-zsh step leaves plugin-not-found warnings and no nvm.
-- **Vundle** — `~/.vim/bundle/Vundle.vim`, required by `.vimrc`. `tools/vendor_repos`
-  clones it idempotently, but nothing calls vendor_repos. (Its other entry — polybar-scripts
-  community-modules — is dead: not cloned live, referenced by no polybar config.)
 - **Spacemacs** — `~/.emacs.d` is a live clone and `setup/update` still pulls it, but only
   the deleted 2019 installer ever created it. Needs a disposition (bootstrap / runbook /
   retire with the Story 3.2 editor call), not silence.
 
-Deliberately out of scope: the 2019 Go audio binaries (`dot`, `volume`) — Story 3.12
-([#59](https://github.com/amasover/dotfiles/issues/59)) retires them in favor of wpctl
-instead of teaching the bootstrap to rebuild them; the python3.7–3.10-era
-`pip install --user` leftovers stay dead; one-time niceties (default browser via
-`xdg-settings`) are runbook material at most.
+Deliberately out of scope: Vim plugin management moved to focused Story 2.49
+([#186](https://github.com/amasover/dotfiles/issues/186)); the 2019 Go audio
+binaries (`dot`, `volume`) were retired by Story 3.12
+([#59](https://github.com/amasover/dotfiles/issues/59)) instead of teaching the
+bootstrap to rebuild them; the python3.7–3.10-era `pip install --user`
+leftovers stay dead; one-time niceties are runbook material at most.
 
 **Acceptance criteria:**
 
 - Given a fresh machine after `bootstrap`, when an interactive zsh starts, then both custom plugins are present, no plugin-not-found warnings appear, and nvm resolves
-- Given `vendor_repos` half-overlaps this story, when it lands, then vendored clones have exactly one owner (bootstrap absorbs or calls vendor_repos) and the dead polybar-scripts entry is dropped or justified
 - Given Spacemacs is legacy-era, when this story lands, then `~/.emacs.d` has an explicit disposition with Aaron rather than an implicit gap
 - Given the fresh-machine runbook is the operator contract, when gaps close, then its step list reflects the new coverage and the remaining manual one-times
 - Given Story 2.7's harness exists, when this lands, then a VM run (or at minimum `--check`) demonstrates the added steps
@@ -1404,6 +1399,59 @@ other glyph (see `themes/global/base`).
 
 **Evidence artifact:** live laptop install — `pacman -Q`, `fc-match` → `/usr/share/fonts/OTF/`,
 bars still rendering the big arrows after a relaunch.
+
+---
+
+### Story 2.49: Install declared Vim plugins during bootstrap
+
+As the repo owner,
+I want Arch packages to own every acceptably packaged Vim plugin and vim-plug
+to handle only the remainder,
+So that a fresh machine gets working Vim without a repo-local package manager.
+
+Issue: [#186](https://github.com/amasover/dotfiles/issues/186)
+
+Origin: the 2026-08-23 guest parity check found that `.vimrc` is restored but
+its manager and plugins are not. This concrete Vim gap is split from Story 2.13,
+which retains the unresolved oh-my-zsh plugin and Spacemacs decisions. The old
+`tools/vendor_repos` was not called by bootstrap and mixed Vundle with a dead
+polybar community-module clone.
+
+Package audit:
+
+- `nord-vim` already comes from Arch; AUR packages own `vim-plug`,
+  `vim-airline`, `vim-gitgutter`, and `vim-go`
+- `vim-terraform` and `vim-easyclip` have no AUR package
+- `vim-repeat` has an AUR recipe, but it downloads over HTTP and verifies only
+  MD5; vim-plug keeps the HTTPS GitHub source instead
+
+Mechanism: metapac installs the five packaged components during the package
+reconcile. `.vimrc` contains `Plug` lines only for the three fallbacks.
+`setup/vim-plugins` requires the packaged manager and runs synchronous
+install/update for those declarations; `setup/update` delegates its fallback
+step to the same helper.
+
+Live audit: `.vimrc` is the only user-authored Vim config. Packaged plugins and
+the manager live under `/usr/share/vim/vimfiles`; fallback clones under
+`~/.vim/plugged/` are generated. `.viminfo` and `.vim/.netrwhist` are mutable
+history, not dotfiles.
+
+**Acceptance criteria:**
+
+- Given the editor group, then `nord-vim`, `vim-plug`, `vim-airline`,
+  `vim-gitgutter`, and `vim-go` are package declarations
+- Given bootstrap step 8d after package reconcile, then the packaged manager
+  installs all three active `.vimrc` fallback plugins
+- Given `--check`, then a missing manager package or fallback clone is named
+  without mutation; a converged apply is a no-op
+- Given the update loop, then yay advances packaged plugins and
+  `setup/vim-plugins update` advances only fallback clones
+- Given the old `tools/vendor_repos`, then it is removed; neither its Vundle
+  clone nor the dead polybar community-module clone is recreated
+
+**Evidence artifact:** reviewed AUR recipes; host-independent
+apply/update/check tests; live `yay --sudo pkexec` package install; full vimrc
+load proving Nord, airline, GitGutter, vim-go, and all three fallbacks.
 
 ---
 
