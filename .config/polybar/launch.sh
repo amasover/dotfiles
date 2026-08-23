@@ -131,7 +131,11 @@ fi
 # explicit config polybar silently falls back to its built-in example bar.
 # 9>&- drops the launch lock in the bars, which outlive this script.
 launch() {
-    if ! grep -q "^\[bar/$1\]" "$polybar_theme"; then
+    # The per-bar grep only guards manifest-less themes: with a manifest the
+    # bar list is authoritative, and entry configs pull their [bar/*]
+    # sections in via include-file (the grep can't see through includes,
+    # #174) — polybar itself fails loudly on a genuinely missing bar.
+    if [[ ! -f "$theme_dir/bars" ]] && ! grep -q "^\[bar/$1\]" "$polybar_theme"; then
         warn "theme has no [bar/$1]; skipping"
         return
     fi

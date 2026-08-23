@@ -1,7 +1,7 @@
 # Shared across themes — under the 5.5 launcher the theme file IS the whole
 # config, so it pulls in the module library (updates-arch etc.) and the
 # bar/global baseline (fonts, ipc, wm-restack, cursors) itself.
-include-file = $HOME/.config/polybar/themes/global/base
+include-file = $HOME/.config/polybar/themes/global/base-big
 include-file = $HOME/.config/polybar/themes/global/modules
 
 [colors]

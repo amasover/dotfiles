@@ -2,7 +2,7 @@
 # Upstream: https://github.com/ryanoasis/powerline-extra-symbols (MIT).
 # The polybar themes' font-0 is "Powerline Extra Symbols" — an arrows-only
 # font, which is exactly what lets it sit FIRST in the font list at size 19
-# without hijacking any other glyph (see themes/global/base). Until this
+# without hijacking any other glyph (see themes/global/base-big). Until this
 # package it existed only as an untracked ~/.fonts copy on the laptop
 # (verified byte-identical to this pin). Never declare this name in a metapac
 # group; tools/custom-pkgs + bootstrap 6d own install and the IgnorePkg pin.

@@ -10,9 +10,10 @@ $ TH=.config/polybar/themes; CLITMP=$(mktemp -d); echo ok
 ok
 $
 
-both themes include the palette by its real (themes/nord) path, uncommented:
+the palette is included by its real (themes/nord) path, uncommented — in
+nord-arrow's shared body and nord's config:
 
-$ grep -c '^include-file = \$HOME/.config/polybar/themes/nord/colors$' $TH/nord-arrow/config.ini
+$ grep -c '^include-file = \$HOME/.config/polybar/themes/nord/colors$' $TH/nord-arrow/body
 1
 $ grep -c '^include-file = \$HOME/.config/polybar/themes/nord/colors$' $TH/nord/config
 1
@@ -24,32 +25,48 @@ $ grep -c '^\[bar/base\]' $TH/nord/config
 1
 $
 
-the shared baseline (fonts, ipc, wm-restack, cursors) is defined ONCE in
-global/base and reaches the bars via `inherit = bar/global` — inherit gives
-per-key overrides, unlike include-file merging where a duplicate key is a
-fatal parse error:
+each font variant is a complete [bar/global] in its own base-* file
+(polybar resolves at most TWO inherit hops, so a shared -common parent
+cannot work — see base-big's header); each theme entry includes exactly
+one base-* file, and bars chain through [bar/base] inherit = bar/global:
 
-$ grep -c '^font-0 = Powerline Extra Symbols:size=19' $TH/global/base
+$ grep -c '^\[bar/global\]$' $TH/global/base-big $TH/global/base-slim
+.config/polybar/themes/global/base-big:1
+.config/polybar/themes/global/base-slim:1
+$ grep -c '^font-0 = Powerline Extra Symbols:size=19' $TH/global/base-big
 1
-$ grep -c '^font-1 = Hack' $TH/global/base
+$ grep -c '^font-1 = Hack' $TH/global/base-big
 1
-$ grep -c '^font-2 = FontAwesome' $TH/global/base
+$ grep -c '^font-0 = Source Code Pro for Powerline' $TH/global/base-slim
 1
-$ grep -c '^enable-ipc = true$' $TH/global/base
-1
-$ grep -c '^wm-restack = i3$' $TH/global/base
-1
-$ grep -c '^inherit = bar/global$' $TH/nord-arrow/config.ini $TH/nord/config
+$ grep -c 'global/base-' $TH/nord-arrow/config.ini $TH/nord-arrow-slim/config.ini $TH/nord/config
 .config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord-arrow-slim/config.ini:1
 .config/polybar/themes/nord/config:1
+$ grep -c '^include-file = \$HOME/.config/polybar/themes/global/base-slim$' $TH/nord-arrow-slim/config.ini
+1
+$ grep -c '^inherit = bar/global$' $TH/nord-arrow/body $TH/nord/config
+.config/polybar/themes/nord-arrow/body:1
+.config/polybar/themes/nord/config:1
+$ grep -c '^include-file = \$HOME/.config/polybar/themes/nord-arrow/body$' $TH/nord-arrow/config.ini $TH/nord-arrow-slim/config.ini
+.config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord-arrow-slim/config.ini:1
+$
+
+the duplicated common keys stay byte-identical between the two base files:
+
+$ grep -E '^(enable-ipc|wm-restack|cursor-)' $TH/global/base-big > "$CLITMP/cb"
+$ grep -E '^(enable-ipc|wm-restack|cursor-)' $TH/global/base-slim > "$CLITMP/cs"
+$ cmp -s "$CLITMP/cb" "$CLITMP/cs" && echo common-in-sync
+common-in-sync
 $
 
 every ${colors.X} reference on a live (uncommented) line resolves to a
 palette key or an inline [colors] key — nord-arrow:
 
 $ sed -n 's/^\([a-zA-Z0-9-]*\)[ =].*/\1/p' $TH/nord/colors | sort -u > "$CLITMP/palette"
-$ { cat "$CLITMP/palette"; sed -n '/^\[colors\]/,/^\[bar/{s/^\([a-zA-Z0-9-]*\)[[:space:]]*=.*/\1/p;}' $TH/nord-arrow/config.ini; } | sort -u > "$CLITMP/defined"
-$ grep -v '^[[:space:]]*[;#]' $TH/nord-arrow/config.ini | grep -o '\${colors\.[a-zA-Z0-9_-]*}' | sed 's/^..colors\.//; s/}$//' | sort -u > "$CLITMP/refs"
+$ { cat "$CLITMP/palette"; sed -n '/^\[colors\]/,/^\[bar/{s/^\([a-zA-Z0-9-]*\)[[:space:]]*=.*/\1/p;}' $TH/nord-arrow/body; } | sort -u > "$CLITMP/defined"
+$ grep -v '^[[:space:]]*[;#]' $TH/nord-arrow/body | grep -o '\${colors\.[a-zA-Z0-9_-]*}' | sed 's/^..colors\.//; s/}$//' | sort -u > "$CLITMP/refs"
 $ comm -23 "$CLITMP/refs" "$CLITMP/defined"
 $
 
@@ -67,13 +84,11 @@ $ comm -23 "$CLITMP/refs" "$CLITMP/palette"
 $
 
 under -c the theme file is the whole config, so each theme must pull in the
-shared base and module library itself (updates-arch lives in the latter):
+shared module library itself (updates-arch lives there):
 
-$ grep -c '^include-file = \$HOME/.config/polybar/themes/global/base$' $TH/nord-arrow/config.ini $TH/nord/config
+$ grep -c '^include-file = \$HOME/.config/polybar/themes/global/modules$' $TH/nord-arrow/config.ini $TH/nord-arrow-slim/config.ini $TH/nord/config
 .config/polybar/themes/nord-arrow/config.ini:1
-.config/polybar/themes/nord/config:1
-$ grep -c '^include-file = \$HOME/.config/polybar/themes/global/modules$' $TH/nord-arrow/config.ini $TH/nord/config
-.config/polybar/themes/nord-arrow/config.ini:1
+.config/polybar/themes/nord-arrow-slim/config.ini:1
 .config/polybar/themes/nord/config:1
 $
 

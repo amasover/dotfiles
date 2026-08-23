@@ -571,7 +571,7 @@ per-key override semantics), not by re-including overlapping sections.
 
 **Acceptance criteria:**
 
-- Given `themes/global/base`, when the variant lands, then the shared keys live once in `[bar/global-common]` and each font stack once in `[bar/global-big]` / `[bar/global-slim]` (both inheriting common); each theme entry config picks its stack with a two-line `[bar/global] inherit = ...`
+- Given the font variants, when the variant lands, then each is a complete `[bar/global]` in its own `themes/global/base-*` file and every theme entry includes exactly one. (AC amended during implementation: the planned shared `[bar/global-common]` parent cannot work — polybar resolves at most TWO `inherit` hops from a bar section, verified by `--dump` with a minimal fixture; the few duplicated common keys are guarded byte-identical by a clitest case instead.)
 - Given nord-arrow's bars/colors/modules, when the variant lands, then they exist once (shared body include) — the variant entry config adds no duplicated bar definitions
 - Given the selector, when it lists themes, then `nord-arrow-slim` appears and toggling between it and nord-arrow visibly switches only the fonts/arrows
 - Given the inherit chain depth this introduces, then it is verified with `polybar --dump` through the full chain before landing
