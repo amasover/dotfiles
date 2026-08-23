@@ -141,6 +141,10 @@ Facts:
   merged; the chromium inbox→browsers triage commit missed that merge window and is rescued
   as PR [#160](https://github.com/amasover/dotfiles/pull/160) (chromium was declared via the
   2.9 inbox all along — not drift).
+- **3.26 desktop appearance defaults** ([#185](https://github.com/amasover/dotfiles/issues/185),
+  PR [#187](https://github.com/amasover/dotfiles/pull/187)): tracks the laptop's
+  dconf-backed dark preference in i3 startup and its Nord/Hack Alacritty TOML.
+  Laptop config/syntax checks pass; guest Firefox portal + visual evidence remains.
 - **2.46 vendored PKGBUILDs** ([#164](https://github.com/amasover/dotfiles/issues/164), PR
   [#165](https://github.com/amasover/dotfiles/pull/165) open from `story/2.46-vendored-pkgbuilds`):
   betterleaks built from the repo's own PKGBUILD (bin-style, checksum-pinned) and installed
@@ -167,7 +171,7 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-22, laptop)
+## Last session (2026-08-23, laptop)
 
 - **Evening block — theme system built out**: font restore merged (#171); **2.48 done**
   (#172, PR #175 — `otf-powerline-extra-symbols` vendored + installed, the two
@@ -234,6 +238,10 @@ Facts:
   stashes still parked on `story/2.45-syu-upgrade-holds` (launch.sh — droppable;
   bashrc/bash_profile — keep). The root `2026-08-22_16_28_39_1920x1080.png` is
   intentional (Aaron): reference image of the system's intended look.
+- **Guest parity follow-up split into tracked work**: 3.26 (#185, PR #187) covers
+  Firefox's missing portal dark preference and the untracked Alacritty Nord config;
+  2.49 (#186) owns installing the `.vimrc` Vundle set during bootstrap, split out
+  of 2.13's broader shell/editor-artifact story.
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 
