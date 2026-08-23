@@ -554,7 +554,7 @@ with the gap following the theme.
 
 ---
 
-### Story 3.22: nord-arrow-slim — SCP-arrow variant of nord-arrow, DRY
+### Story 3.22: nord-arrow-slim — SCP-arrow variant of nord-arrow, DRY ✅
 
 As the repo owner,
 I want a third selectable theme that is nord-arrow with the slim Source Code Pro
@@ -562,7 +562,7 @@ for Powerline arrows (the post-#167 look),
 So that I can toggle between the big-arrow and slim-arrow renderings instead of
 choosing one forever.
 
-Issue: [#174](https://github.com/amasover/dotfiles/issues/174)
+Issue: [#174](https://github.com/amasover/dotfiles/issues/174) (closed, PR #177)
 
 Origin: the 2026-08-22 font-restore decision (PR #171) — both looks turned out to be
 wanted. Constraint from the same session: polybar's include-file merging makes any
@@ -579,6 +579,41 @@ per-key override semantics), not by re-including overlapping sections.
 
 **Evidence artifact:** selector screenshot with three themes + before/after bar
 screenshots of the two nord-arrow variants.
+
+---
+
+### Story 3.23: hardware segments self-gate — temp/battery vanish where the hardware doesn't exist
+
+As the repo owner,
+I want the cpu-temp and battery bar segments (chevrons included) to appear only on
+machines that expose the hardware,
+So that a VM's bar isn't a broken chain of orphan arrows and a laptop still gets its
+battery — automatically, with no per-machine config.
+
+Issue: [#179](https://github.com/amasover/dotfiles/issues/179)
+
+Mechanism (chosen after a dead end — see
+[knowledge/errors/polybar-env-in-module-lists.md](../knowledge/errors/polybar-env-in-module-lists.md)):
+polybar itself already disables `internal/temperature` when no thermal zone exists and
+`internal/battery` when no BAT* device does — VMware guests expose neither — so the
+probe is free. What was missing: the segments' powerline chevrons were standalone
+`custom/text` modules that survived as orphans, and removing middle segments broke the
+adjacency-paired chevron colors. Fix shape: temperature/battery move to the **tail** of
+bar/main's right chain (battery at the screen edge), each carries its entry chevrons in
+its own `format-*-prefix` (inline color tags), the orphan chevron modules are deleted,
+and the one interior chevron that changed neighbors (`-time`) is re-paired to
+volume-tail's background. Being last, their absence alters no surviving junction — the
+chain just ends at the date.
+
+**Acceptance criteria:**
+
+- Given a machine with no thermal zone and no battery (the VMware guest), when bars launch, then neither segment nor any of its chevrons renders and every remaining junction blends (screenshot evidence)
+- Given a machine with both (the laptop), then temp + battery render at the tail with correct chevron transitions — verify on the laptop's next convergence
+- Given the known caveat, then a battery-without-thermal-zone machine would show one off-color junction (battery's entry chevron pairs with temperature's background) — documented in the body, no such machine exists today
+- Given the design is body-level, then clitest asserts the tail placement, the four format prefixes, and the absence of the orphan chevron modules
+
+**Evidence artifact:** guest screenshot (clean shortened chain) + laptop screenshot
+(full chain), and the knowledge note on the discarded `${env:}` approach.
 
 ---
 
