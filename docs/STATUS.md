@@ -199,6 +199,11 @@ Facts:
   unexplained, watch for recurrence).
 - **4.7 spec refreshed** (CI test surface = clitest + pytest + the old pair; betterleaks):
   pytest newly installed on the laptop — first local run 110/110.
+- **3.23 hardware bar segments** (#179, PR open from `story/3.23-auto-hw-segments`):
+  Aaron's VM bar showed orphan chevrons/mismatched colors where temp/battery can't exist
+  — segments now self-gate via polybar's own hardware detection: moved to the chain
+  tail, chevrons in their format-prefix. Dead end recorded (env refs don't substitute
+  in module lists — knowledge/errors). Laptop owes the full-chain look verification.
 - **Guest converged to main** (2026-08-23): yadm pulled (superseded hand-test hybrids of
   the theme/launcher files discarded; my untracked audio-tool copies removed for main's),
   `custom-pkgs` pins + sync installed both vendored font packages, `ttf-hack` installed

@@ -554,7 +554,7 @@ with the gap following the theme.
 
 ---
 
-### Story 3.22: nord-arrow-slim — SCP-arrow variant of nord-arrow, DRY
+### Story 3.22: nord-arrow-slim — SCP-arrow variant of nord-arrow, DRY ✅
 
 As the repo owner,
 I want a third selectable theme that is nord-arrow with the slim Source Code Pro
@@ -562,7 +562,7 @@ for Powerline arrows (the post-#167 look),
 So that I can toggle between the big-arrow and slim-arrow renderings instead of
 choosing one forever.
 
-Issue: [#174](https://github.com/amasover/dotfiles/issues/174)
+Issue: [#174](https://github.com/amasover/dotfiles/issues/174) (closed, PR #177)
 
 Origin: the 2026-08-22 font-restore decision (PR #171) — both looks turned out to be
 wanted. Constraint from the same session: polybar's include-file merging makes any
@@ -579,6 +579,44 @@ per-key override semantics), not by re-including overlapping sections.
 
 **Evidence artifact:** selector screenshot with three themes + before/after bar
 screenshots of the two nord-arrow variants.
+
+---
+
+### Story 3.23: hardware segments self-gate — temp/battery vanish where the hardware doesn't exist
+
+As the repo owner,
+I want the cpu-temp and battery bar segments (chevrons included) to appear only on
+machines that expose the hardware,
+So that a VM's bar isn't a broken chain of orphan arrows and a laptop still gets its
+battery — automatically, with no per-machine config.
+
+Issue: [#179](https://github.com/amasover/dotfiles/issues/179)
+
+Mechanism (v2 — Aaron vetoed reordering; the original mid-chain order stays):
+polybar itself already disables `internal/temperature` when no thermal zone exists and
+`internal/battery` when no BAT* device does — VMware guests expose neither — so the
+probe is free. Each segment's entry chevrons ride its own `format-*-prefix`, dying with
+the module (the standalone chevron `custom/text` modules that survived as orphans are
+deleted). With the order preserved (volume → temp → battery → time), exactly **two**
+junction colors depend on which neighbors exist: battery's entry-chevron background and
+the time-chevron's background. `tools/hw-junctions emit` probes the hardware and writes
+them to `~/.cache/polybar/hw-junctions`; launch.sh regenerates it every launch and the
+nord-arrow body splices it via a dedicated `[hw]` section's single `include-file`
+(sidestepping the duplicate-key fatality), referenced as `${hw.bat-prev}`/
+`${hw.time-prev}`. Temperature always follows volume, so its prefix is static. Two dead
+ends recorded: `${env:}` refs don't substitute inside module lists
+([knowledge/errors/polybar-env-in-module-lists.md](../knowledge/errors/polybar-env-in-module-lists.md)),
+and tail placement traded the ordering for static colors (vetoed).
+
+**Acceptance criteria:**
+
+- Given a machine with no thermal zone and no battery (the VMware guest), when bars launch, then neither segment nor any chevron renders, the volume→time junction blends, and the module order is unchanged (screenshot evidence)
+- Given a machine with both (the laptop), then volume → temp → battery → time renders with the original chevron transitions — verify on the laptop's next convergence
+- Given any of the four presence states, then `hw-junctions emit` yields the correct two junction colors (clitest, fixture sysroots)
+- Given the design, then clitest asserts the preserved order, the four format prefixes, the `${hw.*}` references, the `[hw]` include, and the absence of the orphan chevron modules
+
+**Evidence artifact:** guest screenshot (unchanged order, clean blend) + laptop
+screenshot (full chain), the 4-state hw-junctions tests, and the knowledge note.
 
 ---
 

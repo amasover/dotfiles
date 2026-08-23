@@ -32,7 +32,12 @@ module-margin-left = 0
 module-margin-right = 0
 modules-left = i3 -i3
 modules-center =
-modules-right =  filesystem  -volume2 -volume audio-switch volume-tail -temp2 -temp temperature -bat battery -time time -calendar2 -calendar calendar
+# temperature/battery self-gate in place (Story 3.23): polybar disables each
+# where the hardware is absent (no thermal zone / no BAT*); their chevrons
+# ride their own format-prefix so they vanish with the module, and the two
+# junction colors that depend on which neighbors exist come from the
+# launcher-generated [hw] include at the end of this file.
+modules-right =  filesystem  -volume2 -volume audio-switch volume-tail temperature battery -time time -calendar2 -calendar calendar
 # -memory2 -memory memory -cpu2 -cpu cpu
 
 
@@ -191,12 +196,6 @@ content-foreground = ${colors.nord8}
 content-background = ${colors.nord10}
 content = ""
 
-[module/-bat]
-type = custom/text
-content-foreground = ${colors.nord9}
-content-background = ${colors.nord8}
-content = ""
-
 [module/-bat2]
 type = custom/text
 content-foreground = ${colors.nord10}
@@ -206,7 +205,9 @@ content = ""
 [module/-time]
 type = custom/text
 content-foreground = ${colors.nord10}
-content-background = ${colors.nord9}
+; bg = whichever of battery/temperature/volume is the last visible segment
+; before time — launcher-generated (tools/hw-junctions, 3.23)
+content-background = ${hw.time-prev}
 content = ""
 
 [module/-time2]
@@ -219,18 +220,6 @@ content = ""
 type = custom/text
 content-foreground = ${colors.nord10}
 content-background = ${colors.nord2}
-content = ""
-
-[module/-temp]
-type = custom/text
-content-foreground = ${colors.nord8}
-content-background = ${colors.nord4}
-content = ""
-
-[module/-temp2]
-type = custom/text
-content-foreground = ${colors.nord4}
-content-background = ${colors.nord7}
 content = ""
 
 [module/-cpu]
@@ -420,6 +409,17 @@ format-charging    = <animation-charging><label-charging>
 format-discharging = <ramp-capacity><label-discharging>
 format-full        = <ramp-capacity><label-full>
 
+; entry chevron: bg = temperature's nord8 when temp exists, volume's nord7
+; when it doesn't — launcher-generated (tools/hw-junctions, 3.23)
+format-charging-prefix = ""
+format-charging-prefix-foreground = ${colors.nord9}
+format-charging-prefix-background = ${hw.bat-prev}
+format-discharging-prefix = ""
+format-discharging-prefix-foreground = ${colors.nord9}
+format-discharging-prefix-background = ${hw.bat-prev}
+format-full-prefix = ""
+format-full-prefix-foreground = ${colors.nord9}
+format-full-prefix-background = ${hw.bat-prev}
 format-charging-background = ${colors.nord9}
 format-charging-foreground = ${colors.nord0}
 format-charging-padding = 1
@@ -468,6 +468,11 @@ thermal-zone = 0
 warn-temperature = 70
 format-background = ${colors.nord8}
 format-foreground = ${colors.nord0}
+; entry chevrons live here so they disappear WITH the module on machines
+; without a thermal zone; temperature always follows volume-tail, so the
+; colors are static: nord7 (volume bg) > nord4 band > nord8 (3.23)
+format-prefix = "%{F#D8DEE9 B#8FBCBB}%{F#88C0D0 B#D8DEE9}%{F- B-}"
+format-warn-prefix = "%{F#D8DEE9 B#8FBCBB}%{F#88C0D0 B#D8DEE9}%{F- B-}"
 format = <ramp> <label>
 format-warn = <ramp> <label-warn>
 format-warn-background = ${colors.nord8}
@@ -528,3 +533,10 @@ screenchange-reload = true
 ; 
 ; 
 ; 
+
+; launch.sh regenerates this file (tools/hw-junctions emit) before every
+; launch: the two powerline junction colors that depend on which hardware
+; segments exist on this machine. Manual `polybar -c` without the file is
+; a fatal include error by design — launch.sh is the entry point (5.5).
+[hw]
+include-file = $HOME/.cache/polybar/hw-junctions

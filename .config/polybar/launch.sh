@@ -116,6 +116,14 @@ if command -v i3-msg >/dev/null 2>&1; then
     i3-msg "gaps top all set ${gap}" >>"$log" 2>&1 || warn "could not set i3 top gap (${gap})"
 fi
 
+# Powerline junction colors for the self-gating hardware segments (Story
+# 3.23): regenerated every launch so the nord-arrow body's [hw] include
+# always reflects THIS machine's thermal-zone/battery presence. The path is
+# literal $HOME/.cache (not XDG) because the body's include-file line is.
+mkdir -p "$HOME/.cache/polybar"
+"$tools/hw-junctions" emit > "$HOME/.cache/polybar/hw-junctions" 2>>"$log" \
+    || warn "hw-junctions emit failed; hardware-segment junction colors may be stale"
+
 # TERM, bounded wait, then KILL: a bar wedged in its event loop can ignore
 # SIGTERM (seen live 2026-08-22 — killall -w parked forever), and the flock
 # above would then deadlock every future launch behind it.
