@@ -1,0 +1,17 @@
+# oh-my-pi provider config (Story 3.24): route the built-in anthropic
+# provider through the local meridian proxy (systemd user unit
+# meridian.service) instead of raw subscription OAuth — omp's config apiKey
+# deliberately beats stored OAuth, so no upstream token is ever forwarded.
+# The literal "x" matches MERIDIAN_API_KEY in the unit (placeholder, not a
+# secret); the header tells meridian to use its Pi adapter.
+#
+# NOTE: ~/.omp/agent/ also holds agent.db (the credential store) plus
+# history/session/cache state — never track anything from this directory
+# except this file and config.yml (benign UI preferences). agent.db stays
+# machine-local by design: log in per machine, never sync auth.
+providers:
+  anthropic:
+    baseUrl: http://127.0.0.1:3456
+    apiKey: x
+    headers:
+      x-meridian-agent: pi

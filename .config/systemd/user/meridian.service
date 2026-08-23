@@ -1,0 +1,29 @@
+# Meridian proxy (Story 3.24, #181) — bridges the Claude subscription to
+# local Anthropic-API-compatible tools (oh-my-pi) through the Claude Agent
+# SDK. User unit: it needs this user's ~/.claude login, not root.
+#
+# No interpreter paths are pinned here on purpose: meridian comes from the
+# AUR package (/usr/bin/meridian), and `env` resolves it from PATH so a
+# differently-installed binary still works. MERIDIAN_API_KEY=x is the
+# documented placeholder clients must echo — meridian authenticates through
+# the Claude Code SDK, not this value; it is not a secret. Keep HOST on
+# loopback: exposing meridian beyond localhost needs a real key + TLS
+# (that's the 3.25 home-server story).
+[Unit]
+Description=Meridian proxy (Claude subscription via the Agent SDK)
+Documentation=https://github.com/rynfar/meridian
+After=network.target
+
+[Service]
+Environment=MERIDIAN_HOST=127.0.0.1
+Environment=MERIDIAN_PORT=3456
+Environment=MERIDIAN_API_KEY=x
+# omp mimics Claude Code's User-Agent, so meridian cannot auto-detect it;
+# default every session to the Pi adapter (omp also sends the header)
+Environment=MERIDIAN_DEFAULT_AGENT=pi
+ExecStart=/usr/bin/env meridian
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,53 @@
+# meridian service + omp provider config (Story 3.24). Pure text over the
+# tracked files — no systemd, no network.
+#
+# Run from the repo root: clitest tests/meridian-config.clitest.txt
+
+$ U=.config/systemd/user/meridian.service; Y=.omp/agent/models.yml; echo ok
+ok
+$
+
+the unit pins no interpreter or version paths (Aaron's requirement: the AUR
+binary location must not be hardcoded via nvm/node paths):
+
+$ grep -cE 'nvm|/root/|node/v[0-9]' "$U" || true
+0
+$ grep -c '^ExecStart=/usr/bin/env meridian$' "$U"
+1
+$
+
+the proxy stays on loopback with the documented placeholder key, and omp is
+defaulted to the Pi adapter:
+
+$ grep -c '^Environment=MERIDIAN_HOST=127.0.0.1$' "$U"
+1
+$ grep -c '^Environment=MERIDIAN_API_KEY=x$' "$U"
+1
+$ grep -c '^Environment=MERIDIAN_DEFAULT_AGENT=pi$' "$U"
+1
+$
+
+omp's anthropic provider is an override-only entry aimed at meridian — the
+config apiKey guarantees no stored OAuth token is forwarded upstream:
+
+$ grep -c 'baseUrl: http://127.0.0.1:3456' "$Y"
+1
+$ grep -c 'apiKey: x' "$Y"
+1
+$ grep -c 'x-meridian-agent: pi' "$Y"
+1
+$
+
+both packages are declared in the development group (not stranded in an inbox):
+
+$ grep -c '"meridian",' .config/metapac/groups/development.toml
+1
+$ grep -c '"oh-my-pi-bin",' .config/metapac/groups/development.toml
+1
+$
+
+bootstrap step 8d enables the tracked user unit:
+
+$ grep -c 'systemctl --user enable --now' .local/bin/setup/bootstrap
+2
+$
