@@ -209,7 +209,13 @@ Facts:
   `MERIDIAN_CLAUDE_PATH=/usr/bin/claude` (green end-to-end via curl /v1/messages).
   Lesson recorded: knowledge/errors/aur-strip-guts-bun-standalones.md (vendored
   PKGBUILDs shipping bun/deno standalones need `options=(!strip)`). omp's saved
-  model-role pref folded into tracked config.yml.
+  model-role pref folded into tracked config.yml. Correction: the 05:19 "guest
+  reconciled" claim was wrong — the yadm ff-merge had silently aborted (untracked
+  config.yml collision; the abort line was tail-truncated), which also left omp without
+  models.yml ("no models"). Re-merged cleanly + recovered; oh-my-pi-bin removed from
+  the tracked inbox (now declared in development); live inbox holds a fresh `bun`
+  capture awaiting Aaron's triage. Footgun pattern recorded:
+  knowledge/errors/yadm-cwd-and-truncation-traps.md.
 - **3.23 done** (#179, PR #180 merged): temp/battery bar segments self-gate in their
   historical order — chevrons in each module's format-prefix, the two adjacency-
   dependent junction colors launcher-generated (`tools/hw-junctions` → `[hw]` include).
