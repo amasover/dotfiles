@@ -12,5 +12,4 @@ packages = [
   "1password-cli",
   "gpu-screen-recorder-ui",
   "python-pycdlib",
-  "oh-my-pi-bin",
 ]
