@@ -1,0 +1,18 @@
+; Shared bar baseline, slim variant (#174): Source Code Pro for Powerline
+; carries text AND arrows at 11 — the #167 guest-validated rendering.
+; See base-big's header for why this file is complete rather than
+; inheriting a shared parent (polybar's two-hop inherit limit).
+[bar/global]
+; -- common keys: keep byte-identical with base-big ----------------------
+; polybar-msg (theme selector, polybar-reload) needs ipc
+enable-ipc = true
+; keeps bars out of i3 stacking fights
+wm-restack = i3
+cursor-click = pointer
+cursor-scroll = ns-resize
+; -- fonts: slim — packages: otf-source-code-pro-powerline (2.47),
+; awesome-terminal-fonts (desktop.toml).
+font-0 = Source Code Pro for Powerline:size=11;2
+font-1 = FontAwesome:size=11;2
+
+; vim:ft=dosini

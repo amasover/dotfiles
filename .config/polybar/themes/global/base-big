@@ -1,0 +1,28 @@
+; Shared bar baseline, big-arrow variant (#166, #174). Each theme entry
+; includes EXACTLY ONE base-* file — the file defines the complete
+; [bar/global] that every theme's [bar/base] inherits.
+;
+; Why complete instead of a shared [bar/global-common] parent: polybar
+; resolves at most TWO inherit hops from a bar section (verified by --dump,
+; 2026-08-22 — bar/main <- bar/base <- bar/global works, a third hop does
+; not), so [bar/global] must carry its keys itself. The few common keys are
+; duplicated in base-slim; tests/polybar-themes.clitest.txt asserts the two
+; common blocks stay identical.
+[bar/global]
+; -- common keys: keep byte-identical with base-slim ---------------------
+; polybar-msg (theme selector, polybar-reload) needs ipc
+enable-ipc = true
+; keeps bars out of i3 stacking fights
+wm-restack = i3
+cursor-click = pointer
+cursor-scroll = ns-resize
+; -- fonts: the laptop's historical look — arrows from an arrows-only font
+; FIRST in the list (Powerline Extra Symbols has ONLY the powerline glyphs,
+; so its size 19 hijacks nothing), text Hack, icons FontAwesome. Packages:
+; otf-powerline-extra-symbols (2.48), ttf-hack + awesome-terminal-fonts
+; (desktop.toml). (module/vpn's format-font = 2 targets font-1.)
+font-0 = Powerline Extra Symbols:size=19;4
+font-1 = Hack:pixelsize=12;3
+font-2 = FontAwesome:size=12;3
+
+; vim:ft=dosini

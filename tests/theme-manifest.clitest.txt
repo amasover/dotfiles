@@ -71,18 +71,22 @@ $ $t bars "$CLITMP/nope" >/dev/null 2>&1; echo "rc=$?"
 rc=2
 $
 
-the real theme manifests parse, and every bar they name is defined in the
-theme's own config (the -c contract):
+the real theme manifests parse (nord-arrow-slim's is a symlink to
+nord-arrow's), and every bar they name is defined in the theme's own config
+chain (nord-arrow variants share ./body — the -c contract):
 
-$ $t bars "$TH/nord-arrow" >/dev/null && $t bars "$TH/nord" >/dev/null && echo both-parse
-both-parse
-$ $t gap-top "$TH/nord-arrow"; $t gap-top "$TH/nord"
+$ $t bars "$TH/nord-arrow" >/dev/null && $t bars "$TH/nord" >/dev/null && $t bars "$TH/nord-arrow-slim" >/dev/null && echo all-parse
+all-parse
+$ $t gap-top "$TH/nord-arrow"; $t gap-top "$TH/nord-arrow-slim"; $t gap-top "$TH/nord"
+0
 0
 55
-$ $t bars "$TH/nord-arrow" | cut -f1 | while read -r b; do grep -q "^\[bar/$b\]" "$TH/nord-arrow/config.ini" || echo "missing: $b"; done; echo checked
+$ $t bars "$TH/nord-arrow" | cut -f1 | while read -r b; do grep -q "^\[bar/$b\]" "$TH/nord-arrow/body" || echo "missing: $b"; done; echo checked
 checked
 $ $t bars "$TH/nord" | cut -f1 | while read -r b; do grep -q "^\[bar/$b\]" "$TH/nord/config" || echo "missing: $b"; done; echo checked
 checked
+$ $t bars "$TH/nord-arrow" > "$CLITMP/a"; $t bars "$TH/nord-arrow-slim" > "$CLITMP/b"; cmp -s "$CLITMP/a" "$CLITMP/b" && echo same-bars
+same-bars
 $
 
 nord's third-monitor bar rides the EXTRA role — no dead MONITOR_RIGHT remains:
