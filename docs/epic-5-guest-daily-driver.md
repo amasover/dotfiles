@@ -261,6 +261,40 @@ harness runs are unattended by design (the whole 2.38 discipline). The host's
 - Depends on 5.1 for the key-based shape; coordinates with 5.2 instead of
   duplicating its identity work.
 
+### Story 5.7: Accelerate Firefox in VMware guests
+
+As the repo owner,
+I want VMware guests to expose SVGA3D and make Firefox use it,
+So that the daily-driver browser does not composite and scroll through llvmpipe.
+
+Issue: [#189](https://github.com/amasover/dotfiles/issues/189)
+
+**Current state (2026-08-23, VMware guest):** the generated VMX omitted
+`mks.enable3d`, so the first boot exposed legacy SVGA and Xorg fell back to
+llvmpipe. Enabling VMware 3D moved Xorg GLAMOR to SVGA3D/OpenGL 4.3, but Mesa's
+SVGA driver deliberately reports its Gallium `accelerated` capability as false;
+Firefox 154 therefore blocklists hardware compositing. A disposable-profile
+experiment proved hardware WebRender and WebGL 1/2 work on SVGA3D when forced
+through GLX. Firefox's default EGL path failed to create a WebRender context and
+fell back safely to Software WebRender.
+
+**Acceptance criteria:**
+
+- VMware VMX generation enables 3D acceleration; a fresh guest reports the
+  `3D` vmwgfx capability, shader model `SM_5_1X`, and Xorg GLAMOR on SVGA3D
+  instead of llvmpipe.
+- VMware bootstrap installs a tracked Firefox policy that enables WebRender,
+  forces hardware acceleration, and selects GLX over EGL. It applies to every
+  current and future profile, including first launch.
+- Non-VMware machines do not install the policy. Reconciliation removes only
+  this repo's managed symlink and refuses to overwrite unrelated Firefox policy
+  files.
+- In the live VMware guest, Firefox `about:support` reports `Compositing:
+  WebRender` without the Software suffix and WebGL 1/2 on VMware SVGA3D. The
+  scrolling benchmark stays at 60 Hz with no frames over 25 ms.
+- Host-independent tests cover the VMX setting and policy
+  install/idempotence/check/removal/refusal behavior.
+
 ---
 
 ## Risks
