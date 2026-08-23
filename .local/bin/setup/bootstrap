@@ -1021,6 +1021,20 @@ for unit in meridian.service; do
     fi
 done
 
+# --- 8e. VMware Firefox acceleration (Story 5.7) -------------------------------
+# Mesa's SVGA driver deliberately reports its Gallium "accelerated" bit false.
+# Firefox then blocklists hardware WebRender even though VMware SVGA3D works.
+# A guest-only enterprise policy forces WebRender through GLX (EGL context
+# creation fails on this stack). The reconciler removes only its own symlink
+# outside VMware and refuses to overwrite any unrelated Firefox policy.
+say "Firefox VMware acceleration"
+firefox_vmware_policy="$HOME/.local/bin/tools/firefox-vmware-policy"
+if [[ $CHECK -eq 1 ]]; then
+    "$firefox_vmware_policy" reconcile --check
+else
+    "$firefox_vmware_policy" reconcile
+fi
+
 # --- 9. login shell ------------------------------------------------------------
 say "Login shell"
 if [[ "${SHELL:-}" == */zsh ]]; then

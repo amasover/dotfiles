@@ -18,6 +18,9 @@ class TestBuildVmx:
         # systemd-boot requires UEFI — legacy BIOS was the retired win10 VM's mistake.
         assert 'firmware = "efi"' in _build()
 
+    def test_vmware_3d_acceleration(self):
+        assert 'mks.enable3d = "TRUE"' in _build()
+
     def test_disk_on_nvme_matching_seed_device_path(self):
         text = _build()
         assert 'nvme0:0.fileName = "C:\\vm\\disk.vmdk"' in text

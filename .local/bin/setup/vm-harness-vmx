@@ -41,6 +41,9 @@ def build_vmx(
         ("displayName", name),
         ("guestOS", "other6xlinux-64"),
         ("firmware", "efi"),
+        # Without this the guest exposes only legacy SVGA and Mesa falls back
+        # to llvmpipe; Firefox hardware WebRender needs SVGA3D (5.7, #189).
+        ("mks.enable3d", "TRUE"),
         ("memsize", str(ram_mib)),
         ("numvcpus", str(cpus)),
         # PCIe root ports: NVMe and vmxnet3 are PCIe devices and need slots on
