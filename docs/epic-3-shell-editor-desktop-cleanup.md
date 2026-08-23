@@ -582,7 +582,7 @@ screenshots of the two nord-arrow variants.
 
 ---
 
-### Story 3.23: hardware segments self-gate — temp/battery vanish where the hardware doesn't exist
+### Story 3.23: hardware segments self-gate — temp/battery vanish where the hardware doesn't exist ✅
 
 As the repo owner,
 I want the cpu-temp and battery bar segments (chevrons included) to appear only on
@@ -590,7 +590,7 @@ machines that expose the hardware,
 So that a VM's bar isn't a broken chain of orphan arrows and a laptop still gets its
 battery — automatically, with no per-machine config.
 
-Issue: [#179](https://github.com/amasover/dotfiles/issues/179)
+Issue: [#179](https://github.com/amasover/dotfiles/issues/179) (closed, PR #180)
 
 Mechanism (v2 — Aaron vetoed reordering; the original mid-chain order stays):
 polybar itself already disables `internal/temperature` when no thermal zone exists and
