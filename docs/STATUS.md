@@ -161,9 +161,10 @@ Facts:
   `themes/nord-arrow/body`, manifest symlinked. Three-way toggle live-validated. Laptop
   home runs the branch; after merge: `yadm checkout main && yadm pull`.
 - **5.7 VMware Firefox acceleration** ([#189](https://github.com/amasover/dotfiles/issues/189),
-  branch `story/5.7-vmware-firefox-acceleration`): live guest now has VMware 3D + Xorg
-  SVGA3D and Firefox hardware WebRender/WebGL through GLX; tracked VMX + guest-only
-  enterprise policy are implemented and focused tests are green. Owed: review/PR.
+  PR [#190](https://github.com/amasover/dotfiles/pull/190) open): live guest now has
+  VMware 3D + Xorg SVGA3D and Firefox hardware WebRender/WebGL through GLX;
+  tracked VMX + guest-only enterprise policy are implemented and focused tests
+  are green. Owed: review/merge.
 
 
 ## Standing warnings
