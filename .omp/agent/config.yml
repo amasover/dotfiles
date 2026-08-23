@@ -4,3 +4,5 @@ composer:
 theme: 
   dark: dark-nord
 setupVersion: 2
+modelRoles: 
+  default: anthropic/claude-fable-5:xhigh

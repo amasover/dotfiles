@@ -204,6 +204,12 @@ Facts:
   override-routed through it (no raw OAuth forwarding by construction), packages
   triaged inbox→development, bootstrap 8d enables user units. Verified: service
   active, /v1/models 200. **3.25** (#182) is the home-server handoff story.
+  Post-merge fix (PR open): omp's "authentication_error" was the AUR package's bundled
+  claude.exe — a strip-gutted bun standalone booting as bare bun; the unit now pins
+  `MERIDIAN_CLAUDE_PATH=/usr/bin/claude` (green end-to-end via curl /v1/messages).
+  Lesson recorded: knowledge/errors/aur-strip-guts-bun-standalones.md (vendored
+  PKGBUILDs shipping bun/deno standalones need `options=(!strip)`). omp's saved
+  model-role pref folded into tracked config.yml.
 - **3.23 done** (#179, PR #180 merged): temp/battery bar segments self-gate in their
   historical order — chevrons in each module's format-prefix, the two adjacency-
   dependent junction colors launcher-generated (`tools/hw-junctions` → `[hw]` include).
