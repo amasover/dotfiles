@@ -1402,14 +1402,14 @@ bars still rendering the big arrows after a relaunch.
 
 ---
 
-### Story 2.49: Install declared Vim plugins during bootstrap
+### Story 2.49: Install declared Vim plugins during bootstrap ✅
 
 As the repo owner,
 I want Arch packages to own every acceptably packaged Vim plugin and vim-plug
 to handle only the remainder,
 So that a fresh machine gets working Vim without a repo-local package manager.
 
-Issue: [#186](https://github.com/amasover/dotfiles/issues/186)
+Issue: [#186](https://github.com/amasover/dotfiles/issues/186) (closed, PR [#188](https://github.com/amasover/dotfiles/pull/188))
 
 Origin: the 2026-08-23 guest parity check found that `.vimrc` is restored but
 its manager and plugins are not. This concrete Vim gap is split from Story 2.13,
@@ -1419,8 +1419,9 @@ polybar community-module clone.
 
 Package audit:
 
-- `nord-vim` already comes from Arch; AUR packages own `vim-plug`,
-  `vim-airline`, `vim-gitgutter`, and `vim-go`
+- `nord-vim` 0.18.0 is installed but now foreign: no sync-repo package, and
+  the AUR recipe is still 0.18.0 and flagged out-of-date; Story 2.50 owns it
+- AUR packages own `vim-plug`, `vim-airline`, `vim-gitgutter`, and `vim-go`
 - `vim-terraform` and `vim-easyclip` have no AUR package
 - `vim-repeat` has an AUR recipe, but it downloads over HTTP and verifies only
   MD5; vim-plug keeps the HTTPS GitHub source instead
@@ -1452,6 +1453,67 @@ history, not dotfiles.
 **Evidence artifact:** reviewed AUR recipes; host-independent
 apply/update/check tests; live `yay --sudo pkexec` package install; full vimrc
 load proving Nord, airline, GitGutter, vim-go, and all three fallbacks.
+
+---
+
+### Story 2.50: Vendor nord-vim 0.19.0 with LSP highlights
+
+As the repo owner,
+I want nord-vim 0.19.0 built from this repo's reviewed PKGBUILD,
+So that Vim/Neovim get the current theme while the public package remains stale.
+
+Issue: [#191](https://github.com/amasover/dotfiles/issues/191)
+
+Origin: the laptop has foreign `nord-vim` 0.18.0; the package is absent from
+the sync databases, and the AUR recipe is still 0.18.0 and flagged
+out-of-date. Upstream's signed 0.19.0 release adds Neovim document-highlight,
+signature-parameter, and diagnostic LSP highlight groups.
+
+**Acceptance criteria:**
+
+- A repo-local `pkgbuilds/nord-vim/PKGBUILD` pins upstream tag `v0.19.0` by
+  checksum, installs the theme/runtime files and MIT license, and is picked up
+  by existing `custom-pkgs` machinery without new lifecycle code
+- `nord-vim` leaves `editor.toml`; `custom-pkgs` owns install, IgnorePkg pin,
+  drift classification, and GitHub-release watch
+- A live sync replaces 0.18.0 with 0.19.0; Vim still loads `colorscheme nord`,
+  and Neovim exposes the new LSP reference/signature/diagnostic highlight groups
+- Retirement is explicit: once a maintained repo/AUR package reaches 0.19.0
+  or newer, delete the vendored recipe, remove its IgnorePkg pin, and restore
+  the package declaration
+
+**Evidence artifact:** reviewed PKGBUILD + `custom-pkgs check/status/sync`;
+live Vim and headless Neovim highlight probes.
+
+---
+
+### Story 2.51: Enforce upstream watches for vendored PKGBUILDs
+
+As the repo owner,
+I want every new vendored PKGBUILD watched automatically or explicitly exempt,
+So that `setup/update` cannot silently miss a newer upstream release.
+
+Issue: [#192](https://github.com/amasover/dotfiles/issues/192)
+
+Origin: Story 2.46 already makes `setup/update` call `custom-pkgs outdated`
+for every GitHub-backed recipe. The remaining gap is enforcement:
+non-GitHub URLs currently skip silently, so a malformed or unwatchable new
+recipe can lose update coverage without a review signal.
+
+**Acceptance criteria:**
+
+- Every GitHub-backed vendored PKGBUILD participates in the existing
+  latest-release/age check automatically; nord-vim is the proving case
+- A non-GitHub recipe must carry `# custom-pkgs: no-watch`; otherwise a
+  watch audit fails and names the uncovered package
+- `setup/update` runs the audit before `outdated`; existing interactive
+  bump, checksum, quarantine-age nudge, and convergence behavior stays single
+  sourced in `custom-pkgs`
+- Host-independent tests stub upstream release data and prove a newly added
+  recipe is checked, a newer version is reported, and explicit exemptions skip
+
+**Evidence artifact:** focused clitest coverage plus an update transcript where
+a simulated newer nord-vim release is detected.
 
 ---
 

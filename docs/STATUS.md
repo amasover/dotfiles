@@ -148,10 +148,12 @@ Facts:
   steady-state applier. Design grilled 2026-08-22 — the epic-2 spec carries the ten
   decisions. Never declare vendored names in metapac groups (an AUR `betterleaks` exists;
   IgnorePkg guards the swap).
-- **2.49 Vim plugin bootstrap** ([#186](https://github.com/amasover/dotfiles/issues/186),
-  PR [#188](https://github.com/amasover/dotfiles/pull/188)): metapac owns vim-plug
-  plus four packaged plugins; the helper owns three fallbacks. Laptop is live
-  and duplicate clones are gone; guest evidence remains.
+- **2.50 vendored nord-vim 0.19.0** ([#191](https://github.com/amasover/dotfiles/issues/191)):
+  installed 0.18.0 is foreign, AUR is stale/out-of-date, upstream 0.19.0 adds
+  Neovim LSP highlights; reuse `custom-pkgs`, retire when public packaging recovers.
+- **2.51 vendored-package watch enforcement** ([#192](https://github.com/amasover/dotfiles/issues/192)):
+  update already watches GitHub-backed PKGBUILDs; make uncovered new recipes fail
+  unless explicitly `no-watch`, with nord-vim as the proving case.
 - **5.4 wrap-up note**: SPICE/libvirt half (pointer calibration is in `vm-autofit` but dormant;
   needs xinput + evdev InputClass declared) waits on a Linux-host run — threads on
   [#151](https://github.com/amasover/dotfiles/issues/151) (closed).
@@ -177,7 +179,7 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-23, VMware guest)
+## Last session (2026-08-23, laptop + VMware guest)
 
 - **5.7 built and live-validated** (#189): enabling VMware 3D fixed system GL; Firefox
   still blocklisted Mesa SVGA under EGL, but the three-pref GLX policy produced hardware
@@ -250,10 +252,10 @@ Facts:
   stashes still parked on `story/2.45-syu-upgrade-holds` (launch.sh — droppable;
   bashrc/bash_profile — keep). The root `2026-08-22_16_28_39_1920x1080.png` is
   intentional (Aaron): reference image of the system's intended look.
-- **Guest parity follow-ups submitted**: 3.26 (#185, PR #187 merged) tracks Firefox's
-  portal dark preference and Alacritty Nord config. 2.49 (#186, PR #188) is now
-  package-first: four AUR plugins installed via yay/pkexec, Nord already packaged,
-  three fallbacks under vim-plug; clitest 367/367 and all seven runtime probes green.
+- **2.49 done** (#186, PR #188 merged): package-first Vim bootstrap — four AUR
+  plugins + packaged vim-plug, three fallbacks, 367/367 tests, all runtime probes
+  green on the laptop. Follow-ups: nord-vim 0.19.0 packaging (#191) and generic
+  vendored-PKGBUILD watch enforcement (#192).
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 
