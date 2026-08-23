@@ -238,9 +238,10 @@ Facts:
   stashes still parked on `story/2.45-syu-upgrade-holds` (launch.sh — droppable;
   bashrc/bash_profile — keep). The root `2026-08-22_16_28_39_1920x1080.png` is
   intentional (Aaron): reference image of the system's intended look.
-- **2.49 Vim plugin bootstrap opened** (#186, PR #188): split the concrete
-  Vim/Vundle gap from 2.13's shell/Spacemacs decisions. Clitest is 362/362;
-  isolated real install and the laptop's eight-plugin check both pass.
+- **Guest parity follow-ups submitted**: 3.26 (#185, PR #187 merged) tracks Firefox's
+  portal dark preference and the Alacritty Nord config; 2.49 (#186, PR #188) installs
+  the `.vimrc` Vundle set during bootstrap. Clitest is 362/362; isolated real install
+  and the laptop's eight-plugin check both pass.
 - Prior Windows-harness session's merge queue (#142, #145, #146) still pending — the formal
   2.36/2.38 close-out run (plus 2.19/2.26/2.27/2.34 fresh-run evidence) follows once they land.
 
