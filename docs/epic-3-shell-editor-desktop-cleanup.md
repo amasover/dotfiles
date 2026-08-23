@@ -665,6 +665,37 @@ server endpoint, and the security decisions recorded.
 
 ---
 
+### Story 3.26: Track dark-mode and Alacritty Nord defaults
+
+As the repo owner,
+I want the laptop's dark-mode preference and Alacritty theme represented in tracked config,
+So that a fresh i3 session gives Firefox and the terminal the same appearance as the laptop.
+
+Issue: [#185](https://github.com/amasover/dotfiles/issues/185)
+
+Origin: a 2026-08-23 guest/laptop comparison found two untracked inputs. The
+laptop's explicit dconf value
+`org.gnome.desktop.interface color-scheme = 'prefer-dark'` makes the XDG
+appearance portal report `color-scheme = 1`, which Firefox consumes for CSS
+`prefers-color-scheme`; the tracked GTK 3 preference alone did not reproduce
+that result on the guest. The live Nord/Hack
+`~/.config/alacritty/alacritty.toml` was absent from the repo entirely.
+
+**Acceptance criteria:**
+
+- Given a new bare-i3 session, then tracked startup sets the desktop color
+  preference to `prefer-dark`, the appearance portal reports `uint32 1`, and
+  Firefox reports `prefers-color-scheme: dark`
+- Given Alacritty on a fresh machine, then its tracked config loads the
+  laptop's Nord palette, Hack font variants, and Shift+Return binding
+- Given the laptop files, then `.xinitrc` is compared with live home before
+  editing and the tracked Alacritty TOML is byte-identical to the live source
+
+**Evidence artifact:** shell syntax/config-load checks plus portal and Firefox
+dark-mode output from the guest after checkout.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely
