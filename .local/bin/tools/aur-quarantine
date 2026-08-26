@@ -10,10 +10,11 @@
 # knowledge/reference/aur-malware-mitigation.md.
 #
 # Subcommands:
-#   seed              record the current AUR maintainer of every installed AUR
-#                     package as trusted (adds missing only; announces first-seen).
-#   accept PKG...     trust PKG's current maintainer (clears a maintainer-change
-#                     or orphan hold after you've verified it on the AUR).
+#   seed              trust first-seen AUR maintainers, except packages whose
+#                     installed build came from official Arch repos: those are
+#                     held as an untrusted repo-to-AUR ownership handoff.
+#   accept PKG...     trust PKG's current maintainer, orphan state, or explicit
+#                     repo-to-AUR handoff after you've verified it on the AUR.
 #   auto PKG...       take PKG's updates immediately, skipping the age delay
 #                     (maintainer changes are still held). auto-off undoes.
 #   auto-off PKG...   stop auto-updating PKG.
@@ -23,10 +24,10 @@
 #                     hook holds a fast-moving package (latest always too new).
 #   preflight PKG...  evaluate the policy for PKGs in one batched RPC pass and
 #                     print TSV verdicts: "pkg<TAB>code<TAB>pkgbase" with code
-#                     ok | age | orphan | maintainer-change | missing (not in
-#                     the AUR RPC). Installs nothing (Story 2.33 — bootstrap
+#                     ok | age | orphan | maintainer-change | repo-handoff |
+#                     missing (not in AUR RPC). Installs nothing; bootstrap
 #                     remediates every hold before the first sync instead of
-#                     discovering them one aborted sync at a time).
+#                     discovering them one aborted sync at a time.
 #   bypass-once       arm a one-transaction bypass of the chaotic-aur install
 #                     gate (alpm hooks can't see user env, so no env bypass).
 #   broken PKG --reason STR [--upstream URL]
@@ -56,9 +57,10 @@
 # Config (env):
 #   AUR_QUARANTINE_DAYS   per-version age threshold, days (default 14).
 #   AUR_KNOWN_BROKEN_FILE known-broken list override (tests; default below).
+#   AUR_QUARANTINE_PACMAN pacman override (tests; default /usr/bin/pacman).
 #
 # State:  ${XDG_STATE_HOME:-~/.local/state}/aur-quarantine/{maintainers.tsv,exempt.txt}
-#         (shared with the Lua hook; formats: "<pkg>\t<maintainer>" / one name per line)
+#         (shared with Lua; maintainers may contain repo-handoff sentinels)
 # Broken: ~/.config/metapac/known-broken.toml — repo-tracked (a fresh guest
 #         inherits it via yadm clone), written only by 'broken'/'unbroken'.
 # Cache:  ${XDG_CACHE_HOME:-~/.cache}/aur-quarantine/<pkgbase>   (AUR git clones)
@@ -71,8 +73,10 @@ state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/aur-quarantine"
 baseline="$state_dir/maintainers.tsv"
 exempt_file="$state_dir/exempt.txt"
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/aur-quarantine"
-PACMAN=/usr/bin/pacman          # bypass the `pacman='sudo pacman'` shell alias; -Q needs no root
+PACMAN="${AUR_QUARANTINE_PACMAN:-/usr/bin/pacman}" # absolute default bypasses the sudo alias; -Q needs no root
 AURWEB="https://aur.archlinux.org/packages"
+REPO_HANDOFF="@repo-handoff"
+REPO_ACCEPTED_PREFIX="@repo-accepted:"
 
 # rpc_info NAME...  ->  "name<TAB>pkgbase<TAB>lastmod<TAB>maintainer" per resolved package
 rpc_info() {
@@ -82,6 +86,21 @@ rpc_info() {
     curl -fsG --max-time 20 "${args[@]}" 'https://aur.archlinux.org/rpc/v5/info' 2>/dev/null \
         | jq -r '.results[] | [.Name, .PackageBase, (.LastModified|tostring), (.Maintainer // "")] | @tsv'
 }
+# Installed package provenance. An official package removed from sync repos is
+# suddenly reported by `pacman -Qm`, but its local metadata still names the
+# Arch packager who built it. That is a repository-to-AUR trust transition,
+# not evidence that the current AUR owner was ever trusted.
+installed_packagers() {
+    (( $# == 0 )) && return 0
+    LC_ALL=C "$PACMAN" -Qi "$@" 2>/dev/null | awk -F':' '
+        {
+            key=$1; gsub(/[[:space:]]/, "", key)
+            value=$0; sub(/^[^:]*:[[:space:]]*/, "", value)
+            if (key == "Name") name=value
+            else if (key == "Packager" && name != "") print name "\t" value
+        }'
+}
+is_official_arch_packager() { [[ $1 == *"@archlinux.org"* ]]; }
 
 load_baseline() { declare -gA trusted=(); [[ -f $baseline ]] || return 0
     local k v; while IFS=$'\t' read -r k v; do [[ -n $k ]] && trusted[$k]=$v; done < "$baseline"; }
@@ -229,13 +248,37 @@ cmd_seed() {
     if ! rpc_out=$(rpc_info "${installed[@]}") || [[ -z $rpc_out ]]; then
         echo "aur-quarantine: AUR RPC unreachable/empty — baseline NOT updated this run." >&2; return 1
     fi
-    local name base lm mt added=0
+    local packager_out name packager
+    packager_out=$(installed_packagers "${installed[@]}")
+    declare -A packagers=()
+    while IFS=$'\t' read -r name packager; do
+        [[ -n $name ]] && packagers[$name]=$packager
+    done <<< "$packager_out"
+
+    local base lm mt prior added=0 held=0
     while IFS=$'\t' read -r name base lm mt; do
         [[ -z $name ]] && continue
-        if [[ -z ${trusted[$name]+x} ]]; then trusted[$name]=$mt; ((added++))
-            echo "aur-quarantine: now trusting $name @ ${mt:-ORPHANED} (first seen)." >&2; fi
+        prior=${trusted[$name]-}
+        # Holds and accepted handoffs remain durable; the accepted prefix keeps
+        # provenance while quarantine-policy compares the maintainer suffix.
+        if [[ $prior == "$REPO_HANDOFF" || $prior == "$REPO_ACCEPTED_PREFIX"* ]]; then
+            continue
+        fi
+        packager=${packagers[$name]-}
+        if is_official_arch_packager "$packager"; then
+            trusted[$name]=$REPO_HANDOFF
+            ((held++))
+            echo "aur-quarantine: SECURITY HOLD $name — installed build came from Arch repos ($packager), but package now resolves through AUR." >&2
+            echo "    repository -> AUR changes the trust owner; ${mt:-ORPHANED} is NOT trusted automatically." >&2
+            echo "    verify:  $AURWEB/$name" >&2
+            echo "    then:    aur-quarantine accept $name" >&2
+        elif [[ -z ${trusted[$name]+x} ]]; then
+            trusted[$name]=$mt; ((added++))
+            echo "aur-quarantine: now trusting $name @ ${mt:-ORPHANED} (first seen)." >&2
+        fi
     done <<< "$rpc_out"
     save_baseline
+    (( held > 0 )) && echo "aur-quarantine: held $held repository-to-AUR handoff(s) for explicit review." >&2
     (( added > 0 )) && echo "aur-quarantine: recorded $added new package(s); baseline now ${#trusted[@]}." >&2
     return 0
 }
@@ -247,11 +290,18 @@ cmd_accept() {
     if ! rpc_out=$(rpc_info "$@") || [[ -z $rpc_out ]]; then
         echo "aur-quarantine: AUR RPC unreachable or package(s) not found — nothing accepted." >&2; return 1
     fi
-    local name base lm mt; declare -A seen=()
+    local name base lm mt prior; declare -A seen=()
     while IFS=$'\t' read -r name base lm mt; do
         [[ -z $name ]] && continue
-        trusted[$name]=$mt; seen[$name]=1
-        echo "aur-quarantine: accepted maintainer for $name (${mt:-ORPHANED})." >&2
+        prior=${trusted[$name]-}
+        if [[ $prior == "$REPO_HANDOFF" || $prior == "$REPO_ACCEPTED_PREFIX"* ]]; then
+            trusted[$name]="${REPO_ACCEPTED_PREFIX}${mt}"
+            echo "aur-quarantine: accepted repository-to-AUR handoff for $name (${mt:-ORPHANED})." >&2
+        else
+            trusted[$name]=$mt
+            echo "aur-quarantine: accepted maintainer for $name (${mt:-ORPHANED})." >&2
+        fi
+        seen[$name]=1
     done <<< "$rpc_out"
     local p; for p in "$@"; do
         [[ -z ${seen[$p]+x} ]] && echo "aur-quarantine: WARNING $p not found in AUR RPC — not accepted." >&2
@@ -309,12 +359,20 @@ cmd_update() {                  # manual: step PKG(s) to the newest vetted (aged
     (( $# )) || { echo "usage: aur-quarantine update PKG..." >&2; return 2; }
     local threshold_days="${AUR_QUARANTINE_DAYS:-14}"
     load_baseline; local now; now=$(date +%s)
-    local p n base lm mt inst cutoff repo res sha ver
+    local p n base lm mt inst cutoff repo res sha ver known
     for p in "$@"; do
         IFS=$'\t' read -r n base lm mt < <(rpc_info "$p")
         if [[ -z ${base:-} ]]; then echo "aur-quarantine: $p not found in AUR RPC." >&2; continue; fi
-        if [[ -n ${trusted[$p]+x} && ${trusted[$p]} != "$mt" ]]; then
-            echo "aur-quarantine: $p maintainer changed (${trusted[$p]:-ORPHANED} -> ${mt:-ORPHANED})." >&2
+        known=${trusted[$p]-}
+        if [[ $known == "$REPO_HANDOFF" ]]; then
+            echo "aur-quarantine: $p left official Arch repos; its current AUR identity is not trusted." >&2
+            echo "    verify:  $AURWEB/$p" >&2
+            echo "    then:    aur-quarantine accept $p   (required before stepping)" >&2
+            continue
+        fi
+        [[ $known == "$REPO_ACCEPTED_PREFIX"* ]] && known=${known#"$REPO_ACCEPTED_PREFIX"}
+        if [[ -n ${trusted[$p]+x} && $known != "$mt" ]]; then
+            echo "aur-quarantine: $p maintainer changed (${known:-ORPHANED} -> ${mt:-ORPHANED})." >&2
             echo "    verify:  $AURWEB/$p" >&2
             echo "    then:    aur-quarantine accept $p   (required before stepping)" >&2
             continue
@@ -332,7 +390,12 @@ cmd_update() {                  # manual: step PKG(s) to the newest vetted (aged
             mkdir -p "$state_dir"
             grep -qxF "$p" "$state_dir/stepping.txt" 2>/dev/null || echo "$p" >>"$state_dir/stepping.txt"
             if cmd_build "$base" "$sha"; then
-                trusted[$p]=$mt; save_baseline
+                if [[ ${trusted[$p]-} == "$REPO_ACCEPTED_PREFIX"* ]]; then
+                    trusted[$p]="${REPO_ACCEPTED_PREFIX}${mt}"
+                else
+                    trusted[$p]=$mt
+                fi
+                save_baseline
                 echo "aur-quarantine: $p updated to $ver." >&2
             fi
             # normally consumed by the gate mid-build; scrub any leftover so a

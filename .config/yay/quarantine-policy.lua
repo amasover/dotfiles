@@ -12,18 +12,31 @@
 -- classify(pkg, mt, known, is_exempt, age_days, days, version)
 --   pkg       package name
 --   mt        current maintainer ("" = orphaned)
---   known     baseline entry: nil = never seen (TOFU), "" = trusted-as-orphan
+--   known     baseline entry: nil = never seen (TOFU), "" = trusted-as-orphan,
+--             "@repo-handoff" = official-repo package now resolving via AUR,
+--             "@repo-accepted:<maintainer>" = explicitly accepted handoff
 --   is_exempt truthy when the package skips the age delay
 --   age_days  integer age of the current version, or nil = unknown
 --   days      quarantine window (<=0 disables the age gate)
 --   version   display-only version string
 -- Returns nil (allow; second value "exempt" when the exemption decided it),
--- or a hold table { code, why, remedies }. Precedence: maintainer-change
--- (hard stop, even if exempted) > unaccepted orphan > exempt > age.
+-- or a hold table { code, why, remedies }. Precedence: unaccepted repository
+-- handoff > maintainer-change (hard stops, even if exempted) > unaccepted
+-- orphan > exempt > age.
 
 local M = {}
+local REPO_HANDOFF = "@repo-handoff"
+local REPO_ACCEPTED_PREFIX = "@repo-accepted:"
 
 function M.classify(pkg, mt, known, is_exempt, age_days, days, version)
+  if known == REPO_HANDOFF then
+    return { code = "repo-handoff",
+      why = "LEFT OFFICIAL ARCH REPOS; current AUR identity is a new, untrusted owner",
+      remedies = { "trust:  aur-quarantine accept " .. pkg .. "   (after verifying the repo-to-AUR handoff)" } }
+  end
+  if known ~= nil and known:sub(1, #REPO_ACCEPTED_PREFIX) == REPO_ACCEPTED_PREFIX then
+    known = known:sub(#REPO_ACCEPTED_PREFIX + 1)
+  end
   if known ~= nil and known ~= mt then
     return { code = "maintainer-change",
       why = string.format("MAINTAINER CHANGED ('%s' -> '%s'); possible takeover",
