@@ -7,5 +7,6 @@ setupVersion: 2
 providers: 
   webSearchOrder: 
     []
+modelRoleStorage: project
 modelRoles: 
   default: openai-codex/gpt-5.6-terra:xhigh

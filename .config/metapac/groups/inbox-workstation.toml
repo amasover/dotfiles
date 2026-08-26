@@ -12,4 +12,5 @@ packages = [
   "1password-cli",
   "gpu-screen-recorder-ui",
   "python-pycdlib",
+  "bun",
 ]
