@@ -6,9 +6,9 @@
 # secret); the header tells meridian to use its Pi adapter.
 #
 # NOTE: ~/.omp/agent/ also holds agent.db (the credential store) plus
-# history/session/cache state — never track anything from this directory
-# except this file and config.yml (benign UI preferences). agent.db stays
-# machine-local by design: log in per machine, never sync auth.
+# history/session/cache state. Track only models.yml, config.yml, and reviewed
+# extensions/*.ts sources; agent.db stays machine-local by design: log in per
+# machine, never sync auth.
 providers:
   anthropic:
     baseUrl: http://127.0.0.1:3456

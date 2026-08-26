@@ -3,7 +3,7 @@
 #
 # Run from the repo root: clitest tests/meridian-config.clitest.txt
 
-$ U=.config/systemd/user/meridian.service; Y=.omp/agent/models.yml; echo ok
+$ U=.config/systemd/user/meridian.service; Y=.omp/agent/models.yml; E=.omp/agent/extensions/meridian-session-affinity.ts; echo ok
 ok
 $
 
@@ -43,6 +43,20 @@ $ grep -c 'apiKey: x' "$Y"
 1
 $ grep -c 'x-meridian-agent: pi' "$Y"
 1
+$
+
+the affinity extension only adds a stable OMP session header to requests already
+marked for Meridian; it never applies to another Anthropic endpoint:
+
+$ test -f "$E"; grep -c 'pi.on("before_provider_headers"' "$E"
+1
+$
+$ grep -c 'name.toLowerCase() === MERIDIAN_AGENT_HEADER' "$E"
+1
+$
+$ grep -c 'headers\[SESSION_AFFINITY_HEADER\] = sessionId' "$E"
+1
+$
 $
 
 both packages are declared in the development group (not stranded in an inbox):

@@ -172,6 +172,11 @@ Facts:
   tracked VMX + guest-only enterprise policy are implemented and focused tests
   are green. Owed: review/merge.
 
+- **3.27 OMP modes + Meridian affinity** ([#195](https://github.com/amasover/dotfiles/issues/195),
+  PR [#196](https://github.com/amasover/dotfiles/pull/196)): paired Claude/OpenAI launch overlays,
+  cheap `sonic`/`scout` workers, and a session-affinity extension are implemented and
+  live-smoke-tested; review/merge pending.
+
 
 ## Standing warnings
 
@@ -180,6 +185,11 @@ Facts:
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
 ## Last session (2026-08-23 guest + 2026-08-25 laptop)
+
+- **3.27 ready for review** (#195, PR #196): tracked global CLAUDE rules, Claude
+  Fable/Haiku and OpenAI Terra/Luna launch modes, and `x-session-affinity` for
+  Meridian Pi traffic. A real Fable tool round continued its Meridian SDK session;
+  clitest 16/16 and secret scans were clean.
 
 - **5.7 built and live-validated** (#189): enabling VMware 3D fixed system GL; Firefox
   still blocklisted Mesa SVGA under EGL, but the three-pref GLX policy produced hardware
