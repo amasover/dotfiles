@@ -592,6 +592,9 @@ battery — automatically, with no per-machine config.
 
 Issue: [#179](https://github.com/amasover/dotfiles/issues/179) (closed, PR #180)
 
+Follow-up fix: [#193](https://github.com/amasover/dotfiles/issues/193) — laptop temp→battery
+junction broke because battery's format padding renders before the prefix chevron.
+
 Mechanism (v2 — Aaron vetoed reordering; the original mid-chain order stays):
 polybar itself already disables `internal/temperature` when no thermal zone exists and
 `internal/battery` when no BAT* device does — VMware guests expose neither — so the

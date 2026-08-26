@@ -179,7 +179,7 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-23, laptop + VMware guest)
+## Last session (2026-08-23 guest + 2026-08-25 laptop)
 
 - **5.7 built and live-validated** (#189): enabling VMware 3D fixed system GL; Firefox
   still blocklisted Mesa SVGA under EGL, but the three-pref GLX policy produced hardware
@@ -237,9 +237,13 @@ Facts:
 - **3.23 done** (#179, PR #180 merged): temp/battery bar segments self-gate in their
   historical order — chevrons in each module's format-prefix, the two adjacency-
   dependent junction colors launcher-generated (`tools/hw-junctions` → `[hw]` include).
-  Guest re-converged post-merge (zero drift, relaunch verified). Laptop owes the
-  full-chain look check. Two dead ends recorded en route (env refs in module lists;
-  tail placement vetoed — order preserved).
+  Guest re-converged post-merge (zero drift, relaunch verified). Laptop look check
+  done (2026-08-25): temp→battery junction was broken — battery's `format-*-padding`
+  renders before the prefix chevron, wedging a nord9 block into the junction
+  (follow-up [#193](https://github.com/amasover/dotfiles/issues/193), PR open;
+  padding dropped, ramp glyphs spaced like temperature's, pixel-verified live).
+  Two dead ends recorded en route (env refs in module lists; tail placement
+  vetoed — order preserved).
 - **Guest converged to main** (2026-08-23): yadm pulled (superseded hand-test hybrids of
   the theme/launcher files discarded; my untracked audio-tool copies removed for main's),
   `custom-pkgs` pins + sync installed both vendored font packages, `ttf-hack` installed
