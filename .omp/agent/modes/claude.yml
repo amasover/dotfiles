@@ -1,0 +1,9 @@
+# Claude-primary mode: keep deep diagnosis on Fable; route mechanical
+# verification and read-only lookup to Haiku.
+modelRoles:
+  default: anthropic/claude-fable-5:xhigh
+  smol: anthropic/claude-haiku-4-5:low
+task:
+  agentModelOverrides:
+    scout: "@smol"
+    sonic: "@smol"

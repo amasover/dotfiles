@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Start OMP with a provider-paired primary/smol model configuration.
+set -euo pipefail
+
+case "${1:-}" in
+    claude | openai)
+        mode=$1
+        shift
+        ;;
+    -h | --help | "")
+        cat <<'EOF'
+Usage: omp-mode <claude|openai> [omp arguments...]
+
+  claude  Fable xhigh primary; Haiku low mechanical subagents
+  openai  Terra xhigh primary; Luna low mechanical subagents
+EOF
+        exit 0
+        ;;
+    *)
+        echo "omp-mode: unknown mode: $1 (try: omp-mode --help)" >&2
+        exit 2
+        ;;
+esac
+
+mode_config="$HOME/.omp/agent/modes/$mode.yml"
+# PI_CONFIG_FILES applies to every OMP command, including `omp config`, unlike
+# the root --config flag. Put the selected mode last: it must pair primary and
+# cheap-worker provider even when a caller has another overlay.
+export PI_CONFIG_FILES="${PI_CONFIG_FILES:+$PI_CONFIG_FILES:}$mode_config"
+exec /usr/bin/omp "$@"

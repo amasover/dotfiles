@@ -641,7 +641,9 @@ policy flipped four times in six months).
 - Given the tracked unit (`.config/systemd/user/meridian.service`), then it pins no interpreter/version paths (`/usr/bin/env meridian`; AUR owns the binary), binds loopback only, and uses the documented placeholder key (a non-loopback bind needs 3.25's real auth)
 - Given omp, then `.omp/agent/models.yml` override-routes the built-in anthropic provider to `http://127.0.0.1:3456` with the Pi adapter header — omp's config-apiKey precedence guarantees no stored OAuth token is forwarded upstream
 - Given a fresh machine, then bootstrap step 8d enables tracked user units (tolerating starts that wait on `claude login`), and both packages install from the `development` group (triaged out of the inbox)
-- Given `~/.omp/agent/`, then only `models.yml` + `config.yml` are tracked — `agent.db` (credentials) and the state DBs stay machine-local, never synced
+- Given `~/.omp/agent/`, then only `models.yml`, `config.yml`, and reviewed
+  `extensions/*.ts` sources are tracked — `agent.db` (credentials) and the
+  state DBs stay machine-local, never synced
 
 **Evidence artifact:** `systemctl --user is-active meridian` + a 200 from
 `/v1/models` on the guest; clitest config assertions.
@@ -696,6 +698,45 @@ that result on the guest. The live Nord/Hack
 
 **Evidence artifact:** shell syntax/config-load checks plus portal and Firefox
 dark-mode output from the guest after checkout.
+
+---
+
+### Story 3.27: OMP paired provider modes and Meridian session affinity
+
+As the repo owner,
+I want OMP's provider fallback and Meridian tool-round continuity represented in
+tracked configuration,
+So that moving from Claude credits to OpenAI stays deliberate and a Claude tool
+round retains its SDK session instead of re-reading work.
+
+Issue: [#195](https://github.com/amasover/dotfiles/issues/195)
+
+Context: `omp-mode` selects provider-paired YAML overlays before OMP starts:
+Claude uses Fable `xhigh` with Haiku `low` workers; OpenAI uses Terra `xhigh`
+with Luna `low` workers. OMP's extension API can set an active primary model but
+has no supported session-scoped mutation for `modelRoles` or
+`task.agentModelOverrides`; retain the launcher rather than write global config
+from a plugin. Separately, the Pi adapter needs `x-session-affinity` on
+Meridian requests after a tool result; without it Meridian intentionally starts
+an independent SDK session every round ([Meridian #820](https://github.com/rynfar/meridian/issues/820)).
+
+**Acceptance criteria:**
+
+- Given the tracked `meridian-session-affinity` extension, then a request
+  already marked `x-meridian-agent: pi` carries the current OMP session ID as
+  `x-session-affinity`; unmarked Anthropic requests are unchanged
+- Given a Meridian tool round, then the first request is `lineage=new` and its
+  tool-result continuation is `lineage=continuation` in proxy telemetry
+- Given `omp-mode claude`, then Fable at `xhigh` is primary and subsequent
+  `sonic`/`scout` workers use Haiku at `low`; given `omp-mode openai`, then
+  Terra at `xhigh` is primary and those workers use Luna at `low`
+- Given a later `/provider-mode` extension proposal, then it waits for an OMP
+  session-scoped worker-routing API; it does not use private internals or write
+  `~/.omp/agent/config.yml` at runtime
+
+**Evidence artifact:** extension/header contract test, a real Meridian
+`lineage=new` → `lineage=continuation` tool-round trace, and both mode
+configuration outputs.
 
 ---
 
