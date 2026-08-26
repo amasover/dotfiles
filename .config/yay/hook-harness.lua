@@ -157,6 +157,18 @@ case("maintainer change (exempt ignored)", {
   rpc = rpc_json({ { name = "takenpkg", maint = "mallory" } }),
 }, true, "maintainer-change")
 
+case("repo handoff unaccepted", {
+  event = event_for("repo-drop", days_ago(30)),
+  rpc = rpc_json({ { name = "repo-drop", maint = "attacker", age = 30 } }),
+  baseline = "repo-drop\t@repo-handoff\n",
+}, true, "repo-handoff")
+
+case("repo handoff accepted", {
+  event = event_for("repo-drop", days_ago(30)),
+  rpc = rpc_json({ { name = "repo-drop", maint = "reviewed", age = 30 } }),
+  baseline = "repo-drop\t@repo-accepted:reviewed\n",
+}, false)
+
 -- unknown age (last_modified 0): hold as too new
 case("unknown age", {
   event = event_for("agelesspkg", 0),
@@ -246,6 +258,16 @@ ucase("upsel: maintainer change beats exempt", {
   upgrades = { up_entry("takenpkg", "aur", "mallory", days_ago(30)) },
 }, { "takenpkg" })
 
+ucase("upsel: repo handoff excluded", {
+  upgrades = { up_entry("repo-drop", "aur", "attacker", days_ago(30)) },
+  baseline = "repo-drop\t@repo-handoff\n",
+}, { "repo-drop" })
+
+ucase("upsel: accepted handoff kept", {
+  upgrades = { up_entry("repo-drop", "aur", "reviewed", days_ago(30)) },
+  baseline = "repo-drop\t@repo-accepted:reviewed\n",
+}, {})
+
 ucase("upsel: orphan never-seen excluded", {
   upgrades = { up_entry("orphanpkg", "aur", "", days_ago(30)) },
 }, { "orphanpkg" })
@@ -327,6 +349,9 @@ acase("maintainer change (exempt too)", "pkg mallory alice 1 30 14", 1)
 acase("exempt young", "pkg alice @never 1 3 14", 0)
 acase("accepted orphan", "pkg @orphan @orphan 0 30 14", 0)
 acase("unknown age", "pkg alice @never 0 @nil 14", 1)
+acase("repo handoff", "pkg attacker @repo-handoff 0 30 14", 1)
+acase("accepted repo handoff", "pkg reviewed @repo-accepted:reviewed 0 30 14", 0)
+acase("accepted handoff, owner changes again", "pkg newowner @repo-accepted:reviewed 0 30 14", 1)
 
 os.getenv = real_getenv
 io.popen = real_popen

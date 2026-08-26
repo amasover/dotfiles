@@ -2,9 +2,10 @@
 --
 -- Defense against freshly-weaponized AUR packages (June 2026 AUR malware):
 --
---  * UpgradeSelect (2.6): holds AUR *upgrades* that are too new, orphaned, or
---    maintainer-changed, by excluding them from every `yay -Syu`. Runs in-flow —
---    yay's payload already carries maintainer + last_modified, no RPC here.
+--  * UpgradeSelect (2.6): holds AUR *upgrades* that are too new, orphaned,
+--    maintainer-changed, or an unaccepted official-repo-to-AUR handoff, by
+--    excluding them from every `yay -Syu`. Runs in-flow — yay's payload already
+--    carries maintainer + last_modified, no RPC here.
 --  * AURPreInstall (2.10): applies the same policy to every AUR package base
 --    reaching a build — fresh installs (`yay -S`, bootstrap's metapac sync) and
 --    targeted upgrades that never pass through UpgradeSelect. This event can
@@ -12,8 +13,8 @@
 --    transaction *before any source download or build*. The payload carries
 --    last_modified but not maintainer, so this hook makes one AUR RPC call per
 --    base (curl; JSON parsed with Lua patterns — no jq on a fresh machine).
---    RPC failure fails closed. TOFU is preserved: a never-seen, maintained,
---    aged package passes and is recorded by the next `seed`.
+--    RPC failure fails closed. TOFU applies only where `seed` found no official
+--    Arch package provenance; repo-to-AUR ownership changes require `accept`.
 --
 -- Held upgrades are reported inline (yay.log.warn) with the AUR link and the
 -- exact copy-paste command, and the same report is written to
@@ -40,7 +41,7 @@ local function state_dir()
   return x .. "/aur-quarantine"
 end
 
--- maintainers.tsv: "<pkg>\t<maintainer>" per line (maintainer may be empty).
+-- maintainers.tsv: "<pkg>\t<maintainer-or-handoff-sentinel>" per line.
 -- Returns nil when the file doesn't exist (baseline never seeded).
 local function read_baseline(path)
   local f = io.open(path, "r")
@@ -117,7 +118,7 @@ local function rpc_info(names)
 end
 
 yay.create_autocmd("UpgradeSelect", {
-  desc = "AUR quarantine: hold too-new / orphaned / maintainer-changed AUR upgrades",
+  desc = "AUR quarantine: hold too-new / orphaned / maintainer-changed / repo-handoff AUR upgrades",
   callback = function(event)
     local sdir = state_dir()
     local report_path = sdir .. "/last-report.txt"
@@ -219,7 +220,7 @@ yay.create_autocmd("UpgradeSelect", {
 -- unattended sync loop reads held-install.tsv and auto-steps age holds.
 
 yay.create_autocmd("AURPreInstall", {
-  desc = "AUR quarantine: gate installs on age / orphan / maintainer vs baseline",
+  desc = "AUR quarantine: gate installs on age / orphan / maintainer / repo handoff",
   callback = function(event)
     if os.getenv("AUR_QUARANTINE_BYPASS") == "1" then
       yay.log.warn("aur-quarantine: install gate BYPASSED for " .. event.match

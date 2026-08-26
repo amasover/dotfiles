@@ -48,6 +48,33 @@ $ lua5.1 .config/yay/quarantine-policy.lua somepkg someone @never 0 3 14 | head 
 age	version ? is 3d old (< 14d quarantine)
 $
 
+--- quarantine-policy: official repo to AUR is a distinct hard hold ---
+
+$ lua5.1 .config/yay/quarantine-policy.lua repo-drop attacker @repo-handoff 1 30 14 | head -n 1 || true
+repo-handoff	LEFT OFFICIAL ARCH REPOS; current AUR identity is a new, untrusted owner
+$ lua5.1 .config/yay/quarantine-policy.lua repo-drop reviewed @repo-accepted:reviewed 0 30 14; echo "rc=$?"
+rc=0
+$
+
+--- aur-quarantine seed: official package provenance requires explicit handoff acceptance ---
+
+$ aq=$(mktemp -d) && mkdir -p "$aq/bin" "$aq/state" && printf '%s\n' '#!/bin/bash' 'case "$1" in' '  -Qqm) printf "%s\n" repo-drop aur-native ;;' '  -Qi) shift; for pkg; do printf "Name            : %s\n" "$pkg"; if [[ $pkg == repo-drop ]]; then printf "Packager        : Arch Dev <dev@archlinux.org>\n\n"; else printf "Packager        : Unknown Packager\n\n"; fi; done ;;' '  -Q) printf "%s 1.0-1\n" "$2" ;;' 'esac' > "$aq/bin/pacman" && printf '%s\n' '#!/bin/bash' 'if [[ $* == *"arg[]=aur-native"* ]]; then' '  printf "%s\n" "{\"resultcount\":2,\"results\":[{\"Name\":\"repo-drop\",\"PackageBase\":\"repo-drop\",\"LastModified\":1,\"Maintainer\":\"attacker\"},{\"Name\":\"aur-native\",\"PackageBase\":\"aur-native\",\"LastModified\":1,\"Maintainer\":\"alice\"}]}"' 'else' '  printf "%s\n" "{\"resultcount\":1,\"results\":[{\"Name\":\"repo-drop\",\"PackageBase\":\"repo-drop\",\"LastModified\":1,\"Maintainer\":\"attacker\"}]}"' 'fi' > "$aq/bin/curl" && chmod +x "$aq/bin/pacman" "$aq/bin/curl"
+$
+$ PATH="$aq/bin:$PATH" XDG_STATE_HOME="$aq/state" AUR_QUARANTINE_PACMAN="$aq/bin/pacman" .local/bin/tools/aur-quarantine seed 2>&1 | sed -n '/SECURITY HOLD/p;/now trusting/p'
+aur-quarantine: SECURITY HOLD repo-drop — installed build came from Arch repos (Arch Dev <dev@archlinux.org>), but package now resolves through AUR.
+aur-quarantine: now trusting aur-native @ alice (first seen).
+$ sort "$aq/state/aur-quarantine/maintainers.tsv" | tr '\t' ' '
+aur-native alice
+repo-drop @repo-handoff
+$ PATH="$aq/bin:$PATH" XDG_STATE_HOME="$aq/state" AUR_QUARANTINE_PACMAN="$aq/bin/pacman" .local/bin/tools/aur-quarantine accept repo-drop 2>&1
+aur-quarantine: accepted repository-to-AUR handoff for repo-drop (attacker).
+$ sort "$aq/state/aur-quarantine/maintainers.tsv" | tr '\t' ' '
+aur-native alice
+repo-drop @repo-accepted:attacker
+$ PATH="$aq/bin:$PATH" XDG_STATE_HOME="$aq/state" AUR_QUARANTINE_PACMAN="$aq/bin/pacman" .local/bin/tools/aur-quarantine seed 2>&1 | grep -c 'SECURITY HOLD' || true
+0
+$
+
 --- bootstrap --probe-provider: substitution printed, self-resolution silent ---
 
 The stub pacman answers like the real one: a provider name for flashfocus,
