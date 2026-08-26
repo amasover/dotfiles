@@ -9,3 +9,6 @@ TODO.org
 
 # Private, machine-local notes (org-internal redaction keys, etc.) — never publish
 docs/private/
+
+# OMP's project-scoped /model selection; user-local, never portable.
+/.omp/config.yml
