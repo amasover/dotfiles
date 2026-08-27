@@ -185,8 +185,8 @@ master.
 - The VM clones the repo from **GitHub main** — bootstrap-affecting PRs must merge
   before their VM validation run (or pass a branch clone URL via `VM_HARNESS_REPO`).
 - archinstall's network choice is the ISO's (systemd-networkd/dhcp); `metapac sync`
-  later installs `networkmanager-iwd` per the groups — the replace prompt inside the
-  sync run is expected (`--no-confirm` answers it in harness runs).
+  later installs official-repo `networkmanager` per the groups, with its required
+  `wpa_supplicant` dependency (Story 3.9). No iwd-provider replacement remains.
 - First `yay -Syu` inside the VM is quarantine-gated like any machine (2.6 hook
   arrives with the dotfiles; baseline seeded by bootstrap step 7).
 - **Disk sizing:** the full workstation profile filled a 38G root mid-run (1,500+
