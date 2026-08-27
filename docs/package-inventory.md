@@ -54,7 +54,7 @@ Each old entry classified SELF / PROVIDED-BY / ABSENT.
 | `crda` | `wireless-regdb` | crda retired |
 | `exa` | `eza` | maintained fork |
 | `mlocate` | `plocate` | faster locate; compat name |
-| `networkmanager` | `networkmanager-iwd` | iwd-enabled NM build (see Networking below) |
+| `networkmanager` | `networkmanager-iwd` | Story 2.2 snapshot; Story 3.9 later restored repo `networkmanager` |
 | `terraform` | `tenv-bin` | you manage terraform via tenv |
 | `vi` | `ex-vi-compat` | provides `vi` |
 | `vim` | `gvim` | gvim provides `vim` |
@@ -87,12 +87,14 @@ EOL 2019) · `nvidia-390xx`, `nvidia-390xx-settings`, `nvidia-390xx-utils`,
 
 ## Networking — actual live setup (you asked)
 
-- **NetworkManager** enabled + active; the providing package is **`networkmanager-iwd`**
-  (not vanilla `networkmanager`). `systemd-resolved` handles DNS. `netctl`/`dhcpcd` off.
-- **Wi-Fi backend is `wpa_supplicant`**, set explicitly in
-  `/etc/NetworkManager/conf.d/wifi_backend.conf` (`wifi.backend=wpa_supplicant`).
-- **`iwd.service` is also enabled + active but unused as the NM backend** — redundant
-  or intended for standalone use. → **Open question N1.**
+- **NetworkManager** is enabled + active and provided by official-repo `networkmanager`.
+  `systemd-resolved` handles DNS. `netctl`/`dhcpcd` are off.
+- **Wi-Fi backend is `wpa_supplicant`**, selected explicitly in
+  `/etc/NetworkManager/conf.d/wifi_backend.conf` (`wifi.backend=wpa_supplicant`) and required
+  by the `networkmanager` package.
+- **`iwd`, `networkmanager-iwd`, and `iwgtk` were retired in Story 3.9.** Live verification on
+  2026-08-27 found no `iwd` package, unit, or process and a connected Wi-Fi device under
+  NetworkManager + `wpa_supplicant`.
 
 ---
 
@@ -139,13 +141,13 @@ Questions below before manifests are split. Native = official repos; **bold** = 
   `istio` **azure-functions-core-tools-bin** **storageexplorer** **aztfexport-bin**
   **databricks-cli-bin** **krew-bin** **kube-capacity** **terraform-ls-bin** **tenv-bin**
   **astro-cli** **ngrok** **yor-bin** **uplink** **wstunnel-bin** · → **Open question Q2**
-- **network-vpn** — `networkmanager-iwd` `iwd` `wpa_supplicant` `networkmanager-openvpn`
+- **network-vpn** — `networkmanager` (`wpa_supplicant` dependency) `networkmanager-openvpn`
   `openvpn` `openconnect` `globalprotect-openconnect` `wireguard-tools` `sshuttle`
   `udp2raw` `dnsmasq` `bind` `nmap` `traceroute` `whois` `net-tools` `inetutils`
   `iproute2` `iputils` `ipset` `ipcalc` `ipv6calc` `nss-mdns` `ntp` `modemmanager`
   `netctl` `dhcpcd` `b43-fwcutter` `usb_modeswitch` `samba` `rsync` `openssh` `putty`
   `freerdp` `remmina` `filezilla` `wireshark-qt` `siege` **networkmanager-dispatcher-ntpd**
-  **iwgtk** **openconnect-service** **openvpn-update-systemd-resolved** **vpn-slice**
+  **openconnect-service** **openvpn-update-systemd-resolved** **vpn-slice**
   **netmask** **subnetcalc** **gss-ntlmssp** **smtp-cli** **ssmtp** **gnu-netcat** ·
   → **Open question Q3** (VPN sprawl)
 - **media** — `vlc` `mpv` `yt-dlp` `playerctl` `ffmpegthumbnailer` `imagemagick` `gimp`

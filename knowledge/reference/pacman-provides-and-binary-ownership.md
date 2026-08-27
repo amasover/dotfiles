@@ -23,6 +23,9 @@ Confirmed on this machine during Story 2.2:
 | `vi` | `ex-vi-compat` | provides `vi` |
 | `vim` | `gvim` | gvim provides `vim` |
 
+The `networkmanager-iwd` row is historical Story 2.2 evidence. Story 3.9 later chose and
+installed official-repo `networkmanager`; `wpa_supplicant` is its required Wi-Fi backend.
+
 `pacman -Qq exa` exits 0, and `pacman -Qi exa` prints the **provider's** record
 (`Name : eza`). So both `-Qq` and `-Qi` silently resolve the alias.
 
