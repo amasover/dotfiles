@@ -240,7 +240,12 @@ cmd_sync() {
         esac
     done
     command -v makepkg >/dev/null || die "makepkg not found"
-    while IFS= read -r name; do
+    # Read the name list on fd 3, never stdin: the body runs makepkg -si, whose
+    # pacman asks "Proceed with installation? [Y/n]" on *stdin*. Sharing stdin
+    # with the loop feeds that prompt the next package name - the install
+    # aborts and that name is consumed, so it is silently skipped too. The body
+    # must keep the caller's terminal.
+    while IFS= read -r name <&3; do
         [[ -z $only || $name == "$only" ]] || continue
         pinned=$(cmd_pkgver "$pkgs_dir/$name/PKGBUILD")
         inst=$(pacman -Q "$name" 2>/dev/null | awk '{print $2}') || true
@@ -262,7 +267,7 @@ cmd_sync() {
             || die "$name build/install failed (build dir kept: $build)"
         pacman -Qi "$name" >/dev/null || die "$name did not install"
         echo "  installed $name $(pacman -Q "$name" | awk '{print $2}')"
-    done < <(cmd_list)
+    done 3< <(cmd_list)
 }
 
 case "${1:-}" in
