@@ -15,6 +15,10 @@ $ grep -c '^--protocol https$' .config/dotfiles/reflector.conf
 1
 $ grep -c '^--save /etc/pacman.d/mirrorlist$' .config/dotfiles/reflector.conf
 1
+$ grep -c '^--latest 5$' .config/dotfiles/reflector.conf
+1
+$ grep -c '^--fastest 5$' .config/dotfiles/reflector.conf
+1
 $ grep -c '^--sort age$' .config/dotfiles/reflector.conf || true
 0
 $
