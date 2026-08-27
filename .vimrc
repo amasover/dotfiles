@@ -50,11 +50,13 @@ call plug#begin('~/.vim/plugged')
 Plug 'tpope/vim-repeat'
 Plug 'hashivim/vim-terraform'
 Plug 'svermeulen/vim-easyclip'
+Plug 'vim-airline/vim-airline-themes'
 
 call plug#end()
 
 " :PlugInstall installs missing plugins; :PlugUpdate advances them.
 " :PlugDiff reviews updates; :PlugClean removes undeclared plugins.
+let g:airline_theme = 'nord_minimal'
 let g:airline_powerline_fonts = 1
 
 set termguicolors
