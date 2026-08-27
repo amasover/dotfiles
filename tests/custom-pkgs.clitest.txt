@@ -129,6 +129,24 @@ $ printf 'aaaa  pkg-1.0-darwin.tar.gz\n' | $t checksum-verdict pkg-1.0-linux-x64
 absent
 $
 
+sync must keep the caller's stdin for makepkg. A child that reads stdin (pacman
+asks "Proceed with installation? [Y/n]" there) would otherwise be answered by
+the loop's own package list, aborting that install and swallowing the next name:
+
+$ mkdir -p "$CLITMP/bin" "$CLITMP/state"
+$ printf '%s\n' '#!/bin/sh' 'cat > /dev/null   # stands in for pacman reading its [Y/n] prompt' ': > "$CP_STATE/$(basename "$PWD")"' 'echo "    makepkg ran in $(basename "$PWD")"' > "$CLITMP/bin/makepkg"
+$ printf '%s\n' '#!/bin/sh' 'case "$1" in' '  -Q|-Qi) [ -f "$CP_STATE/$2" ] || exit 1; [ "$1" = -Q ] && echo "$2 9.9-9"; exit 0 ;;' 'esac' 'exit 0' > "$CLITMP/bin/pacman"
+$ chmod +x "$CLITMP/bin/makepkg" "$CLITMP/bin/pacman"; echo stubs
+stubs
+$ CP_STATE="$CLITMP/state" XDG_CACHE_HOME="$CLITMP/cache" CUSTOM_PKGS_DIR="$CLITMP/pkgbuilds" PATH="$CLITMP/bin:$PATH" $t sync
+  building alpha 1.8.1-1 (installed: none)...
+    makepkg ran in alpha
+  installed alpha 9.9-9
+  building beta 0.4.0-1 (installed: none)...
+    makepkg ran in beta
+  installed beta 9.9-9
+$
+
 flag/arg contract:
 
 $ $t frobnicate 2>&1; echo "rc=$?"
