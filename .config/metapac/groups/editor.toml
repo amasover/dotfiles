@@ -10,7 +10,6 @@ packages = [
   "intellij-idea-community-edition",
   "nano",
   "neovim",
-  "nord-vim",
   "omnisharp-roslyn-bin",
   "vim-airline",
   "vim-gitgutter",
