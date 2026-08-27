@@ -162,18 +162,23 @@ I want a sweep of config files that exist on the live machine but are not tracke
 So that useful real-workstation configuration is deliberately adopted instead of silently lost on a rebuild.
 
 This is the inverse of Story 1.2 (which maps tracked files → live). Here the direction is
-live → tracked: find untracked config under `$HOME` and decide adopt / encrypt / ignore.
+live → tracked: build a fresh inventory from the current `$HOME`, compare it with YADM's
+tracked/encrypted/ignored paths, and decide adopt / encrypt / machine-local / ignore. Prior
+partial audits and old inventories are inputs, never proof that the current home is covered.
 
 Issue: [#17](https://github.com/amasover/dotfiles/issues/17)
 
 **Acceptance criteria:**
 
-- Given config files exist under `$HOME` (e.g. `.config/`, dotfiles, `.local/`) that YADM does not track, when the sweep runs, then untracked candidates are listed with their purpose
+- Given earlier partial audits exist, when the sweep starts, then it builds a new candidate list from the current `$HOME` rather than treating an old inventory or `yadm status` alone as complete
+- Given config can live outside one directory, when candidates are enumerated, then the scan covers top-level dotfiles, `.config/`, user-authored `.local/` config and executables, and other application config roots; caches, downloads, repositories, package data, and credential stores are excluded by explicit recorded rules
+- Given config files exist under `$HOME` that YADM does not track, when the sweep runs, then untracked candidates are listed with their purpose without dumping secret contents
 - Given an untracked file is found, when reviewed, then it is classified as adopt-to-yadm, encrypt-then-adopt, machine-local-only, or ignore
 - Given a candidate contains secrets or machine-specific/private data, when adoption is considered, then it routes through `.yadm/encrypt` or is excluded — never committed as plaintext
 - Given a file is selected for adoption, when the decision is recorded, then the rationale and target (tracked vs encrypted) is documented; actual `yadm add` happens only with explicit approval
+- Given the sweep completes, then its enumeration method and exclusions are recorded so a later laptop can repeat it and detect newly untracked dotfiles
 
-**Evidence artifact:** Untracked-config adoption inventory under `docs/`
+**Evidence artifact:** Repeatable full-home scan method + untracked-config adoption inventory under `docs/`
 
 ---
 

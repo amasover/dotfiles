@@ -30,6 +30,8 @@ Facts:
 2. Pick up work via its GitHub issue; check `knowledge/` for related recipes.
 3. Branch `story/<n>-<slug>` off `main`; one story per branch and PR; PRs against `main` only (never stacked).
 4. When a chunk lands, update this file *per the format contract above*.
+5. For work requiring the current Linux laptop's live home, hardware, package state, or
+   libvirt host, use [laptop-only-work.md](./laptop-only-work.md) as the filtered queue.
 
 ## In flight
 
