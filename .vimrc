@@ -57,6 +57,7 @@ call plug#end()
 " :PlugDiff reviews updates; :PlugClean removes undeclared plugins.
 let g:airline_powerline_fonts = 1
 
+set termguicolors
 colorscheme nord
 set number
 set tabstop=4
