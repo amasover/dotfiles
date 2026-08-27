@@ -258,20 +258,44 @@ else
 fi
 
 # --- 3b. pacman mirrors (reflector) --------------------------------------------
-# One slow mirror can stretch the first sync from minutes into hours. Fresh
-# installs are usually fine — the archiso ranks mirrors at live-boot and
-# pacstrap copies that list in — so re-rank only when the list has aged out.
-# Steady-state re-ranking on live machines is Story 2.18 (reflector.timer).
+# One slow mirror can stretch the first sync from minutes into hours. The
+# ranking policy lives in one tracked file symlinked into /etc/xdg, so all
+# three consumers read the same args: reflector.timer (weekly, the steady-state
+# owner - Story 2.18), the stale-list re-rank below, and zshrc's
+# update_pacman_mirrorlist. Arch's stock conf is `--latest 5 --sort age` with
+# no country filter - the five most recently *synced* mirrors on earth, which
+# on 2026-08-26 meant Brazil x2, Frankfurt, Johannesburg and Umea for a
+# Mountain-time laptop: ~1.2 MiB/s where US mirrors measured 8-10 on the same
+# link. Worse, the timer's weekly rewrite kept the file young enough that the
+# 7-day re-rank below never fired. Fresh installs usually skip it for real -
+# the archiso ranks mirrors at live-boot and pacstrap copies that list in.
 say "Pacman mirrors"
 mirrorlist=/etc/pacman.d/mirrorlist
-if [[ -n "$(find "$mirrorlist" -mtime -7 2>/dev/null)" ]]; then
-    echo "  mirrorlist is younger than 7 days — keeping it"
-elif [[ $CHECK -eq 1 ]]; then
-    echo "  would: pacman -S reflector, then rank the fastest US https mirrors"
+rfl_src="$HOME/.config/dotfiles/reflector.conf"
+rfl_dst=/etc/xdg/reflector/reflector.conf
+if [[ $CHECK -eq 1 ]]; then
+    echo "  would: pacman -S reflector, symlink $rfl_dst -> tracked policy,"
+    echo "         enable reflector.timer, re-rank a mirrorlist older than 7 days"
 else
     sudo pacman -S --needed "${NC[@]}" reflector
-    sudo reflector --verbose --country 'United States' --fastest 10 --latest 10 \
-        --sort rate --protocol https --age 6 --save "$mirrorlist"
+    if [[ "$(readlink "$rfl_dst" 2>/dev/null)" == "$rfl_src" ]]; then
+        echo "  ranking policy already linked: $rfl_dst"
+    else
+        sudo mkdir -p "$(dirname "$rfl_dst")"
+        sudo ln -sfT "$rfl_src" "$rfl_dst"
+        echo "  ranking policy linked: $rfl_dst -> $rfl_src"
+    fi
+    if systemctl is-enabled reflector.timer >/dev/null 2>&1; then
+        echo "  reflector.timer already enabled"
+    else
+        sudo systemctl enable --now reflector.timer
+        echo "  reflector.timer enabled - it owns the weekly re-rank from here"
+    fi
+    if [[ -n "$(find "$mirrorlist" -mtime -7 2>/dev/null)" ]]; then
+        echo "  mirrorlist is younger than 7 days - keeping it"
+    else
+        sudo reflector --verbose "@$rfl_dst"
+    fi
 fi
 
 # Quarantine hold machinery — defined here because step 3c below is the first

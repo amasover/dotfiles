@@ -1,0 +1,41 @@
+# Mirror ranking policy (Story 2.18). Host-independent: greps tracked files, no
+# reflector call, no network, no /etc.
+#
+# Run from the repo root: clitest tests/reflector-mirrors.clitest.txt
+
+the tracked policy ranks US mirrors by measured rate — Arch's stock conf sorts
+by sync age with no country filter, which is how a Mountain-time laptop ended up
+pulling from Brazil and Johannesburg:
+
+$ grep -c '^--country US$' .config/dotfiles/reflector.conf
+1
+$ grep -c '^--sort rate$' .config/dotfiles/reflector.conf
+1
+$ grep -c '^--protocol https$' .config/dotfiles/reflector.conf
+1
+$ grep -c '^--save /etc/pacman.d/mirrorlist$' .config/dotfiles/reflector.conf
+1
+$ grep -c '^--sort age$' .config/dotfiles/reflector.conf || true
+0
+$
+
+bootstrap 3b links that file into /etc/xdg, enables the timer that owns the
+steady state, and re-ranks a stale list through the same file:
+
+$ grep -c 'ln -sfT "$rfl_src" "$rfl_dst"' .local/bin/setup/bootstrap
+1
+$ grep -c 'systemctl enable --now reflector.timer' .local/bin/setup/bootstrap
+1
+$ grep -c 'reflector --verbose "@$rfl_dst"' .local/bin/setup/bootstrap
+1
+$
+
+no consumer keeps a private copy of the args — a second copy is exactly how the
+stock conf quietly won: the timer kept the mirrorlist young, so bootstrap's
+7-day re-rank (with the good args) never fired:
+
+$ grep -rn -- '--sort rate' .local/bin .zshrc | wc -l
+0
+$ grep -c 'reflector --verbose @/etc/xdg/reflector/reflector.conf' .zshrc
+1
+$

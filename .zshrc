@@ -224,7 +224,10 @@ update_golang() {
 }
 
 update_pacman_mirrorlist() {
-    sudo reflector --verbose --protocol https --age 8 --sort rate --save /etc/pacman.d/mirrorlist
+    # Same policy the weekly reflector.timer uses (tracked at
+    # .config/dotfiles/reflector.conf, symlinked into /etc/xdg by bootstrap 3b)
+    # so a hand re-rank can never disagree with the scheduled one.
+    sudo reflector --verbose @/etc/xdg/reflector/reflector.conf
 }
 alias yaf="yadm add ~/.yadm/files.gpg"
 

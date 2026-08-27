@@ -45,10 +45,15 @@ shows its own plan and prompts (makepkg, metapac sync, chsh). What it does, in o
 3. **Machine-local group** — creates (empty) `~/.local/share/metapac/machine-local.toml`
    if missing: the one group file living outside the repo, and metapac hard-errors
    on missing group files (Story 2.11 owns its contents).
-4. **Mirrors** — when `/etc/pacman.d/mirrorlist` is older than 7 days, installs
-   reflector and re-ranks the fastest US https mirrors. Fresh installs usually
-   skip it (the archiso ranks mirrors at live-boot and the install copies that
-   list in); steady-state re-ranking on live machines is Story 2.18.
+4. **Mirrors** — installs reflector, symlinks the tracked ranking policy
+   (`.config/dotfiles/reflector.conf`) into `/etc/xdg/reflector/`, enables
+   `reflector.timer` (the steady-state owner, Story 2.18), and re-ranks when
+   `/etc/pacman.d/mirrorlist` is older than 7 days. Fresh installs usually skip
+   the re-rank (the archiso ranks mirrors at live-boot and the install copies
+   that list in). One policy file, so the timer, the bootstrap re-rank and
+   zshrc's `update_pacman_mirrorlist` can't disagree — Arch's stock conf ranks
+   the five most recently *synced* mirrors worldwide, which is how this machine
+   ended up on Brazilian and South African mirrors at ~1.2 MiB/s.
 5. **yay** — one manual `makepkg -si` from `yay-bin`; the only unmanaged install.
 6. **metapac** — `yay -S metapac` (it's an AUR package).
 7. **`metapac sync`** — the fresh install is just the first reconcile: installs the
