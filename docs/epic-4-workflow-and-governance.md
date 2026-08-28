@@ -342,6 +342,36 @@ both plugins on the workstation.
 
 ---
 
+### Story 4.12: Refresh shell formatting baseline after bootstrap growth
+
+As the repo owner,
+I want shell-formatting evidence refreshed after recent bootstrap growth,
+So that the validation runbook describes current drift and formatting changes remain
+focused, reviewable, and behavior-neutral.
+
+Issue: [#212](https://github.com/amasover/dotfiles/issues/212) · Origin: Story 2.13's
+opportunity pass found broad `bootstrap` shfmt drift added after Story 4.5's 2026-07-09
+baseline, while the runbook still calls that script clean. Formatting it inside an
+unrelated behavioral PR would bury review signal.
+
+Canonical style remains `shfmt -i 4 -bn -ci`; deprecated `-kp` does not return. Zsh
+scripts retain their separate syntax-only validation contract.
+
+**Acceptance criteria:**
+
+- Current Bash/sh scripts under `.local/bin/setup/` and `.local/bin/tools/` get canonical shfmt and shellcheck evidence with per-file counts; stale runbook claims are corrected
+- Material drift is traced to its owning story/PR where Git history makes that practical
+- Each dirty script is formatted here, deferred to an active owner with reason, or retained under a documented deliberate-style exception; no blanket whole-tree rewrite occurs
+- Each formatted script's focused behavioral tests pass before and after, shellcheck findings are compared, and formatting commits contain no functional edits
+- `bootstrap` is formatted only after quarantine, hold, filtered-sync, and check-mode suites pass; its review diff remains formatting-only
+- `docs/runbook-script-validation.md` records the current baseline, clean/exception tables, commands, and date
+- New or modified scripts remain independently format-clean even when an explicitly deferred legacy script does not
+
+**Evidence artifact:** before/after per-file table, focused test transcripts, shellcheck
+comparison, formatting-only commits, and refreshed validation runbook.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - The GitHub board is the status source of truth, with issues linked from epic `.md` files.
