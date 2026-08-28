@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# spacemacs-checkout — keep ~/.emacs.d a disposable upstream checkout.
+#
+# Usage:
+#   spacemacs-checkout apply [DIR]    clone upstream develop when absent; verify otherwise
+#   spacemacs-checkout --check [DIR]  report drift without mutation
+#   spacemacs-checkout update [DIR]   fast-forward a clean verified checkout
+#
+# Environment overrides (primarily for host-independent tests):
+#   SPACEMACS_REPO, SPACEMACS_BRANCH, SPACEMACS_DIR
+#
+# Existing state is never reset, moved, stashed, or deleted. A wrong remote/branch,
+# local commit, dirty file, or non-checkout path fails with an explicit repair boundary.
+set -euo pipefail
+
+fail() {
+    printf 'spacemacs-checkout: %s\n' "$*" >&2
+    exit 1
+}
+
+normalize_repo() {
+    local value=${1%/}
+    value=${value%.git}
+    case "$value" in
+        git@github.com:*) value="https://github.com/${value#git@github.com:}" ;;
+        ssh://git@github.com/*) value="https://github.com/${value#ssh://git@github.com/}" ;;
+    esac
+    printf '%s\n' "$value"
+}
+
+repo=${SPACEMACS_REPO:-https://github.com/syl20bnr/spacemacs.git}
+branch=${SPACEMACS_BRANCH:-develop}
+dir=${2:-${SPACEMACS_DIR:-$HOME/.emacs.d}}
+action=${1:-apply}
+
+case "$action" in
+    apply | --check | update) ;;
+    -h | --help)
+        sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+        exit 0
+        ;;
+    *) fail "unknown action: $action   (try: spacemacs-checkout -h)" ;;
+esac
+
+validate_checkout() {
+    local actual_repo actual_branch changes counts ahead
+
+    git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 \
+        || fail "$dir exists but is not a git checkout — move or archive it manually; refusing to overwrite"
+
+    actual_repo=$(git -C "$dir" remote get-url origin 2>/dev/null) \
+        || fail "$dir has no origin remote — repair it manually; refusing to rewrite remotes"
+    [[ "$(normalize_repo "$actual_repo")" == "$(normalize_repo "$repo")" ]] \
+        || fail "$dir origin is '$actual_repo', expected '$repo' — repair manually; refusing to rewrite it"
+
+    actual_branch=$(git -C "$dir" symbolic-ref --quiet --short HEAD 2>/dev/null) \
+        || fail "$dir has a detached HEAD, expected branch '$branch' — repair manually"
+    [[ "$actual_branch" == "$branch" ]] \
+        || fail "$dir is on branch '$actual_branch', expected '$branch' — repair manually"
+
+    changes=$(git -C "$dir" status --porcelain --untracked-files=all)
+    [[ -z "$changes" ]] \
+        || fail "$dir has local changes — back them up and restore or replace the checkout manually"
+
+    git -C "$dir" show-ref --verify --quiet "refs/remotes/origin/$branch" \
+        || fail "$dir has no origin/$branch tracking ref — fetch or replace it manually"
+    counts=$(git -C "$dir" rev-list --left-right --count "origin/$branch...HEAD")
+    read -r _behind ahead <<<"$counts"
+    [[ "$ahead" == 0 ]] \
+        || fail "$dir is $ahead commit(s) ahead of origin/$branch — back up any wanted work; refusing to reset"
+}
+
+if [[ ! -e "$dir" ]]; then
+    if [[ "$action" == --check ]]; then
+        printf '  would: git clone --branch %s --single-branch %s %s\n' "$branch" "$repo" "$dir"
+        exit 1
+    fi
+    [[ "$action" == apply ]] \
+        || fail "$dir is missing — run 'spacemacs-checkout apply' before update"
+    mkdir -p "${dir%/*}"
+    git clone --quiet --branch "$branch" --single-branch "$repo" "$dir"
+    validate_checkout
+    printf '  cloned Spacemacs %s into %s\n' "$branch" "$dir"
+    exit 0
+fi
+
+validate_checkout
+case "$action" in
+    apply | --check)
+        printf '  already installed (clean upstream %s checkout)\n' "$branch"
+        ;;
+    update)
+        git -C "$dir" fetch --quiet --prune origin
+        git -C "$dir" merge --quiet --ff-only "origin/$branch" >/dev/null
+        validate_checkout
+        printf '  updated Spacemacs to origin/%s\n' "$branch"
+        ;;
+esac

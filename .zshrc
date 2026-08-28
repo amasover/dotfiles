@@ -5,10 +5,6 @@ pager() {
 }
 export TG_LOG_FORMAT="bare"
 
-# auto load .nvmrc and apply when cd into a directory that has an .nvmrc
-# this must be loaded before the zsh-nvm plugin
-export NVM_AUTO_USE=true
-
 # Set name of the theme to load. Optionally, if you set this to "random"
 # it'll load a random theme each time that oh-my-zsh is loaded.
 # See https://github.com/robbyrussell/oh-my-zsh/wiki/Themes
@@ -60,14 +56,14 @@ plugins=(
     git
     docker
     vi-mode
-    archlinux
-    zsh-autosuggestions
-    #sudo
-    # custom plugins #
-    # https://github.com/lukechilds/zsh-nvm
-    zsh-nvm)
+    archlinux)
 
 source $ZSH/oh-my-zsh.sh
+
+# Package-owned shell integrations (Story 2.13). NVM changes versions only on
+# explicit `nvm use`; directory changes never install or switch Node.
+source /usr/share/nvm/init-nvm.sh
+source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
 source ~/.zsh_plugins.sh
 
 #############################
@@ -195,7 +191,7 @@ alias cggh="cd $GOPATH/src/github.com/$GITHUB_ACCOUNT && ll"
 alias vssh="vim ~/.ssh/config"
 alias lssh="ls ~/.ssh"
 alias rmrf="rm -rfi"
-alias update-emacs="cd $HOME/.emacs.d && git pull --rebase && cd $HOME"
+alias update-emacs="$HOME/.local/bin/setup/spacemacs-checkout update"
 alias news="new_script --path . --name"
 alias newt="new_script --name"
 alias ranger='ranger --choosedir=$HOME/.rangerdir; LASTDIR=`cat $HOME/.rangerdir`; cd "$LASTDIR"'
