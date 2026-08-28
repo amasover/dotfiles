@@ -121,6 +121,17 @@ Package cleanup should inventory the current machine first, then ask targeted qu
 - It is acceptable to ask Aaron to install a package needed for this cleanup work, but never install it automatically without approval.
 - Do not remove packages from the live machine as part of documentation or inventory work.
 
+### 5a. Run an opportunity pass on touched config
+
+When inspecting a dotfile, package declaration, or its live counterpart, also inspect the
+touched surface's direct dependencies and ownership boundaries for stale assumptions,
+duplicate mechanisms, missing bootstrap coverage, safety defects, and concrete usability,
+performance, or maintenance improvements.
+
+Surface every evidence-backed opportunity to Aaron, including useful findings outside the
+active story. Label each as an in-scope defect or a follow-up suggestion. Keep the current
+branch focused: propose or ticket adjacent work instead of silently implementing it.
+
 ### 6. Product docs should guide cleanup
 
 Use `docs/` for product-level planning artifacts:
