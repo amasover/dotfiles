@@ -58,15 +58,27 @@ shows its own plan and prompts (makepkg, metapac sync, chsh). What it does, in o
 6. **metapac** — `yay -S metapac` (it's an AUR package).
 7. **`metapac sync`** — the fresh install is just the first reconcile: installs the
    class's declared set (AUR through yay), per-package service hooks fire as declared.
+   Shell ownership includes official `nvm` and `zsh-autosuggestions`; `.zshrc` sources
+   their packaged entry points directly. NVM never reacts to `cd`—run `nvm use`
+   explicitly when a Node project needs its `.nvmrc` version.
 8. **AUR trust baseline** — `aur-quarantine seed` (trust-first-seen, announced;
    interim until 2.10's portable baseline).
-9. **oh-my-zsh** — official installer, `KEEP_ZSHRC=yes` so yadm's `.zshrc` survives
-   (replaces the deleted vendored `install_oh_my_zsh`); then symlinks the tracked
-   patched agnoster theme (`~/.config/dotfiles/oh-my-zsh-custom/themes/`) into
-   `~/.oh-my-zsh/custom/themes/`, where it shadows the bundled one (Story 2.20).
-10. **Vim fallback plugins** — after metapac installs the manager and packaged
-    plugins, reconciles the three active `Plug` declarations; `--check` is read-only.
-11. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
+9. **oh-my-zsh** — official installer, `KEEP_ZSHRC=yes` so yadm's `.zshrc` survives;
+   then symlinks the tracked patched agnoster theme into its custom theme directory.
+   No custom plugin clone supplies autosuggestions or NVM.
+10. **Spacemacs checkout** — `setup/spacemacs-checkout apply` clones upstream `develop`
+    when `~/.emacs.d` is absent. An existing wrong/dirty/ahead checkout stops with manual
+    repair instructions; bootstrap never overwrites it. Tracked `~/.spacemacs` owns user
+    configuration.
+11. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
+    unrelated settings.
+12. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
+    reconciles the four active `Plug` declarations; `--check` is read-only.
+13. **User services** — enables tracked user units; services awaiting attended auth may
+    start later through their restart policy.
+14. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and
+    leaves metal/non-VMware hosts without the managed link.
+15. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
 
 ## Class table
 
@@ -88,10 +100,12 @@ every item passes on the rebuilt machine, executed by hand during the run:
 2. Graphical session works: i3 + terminal + rofi compose a usable desktop.
 3. Network up (wifi included where the hardware has it).
 4. `yadm decrypt` restores secrets — one real ssh connection and one AWS call succeed.
-5. Browser and Spacemacs open and are usable (emacs packages installed via
-   `setup/update`'s batch step).
-6. Audio plays.
-7. `metapac unmanaged` is exactly empty and the drift report is clean — the machine
+5. Interactive zsh starts without missing-plugin warnings; `nvm` resolves, and changing
+   directories does not switch Node until `nvm use` is requested.
+6. Browser and Spacemacs open and are usable; `setup/spacemacs-checkout --check` reports a
+   clean upstream `develop` checkout, and Emacs packages update through `setup/update`.
+7. Audio plays.
+8. `metapac unmanaged` is exactly empty and the drift report is clean — the machine
    is converged, not merely running.
 
 Anything not listed (gaming, media tuning, polybar cosmetics, screenlayout) is

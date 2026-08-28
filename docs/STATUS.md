@@ -56,6 +56,11 @@ Facts:
 - **2.25 dotnet repo stack** ([#82](https://github.com/amasover/dotfiles/issues/82)): open for the
   gated host live swap + the `dotnet-runtime-2.1`/`2.2` relic decision; four repo names drift
   declared-but-missing until then.
+- **2.13 shell/editor artifacts** ([#60](https://github.com/amasover/dotfiles/issues/60)):
+  package-first autosuggestions/NVM (explicit `nvm use`) + a fail-closed disposable
+  Spacemacs `develop` checkout; live convergence waits for PR review and approval.
+- **3.30 Spacemacs config review** ([#210](https://github.com/amasover/dotfiles/issues/210)):
+  focused behavior-preserving modernization spun out by 2.13's opportunity pass.
 - **Direction (2026-07-10 grill)**: cleanup era ends at the daily-driver rebuild (a VMware VM
   on the Windows machine, not metal first) + the 1.8 work-machine steps. Record:
   [decision-daily-driver-vm.md](./decision-daily-driver-vm.md), PRD §4 eras, runbook checklist.

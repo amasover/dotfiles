@@ -809,6 +809,42 @@ residue checks, and reproducibility change for any keeper.
 
 ---
 
+### Story 3.30: Thoroughly modernize the Spacemacs configuration
+
+As the repo owner,
+I want `.spacemacs` audited and simplified against current Emacs/Spacemacs behavior,
+So that the current workspace editor keeps its workflows without hiding diagnostics,
+disabling runtime safeguards, or carrying years of untested sediment.
+
+Issue: [#210](https://github.com/amasover/dotfiles/issues/210) · Origin: Story 3.2
+classified Spacemacs as current, while Story 2.13 owns only checkout reproducibility.
+The opportunity pass found global warning suppression, effectively disabled garbage
+collection, overwritten YAML schema state, stray startup prints, duplicate declarations,
+and old Nord/Helm/Go/C#/path workarounds needing evidence.
+
+Decision: thorough behavior-preserving modernization. Keep Spacemacs, Vim-style editing,
+and confirmed workflows; baseline first rather than regenerate blindly or begin an editor
+migration.
+
+**Acceptance criteria:**
+
+- Before editing, deterministic batch startup/timing and attended representative workflows establish a baseline for startup/theme, Vim editing, navigation, Git, completion, and confirmed active language integrations
+- User-owned choices are separated from unchanged template defaults and generated sediment; pruning preserves an understandable, loadable config
+- Useful warnings and normal garbage-collection semantics are restored, with before/after startup and memory measurements
+- YAML schemas accumulate instead of replacing each other; debug prints and duplicate declarations disappear
+- Each workaround is tied to its original defect and current versions, then removed only after a focused reproduction proves it obsolete or retained with a concise reason
+- Active layers/packages match declared external dependencies; dead integrations and active hardcoded machine paths are removed or made portable without exposing private values
+- Current Emacs + upstream Spacemacs `develop` start cleanly in batch and attended GUI modes, and every retained baseline workflow passes
+- Live reverse-testing, editor restarts, plugin changes, and package mutations remain separately approved, with a rollback copy before the first live trial
+
+Out of scope: switching editor/distribution/keymap, repairing `~/.emacs.d` (Story 2.13),
+OMP LSP coverage (#206), and broad shell cleanup.
+
+**Evidence artifact:** audit matrix, baseline/after measurements, focused config diff,
+batch transcript, and attended workflow checklist.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely

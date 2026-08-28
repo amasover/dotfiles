@@ -214,14 +214,15 @@ plus the broken `.fehbg`.
   `~/code/go/bin/` still need deleting **on the laptop** when it next converges.
 - **Rename `pulseaudio-tail.sh`** to reflect PipeWire (cosmetic). → **done**, Story 3.12:
   now `tools/volume-tail`, wpctl end to end (pamixer polling gone).
-- **Old-install audit (2026-07-03):** the retired 2019 `install` placed git-clone
+- **Old-install audit (2026-07-03):** the retired 2019 `install` placed runtime
   artifacts the bootstrap did not recreate. Vim plugin management moved to
   **Story 2.49** ([#186](https://github.com/amasover/dotfiles/issues/186)):
   metapac owns the packaged manager/plugins and `setup/vim-plugins` owns only
   fallbacks; the unused `tools/vendor_repos` and dead polybar clone are gone.
-  The remaining oh-my-zsh custom plugins (`zsh-autosuggestions`,
-  `zsh-nvm`→nvm) and Spacemacs `~/.emacs.d`
-  stay with **Story 2.13** ([#60](https://github.com/amasover/dotfiles/issues/60)).
+  **Story 2.13** ([#60](https://github.com/amasover/dotfiles/issues/60)) replaces
+  the autosuggestions/zsh-nvm clones with official `zsh-autosuggestions` + `nvm`,
+  explicit `nvm use`, and a fail-closed `setup/spacemacs-checkout` for the disposable
+  upstream `develop` checkout. Spacemacs config modernization is Story 3.30 (#210).
 - **Dead desktop config** (Epic 3 / Story 3.3): termite dropdown binding in i3
   ([config:166](../.config/i3/config#L166)); dead `$mod+p` rofi-lpass binding (off lastpass);
   stale polybar themes (`*.bak`, non-active themes).

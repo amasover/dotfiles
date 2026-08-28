@@ -70,11 +70,20 @@ frontend. IntelliJ is an archive/remove candidate. Details:
 classified `~/.emacs.d` as a disposable upstream checkout. Live oh-my-zsh clones also
 supply evidence for what the shell still needs.
 
-**Remaining:** back up/classify local checkout artifacts, then make bootstrap reproduce a
-clean Spacemacs `develop` checkout while tracked `.spacemacs` owns customization. Archive
-the unused `lisp/init-gptel.el`; do not make the current local merge history a fork. Also
-make `zsh-autosuggestions` and `zsh-nvm` reproducible. Vim/Vundle work already moved to
-completed Story 2.49.
+**Remaining:** implementation replaces the autosuggestions/zsh-nvm clones with official
+packages and makes bootstrap reproduce a clean Spacemacs `develop` checkout while tracked
+`.spacemacs` owns customization. After PR review: back up the live checkout, archive unused
+`lisp/init-gptel.el`, reconcile without preserving the local merge history, then verify shell
+and editor behavior. Vim/Vundle work already moved to completed Story 2.49.
+
+#### Story 3.30 — modernize Spacemacs config ([#210](https://github.com/amasover/dotfiles/issues/210))
+
+**Why laptop-only:** behavior-preserving cleanup needs the current GUI editor, active
+packages/language tools, and real workflow evidence.
+
+**Remaining:** baseline startup and retained workflows; audit the 900-line `.spacemacs`;
+restore warnings/GC; fix YAML schema loss and debug output; prove or remove old workarounds;
+measure and live-test every retained behavior under explicit approval.
 
 #### Story 3.1 — clean shell config ([#28](https://github.com/amasover/dotfiles/issues/28))
 
