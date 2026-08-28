@@ -62,21 +62,27 @@ Issue: [#28](https://github.com/amasover/dotfiles/issues/28)
 
 ---
 
-### Story 3.2: Classify editor configs
+### Story 3.2: Classify editor configs ✅
 
 As the repo owner,
-I want editor configs marked current or legacy,
-So that active editors are supported and old configs do not cause confusion.
+I want editor and agentic-coding surfaces assigned explicit roles and dispositions,
+So that active tools are supported without treating every installed editor as a competing default.
 
-Issue: [#29](https://github.com/amasover/dotfiles/issues/29)
+Issue: [#29](https://github.com/amasover/dotfiles/issues/29) (closed)
+
+The singular “primary editor” model was rejected. Vim is the terminal editor;
+Spacemacs is the workspace editor; OMP is the agentic coding environment; VS Code is a
+secondary IDE; Neovim is a Vim compatibility frontend. IntelliJ is an archive/remove
+candidate. Full findings and follow-up ownership live in the inventory.
 
 **Acceptance criteria:**
 
-- Given `.spacemacs`, `.vimrc`, `.config/nvim/`, and `.config/Code/` exist, when reviewed, then each is classified as current, legacy-supported, archive-candidate, or unknown
-- Given an editor config references plugins or tools, when classified, then outdated or missing dependencies are noted
-- Given multiple editor configs remain, when docs are updated, then the primary editor path is named
+- Given `.spacemacs`, `.vimrc`, `.config/nvim/`, `.config/Code/`, and OMP exist, each is classified with a durable role and source of truth
+- Given editor config references plugins, packages, checkouts, or external tools, missing and non-reproducible dependencies are named with an owning follow-up
+- Given several current coding surfaces remain, terminal editor, workspace editor, secondary IDE, compatibility frontend, and agentic coding environment are distinguished instead of naming one false primary
+- Given an archive/remove candidate is found, classification records it without performing an unapproved live-file or package mutation
 
-**Evidence artifact:** Editor config inventory
+**Evidence artifact:** [Editor configuration inventory](./editor-config-inventory.md)
 
 ---
 
@@ -739,6 +745,67 @@ an independent SDK session every round ([Meridian #820](https://github.com/rynfa
 **Evidence artifact:** extension/header contract test, a real Meridian
 `lineage=new` → `lineage=continuation` tool-round trace, and both mode
 configuration outputs.
+
+---
+
+### Story 3.28: OMP LSP coverage across active workstation languages
+
+As the repo owner,
+I want OMP's existing LSP operations backed by reproducibly installed language servers,
+So that the agentic coding environment gets semantic navigation and safe refactors across
+the languages used on this workstation.
+
+Issue: [#206](https://github.com/amasover/dotfiles/issues/206) · Origin: Story 3.2 found
+that OMP has a deep LSP client but this repo detects only YAML and OmniSharp; gopls and
+YAML LS are unowned global installs, while Bash LS, TypeScript LS, Pyright, and Marksman
+are absent.
+
+Decisions: rely on OMP's built-in server definitions plus package declarations; add an
+override only for a reproduced default failure. Guarantee Bash/Zsh, TypeScript/JavaScript,
+Python (official Pyright + Ruff), Markdown, Go, YAML, C#, and Terraform. New OMP protocol
+actions are out of scope.
+
+**Acceptance criteria:**
+
+- Given the editor/tooling manifest, official packages declare `bash-language-server`, `typescript-language-server`, `pyright`, `marksman`, `gopls`, `yaml-language-server`, and `ruff`; existing OmniSharp and Terraform LS declarations remain in their appropriate groups
+- Given an approved live reconcile, each server resolves from its declared package and the unowned GOPATH/Yarn copies are retired without removing unrelated global tools
+- Given representative active repositories, OMP auto-detects the expected built-in server without a copied user-wide server map; any override is minimal and records the reproduced reason
+- Given behavioral validation, diagnostics plus definition/references work across representative languages, and rename preview plus one code action run against disposable files; status-only evidence is insufficient
+- Given Python, Pyright owns type intelligence and Ruff owns lint diagnostics without duplicate output being counted as separate defects
+
+**Evidence artifact:** manifest diff, OMP status/capability output, per-language behavioral
+transcripts, and live cutover record.
+
+---
+
+### Story 3.29: Evaluate OMP marketplace plugins across three plugin shapes
+
+As the repo owner,
+I want OMP marketplace plugins reviewed and trialed under a bounded trust model,
+So that useful extensions can join the agentic coding environment without silently adding
+hooks, credentials, network access, or duplicate prompt/tool weight.
+
+Issue: [#207](https://github.com/amasover/dotfiles/issues/207) · Origin: Story 3.2 found
+the official marketplace configured but no plugins installed. The tracked Meridian affinity
+module is a direct extension, not a plugin.
+
+Decisions: review three shapes—skills/agents, hooks/extensions, and LSP metadata. Seed
+candidates are `code-simplifier`, `security-guidance`, and `typescript-lsp`; source review
+may replace a rejected candidate only with the same shape. Trial one at a time under an
+isolated OMP profile with project scope. A keeper promotes to user scope and becomes
+reproducible; zero keepers is valid.
+
+**Acceptance criteria:**
+
+- Given the baseline, configured marketplaces, zero installed plugins, built-in capabilities, skills, and direct extensions are recorded so overlap is not mistaken for value
+- Before installation, every executable surface is reviewed: hooks, extension modules, tools, commands, agents, MCP servers, LSP config, subprocess/network behavior, data paths, and credential access
+- No networked MCP, remote-write integration, credential handoff, or executable hook runs without separate explicit approval; extension/hook code is treated as in-process trusted code
+- Each accepted candidate installs project-scoped under an isolated profile, runs one bounded real task, and is compared with baseline value, noise, reliability, latency, and overlap
+- Rejected candidates are uninstalled with no enabled plugin, project lock entry, hook, MCP server, LSP override, or cached credential left behind
+- A keeper is promoted to user scope, verified in two unrelated projects, and gets a repeatable install/upgrade path; if none earns that burden, the zero-plugin baseline is restored
+
+**Evidence artifact:** source-review matrix, isolated trial transcripts, keep/drop decisions,
+residue checks, and reproducibility change for any keeper.
 
 ---
 

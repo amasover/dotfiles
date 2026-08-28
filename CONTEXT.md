@@ -91,6 +91,38 @@ daily driver. After graduation the machine owns its own reconcile loop; no harne
 targets it again.
 _Avoid_: handoff, go-live, milestone (that's the era-exit event it contributes to)
 
+**Terminal editor**:
+The short-lived editor shell workflows invoke through `$EDITOR`, aliases, pipes, and pagers.
+_Avoid_: primary editor, CLI editor
+
+**Workspace editor**:
+The long-lived graphical editor used for project-scale navigation and coding sessions.
+_Avoid_: primary editor, GUI editor
+
+**Agentic coding environment**:
+A development environment where an agent/tool loop owns code changes, using code intelligence and automation rather than direct human buffer editing as its primary interface.
+_Avoid_: editor, workspace editor, IDE
+
+**OMP extension**:
+Reviewed code loaded directly into the OMP process to change runtime behavior.
+_Avoid_: plugin
+
+**OMP plugin**:
+An installable capability bundle that may contain skills, agents, hooks, tools, servers, or extensions.
+_Avoid_: extension
+
+**Disposable upstream checkout**:
+A replaceable upstream clone whose user configuration and durable state live outside the checkout; local source edits are drift, not customization.
+_Avoid_: managed fork, configuration directory
+
+**Secondary IDE**:
+An editor retained for workflows needing its ecosystem, without owning terminal or workspace defaults.
+_Avoid_: alternate primary editor
+
+**Compatibility frontend**:
+An editor command that delegates to another editor's configuration rather than owning an independent config surface.
+_Avoid_: separate editor configuration
+
 ## Eras
 
 **Cleanup era**:
