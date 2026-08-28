@@ -57,26 +57,24 @@ could lose.
 full live-home sweep. Its acceptance criteria now make the fresh scan, coverage, and
 repeatability explicit. Spin out focused stories only for substantial finds.
 
-#### Story 3.2 — classify editor configs ([#29](https://github.com/amasover/dotfiles/issues/29))
+#### Story 3.2 — classify editor configs ✅ ([#29](https://github.com/amasover/dotfiles/issues/29))
 
-**Why laptop-only:** editor currentness depends on live use and the installed/configured
-editor trees, especially tracked `~/.spacemacs` plus untracked git clone
-`~/.emacs.d`.
-
-**Remaining Emacs work:** decide whether Spacemacs is current, legacy-supported, or
-retired; name the primary editor; inventory its live plugin/tool dependencies; classify
-`.spacemacs`, `.emacs.d`, Vim/Neovim, and VS Code surfaces. Do not YADM-adopt the
-Spacemacs checkout as ordinary dotfiles: it needs a bootstrap/retire disposition.
+Completed decision: Vim is the terminal editor; Spacemacs is the workspace editor; OMP is
+the agentic coding environment; VS Code is a secondary IDE; Neovim is a compatibility
+frontend. IntelliJ is an archive/remove candidate. Details:
+[editor-config-inventory.md](./editor-config-inventory.md).
 
 #### Story 2.13 — close cloned shell/editor bootstrap gaps ([#60](https://github.com/amasover/dotfiles/issues/60))
 
-**Why laptop-only:** Story 3.2's live Emacs decision controls this story's bootstrap
-behavior. Live oh-my-zsh clones also supply evidence for what the shell still needs.
+**Why laptop-only:** Story 3.2 confirmed Spacemacs as the current workspace editor and
+classified `~/.emacs.d` as a disposable upstream checkout. Live oh-my-zsh clones also
+supply evidence for what the shell still needs.
 
-**Remaining:** after Story 3.2, either bootstrap/runbook the Spacemacs clone or retire
-Spacemacs and remove its update path deliberately. Also make the live
-`zsh-autosuggestions` and `zsh-nvm` requirements reproducible. Vim/Vundle work already
-moved to completed Story 2.49.
+**Remaining:** back up/classify local checkout artifacts, then make bootstrap reproduce a
+clean Spacemacs `develop` checkout while tracked `.spacemacs` owns customization. Archive
+the unused `lisp/init-gptel.el`; do not make the current local merge history a fork. Also
+make `zsh-autosuggestions` and `zsh-nvm` reproducible. Vim/Vundle work already moved to
+completed Story 2.49.
 
 #### Story 3.1 — clean shell config ([#28](https://github.com/amasover/dotfiles/issues/28))
 
@@ -188,7 +186,16 @@ left a Linux/libvirt remainder: enable the dormant pointer-calibration path with
 `xinput` plus the evdev `InputClass`, then validate on the Linux host. Open a focused
 follow-up issue before implementation because the original issue is closed.
 
-### 4. Lower-priority live workflow evaluations
+### 4. Expand the agentic coding environment
+
+- **Story 3.28 — OMP LSP workstation coverage ([#206](https://github.com/amasover/dotfiles/issues/206)):**
+  declare the active cross-repo language servers, replace unowned global copies, and
+  validate semantic operations on real/disposable projects.
+- **Story 3.29 — OMP plugin evaluation ([#207](https://github.com/amasover/dotfiles/issues/207)):**
+  source-review and isolate one agent, one hook, and one LSP plugin; promote only keepers
+  that add unique value and can be reproduced.
+
+### 5. Lower-priority live workflow evaluations
 
 - **Story 3.13 — Atuin shell history ([#67](https://github.com/amasover/dotfiles/issues/67)):**
   local install/hook and Ctrl-R behavior need live-shell validation; server sync remains

@@ -186,7 +186,14 @@ Facts:
   session transcript (the repo stayed clean). Filter package listings before echoing them, and never
   inline `~/.local/share/metapac/machine-local.toml` contents into tracked files or issues.
 
-## Last session (2026-08-23 guest + 2026-08-25 laptop)
+## Last session (2026-08-23 guest + 2026-08-27 laptop)
+
+- **3.2 editor roles resolved** ([#29](https://github.com/amasover/dotfiles/issues/29)):
+  Vim terminal editor, Spacemacs workspace editor, OMP agentic coding environment,
+  VS Code secondary IDE, Neovim compatibility frontend; IntelliJ archive/remove candidate.
+  Spacemacs checkout remediation stays in 2.13. Follow-ups: OMP LSP coverage **3.28**
+  ([#206](https://github.com/amasover/dotfiles/issues/206)) and plugin trials **3.29**
+  ([#207](https://github.com/amasover/dotfiles/issues/207)).
 
 - **3.27 ready for review** (#195, PR #196): tracked global CLAUDE rules, Claude
   Fable/Haiku and OpenAI Terra/Luna launch modes, and `x-session-affinity` for
