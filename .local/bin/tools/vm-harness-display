@@ -169,9 +169,15 @@ BOOTSTRAP_STEPS = [
     ("reconcile", ("Package reconcile",)),
     ("retag", ("Normalizing install reasons",)),
     ("removal-hook", ("Package-removal hook",)),
+    ("vendored", ("Vendored packages",)),
     ("baseline", ("AUR quarantine baseline",)),
     ("omz", ("oh-my-zsh",)),
     ("theme", ("oh-my-zsh custom theme",)),
+    ("spacemacs", ("Spacemacs checkout",)),
+    ("claude-plugins", ("Claude Code plugins",)),
+    ("vim-plugins", ("Vim plugins",)),
+    ("user-services", ("User services",)),
+    ("firefox-vmware", ("Firefox VMware acceleration",)),
     ("login-shell", ("Login shell",)),
 ]
 

@@ -146,6 +146,29 @@ class TestStepFor:
             idx = display.step_for(text)
             assert display.BOOTSTRAP_STEPS[idx][0] == "connect"
 
+    def test_every_current_post_reconcile_stage_is_mapped_in_order(self):
+        cases = [
+            ("Normalizing install reasons", "retag"),
+            ("Package-removal hook", "removal-hook"),
+            ("Vendored packages", "vendored"),
+            ("AUR quarantine baseline", "baseline"),
+            ("oh-my-zsh", "omz"),
+            ("oh-my-zsh custom theme", "theme"),
+            ("Spacemacs checkout", "spacemacs"),
+            ("Claude Code plugins", "claude-plugins"),
+            ("Vim plugins", "vim-plugins"),
+            ("User services", "user-services"),
+            ("Firefox VMware acceleration", "firefox-vmware"),
+            ("Login shell", "login-shell"),
+        ]
+        indexes = []
+        for text, expected_name in cases:
+            index = display.step_for(text)
+            assert index is not None
+            assert display.BOOTSTRAP_STEPS[index][0] == expected_name
+            indexes.append(index)
+        assert indexes == sorted(indexes)
+
 
 class TestAnchors:
     def anchor(self, line):

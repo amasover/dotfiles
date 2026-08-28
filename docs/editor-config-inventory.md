@@ -77,6 +77,11 @@ Live checkout findings to handle under Story 2.13, after a backup:
 No live checkout cleanup belongs to Story 3.2. This story records the disposition;
 Story 2.13 performs any approved backup/reset and bootstrap change.
 
+Configuration modernization is separate Story 3.30
+[#210](https://github.com/amasover/dotfiles/issues/210): baseline and simplify
+`.spacemacs`, restore useful warnings and garbage collection, prove or remove old
+workarounds, and fix concrete schema/LSP/config defects without changing editor identity.
+
 ## VS Code — current secondary IDE
 
 Evidence:
@@ -123,6 +128,7 @@ mutation is explicitly approved.
 | --- | --- |
 | Spacemacs checkout is not recreated by bootstrap | Story 2.13 / #60 |
 | Spacemacs checkout carries local history and disposable artifacts | Story 2.13 / #60 |
+| Spacemacs config suppresses diagnostics/GC and carries likely-obsolete workarounds | Story 3.30 / #210 |
 | OMP language servers are incomplete and two existing servers are unowned global installs | Story 3.28 / #206 |
 | OMP marketplace configured but no plugins evaluated or installed | Story 3.29 / #207 |
 | VS Code extension source of truth is undecided | Story 2.12 / #53 |

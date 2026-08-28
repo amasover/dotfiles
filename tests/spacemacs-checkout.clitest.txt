@@ -1,0 +1,66 @@
+# setup/spacemacs-checkout — disposable upstream checkout contract (Story 2.13)
+# Host-independent: local Git repositories under $CLITMP, no network or live
+# ~/.emacs.d state.
+#
+# Run from the repo root: clitest tests/spacemacs-checkout.clitest.txt
+
+$ SC=.local/bin/setup/spacemacs-checkout; CLITMP=$(mktemp -d); git -C "$CLITMP" init -qb develop source; git -C "$CLITMP/source" config user.name test; git -C "$CLITMP/source" config user.email test@example.invalid; printf 'one\n' > "$CLITMP/source/version"; git -C "$CLITMP/source" add version; git -C "$CLITMP/source" -c commit.gpgsign=false commit -qm one; git clone --quiet --bare "$CLITMP/source" "$CLITMP/upstream.git"; RUN() { SPACEMACS_REPO="$CLITMP/upstream.git" SPACEMACS_BRANCH=develop SPACEMACS_DIR="$CLITMP/checkout" "$SC" "$@"; }; echo ready
+ready
+$
+# check reports a missing checkout without creating it
+$ out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"; test ! -e "$CLITMP/checkout"; echo "missing=$?"
+  would: git clone --branch develop --single-branch TMP/upstream.git TMP/checkout
+rc=1
+missing=0
+$
+# apply clones the selected branch; converged apply/check are no-ops
+$ RUN apply | sed "s|$CLITMP|TMP|g"
+  cloned Spacemacs develop into TMP/checkout
+$ RUN apply
+  already installed (clean upstream develop checkout)
+$ RUN --check; git -C "$CLITMP/checkout" status --short --branch
+  already installed (clean upstream develop checkout)
+## develop...origin/develop
+$
+# check is network-free and accepts a clean checkout behind its cached origin;
+# update fetches and fast-forwards it
+$ printf 'two\n' > "$CLITMP/source/version"; git -C "$CLITMP/source" add version; git -C "$CLITMP/source" -c commit.gpgsign=false commit -qm two; git -C "$CLITMP/source" push -q "$CLITMP/upstream.git" develop; RUN --check
+  already installed (clean upstream develop checkout)
+$ RUN update; cat "$CLITMP/checkout/version"
+  updated Spacemacs to origin/develop
+two
+$
+# tracked and untracked changes both fail closed
+$ printf 'dirty\n' >> "$CLITMP/checkout/version"; out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+spacemacs-checkout: TMP/checkout has local changes — back them up and restore or replace the checkout manually
+rc=1
+$ git -C "$CLITMP/checkout" checkout -q -- version; touch "$CLITMP/checkout/untracked"; out=$(RUN apply 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+spacemacs-checkout: TMP/checkout has local changes — back them up and restore or replace the checkout manually
+rc=1
+$ rm "$CLITMP/checkout/untracked"; echo clean
+clean
+$
+# local commits, wrong branch, wrong origin, and non-checkout paths are never repaired destructively
+$ printf 'local\n' >> "$CLITMP/checkout/version"; git -C "$CLITMP/checkout" add version; git -C "$CLITMP/checkout" -c user.name=test -c user.email=test@example.invalid -c commit.gpgsign=false commit -qm local; out=$(RUN apply 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+spacemacs-checkout: TMP/checkout is 1 commit(s) ahead of origin/develop — back up any wanted work; refusing to reset
+rc=1
+$ git -C "$CLITMP/checkout" reset -q --hard origin/develop; git -C "$CLITMP/checkout" switch -qc other; out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+spacemacs-checkout: TMP/checkout is on branch 'other', expected 'develop' — repair manually
+rc=1
+$ git -C "$CLITMP/checkout" switch -q develop; git -C "$CLITMP/checkout" remote set-url origin "$CLITMP/wrong.git"; out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+spacemacs-checkout: TMP/checkout origin is 'TMP/wrong.git', expected 'TMP/upstream.git' — repair manually; refusing to rewrite it
+rc=1
+$ mkdir "$CLITMP/not-git"; out=$(SPACEMACS_REPO="$CLITMP/upstream.git" SPACEMACS_DIR="$CLITMP/not-git" "$SC" apply 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+spacemacs-checkout: TMP/not-git exists but is not a git checkout — move or archive it manually; refusing to overwrite
+rc=1
+$
+# update refuses an absent checkout; malformed actions fail loudly
+$ out=$(SPACEMACS_REPO="$CLITMP/upstream.git" SPACEMACS_DIR="$CLITMP/missing" "$SC" update 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+spacemacs-checkout: TMP/missing is missing — run 'spacemacs-checkout apply' before update
+rc=1
+$ $SC frobnicate 2>&1; echo "rc=$?"
+spacemacs-checkout: unknown action: frobnicate   (try: spacemacs-checkout -h)
+rc=1
+$ rm -rf "$CLITMP"; echo done
+done
+$

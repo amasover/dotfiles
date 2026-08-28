@@ -20,6 +20,7 @@ packages = [
   "keychain",
   "metapac",
   "ncdu",
+  "nvm",
   "pv",
   "ranger",
   "ripgrep",
@@ -29,4 +30,5 @@ packages = [
   "w3m",
   "yq",
   "zsh",
+  "zsh-autosuggestions",
 ]

@@ -56,13 +56,13 @@ vared -p $'\nUpdate Spacemacs? (will kill any running emacs) (y/n): ' -c update_
 
 if [[ "${update_emacs}" == "y" ]]; then
     echo $'\nStarting Spacemacs upgrade. Be sure to update your dotfile (SPC f e D)'
+    echo $'\nUpdating clean Spacemacs checkout...'
+    "$HOME/.local/bin/setup/spacemacs-checkout" update || {
+        echo $'\nSpacemacs checkout update refused; Emacs was left running.' >&2
+        exit 1
+    }
     echo $'\nKilling emacs...'
     i3-msg '[class="Emacs"] kill' >> /dev/null
-    echo $'\nUpdating Spacemacs from Github repo...'
-    cd /home/$USER/.emacs.d
-    git stash
-    git pull
-    git stash pop
     echo $'\nUpdating installed emacs packages (batch, synchronous)...\n'
     # Spacemacs' update-packages only backs up and DELETES old package dirs; the
     # new versions install on the next startup. Run both halves here in batch so
@@ -127,9 +127,10 @@ git stash pop
 echo $'\n\nUpdating all custom zsh packages...'
 antibody update
 
-echo $'\n\nUpdate nvm itself to the latest version...'
-nvm upgrade
+[[ -r /usr/share/nvm/init-nvm.sh ]] || { print 'update: packaged nvm init missing' >&2; exit 1; }
+source /usr/share/nvm/init-nvm.sh
 
+# nvm itself is pacman-owned; this updates the Node line pinned by ~/.nvmrc.
 nvm_ver=$(<"${HOME}"/.nvmrc)
 echo $'\n\nUpdating nodejs to latest version on branch' "${nvm_ver}"
 nvm install "${nvm_ver}" --reinstall-packages-from=default

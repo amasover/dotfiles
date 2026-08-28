@@ -294,41 +294,52 @@ same TOML), not new groups.
 
 ---
 
-### Story 2.13: Close non-package bootstrap gaps (cloned shell/editor artifacts)
+### Story 2.13: Close non-package bootstrap gaps (shell/editor artifacts)
 
 As the repo owner,
-I want the git-cloned artifacts that `.zshrc` and the editors depend on placed by the bootstrap (or explicitly runbook'd),
-So that a fresh machine boots into a working shell and editors, not just the right package set.
+I want shell and editor runtime artifacts to have one reproducible owner,
+So that a fresh machine starts a working zsh and Spacemacs without inheriting mutable
+checkouts from the retired 2019 installer.
 
 Issue: [#60](https://github.com/amasover/dotfiles/issues/60)
 
-Origin: 2026-07-03 audit of the retired 2019 `install` script against the live machine
-("what did the old script install that survives and nothing reinstalls?"). metapac covers
-every package (2.8) and Story 2.12 covers backend-managed tools; what's left is git-clone
-artifacts that are live and load-bearing but installed by nothing:
+Origin: the 2026-07-03 retired-installer audit found two oh-my-zsh custom-plugin clones
+and the Spacemacs checkout alive on the laptop but absent from bootstrap. Story 3.2
+([#29](https://github.com/amasover/dotfiles/issues/29), PR #208) then classified
+Spacemacs as the current workspace editor and `~/.emacs.d` as a disposable upstream
+checkout whose durable customization lives in tracked `.spacemacs`.
 
-- **oh-my-zsh custom plugins** — `~/.oh-my-zsh/custom/plugins/{zsh-autosuggestions,zsh-nvm}`;
-  both are in `.zshrc` `plugins=(…)`, and zsh-nvm is what provides nvm/node at all. On a
-  fresh machine the bootstrap's oh-my-zsh step leaves plugin-not-found warnings and no nvm.
-- **Spacemacs** — `~/.emacs.d` is a live clone and `setup/update` still pulls it, but only
-  the deleted 2019 installer ever created it. Needs a disposition (bootstrap / runbook /
-  retire with the Story 3.2 editor call), not silence.
+Decisions:
 
-Deliberately out of scope: Vim plugin management moved to focused Story 2.49
-([#186](https://github.com/amasover/dotfiles/issues/186)); the 2019 Go audio
-binaries (`dot`, `volume`) were retired by Story 3.12
-([#59](https://github.com/amasover/dotfiles/issues/59)) instead of teaching the
-bootstrap to rebuild them; the python3.7–3.10-era `pip install --user`
-leftovers stay dead; one-time niceties are runbook material at most.
+- Replace the `zsh-autosuggestions` clone with official-repo `zsh-autosuggestions` and
+  source its packaged plugin file.
+- Replace `zsh-nvm` with official-repo `nvm`; source Arch's `init-nvm.sh`. NVM changes
+  versions only after explicit `nvm use`/`nvm install`—`cd` never switches or downloads
+  a Node version. Pacman, not a shell plugin, updates NVM itself.
+- Clone Spacemacs' upstream `develop` branch only when `~/.emacs.d` is absent. Existing
+  wrong remotes/branches, dirty files, detached heads, and local commits fail with repair
+  instructions; bootstrap never stashes, resets, moves, or deletes the checkout.
+- The update loop fast-forwards only a verified clean checkout and validates it before
+  killing the running Emacs process.
+
+Deliberately out of scope: Vim plugin management is complete in Story 2.49; Spacemacs
+configuration quality belongs to Story 3.30
+([#210](https://github.com/amasover/dotfiles/issues/210)); broad zsh/antibody cleanup
+belongs to Story 3.1.
 
 **Acceptance criteria:**
 
-- Given a fresh machine after `bootstrap`, when an interactive zsh starts, then both custom plugins are present, no plugin-not-found warnings appear, and nvm resolves
-- Given Spacemacs is legacy-era, when this story lands, then `~/.emacs.d` has an explicit disposition with Aaron rather than an implicit gap
-- Given the fresh-machine runbook is the operator contract, when gaps close, then its step list reflects the new coverage and the remaining manual one-times
-- Given Story 2.7's harness exists, when this lands, then a VM run (or at minimum `--check`) demonstrates the added steps
+- Given a fresh reconcile, `nvm` and `zsh-autosuggestions` come from declared official packages, interactive zsh starts without missing-plugin warnings, and neither old custom clone is required
+- Given the shell enters a directory containing `.nvmrc`, no implicit version switch or installation occurs; explicit `nvm use` selects the requested installed version
+- Given `~/.emacs.d` is absent, bootstrap clones upstream `develop`; given a clean matching checkout, apply/check are no-ops
+- Given an existing checkout has the wrong identity or local drift, apply/check/update fail clearly without altering it; the helper's fixture suite covers every refusal class and fast-forward update
+- Given the update loop sees checkout drift, it leaves Emacs running and stops before package updates; given a clean checkout, it fast-forwards before the synchronous package-update sequence
+- Given compact harness progress mode, every current post-reconcile bootstrap stage, including Spacemacs, has a stable ordered mapping
+- Given the fresh-machine runbook, package ownership, checkout ownership, explicit NVM behavior, and attended repair boundary are documented
 
-**Evidence artifact:** Updated `setup/bootstrap` + fresh-machine runbook; disposition notes here or in the bootstrap inventory.
+**Evidence artifact:** `setup/spacemacs-checkout`, focused clitest/pytest coverage,
+updated bootstrap/update/runbook, a branch `--check`, and post-review live shell/Spacemacs
+verification.
 
 ---
 
@@ -470,8 +481,8 @@ skip the real install (and the official installer refuses an existing dir anyway
 So the file lives at `.config/dotfiles/oh-my-zsh-custom/themes/agnoster.zsh-theme`
 (yadm-mapped, outside the omz checkout) and bootstrap symlinks it into
 `~/.oh-my-zsh/custom/themes/`, which shadows the bundled theme by name and is
-gitignored by the omz checkout. The custom *plugin* clones (zsh-autosuggestions,
-zsh-nvm) stay with Story 2.13 ([#60](https://github.com/amasover/dotfiles/issues/60)).
+gitignored by the omz checkout. Story 2.13 ([#60](https://github.com/amasover/dotfiles/issues/60))
+later retires the custom plugin clones in favor of official package ownership.
 
 **Acceptance criteria:**
 
