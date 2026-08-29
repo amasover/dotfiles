@@ -107,6 +107,7 @@ This function should only modify configuration layer settings."
                                       ;;
                                       all-the-icons
                                       lsp-treemacs
+                                      lsp-pyright
                                       go-autocomplete
                                       vlf
                                       editorconfig
@@ -127,6 +128,9 @@ This function should only modify configuration layer settings."
 
    ;; A list of packages that will not be installed and loaded.
    dotspacemacs-excluded-packages '( firebelly-theme
+                                     ;; origami 20200331 fails to load on Emacs 31
+                                     ;; (invalid `unspecified` box color); folding uses evil.
+                                     lsp-origami
                                      niflheim-theme
                                      pastels-on-dark-theme
                                      tronesque-theme
@@ -314,7 +318,6 @@ It should only modify the values of Spacemacs settings."
                          lush
                          naquadah
                          obsidian
-                         omtose-phellack
                          reverse
                          smyx
                          soothe

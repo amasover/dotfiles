@@ -155,6 +155,7 @@ class TestStepFor:
             ("oh-my-zsh", "omz"),
             ("oh-my-zsh custom theme", "theme"),
             ("Spacemacs checkout", "spacemacs"),
+            ("Emacs Copilot language server", "emacs-copilot"),
             ("Claude Code plugins", "claude-plugins"),
             ("Vim plugins", "vim-plugins"),
             ("User services", "user-services"),

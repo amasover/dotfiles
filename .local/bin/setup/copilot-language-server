@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# copilot-language-server — install the Emacs Copilot server reproducibly.
+#
+# Usage:
+#   copilot-language-server apply      install/repair the pinned npm package
+#   copilot-language-server --check    report drift without mutation
+#
+# Environment overrides support host-independent tests:
+#   COPILOT_SERVER_PREFIX, COPILOT_SERVER_VERSION, NPM
+set -euo pipefail
+
+fail() {
+    printf 'copilot-language-server: %s\n' "$*" >&2
+    exit 1
+}
+
+action=${1:-apply}
+version=${COPILOT_SERVER_VERSION:-1.537.0}
+prefix=${COPILOT_SERVER_PREFIX:-$HOME/.emacs.d/.cache/copilot}
+npm=${NPM:-npm}
+package=@github/copilot-language-server
+manifest="$prefix/lib/node_modules/$package/package.json"
+binary="$prefix/bin/copilot-language-server"
+
+case "$action" in
+    apply | --check) ;;
+    -h | --help)
+        sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+        exit 0
+        ;;
+    *) fail "unknown action: $action   (try: copilot-language-server -h)" ;;
+esac
+
+installed_version=
+if [[ -f "$manifest" ]]; then
+    installed_version=$(jq -r '.version // empty' "$manifest") \
+        || fail "cannot read installed package version from $manifest"
+fi
+
+if [[ "$installed_version" == "$version" && -x "$binary" ]]; then
+    actual=$($binary --version 2>/dev/null) \
+        || fail "installed launcher failed: $binary"
+    [[ "$actual" == "$version" ]] \
+        || fail "launcher reports $actual, package manifest reports $version"
+    printf '  already installed (%s %s)\n' "$package" "$version"
+    exit 0
+fi
+
+if [[ "$action" == --check ]]; then
+    if [[ -z "$installed_version" ]]; then
+        printf '  would: install %s@%s under %s\n' "$package" "$version" "$prefix"
+    elif [[ ! -x "$binary" ]]; then
+        printf '  would: repair %s@%s (launcher missing under %s)\n' "$package" "$version" "$prefix"
+    else
+        printf '  would: replace %s@%s with pinned %s under %s\n' \
+            "$package" "$installed_version" "$version" "$prefix"
+    fi
+    exit 1
+fi
+
+command -v "$npm" >/dev/null 2>&1 \
+    || fail "npm not found — install the declared npm package first"
+command -v jq >/dev/null 2>&1 \
+    || fail "jq not found — install the declared jq package first"
+
+"$npm" install --global --prefix "$prefix" "$package@$version"
+
+[[ -f "$manifest" && -x "$binary" ]] \
+    || fail "npm completed without the package manifest and launcher"
+installed_version=$(jq -r '.version // empty' "$manifest")
+[[ "$installed_version" == "$version" ]] \
+    || fail "npm installed version '$installed_version', expected '$version'"
+actual=$($binary --version 2>/dev/null) \
+    || fail "installed launcher failed: $binary"
+[[ "$actual" == "$version" ]] \
+    || fail "launcher reports $actual, expected $version"
+printf '  installed %s %s\n' "$package" "$version"

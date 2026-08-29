@@ -10,7 +10,9 @@ packages = [
   "intellij-idea-community-edition",
   "nano",
   "neovim",
+  "npm",  # installs the pinned Emacs Copilot language server during bootstrap
   "omnisharp-roslyn-bin",
+  "pyright",  # system server used by .spacemacs lsp-pyright
   "vim-airline",
   "vim-gitgutter",
   "vim-go",

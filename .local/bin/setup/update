@@ -52,6 +52,9 @@ if [[ -n "$vp_outdated" ]]; then
 fi
 "$custom_pkgs" sync
 
+print $'\nEmacs Copilot language server...'
+"$HOME/.local/bin/setup/copilot-language-server" apply
+
 vared -p $'\nUpdate Spacemacs? (will kill any running emacs) (y/n): ' -c update_emacs
 
 if [[ "${update_emacs}" == "y" ]]; then
@@ -140,7 +143,6 @@ npm install -g npm@latest
 
 echo $'\n\nUpdating all global npm packages...'
 npm update -g
-npm -g --prefix /home/aaron/.emacs.d/.cache/copilot update
 
 echo $'\n\nUpdating all global yarn packages'
 yarn global upgrade --non-interactive

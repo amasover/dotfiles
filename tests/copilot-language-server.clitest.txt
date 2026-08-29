@@ -1,0 +1,52 @@
+# setup/copilot-language-server — pinned Emacs Copilot server reconciliation
+# (Story 3.30). Host-independent: fake npm writes only under $CLITMP; no network
+# or live ~/.emacs.d state.
+#
+# Run from repo root: clitest tests/copilot-language-server.clitest.txt
+
+$ CS=.local/bin/setup/copilot-language-server; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin"; printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" > "$FAKE_NPM_LOG"' 'pkg="$COPILOT_SERVER_PREFIX/lib/node_modules/@github/copilot-language-server"' 'mkdir -p "$pkg" "$COPILOT_SERVER_PREFIX/bin"' 'printf "{\"version\":\"%s\"}\n" "$COPILOT_SERVER_VERSION" > "$pkg/package.json"' 'printf "#!/usr/bin/env bash\necho %s\n" "$COPILOT_SERVER_VERSION" > "$COPILOT_SERVER_PREFIX/bin/copilot-language-server"' 'chmod +x "$COPILOT_SERVER_PREFIX/bin/copilot-language-server"' > "$CLITMP/bin/npm"; chmod +x "$CLITMP/bin/npm"; RUN() { PATH="$CLITMP/bin:$PATH" NPM=npm FAKE_NPM_LOG="$CLITMP/npm.log" COPILOT_SERVER_PREFIX="$CLITMP/prefix" COPILOT_SERVER_VERSION=9.8.7 "$CS" "$@"; }; echo ready
+ready
+$
+# check reports missing state without creating it
+$ out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"; test ! -e "$CLITMP/prefix"; echo "missing=$?"
+  would: install @github/copilot-language-server@9.8.7 under TMP/prefix
+rc=1
+missing=0
+$
+# apply pins the exact package/version and converged apply/check are no-ops
+$ RUN apply
+  installed @github/copilot-language-server 9.8.7
+$ sed "s|$CLITMP|TMP|g" "$CLITMP/npm.log"
+install --global --prefix TMP/prefix @github/copilot-language-server@9.8.7
+$ RUN apply; RUN --check; "$CLITMP/prefix/bin/copilot-language-server" --version
+  already installed (@github/copilot-language-server 9.8.7)
+  already installed (@github/copilot-language-server 9.8.7)
+9.8.7
+$
+# outdated package and missing launcher are diagnosed then repaired
+$ printf '{"version":"1.0.0"}\n' > "$CLITMP/prefix/lib/node_modules/@github/copilot-language-server/package.json"; out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+  would: replace @github/copilot-language-server@1.0.0 with pinned 9.8.7 under TMP/prefix
+rc=1
+$ RUN apply
+  installed @github/copilot-language-server 9.8.7
+$ rm "$CLITMP/prefix/bin/copilot-language-server"; out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+  would: repair @github/copilot-language-server@9.8.7 (launcher missing under TMP/prefix)
+rc=1
+$ RUN apply
+  installed @github/copilot-language-server 9.8.7
+$
+# a launcher disagreeing with its manifest fails rather than claiming convergence
+$ printf '%s\n' '#!/usr/bin/env bash' 'echo 0.0.0' > "$CLITMP/prefix/bin/copilot-language-server"; chmod +x "$CLITMP/prefix/bin/copilot-language-server"; out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+copilot-language-server: launcher reports 0.0.0, package manifest reports 9.8.7
+rc=1
+$
+# missing npm and malformed actions fail clearly
+$ rm -rf "$CLITMP/prefix"; out=$(PATH=/usr/bin NPM=definitely-missing COPILOT_SERVER_PREFIX="$CLITMP/prefix" "$CS" apply 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+copilot-language-server: npm not found — install the declared npm package first
+rc=1
+$ $CS frobnicate 2>&1; echo "rc=$?"
+copilot-language-server: unknown action: frobnicate   (try: copilot-language-server -h)
+rc=1
+$ rm -rf "$CLITMP"; echo done
+done
+$

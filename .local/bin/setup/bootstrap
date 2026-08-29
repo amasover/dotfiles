@@ -1025,7 +1025,18 @@ else
     "$spacemacs_checkout" apply
 fi
 
-# --- 8d. Claude Code plugins (Story 4.11) --------------------------------------
+# --- 8d. Emacs Copilot language server (Story 3.30 first-start repair) ---------
+# github-copilot.el needs its separate npm-distributed server before first GUI
+# launch. Pin and verify it here; metapac installed official nodejs/npm above.
+say "Emacs Copilot language server"
+copilot_server="${BASH_SOURCE[0]%/*}/copilot-language-server"
+if [[ $CHECK -eq 1 ]]; then
+    "$copilot_server" --check || true
+else
+    "$copilot_server" apply
+fi
+
+# --- 8e. Claude Code plugins (Story 4.11) --------------------------------------
 # Declarative: setup/claude-plugins jq-merges the standard marketplace +
 # plugin declaration into ~/.claude/settings.json (created if missing);
 # Claude Code registers and enables them on its next launch. Idempotent, so
@@ -1037,7 +1048,7 @@ else
     "$HOME/.local/bin/setup/claude-plugins" apply
 fi
 
-# --- 8e. Vim plugins (Story 2.49) ----------------------------------------------
+# --- 8f. Vim plugins (Story 2.49) ----------------------------------------------
 # setup/vim-plugins uses packaged vim-plug to install active fallback Plug
 # declarations. Its check mode names drift without touching ~/.vim.
 say "Vim plugins"
@@ -1047,7 +1058,7 @@ else
     "$HOME/.local/bin/setup/vim-plugins" apply
 fi
 
-# --- 8f. user services (Story 3.24) --------------------------------------------
+# --- 8g. user services (Story 3.24) --------------------------------------------
 # systemd user units tracked in yadm (currently meridian.service — the Claude
 # subscription proxy for oh-my-pi). Enable is idempotent; the unit is useless
 # until `claude login` has run, which is a first-session step, so failures to
@@ -1067,7 +1078,7 @@ for unit in meridian.service; do
     fi
 done
 
-# --- 8g. VMware Firefox acceleration (Story 5.7) -------------------------------
+# --- 8h. VMware Firefox acceleration (Story 5.7) -------------------------------
 # Mesa's SVGA driver deliberately reports its Gallium "accelerated" bit false.
 # Firefox then blocklists hardware WebRender even though VMware SVGA3D works.
 # A guest-only enterprise policy forces WebRender through GLX (EGL context
