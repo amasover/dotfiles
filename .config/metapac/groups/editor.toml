@@ -6,6 +6,7 @@ packages = [
   "editorconfig-core-c",
   "emacs",
   "ex-vi-compat",
+  "glow",
   "gvim",
   "intellij-idea-community-edition",
   "nano",
