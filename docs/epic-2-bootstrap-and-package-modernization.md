@@ -294,14 +294,14 @@ same TOML), not new groups.
 
 ---
 
-### Story 2.13: Close non-package bootstrap gaps (shell/editor artifacts)
+### Story 2.13: Close non-package bootstrap gaps (shell/editor artifacts) ✅
 
 As the repo owner,
 I want shell and editor runtime artifacts to have one reproducible owner,
 So that a fresh machine starts a working zsh and Spacemacs without inheriting mutable
 checkouts from the retired 2019 installer.
 
-Issue: [#60](https://github.com/amasover/dotfiles/issues/60)
+Issue: [#60](https://github.com/amasover/dotfiles/issues/60) (closed, PR #215)
 
 Origin: the 2026-07-03 retired-installer audit found two oh-my-zsh custom-plugin clones
 and the Spacemacs checkout alive on the laptop but absent from bootstrap. Story 3.2

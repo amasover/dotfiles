@@ -40,18 +40,6 @@ the agentic coding environment; VS Code is a secondary IDE; Neovim is a compatib
 frontend. IntelliJ is an archive/remove candidate. Details:
 [editor-config-inventory.md](./editor-config-inventory.md).
 
-#### Story 2.13 — close cloned shell/editor bootstrap gaps ([#60](https://github.com/amasover/dotfiles/issues/60))
-
-**Why laptop-only:** Story 3.2 confirmed Spacemacs as the current workspace editor and
-classified `~/.emacs.d` as a disposable upstream checkout. Live oh-my-zsh clones also
-supply evidence for what the shell still needs.
-
-**Remaining:** implementation replaces the autosuggestions/zsh-nvm clones with official
-packages and makes bootstrap reproduce a clean Spacemacs `develop` checkout while tracked
-`.spacemacs` owns customization. After PR review: back up the live checkout, archive unused
-`lisp/init-gptel.el`, reconcile without preserving the local merge history, then verify shell
-and editor behavior. Vim/Vundle work already moved to completed Story 2.49.
-
 #### Story 3.30 — modernize Spacemacs config ([#210](https://github.com/amasover/dotfiles/issues/210))
 
 **Why laptop-only:** behavior-preserving cleanup needs the current GUI editor, active
