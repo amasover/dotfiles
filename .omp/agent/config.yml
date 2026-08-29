@@ -1,12 +1,14 @@
 symbolPreset: nerd
-composer: 
+composer:
   shape: box
-theme: 
+theme:
   dark: dark-nord
 setupVersion: 2
-providers: 
-  webSearchOrder: 
+providers:
+  webSearchOrder:
     []
 modelRoleStorage: project
-modelRoles: 
+modelRoles:
   default: openai-codex/gpt-5.6-terra:xhigh
+dev:
+  autoqaConsent: granted
