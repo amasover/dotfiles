@@ -184,8 +184,8 @@ bindsym $mod+c move workspace to output left
 ## move monitor right 
 bindsym $mod+u move workspace to output right
 
-bindsym $mod+Shift+Control+$sup+c move workspace to output down
-bindsym $mod+Shift+Control+$sup+u move workspace to output up
+bindsym $sup+c move workspace to output down
+bindsym $sup+u move workspace to output up
 
 # screen capture
 # bindsym Print exec --no-startup-id scrot "%Y-%m-%d_%H:%M:%S_$wx$h.png" -e 'mv $f ~/Dropbox/Screenshots/2017/$f'
