@@ -111,6 +111,8 @@ Current gaps became focused follow-ups:
   server packages.
 - Story 3.29 [#207](https://github.com/amasover/dotfiles/issues/207): security-review and
   evaluate marketplace plugins across agent, hook, and LSP shapes.
+- Story 3.31 [#214](https://github.com/amasover/dotfiles/issues/214): evaluate native
+  Emacs ↔ OMP integration through agent-shell's built-in `omp acp` adapter.
 
 ## IntelliJ IDEA Community — archive/remove candidate
 

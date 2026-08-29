@@ -85,6 +85,16 @@ packages/language tools, and real workflow evidence.
 restore warnings/GC; fix YAML schema loss and debug output; prove or remove old workarounds;
 measure and live-test every retained behavior under explicit approval.
 
+#### Story 3.31 — integrate OMP into Emacs over ACP ([#214](https://github.com/amasover/dotfiles/issues/214))
+
+**Why laptop-only:** the keep/drop decision needs the real Spacemacs workspace, OMP auth
+boundary, interactive permission prompts, project context, and diff workflow.
+
+**Remaining:** security-review `agent-shell`/`acp.el`; prototype its built-in `omp acp`
+adapter under isolated state; compare against Copilot, Aider/Aidermacs, and old GPTel work;
+then either declare/test a user-facing integration or remove the prototype.
+
+
 #### Story 3.1 — clean shell config ([#28](https://github.com/amasover/dotfiles/issues/28))
 
 **Why laptop-only:** tracked shell files must be compared with live startup behavior and
