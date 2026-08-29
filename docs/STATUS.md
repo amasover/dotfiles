@@ -7,7 +7,8 @@ Disposable handoff for active work. GitHub issues own durable detail; the
 
 - Keep one brief entry per story actually moving: current state, detail link,
   and next step or blocker.
-- Nothing lives only here. Remove paused, merged, or closed work.
+- Prune before adding. The completing PR removes its story; paused or backlog work
+  returns to the board.
 - Keep the file near one screen; trim instead of appending history.
 
 ## Session basics

@@ -33,30 +33,6 @@ verify `autorandr --detected`, bar placement, and workspace placement after reco
 retire profiles whose hardware no longer exists. Do the currently attached setup before
 moving docks.
 
-#### Story 1.7 — full scan for untracked dotfiles ([#17](https://github.com/amasover/dotfiles/issues/17))
-
-**Why laptop-only:** only this `$HOME` contains the accumulated config that a rebuild
-could lose.
-
-**Remaining:**
-
-1. Build a fresh path-level candidate inventory from current `$HOME`; do not reuse old
-   inventories as proof of completeness.
-2. Compare candidates with YADM tracked paths, encrypt manifest, ignore rules, and known
-   machine-local state.
-3. Cover top-level dotfiles, `.config/`, user-authored `.local/` config and executables,
-   user systemd units, and application config roots outside `.config/`.
-4. Exclude caches, downloads, source repositories, package data, and credential stores
-   through explicit documented rules. Inspect names/metadata first; never bulk-print
-   contents.
-5. Classify each safe candidate: adopt, encrypt-then-adopt, machine-local, or ignore.
-   Actual `yadm add` remains separately approved.
-6. Record repeatable scan method and exclusions with the adoption inventory.
-
-**Story decision:** no new umbrella story needed. Existing Story 1.7 already requires the
-full live-home sweep. Its acceptance criteria now make the fresh scan, coverage, and
-repeatability explicit. Spin out focused stories only for substantial finds.
-
 #### Story 3.2 — classify editor configs ✅ ([#29](https://github.com/amasover/dotfiles/issues/29))
 
 Completed decision: Vim is the terminal editor; Spacemacs is the workspace editor; OMP is
