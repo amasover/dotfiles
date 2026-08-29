@@ -179,6 +179,10 @@ the source of truth for status.
 - Commit as work progresses, but keep commits scoped by risk area: docs, YADM metadata, shell config, desktop config, package inventory, bootstrap scripts, or encrypted payload updates.
 - Do not add `Co-Authored-By` trailers or other AI-attribution lines to commit messages **or PR descriptions** (e.g. no "Generated with Claude Code" footer).
 - Push the story branch and open one GitHub pull request per story, referencing its issue. The PR description should include the story, summary, validation performed, secret-safety notes, live-home comparison notes, and follow-up work.
+- Small docs-only bookkeeping changes may bypass a PR and go directly to `main`:
+  terminal markers, STATUS/active-queue pruning, link repairs, and wording-only
+  corrections. This standing exception excludes story/spec decisions, code/config,
+  generated or encrypted artifacts, and docs coupled to behavior changes.
 - **Always open PRs against `main`. Never create stacked/dependent PRs** (a PR based on another story branch). A stacked PR previously merged into its dead base branch instead of `main`, so the work never reached `main`. If new work seems to depend on an unmerged branch, either wait for that branch to merge to `main` first, or keep the new work self-contained so it can branch off `main` cleanly.
 - Before pushing or opening a PR, run a privacy/sensitivity pass for secrets, personal details, company/internal details, private hostnames, local IPs, and other machine-specific data. Keep sensitive files local, encrypted through YADM, or ignored; do not publish them as plaintext.
 - **Prune STATUS before adding to it.** Before every STATUS update, read and apply
@@ -187,7 +191,7 @@ the source of truth for status.
   the completing PR must remove its own story. Preserve enough current state and
   next-step context to avoid rereading the PRD or epic, but never use STATUS as
   completed-work history.
-- `main` is the trunk. Do not merge to `main` or push to a remote unless Aaron explicitly asks for that step in the current task.
+- `main` is the trunk. Do not merge to `main` or push to a remote unless Aaron explicitly asks in the current task or the change fits the docs-only direct-main exception above.
 
 ---
 
