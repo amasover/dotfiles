@@ -165,7 +165,11 @@ the source of truth for status.
 - Story **status** (todo / in-progress / done), dates, and discussion live on the [GitHub Projects board](https://github.com/users/amasover/projects/1/views/1) and its issues — not in the `.md` files.
 - Story **spec** (objective, acceptance criteria, scope) lives in the epic `.md` under `docs/`.
 - The issue and the epic `.md` **link** to each other; they do not duplicate each other. Do not add live status (todo / in-progress / blocked) or status checkboxes to the `.md` once an issue exists — the board owns anything still moving.
-- **Terminal-state exception:** when a story is finished (issue closed), append ` ✅` to its epic `.md` heading and `(closed, PR #N)` to its `Issue:` line, in the same wrap-up commit that updates STATUS. Done is immutable, so this duplicates nothing that can drift; an unmarked story means "check the board".
+- **Terminal-state exception:** the PR that completes a story appends ` ✅` to its
+  epic `.md` heading, appends `(closed, PR #N)` to its `Issue:` line, includes
+  `Closes #N` in the PR body, and removes the story from STATUS and any active-work
+  queue. Do this in the completing PR, not a later cleanup. Done is immutable, so
+  this duplicates nothing that can drift; an unmarked story means “check the board”.
 
 **Workflow:**
 
@@ -177,7 +181,12 @@ the source of truth for status.
 - Push the story branch and open one GitHub pull request per story, referencing its issue. The PR description should include the story, summary, validation performed, secret-safety notes, live-home comparison notes, and follow-up work.
 - **Always open PRs against `main`. Never create stacked/dependent PRs** (a PR based on another story branch). A stacked PR previously merged into its dead base branch instead of `main`, so the work never reached `main`. If new work seems to depend on an unmerged branch, either wait for that branch to merge to `main` first, or keep the new work self-contained so it can branch off `main` cleanly.
 - Before pushing or opening a PR, run a privacy/sensitivity pass for secrets, personal details, company/internal details, private hostnames, local IPs, and other machine-specific data. Keep sensitive files local, encrypted through YADM, or ignored; do not publish them as plaintext.
-- **When you finish a meaningful chunk of work** (open or merge a PR, land a decision, complete a story slice), update [docs/STATUS.md](../docs/STATUS.md) so the next session can orient: refresh the **In flight** and **Last session** notes, and ✅-mark any story heading whose issue closed (see the terminal-state exception above). Keep STATUS itself to session narrative — live per-story status still lives on the board.
+- **Prune STATUS before adding to it.** Before every STATUS update, read and apply
+  its “Keep this file cheap” contract, then reconcile every existing entry against
+  its linked issue/PR. Remove completed, merged, closed, paused, and backlog work;
+  the completing PR must remove its own story. Preserve enough current state and
+  next-step context to avoid rereading the PRD or epic, but never use STATUS as
+  completed-work history.
 - `main` is the trunk. Do not merge to `main` or push to a remote unless Aaron explicitly asks for that step in the current task.
 
 ---

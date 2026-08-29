@@ -155,7 +155,7 @@ Issue: [#23](https://github.com/amasover/dotfiles/issues/23) (closed)
 
 ---
 
-### Story 1.7: Audit live home for untracked configs worth adopting
+### Story 1.7: Audit live home for untracked configs worth adopting ✅
 
 As the repo owner,
 I want a sweep of config files that exist on the live machine but are not tracked by YADM,
@@ -166,7 +166,7 @@ live → tracked: build a fresh inventory from the current `$HOME`, compare it w
 tracked/encrypted/ignored paths, and decide adopt / encrypt / machine-local / ignore. Prior
 partial audits and old inventories are inputs, never proof that the current home is covered.
 
-Issue: [#17](https://github.com/amasover/dotfiles/issues/17)
+Issue: [#17](https://github.com/amasover/dotfiles/issues/17) (closed, PR [#218](https://github.com/amasover/dotfiles/pull/218))
 
 **Acceptance criteria:**
 
@@ -178,7 +178,7 @@ Issue: [#17](https://github.com/amasover/dotfiles/issues/17)
 - Given a file is selected for adoption, when the decision is recorded, then the rationale and target (tracked vs encrypted) is documented; actual `yadm add` happens only with explicit approval
 - Given the sweep completes, then its enumeration method and exclusions are recorded so a later laptop can repeat it and detect newly untracked dotfiles
 
-**Evidence artifact:** Repeatable full-home scan method + untracked-config adoption inventory under `docs/`
+**Evidence artifact:** [Untracked-config adoption inventory — 2026-08-29](./untracked-config-adoption-inventory-2026-08-29.md)
 
 ---
 
