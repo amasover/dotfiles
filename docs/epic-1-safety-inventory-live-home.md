@@ -178,7 +178,7 @@ Issue: [#17](https://github.com/amasover/dotfiles/issues/17)
 - Given a file is selected for adoption, when the decision is recorded, then the rationale and target (tracked vs encrypted) is documented; actual `yadm add` happens only with explicit approval
 - Given the sweep completes, then its enumeration method and exclusions are recorded so a later laptop can repeat it and detect newly untracked dotfiles
 
-**Evidence artifact:** Repeatable full-home scan method + untracked-config adoption inventory under `docs/`
+**Evidence artifact:** [Untracked-config adoption inventory — 2026-08-29](./untracked-config-adoption-inventory-2026-08-29.md)
 
 ---
 
