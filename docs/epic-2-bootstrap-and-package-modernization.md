@@ -321,6 +321,10 @@ Decisions:
   instructions; bootstrap never stashes, resets, moves, or deletes the checkout.
 - The update loop fast-forwards only a verified clean checkout and validates it before
   killing the running Emacs process.
+- Before first Emacs launch, bootstrap installs a pinned Copilot language server through
+  declared official `nodejs`/`npm`; `pyright` is declared for `lsp-pyright`. The config
+  keeps `lsp-pyright` package-managed and excludes Emacs-31-incompatible `lsp-origami`
+  because the selected folding method is `evil`.
 
 Deliberately out of scope: Vim plugin management is complete in Story 2.49; Spacemacs
 configuration quality belongs to Story 3.30
@@ -336,6 +340,8 @@ belongs to Story 3.1.
 - Given the update loop sees checkout drift, it leaves Emacs running and stops before package updates; given a clean checkout, it fast-forwards before the synchronous package-update sequence
 - Given compact harness progress mode, every current post-reconcile bootstrap stage, including Spacemacs, has a stable ordered mapping
 - Given the fresh-machine runbook, package ownership, checkout ownership, explicit NVM behavior, and attended repair boundary are documented
+- Given a clean first start, the pinned Copilot server, `lsp-pyright`, and official Pyright runtime are present before Python editing; the incompatible Origami LSP hook is absent
+- Given repository validation, the Copilot installer has host-independent drift/repair tests and `.spacemacs` has isolated ERT syntax/load/first-start contract tests
 
 **Evidence artifact:** `setup/spacemacs-checkout`, focused clitest/pytest coverage,
 updated bootstrap/update/runbook, a branch `--check`, and post-review live shell/Spacemacs

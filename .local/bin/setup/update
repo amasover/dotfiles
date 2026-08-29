@@ -53,14 +53,30 @@ fi
 "$custom_pkgs" sync
 
 vared -p $'\nUpdate Spacemacs? (will kill any running emacs) (y/n): ' -c update_emacs
+spacemacs_checkout="$HOME/.local/bin/setup/spacemacs-checkout"
 
 if [[ "${update_emacs}" == "y" ]]; then
     echo $'\nStarting Spacemacs upgrade. Be sure to update your dotfile (SPC f e D)'
     echo $'\nUpdating clean Spacemacs checkout...'
-    "$HOME/.local/bin/setup/spacemacs-checkout" update || {
+    "$spacemacs_checkout" update || {
         echo $'\nSpacemacs checkout update refused; Emacs was left running.' >&2
         exit 1
     }
+else
+    echo $'\nValidating clean Spacemacs checkout before reconciling its cache...'
+    "$spacemacs_checkout" --check || {
+        echo $'\nSpacemacs checkout validation refused; Copilot cache was left untouched.' >&2
+        exit 1
+    }
+fi
+
+print $'\nEmacs Copilot language server...'
+"$HOME/.local/bin/setup/copilot-language-server" apply || {
+    echo $'\nCopilot language server reconciliation failed; Emacs was left running.' >&2
+    exit 1
+}
+
+if [[ "${update_emacs}" == "y" ]]; then
     echo $'\nKilling emacs...'
     i3-msg '[class="Emacs"] kill' >> /dev/null
     echo $'\nUpdating installed emacs packages (batch, synchronous)...\n'
@@ -140,7 +156,6 @@ npm install -g npm@latest
 
 echo $'\n\nUpdating all global npm packages...'
 npm update -g
-npm -g --prefix /home/aaron/.emacs.d/.cache/copilot update
 
 echo $'\n\nUpdating all global yarn packages'
 yarn global upgrade --non-interactive
