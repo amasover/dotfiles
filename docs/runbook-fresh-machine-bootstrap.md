@@ -76,7 +76,7 @@ shows its own plan and prompts (makepkg, metapac sync, chsh). What it does, in o
 12. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
     unrelated settings.
 13. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
-    reconciles the four active `Plug` declarations; `--check` is read-only.
+    reconciles active `Plug` declarations; `--check` is read-only.
 14. **User services** — enables tracked user units; services awaiting attended auth may
     start later through their restart policy.
 15. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and

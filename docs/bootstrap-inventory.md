@@ -88,7 +88,7 @@ fix is the Story 2.3 rewrite, not piecemeal patching. Do not promote as current.
 | `zsh_history_fix` | **current** | Repair a corrupt `~/.zsh_history`. | rewrites history file. |
 | `mute_toggle` | **current** | Toggle mute via `volume` (volume-go). | depends on the `volume` Go binary (installed by old `install` go-get). |
 | `sp` | **current** | Third-party Spotify CLI over dbus (Wander Nauta, MIT). | none destructive; needs Spotify running. |
-| `setup/vim-plugins` | **current** | Check packaged vim-plug and reconcile the three fallback `Plug` declarations; bootstrap step 8d and the update loop share it. | Clones/updates fallback plugins only. |
+| `setup/vim-plugins` | **current** | Check packaged vim-plug and reconcile active fallback `Plug` declarations; bootstrap step 8d and the update loop share it. | Clones/updates fallback plugins only. |
 
 ### Current but tied to the i3/polybar/X desktop stack (Epic 3 fate)
 

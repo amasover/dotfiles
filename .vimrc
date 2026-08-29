@@ -51,8 +51,12 @@ Plug 'tpope/vim-repeat'
 Plug 'hashivim/vim-terraform'
 Plug 'svermeulen/vim-easyclip'
 Plug 'nordtheme/vim'
+Plug 'drewipson/glowing-vim-markdown-preview'
 
 call plug#end()
+
+" Upstream keeps its entrypoint at repository root rather than plugin/.
+runtime plugged/glowing-vim-markdown-preview/markdown-preview.vim
 
 " :PlugInstall installs missing plugins; :PlugUpdate advances them.
 " :PlugDiff reviews updates; :PlugClean removes undeclared plugins.

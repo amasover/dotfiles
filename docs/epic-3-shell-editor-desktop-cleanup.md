@@ -845,6 +845,39 @@ batch transcript, and attended workflow checklist.
 
 ---
 
+### Story 3.31: Integrate OMP into Emacs through ACP
+
+As the repo owner,
+I want OMP available through a native Emacs agent buffer over ACP,
+So that the workspace editor and agentic coding environment can share project context,
+diff review, and permission UX without bespoke process glue.
+
+Issue: [#214](https://github.com/amasover/dotfiles/issues/214) · Origin: Story 3.30
+found abandoned GPTel experiments plus overlapping Aider/Aidermacs/Copilot surfaces.
+Current [agent-shell](https://github.com/xenodium/agent-shell) is an Emacs ACP client and
+ships `agent-shell-omp-start`, whose adapter launches `omp acp`; the protocol contract is
+documented by [ACP](https://agentclientprotocol.com/) and implemented by
+[acp.el](https://github.com/xenodium/acp.el).
+
+**Acceptance criteria:**
+
+- Current Copilot, Aider/Aidermacs, and commented GPTel workflows are baselined and assigned coexist/replace/retire decisions before another agent UI is retained
+- `agent-shell`, `acp.el`, and the OMP adapter receive source/security review covering subprocess environment, file requests, permissions, cwd, session state, auth inheritance, and provider boundaries
+- `agent-shell-omp-start` is prototyped against `omp acp` under isolated Emacs/OMP state with approval prompts enabled; user-scope yolo is never the default
+- One bounded project workflow sends region/file context, requests a code change, renders its diff/tool activity, approves selectively, and verifies resulting files with normal project tests
+- Project selection, prompt queue/steering, interruption, clean shutdown, process failure, and ACP-exposed model/session controls are exercised
+- Session resume/history limitations are recorded from protocol behavior; no private session-file coupling is invented around a missing ACP capability
+- A keep verdict declares packages/config/keybinding reproducibly, retains terminal OMP, and adds isolated ERT plus attended ACP smoke evidence; a drop verdict removes prototype state completely
+- Existing AI integrations are removed only after their unique retained workflows are covered or explicitly retired
+
+Out of scope: changing OMP core without a reproduced ACP gap, globally auto-approving
+tools, forwarding OMP credentials into Emacs config, or replacing inline Copilot completion.
+
+**Evidence artifact:** integration comparison matrix, source/security review, isolated ACP
+transcript, ERT results, live workflow evidence, and keep/drop decision.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Shell config has been compared to live-home and cleaned safely

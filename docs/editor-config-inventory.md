@@ -31,8 +31,8 @@ Evidence:
 - Shell aliases, config editing, read-only paging, Git-log viewing, and `MANPAGER` invoke
   Vim.
 - `.vimrc` was modernized by Story 2.49: packaged vim-plug and packaged plugins own the
-  common path; four active `Plug` fallbacks remain (`vim-repeat`, `vim-terraform`,
-  `vim-easyclip`, `nordtheme/vim`).
+  common path; active `Plug` fallbacks are `vim-repeat`, `vim-terraform`, `vim-easyclip`,
+  `nordtheme/vim`, and `glowing-vim-markdown-preview`.
 - GVim 9.2 is installed and provides the Vim command; editor packages declare its plugin
   dependencies.
 
@@ -111,6 +111,8 @@ Current gaps became focused follow-ups:
   server packages.
 - Story 3.29 [#207](https://github.com/amasover/dotfiles/issues/207): security-review and
   evaluate marketplace plugins across agent, hook, and LSP shapes.
+- Story 3.31 [#214](https://github.com/amasover/dotfiles/issues/214): evaluate native
+  Emacs ↔ OMP integration through agent-shell's built-in `omp acp` adapter.
 
 ## IntelliJ IDEA Community — archive/remove candidate
 
