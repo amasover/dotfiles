@@ -28,6 +28,8 @@ Disposable handoff for active work. GitHub issues own durable detail; the
   and established workflows while modernizing tracked `.spacemacs`.
   Known defects: near-total warning suppression, disabled GC, overwritten YAML
   schemas, stray prints, stale/duplicate integrations, and hardcoded paths.
+  PR #215 landed first-start package ownership and the Origami exclusion; sync any
+  active 3.30 branch from `main` before further `.spacemacs` edits.
   Next: capture batch/GUI behavior, timing, warnings, and memory baseline; then
   make evidence-backed fixes and rerun the same checks. Live config or package
   changes require separate approval and a rollback copy.
