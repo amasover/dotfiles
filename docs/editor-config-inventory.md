@@ -31,8 +31,8 @@ Evidence:
 - Shell aliases, config editing, read-only paging, Git-log viewing, and `MANPAGER` invoke
   Vim.
 - `.vimrc` was modernized by Story 2.49: packaged vim-plug and packaged plugins own the
-  common path; four active `Plug` fallbacks remain (`vim-repeat`, `vim-terraform`,
-  `vim-easyclip`, `nordtheme/vim`).
+  common path; active `Plug` fallbacks are `vim-repeat`, `vim-terraform`, `vim-easyclip`,
+  `nordtheme/vim`, and `glowing-vim-markdown-preview`.
 - GVim 9.2 is installed and provides the Vim command; editor packages declare its plugin
   dependencies.
 
