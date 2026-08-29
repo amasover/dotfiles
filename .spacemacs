@@ -757,7 +757,6 @@ before packages are loaded."
   ;;                                 (lsp-python-enable))))
   (setq lsp-pyright-multi-root nil)
   (use-package lsp-pyright
-    :ensure t
     :hook (python-mode . (lambda ()
                            (require 'lsp-pyright)
                            (lsp))))  ; or lsp-deferred

@@ -71,8 +71,8 @@ shows its own plan and prompts (makepkg, metapac sync, chsh). What it does, in o
     repair instructions; bootstrap never overwrites it. Tracked `~/.spacemacs` owns user
     configuration.
 11. **Emacs Copilot server** — installs a pinned `@github/copilot-language-server`
-    under Spacemacs' cache using declared official `nodejs`/`npm`, then verifies both
-    package version and launcher. This runs before first Emacs launch.
+    under Spacemacs' cache through declared official `nodejs`/`npm` in `/usr/bin`,
+    then verifies both package version and launcher. This runs before first Emacs launch.
 12. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
     unrelated settings.
 13. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,

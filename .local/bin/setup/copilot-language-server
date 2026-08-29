@@ -17,9 +17,16 @@ fail() {
 action=${1:-apply}
 version=${COPILOT_SERVER_VERSION:-1.537.0}
 prefix=${COPILOT_SERVER_PREFIX:-$HOME/.emacs.d/.cache/copilot}
-npm=${NPM:-npm}
+if [[ -n ${NPM:-} ]]; then
+    npm=$NPM
+    tool_path=${PATH:-}
+else
+    npm=/usr/bin/npm
+    tool_path=/usr/bin:/bin
+fi
 package=@github/copilot-language-server
-manifest="$prefix/lib/node_modules/$package/package.json"
+package_dir="$prefix/lib/node_modules/$package"
+manifest="$package_dir/package.json"
 binary="$prefix/bin/copilot-language-server"
 
 case "$action" in
@@ -31,46 +38,89 @@ case "$action" in
     *) fail "unknown action: $action   (try: copilot-language-server -h)" ;;
 esac
 
+run_launcher() {
+    PATH="$tool_path" "$binary" --version 2>/dev/null
+}
+
 installed_version=
+manifest_state=missing
 if [[ -f "$manifest" ]]; then
-    installed_version=$(jq -r '.version // empty' "$manifest") \
-        || fail "cannot read installed package version from $manifest"
+    command -v jq >/dev/null 2>&1 \
+        || fail "jq not found — install the declared jq package first"
+    if installed_version=$(jq -er '.version | select(type == "string" and length > 0)' "$manifest" 2>/dev/null); then
+        manifest_state=valid
+    else
+        manifest_state=invalid
+    fi
 fi
 
-if [[ "$installed_version" == "$version" && -x "$binary" ]]; then
-    actual=$($binary --version 2>/dev/null) \
-        || fail "installed launcher failed: $binary"
-    [[ "$actual" == "$version" ]] \
-        || fail "launcher reports $actual, package manifest reports $version"
-    printf '  already installed (%s %s)\n' "$package" "$version"
-    exit 0
+drift_kind=
+drift_detail=
+if [[ "$manifest_state" == missing ]]; then
+    drift_kind=missing
+elif [[ "$manifest_state" == invalid ]]; then
+    drift_kind=invalid-manifest
+    drift_detail="package manifest unreadable: $manifest"
+elif [[ "$installed_version" != "$version" ]]; then
+    drift_kind=version
+elif [[ ! -x "$binary" ]]; then
+    drift_kind=launcher
+    drift_detail="launcher missing under $prefix"
+else
+    actual=
+    if actual=$(run_launcher); then
+        if [[ "$actual" == "$version" ]]; then
+            printf '  already installed (%s %s)\n' "$package" "$version"
+            exit 0
+        fi
+        drift_kind=launcher
+        drift_detail="launcher reports $actual, expected $version"
+    else
+        drift_kind=launcher
+        drift_detail="launcher failed: $binary"
+    fi
 fi
 
 if [[ "$action" == --check ]]; then
-    if [[ -z "$installed_version" ]]; then
-        printf '  would: install %s@%s under %s\n' "$package" "$version" "$prefix"
-    elif [[ ! -x "$binary" ]]; then
-        printf '  would: repair %s@%s (launcher missing under %s)\n' "$package" "$version" "$prefix"
-    else
-        printf '  would: replace %s@%s with pinned %s under %s\n' \
-            "$package" "$installed_version" "$version" "$prefix"
-    fi
+    case "$drift_kind" in
+        missing)
+            printf '  would: install %s@%s under %s\n' "$package" "$version" "$prefix"
+            ;;
+        version)
+            printf '  would: replace %s@%s with pinned %s under %s\n' \
+                "$package" "$installed_version" "$version" "$prefix"
+            ;;
+        *)
+            printf '  would: repair %s@%s (%s)\n' "$package" "$version" "$drift_detail"
+            ;;
+    esac
     exit 1
 fi
 
-command -v "$npm" >/dev/null 2>&1 \
-    || fail "npm not found — install the declared npm package first"
+if [[ -n ${NPM:-} ]]; then
+    PATH="$tool_path" command -v "$npm" >/dev/null 2>&1 \
+        || fail "npm not found — install the declared npm package first"
+else
+    [[ -x "$npm" ]] \
+        || fail "official npm not found at $npm — install the declared npm package first"
+    [[ -x /usr/bin/node ]] \
+        || fail "official nodejs not found at /usr/bin/node — install the declared nodejs package first"
+fi
 command -v jq >/dev/null 2>&1 \
     || fail "jq not found — install the declared jq package first"
 
-"$npm" install --global --prefix "$prefix" "$package@$version"
+# npm can consider a same-version package converged even when its manifest or
+# launcher is corrupt. Remove only this helper's managed paths before reinstalling.
+rm -rf -- "$package_dir" "$binary"
+PATH="$tool_path" "$npm" install --global --prefix "$prefix" "$package@$version"
 
 [[ -f "$manifest" && -x "$binary" ]] \
     || fail "npm completed without the package manifest and launcher"
-installed_version=$(jq -r '.version // empty' "$manifest")
+installed_version=$(jq -er '.version | select(type == "string" and length > 0)' "$manifest" 2>/dev/null) \
+    || fail "cannot read installed package version from $manifest"
 [[ "$installed_version" == "$version" ]] \
     || fail "npm installed version '$installed_version', expected '$version'"
-actual=$($binary --version 2>/dev/null) \
+actual=$(run_launcher) \
     || fail "installed launcher failed: $binary"
 [[ "$actual" == "$version" ]] \
     || fail "launcher reports $actual, expected $version"

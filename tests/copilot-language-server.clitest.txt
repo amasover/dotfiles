@@ -22,6 +22,15 @@ $ RUN apply; RUN --check; "$CLITMP/prefix/bin/copilot-language-server" --version
   already installed (@github/copilot-language-server 9.8.7)
   already installed (@github/copilot-language-server 9.8.7)
 9.8.7
+$ SPACE_PREFIX="$CLITMP/prefix with space"; PATH="$CLITMP/bin:$PATH" NPM=npm FAKE_NPM_LOG="$CLITMP/npm.log" COPILOT_SERVER_PREFIX="$SPACE_PREFIX" COPILOT_SERVER_VERSION=9.8.7 "$CS" apply; PATH="$CLITMP/bin:$PATH" NPM=npm FAKE_NPM_LOG="$CLITMP/npm.log" COPILOT_SERVER_PREFIX="$SPACE_PREFIX" COPILOT_SERVER_VERSION=9.8.7 "$CS" --check
+  installed @github/copilot-language-server 9.8.7
+  already installed (@github/copilot-language-server 9.8.7)
+$
+# production validation ignores an NVM-shadowed node and uses declared system node
+$ printf '%s\n' '#!/usr/bin/env bash' 'printf used > "$FAKE_NODE_LOG"' 'exit 99' > "$CLITMP/bin/node"; chmod +x "$CLITMP/bin/node"; printf '%s\n' '#!/usr/bin/env node' 'console.log("9.8.7")' > "$SPACE_PREFIX/bin/copilot-language-server"; chmod +x "$SPACE_PREFIX/bin/copilot-language-server"; out=$(PATH="$CLITMP/bin:$PATH" FAKE_NODE_LOG="$CLITMP/node.log" COPILOT_SERVER_PREFIX="$SPACE_PREFIX" COPILOT_SERVER_VERSION=9.8.7 "$CS" --check 2>&1); rc=$?; printf '%s\n' "$out"; echo "rc=$rc"; test ! -e "$CLITMP/node.log"; echo "system-node=$?"
+  already installed (@github/copilot-language-server 9.8.7)
+rc=0
+system-node=0
 $
 # outdated package and missing launcher are diagnosed then repaired
 $ printf '{"version":"1.0.0"}\n' > "$CLITMP/prefix/lib/node_modules/@github/copilot-language-server/package.json"; out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
@@ -35,10 +44,22 @@ rc=1
 $ RUN apply
   installed @github/copilot-language-server 9.8.7
 $
-# a launcher disagreeing with its manifest fails rather than claiming convergence
+# disagreeing, failed, and malformed installed state is diagnosed then repaired
 $ printf '%s\n' '#!/usr/bin/env bash' 'echo 0.0.0' > "$CLITMP/prefix/bin/copilot-language-server"; chmod +x "$CLITMP/prefix/bin/copilot-language-server"; out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
-copilot-language-server: launcher reports 0.0.0, package manifest reports 9.8.7
+  would: repair @github/copilot-language-server@9.8.7 (launcher reports 0.0.0, expected 9.8.7)
 rc=1
+$ RUN apply
+  installed @github/copilot-language-server 9.8.7
+$ printf '%s\n' '#!/usr/bin/env bash' 'exit 7' > "$CLITMP/prefix/bin/copilot-language-server"; chmod +x "$CLITMP/prefix/bin/copilot-language-server"; out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+  would: repair @github/copilot-language-server@9.8.7 (launcher failed: TMP/prefix/bin/copilot-language-server)
+rc=1
+$ RUN apply
+  installed @github/copilot-language-server 9.8.7
+$ printf '{broken\n' > "$CLITMP/prefix/lib/node_modules/@github/copilot-language-server/package.json"; out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
+  would: repair @github/copilot-language-server@9.8.7 (package manifest unreadable: TMP/prefix/lib/node_modules/@github/copilot-language-server/package.json)
+rc=1
+$ RUN apply
+  installed @github/copilot-language-server 9.8.7
 $
 # missing npm and malformed actions fail clearly
 $ rm -rf "$CLITMP/prefix"; out=$(PATH=/usr/bin NPM=definitely-missing COPILOT_SERVER_PREFIX="$CLITMP/prefix" "$CS" apply 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
