@@ -70,15 +70,25 @@ shows its own plan and prompts (makepkg, metapac sync, chsh). What it does, in o
     when `~/.emacs.d` is absent. An existing wrong/dirty/ahead checkout stops with manual
     repair instructions; bootstrap never overwrites it. Tracked `~/.spacemacs` owns user
     configuration.
-11. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
+11. **Emacs Copilot server** — installs a pinned `@github/copilot-language-server`
+    under Spacemacs' cache using declared official `nodejs`/`npm`, then verifies both
+    package version and launcher. This runs before first Emacs launch.
+12. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
     unrelated settings.
-12. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
+13. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
     reconciles the four active `Plug` declarations; `--check` is read-only.
-13. **User services** — enables tracked user units; services awaiting attended auth may
+14. **User services** — enables tracked user units; services awaiting attended auth may
     start later through their restart policy.
-14. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and
+15. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and
     leaves metal/non-VMware hosts without the managed link.
-15. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
+16. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
+
+Focused editor validation from the repo checkout:
+
+```bash
+clitest tests/copilot-language-server.clitest.txt
+emacs --batch -Q -l tests/spacemacs-config-test.el -f ert-run-tests-batch-and-exit
+```
 
 ## Class table
 
