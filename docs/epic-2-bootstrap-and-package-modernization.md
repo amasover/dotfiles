@@ -684,12 +684,13 @@ included 15-group purpose list; only `workstation` adds `work`. Each class names
 exactly one `inbox-<class>`, and yay resolves that inbox from rendered
 `hostname_groups` rather than counting every tracked inbox file.
 
-The Intel adapter owns ACPI, firmware, refind, Intel media, and 64/32-bit Intel
-Vulkan. AMD and VESA DDX/Vulkan packages are retired; built-in Xorg modesetting
-stays the laptop driver. Guest adapters own their hypervisor tools and zram.
-Both harnesses now pass only a class; the temporary `--hardware-pkgs` and
-machine-local hardware injection interface is deleted. NetworkManager is
-enabled idempotently after package reconcile for every class.
+The Intel adapter owns ACPI, refind, Intel media, and 64/32-bit Intel Vulkan.
+`linux-firmware` remains shared because archinstall installs it explicitly on
+every guest. AMD and VESA DDX/Vulkan packages are retired; built-in Xorg
+modesetting stays the laptop driver. Guest adapters own their hypervisor tools
+and zram. Both harnesses now pass only a class; the temporary
+`--hardware-pkgs` and machine-local hardware injection interface is deleted.
+NetworkManager is enabled idempotently after package reconcile for every class.
 
 The old workstation inbox is fully triaged: existing duplicates leave the
 inbox; `1password-cli` moves to security; `bun`, `playwright`, and
@@ -704,10 +705,14 @@ inbox; `1password-cli` moves to security; `bun`, `playwright`, and
 - Given every class selects the NetworkManager stack, bootstrap check/apply reports or establishes NetworkManager enabled and active
 - Given live laptop reconciliation, declared-but-missing is empty and the class split introduces zero new unmanaged packages
 
-**Evidence artifact:** `tests/metapac-classes.clitest.txt` (25 cases), yay hook
+**Evidence artifact:** `tests/metapac-classes.clitest.txt` (32 cases), yay hook
 harness active-inbox case, updated shared-guest tests, full CI suite, live
 `workstation` render/bootstrap check, signed repo install of Intel Vulkan
-(64/32-bit) and Playwright, and removal of the obsolete AMD/VESA/xautolock set.
+(64/32-bit), Playwright, and CAVA, and removal of the obsolete
+AMD/VESA/xautolock/cli-visualizer set. A fresh `qemu-harness` guest converged
+with bootstrap/check `rc=0`, unmanaged and missing empty, NetworkManager
+enabled, and its own inbox empty (`20260829-203858-*` fresh create/install;
+`20260829-213932-{bootstrap,check}.log` final convergence).
 
 ---
 

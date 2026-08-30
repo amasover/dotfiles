@@ -27,9 +27,10 @@ Supporting choices, decided together:
   `yadm.class` seam. `workstation` adds `work` plus the Intel-laptop adapter;
   `daily-vm` adds VMware tools; `qemu-harness` adds QEMU tools. All share one
   purpose-group list, while each owns a distinct inbox. The VMware adapter
-  declares `open-vm-tools`, `xf86-video-vmware`, and `zram-generator`; metal
-  boot/firmware/Intel Vulkan packages stay only on the laptop. Harnesses pass a
-  class, never an ad hoc hardware package list.
+  declares `open-vm-tools`, `xf86-video-vmware`, and `zram-generator`; Intel
+  boot/GPU packages stay only on the laptop, while archinstall-owned
+  `linux-firmware` remains shared. Harnesses pass a class, never an ad hoc
+  hardware package list.
 - **Secrets: full archive, host trusted.** The VM decrypts the real archive; the
   Windows host is accepted into the trust boundary (it can read guest memory/disk
   regardless). A second-tier secret set was rejected as permanent curation friction

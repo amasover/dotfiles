@@ -155,7 +155,7 @@ Questions below before manifests are split. Native = official repos; **bold** = 
   → **Open question Q3** (VPN sprawl)
 - **media** — `vlc` `mpv` `yt-dlp` `playerctl` `ffmpegthumbnailer` `imagemagick` `gimp`
   `pavucontrol` `pamixer` `alsa-utils` `pipewire-pulse` `tesseract` `perl-image-exiftool`
-  `zathura` `zathura-ps` `guvcview` **tidal-hifi-bin** **feishin-bin** **cli-visualizer**
+  `zathura` `zathura-ps` `guvcview` **tidal-hifi-bin** **feishin-bin** `cava`
   · screen-record (`peek` **byzanz** **kazam** **simplescreenrecorder**) → resolved by **D7**
 - **comms** — `signal-desktop` `discord` `weechat` **teams-for-linux-bin** **zoom**
   **bitlbee** **chatmcp**

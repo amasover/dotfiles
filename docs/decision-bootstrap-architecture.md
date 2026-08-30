@@ -74,7 +74,8 @@ Config lives in `.config/metapac/` (yadm-tracked → placed on every machine).
   Story 2.30 establishes `workstation` (Intel laptop), `daily-vm` (VMware), and
   `qemu-harness` (libvirt/QEMU). New hardware gets a new adapter/class instead of
   a caller-injected package list.
-  Class labels stay public-safe; the real hostname exists only in rendered, untracked config.
+  Class labels stay public-safe; the real hostname exists only in rendered,
+  untracked config.
 
 - **Groups** (`groups/*.toml`) keep the Story 2.2 fine-grained purpose taxonomy.
   Story 2.30 centralizes 15 universal purposes in `profiles/common.groups`, adds
