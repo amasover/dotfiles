@@ -179,6 +179,11 @@ the source of truth for status.
 - Commit as work progresses, but keep commits scoped by risk area: docs, YADM metadata, shell config, desktop config, package inventory, bootstrap scripts, or encrypted payload updates.
 - Do not add `Co-Authored-By` trailers or other AI-attribution lines to commit messages **or PR descriptions** (e.g. no "Generated with Claude Code" footer).
 - Push the story branch and open one GitHub pull request per story, referencing its issue. The PR description should include the story, summary, validation performed, secret-safety notes, live-home comparison notes, and follow-up work.
+- Opening or pushing a PR never authorizes merging it. After CI is green, stop,
+  report the ready PR, and wait for Aaron's review. Merge only when Aaron explicitly
+  names that PR and requests its merge in the current task; do not infer permission
+  from “go ahead”, terminal story markers, mergeability, issue closure text, or another
+  agent's activity.
 - Small docs-only bookkeeping changes may bypass a PR and go directly to `main`:
   terminal markers, STATUS/active-queue pruning, link repairs, and wording-only
   corrections. This standing exception excludes story/spec decisions, code/config,
