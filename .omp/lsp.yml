@@ -1,0 +1,5 @@
+# Built-in Pyright markers do not match this Python-using dotfiles repository.
+servers:
+  pyright:
+    rootMarkers:
+      - .git
