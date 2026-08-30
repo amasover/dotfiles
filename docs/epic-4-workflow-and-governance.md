@@ -179,13 +179,13 @@ So that the stacked-PR mistake cannot recur and an agent always reads the rules.
 
 ---
 
-### Story 4.7: Minimal CI — lint, tests, secret scan
+### Story 4.7: Minimal CI — lint, tests, secret scan ✅
 
 As the repo owner,
 I want every PR checked by CI against the repo's documented validation standards,
 So that validation is enforced instead of remembered — the 4.4 move (automate the scan), applied to the rest of the validation expectations, across parallel human/agent sessions.
 
-Issue: [#94](https://github.com/amasover/dotfiles/issues/94) · One GitHub Actions workflow on an `archlinux:latest` container (matches the real tooling; pacman-native). Origin: conventions alone did not make any one machine run the complete suite; by 2026-08-29 it held 446 clitest cases, 112 pytest cases, four Spacemacs ERT contracts, and two standalone policy harnesses.
+Issue: [#94](https://github.com/amasover/dotfiles/issues/94) (closed, PR #220) · One GitHub Actions workflow on an `archlinux:latest` container (matches the real tooling; pacman-native). Origin: conventions alone did not make any one machine run the complete suite; by 2026-08-29 it held 446 clitest cases, 112 pytest cases, four Spacemacs ERT contracts, and two standalone policy harnesses.
 
 Implementation decisions (2026-08-29 grill): clean the full tracked shellcheck/shfmt baseline in this story so CI gates every script without an allowlist; use one disposable Arch job with read-only token permissions; report checks without changing branch protection, preserving the small docs-only direct-to-`main` exception.
 
