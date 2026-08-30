@@ -4,9 +4,9 @@
 # metapac has no list command, so this parses the rendered config the same way
 # metapac reads it: [hostname_groups] entry for this host -> group entries
 # (names under <config>/groups/, or absolute paths like machine-local.toml) ->
-# every quoted name inside each file's [arch] packages array. Coupled to the
-# repo's group-file convention (one quoted name per line) the same way the
-# bootstrap 6b sed is coupled to metapac's output shape; the harness's
+# every quoted name on uncommented lines inside each file's `[arch]` packages
+# array. Coupled to the repo's group-file convention (one quoted name per line)
+# just as bootstrap 6b is coupled to metapac's output shape; the harness's
 # exactly-empty `unmanaged` assert is the backstop for both.
 #
 # Output may include never-publish machine-local names — do not paste it into
@@ -42,9 +42,10 @@ cfg="$cfg_dir/config.toml"
 
 # entries of this host's group array: from the "<host>" = [ line to the first ]
 mapfile -t entries < <(awk -v h="\"$host\" = [" '
-    index($0, h) { grab = 1; next }
-    grab && /\]/ { exit }
-    grab && match($0, /"([^"]*)"/, m) { print m[1] }' "$cfg")
+    { line = $0; sub(/[[:space:]]*#.*/, "", line) }
+    index(line, h) { grab = 1; next }
+    grab && line ~ /\]/ { exit }
+    grab && match(line, /"([^"]*)"/, m) { print m[1] }' "$cfg")
 ((${#entries[@]})) || {
     echo "metapac-declared: no [hostname_groups] entry for '$host' in $cfg" >&2
     exit 1
@@ -56,7 +57,8 @@ for e in "${entries[@]}"; do
         echo "metapac-declared: missing group file $f" >&2
         exit 1
     }
-    awk '/^\[arch\]/ { a = 1; next }
-         /^\[/      { a = 0 }
-         a && match($0, /"([^"]*)"/, m) { print m[1] }' "$f"
+    awk '{ line = $0; sub(/[[:space:]]*#.*/, "", line) }
+         line ~ /^\[arch\]/ { a = 1; next }
+         line ~ /^\[/       { a = 0 }
+         a && match(line, /"([^"]*)"/, m) { print m[1] }' "$f"
 done | sort -u
