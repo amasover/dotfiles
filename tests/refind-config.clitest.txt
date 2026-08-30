@@ -1,0 +1,43 @@
+# rEFInd fixture reconciliation and bootstrap routing (Story 2.52, #230).
+# Run from repo root: clitest tests/refind-config.clitest.txt
+
+$ ROOT=$PWD; RTMP=$(mktemp -d); R=$RTMP/root; mkdir -p "$R/boot" "$R/efi/EFI/refind" "$R/efi/EFI/ubuntu" "$R/efi/EFI/BOOT" "$R/etc/dotfiles" "$R/usr/share/refind/themes/nord/icons"; printf 'ID=arch\n' > "$R/etc/os-release"; echo ready
+ready
+$ for name in vmlinuz-linux initramfs-linux.img intel-ucode.img; do printf '%s\n' "$name" > "$R/boot/$name"; done; printf 'refind binary\n' > "$R/efi/EFI/refind/refind_x64.efi"; printf 'ubuntu shim\n' > "$R/efi/EFI/ubuntu/shimx64.efi"; printf 'mok manager\n' > "$R/efi/EFI/ubuntu/mmx64.efi"; printf 'fallback\n' > "$R/efi/EFI/BOOT/BOOTX64.EFI"; echo artifacts
+artifacts
+$ for name in theme.conf bg.png selection_big.png selection_small.png; do printf 'theme %s\n' "$name" > "$R/usr/share/refind/themes/nord/$name"; done; printf 'arch icon\n' > "$R/usr/share/refind/themes/nord/icons/os_arch.png"; printf '%s\n' '{"esp":"/efi","boot_fsroot":"/arch","kernel_options":["cryptdevice=UUID=11111111-1111-1111-1111-111111111111:cryptroot","root=/dev/mapper/vg-root","resume=UUID=22222222-2222-2222-2222-222222222222"]}' > "$R/etc/dotfiles/refind.json"; echo configured
+configured
+$
+
+executable reports drift, applies atomically, then converges:
+
+$ .local/bin/setup/refind-config --check --root "$R"; echo "rc=$?"
+rEFInd configuration: would reconcile refind.conf, dotfiles-machine.conf, refind_linux.conf, Nord theme
+rc=1
+$ .local/bin/setup/refind-config apply --root "$R"; echo "rc=$?"
+rEFInd configuration: reconciled refind.conf, dotfiles-machine.conf, refind_linux.conf, Nord theme
+rc=0
+$ .local/bin/setup/refind-config --check --root "$R"; echo "rc=$?"
+rEFInd configuration: converged
+rc=0
+$ .local/bin/setup/refind-config --check apply --root "$R" >/dev/null 2>&1; echo "rc=$?"
+rc=2
+$
+
+bootstrap routes rEFInd only to workstation and preserves drift semantics:
+
+$ export BOOTSTRAP_TEST_MODE=1; REFIND_HOME="$RTMP/home"; REFIND_STUB="$REFIND_HOME/.local/bin/setup/refind-config"; REFIND_TRACE="$RTMP/refind-trace"; mkdir -p "$(dirname "$REFIND_STUB")"; printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$REFIND_TRACE"' 'exit "${REFIND_RC:-0}"' > "$REFIND_STUB"; chmod +x "$REFIND_STUB"; echo ready
+ready
+$ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config check daily-vm; cat "$REFIND_TRACE"
+  not applicable to class daily-vm
+$ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config check workstation; cat "$REFIND_TRACE"
+--check
+$ HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" REFIND_RC=1 .local/bin/setup/bootstrap --refind-config check workstation; echo "rc=$?"
+rc=0
+$ HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" REFIND_RC=2 .local/bin/setup/bootstrap --refind-config check workstation >/dev/null 2>&1; echo "rc=$?"
+rc=1
+$ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config apply workstation; cat "$REFIND_TRACE"
+apply
+$ rm -rf "$RTMP"; echo done
+done
+$

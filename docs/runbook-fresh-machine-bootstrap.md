@@ -65,27 +65,31 @@ What it does, in order:
 8. **Network ownership** — enables and starts NetworkManager, then disables and stops
    systemd-networkd. Harness seeds select NetworkManager from first boot; this step also
    migrates older ISO-networked guests. `--check` requires or reports the exact cutover.
-9. **AUR trust baseline** — `aur-quarantine seed` (trust-first-seen, announced;
-   interim until 2.10's portable baseline).
-10. **oh-my-zsh** — official installer, `KEEP_ZSHRC=yes` so yadm's `.zshrc` survives;
+9. **rEFInd boot configuration** — `workstation` only. Reconciles tracked portable policy,
+   generated machine scan/kernel entries, and package-owned Nord assets. Production access
+   gets a separate `pkexec` approval; existing files are backed up outside the ESP before
+   any write. Unmanaged files stop normal apply rather than being replaced.
+10. **AUR trust baseline** — `aur-quarantine seed` (trust-first-seen, announced;
+    interim until 2.10's portable baseline).
+11. **oh-my-zsh** — official installer, `KEEP_ZSHRC=yes` so yadm's `.zshrc` survives;
     then symlinks the tracked patched agnoster theme into its custom theme directory.
     No custom plugin clone supplies autosuggestions or NVM.
-11. **Spacemacs checkout** — `setup/spacemacs-checkout apply` clones upstream `develop`
+12. **Spacemacs checkout** — `setup/spacemacs-checkout apply` clones upstream `develop`
     when `~/.emacs.d` is absent. An existing wrong/dirty/ahead checkout stops with manual
     repair instructions; bootstrap never overwrites it. Tracked `~/.spacemacs` owns user
     configuration.
-12. **Emacs Copilot server** — installs a pinned `@github/copilot-language-server`
+13. **Emacs Copilot server** — installs a pinned `@github/copilot-language-server`
     under Spacemacs' cache through declared official `nodejs`/`npm` in `/usr/bin`,
     then verifies both package version and launcher. This runs before first Emacs launch.
-13. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
+14. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
     unrelated settings.
-14. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
+15. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
     reconciles active `Plug` declarations; `--check` is read-only.
-15. **User services** — enables tracked user units; services awaiting attended auth may
+16. **User services** — enables tracked user units; services awaiting attended auth may
     start later through their restart policy.
-16. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and
+17. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and
     leaves metal/non-VMware hosts without the managed link.
-17. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
+18. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
 
 Focused editor validation from the repo checkout:
 
@@ -115,6 +119,74 @@ Each concrete class selects exactly one hardware adapter and one inbox. To add a
 machine profile, add its guarded template branch, adapter, and inbox; set
 `yadm config local.class <class>`, then run `yadm alt`. Bootstrap enables
 NetworkManager for every class after package reconcile.
+
+## rEFInd metal boot configuration
+
+Story 2.52 ([#230](https://github.com/amasover/dotfiles/issues/230)) separates
+portable boot policy from machine identifiers:
+
+- [`.config/dotfiles/refind/refind.conf`](../.config/dotfiles/refind/refind.conf)
+  owns timeout, Arch selection/scanning, and Nord inclusion. It contains no disk,
+  root, resume, or partition identifiers.
+- [`setup/refind-config`](../.local/bin/setup/refind-config) derives identity-bearing
+  kernel options from live `/proc/cmdline` and `/sys/power/resume`, plus the kernel
+  directory from `/boot` mount target and filesystem-root metadata. It generates
+  `dotfiles-machine.conf` on a verified active FAT ESP and `/boot/refind_linux.conf`;
+  Intel microcode precedes the kernel-matched `initramfs-%v.img`.
+- `/usr/share/refind/themes/nord` remains package-owned. The reconciler verifies that
+  ownership, copies only boot-time theme assets, and marks the ESP copy as managed.
+- The reconciler touches only `EFI/refind/**` and `/boot/refind_linux.conf`. It never
+  edits NVRAM, installs a firmware entry, removes another loader, or reboots.
+
+Production modes all re-exec through `pkexec`; read-only modes need elevation because
+the ESP is normally mounted root-only:
+
+```bash
+refind-config audit       # redacted inventory; no identifiers printed
+refind-config --check     # exit 0 converged, 1 drift, 2 unsafe/ambiguous
+refind-config apply       # missing or already-managed destinations only
+refind-config adopt       # explicit one-time takeover of unmanaged destinations
+```
+
+`apply` and `adopt` first copy and sync every existing destination to a timestamped
+directory under `/var/backups/dotfiles/refind/`, outside the ESP. Each destination
+replacement is atomic; an ordinary write failure restores the complete prior state
+and reports the backup path. `adopt` exists for attended migration only; bootstrap
+never selects it. Normal apply fails before writing for unmanaged destinations,
+symlinked paths, a missing or inactive ESP mount, missing kernel-matched boot
+artifacts, or an incomplete/unowned Nord package. No reboot is automatic.
+
+Live derivation is the default and rejects machine-local kernel overrides. A
+provisioner must write untracked, root-owned `/etc/dotfiles/refind.json` under its
+target root before invoking the same reconciler through `--root`; target roots do
+not borrow the installer host's `/proc/cmdline` or `/boot` mount metadata. Operational
+paths below the target root must be real directories, not symlinks. Values below are
+placeholders, never tracked machine values:
+
+```json
+{
+  "esp": "/efi",
+  "boot_fsroot": "/arch",
+  "kernel_options": [
+    "cryptdevice=UUID=<luks-uuid>:cryptroot",
+    "root=/dev/mapper/<vg>-root",
+    "resume=UUID=<swap-uuid>"
+  ]
+}
+```
+
+### Attended adoption and validation
+
+Treat first ownership transfer and boot proof as one attended operation:
+
+1. Run `audit`; confirm active FAT ESP, rEFInd firmware entry, package-owned Nord
+   source, Arch kernel/initramfs pairs, and all three Ubuntu preservation paths.
+2. Compare redacted hashes, then run explicit `adopt` once for unmanaged files.
+3. Run `--check`; require `rEFInd configuration: converged`.
+4. Reboot once; inspect intended Arch entry and Nord theme, then boot Arch.
+5. Separately boot Ubuntu through its firmware entry and return to Arch.
+6. Record redacted checksums, backup path, and boot results on issue #230 or its PR;
+   execution evidence and pending status do not belong in this durable runbook.
 
 ## Daily-drivable acceptance (the cleanup-era milestone bar)
 

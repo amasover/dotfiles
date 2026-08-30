@@ -80,6 +80,23 @@ reconcile_network_services() {
     fi
 }
 
+reconcile_refind_config() {
+    local mode=${1:-} class=${2:-}
+    local tool="$HOME/.local/bin/setup/refind-config"
+    [[ $mode == check || $mode == apply ]] \
+        || die "refind-config mode must be check or apply"
+    [[ -n $class ]] || die "refind-config class is required"
+    if [[ $class != workstation ]]; then
+        echo "  not applicable to class $class"
+        return 0
+    fi
+    if [[ $mode == check ]]; then
+        "$tool" --check || [[ $? -eq 1 ]]
+    else
+        "$tool" apply
+    fi
+}
+
 # One provider-substitution probe (step 5c): -Spdd resolves just the named
 # target (no deps); a different name back means a repo package 'provides' the
 # declared one and the resolver would swap it in. Prints the provider, or
@@ -163,6 +180,7 @@ sync_fatal_line() {
 #   --sync-fatal                   print the deterministic-fatal line from a sync log (stdin)
 #   --provider-pins MODE           exercise provider pin installation (test-only)
 #   --network-services MODE        exercise NetworkManager convergence (test-only)
+#   --refind-config MODE CLASS      exercise class-gated rEFInd reconciliation (test-only)
 if [[ "${1:-}" == "--probe-provider" ]]; then
     shift
     for p in "$@"; do
@@ -195,6 +213,11 @@ fi
 if [[ "${1:-}" == "--network-services" ]]; then
     [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "network-services seam is test-only"
     reconcile_network_services "${2:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--refind-config" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "refind-config seam is test-only"
+    reconcile_refind_config "${2:-}" "${3:-}"
     exit 0
 fi
 
@@ -1035,6 +1058,18 @@ if [[ $CHECK -eq 1 ]]; then
 else
     "$custom_pkgs" ensure-pins
     "$custom_pkgs" sync "${NC[@]}"
+fi
+
+# --- 6e. rEFInd boot configuration (Story 2.52) -------------------------------
+# Physical Intel-laptop profiles get repository-owned portable policy plus
+# machine-derived kernel entries. The helper uses a separate pkexec approval,
+# backs up existing destinations outside the ESP, never edits firmware/NVRAM,
+# and refuses unmanaged files unless a human runs its explicit adopt command.
+say "rEFInd boot configuration"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_refind_config check "$class"
+else
+    reconcile_refind_config apply "$class"
 fi
 
 # --- 7. AUR trust baseline (Story 2.10) ----------------------------------------

@@ -170,6 +170,7 @@ BOOTSTRAP_STEPS = [
     ("retag", ("Normalizing install reasons",)),
     ("removal-hook", ("Package-removal hook",)),
     ("vendored", ("Vendored packages",)),
+    ("refind", ("rEFInd boot configuration",)),
     ("baseline", ("AUR quarantine baseline",)),
     ("omz", ("oh-my-zsh",)),
     ("theme", ("oh-my-zsh custom theme",)),

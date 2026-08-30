@@ -151,6 +151,7 @@ class TestStepFor:
             ("Normalizing install reasons", "retag"),
             ("Package-removal hook", "removal-hook"),
             ("Vendored packages", "vendored"),
+            ("rEFInd boot configuration", "refind"),
             ("AUR quarantine baseline", "baseline"),
             ("oh-my-zsh", "omz"),
             ("oh-my-zsh custom theme", "theme"),
