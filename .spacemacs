@@ -644,6 +644,8 @@ This function is called immediately after `dotspacemacs/init', before layer
 configuration.
 It is mostly for variables that should be set before packages are loaded.
 If you are unsure, try setting them in `dotspacemacs/user-config' first."
+  (add-to-list 'warning-suppress-types
+               '(files missing-lexbind-cookie))
   )
 
 
@@ -667,10 +669,6 @@ before packages are loaded."
 
   (setq  x-meta-keysym 'super
          x-super-keysym 'meta)
-
-  ;; Ignore warnings
-  ;; FIXME should not remain on forever
-  (setq warning-minimum-level :emergency)
 
   ;; All env vars from shell may need to be loaded at once.
   ;; See https://github.com/purcell/exec-path-from-shell/issues/63
