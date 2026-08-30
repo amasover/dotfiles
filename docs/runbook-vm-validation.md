@@ -112,8 +112,10 @@ archinstall's TUI errors show on the virt-manager console.
 - **Profile guard in the VM:** the shared helper runs
   `yadm config local.class workstation`, then `yadm alt`, and rewrites
   `machine-local.toml` with the QEMU hardware set before bootstrap validates the hostname.
-- **The acceptance assert:** `vm-harness check` fails unless `metapac unmanaged` is
-  exactly empty — same bar as live adoption (Story 2.8).
+- **The acceptance assert:** `vm-harness check` fails unless every explicit package is
+  metapac-declared or owned by the tracked custom-PKGBUILD registry. Vendored packages
+  remain visible in the drift report's separate expected bucket; every other unmanaged
+  name remains fatal.
 
 ## archinstall schema skew (debugging record, 2026-07-03)
 
