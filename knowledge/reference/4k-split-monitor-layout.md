@@ -72,14 +72,19 @@ i3-msg workspace "3: <glyph>"; i3-msg workspace "1: <glyph>"
 
 ## Rebuild guidance (3.17)
 
-1. `setmonitor` stays in per-profile hooks; the split geometry above is the
-   spec. Re-save the autorandr profiles under dashed names first.
-2. Cleanup should be generic — delete every `xrandr --listmonitors` entry
-   whose name contains `~` — never a hardcoded name list (that is exactly
-   what the 3.16 rename killed).
-3. Polybar roles for splits go through the 5.5 launcher's
-   `layouts/<profile>.env` override files (`MONITOR_SPLIT_TOP/BOTTOM`), not
-   hook-managed polybar launches; the i3 workspace placement stays
-   per-profile.
-4. No auto-apply recursion in postswitch — detection belongs to `udev.sh`
-   (`autorandr --change`). The `sleep 2`s predate the 5.5 flock and go away.
+1. Re-save each autorandr profile under dashed names while its physical monitors
+   are connected. Never synthesize a new fingerprint by renaming stale setup
+   keys.
+2. Cleanup is global and generic: `preswitch.d/10-clear-virtual-monitors`
+   deletes every `xrandr --listmonitors` name containing `~`, never a hardcoded
+   connector list.
+3. Recreate splits and place i3 workspaces from a profile-specific
+   `postswitch.d` script. A uniquely named `.d` hook runs before the global
+   `postswitch`; a profile-level `postswitch` would shadow the global Polybar
+   relaunch.
+4. Polybar roles for splits come from `layouts/<profile>.env`
+   (`MONITOR_SPLIT_TOP/BOTTOM`), not hook-managed bar commands.
+5. Do not restore the old `udev.sh` detection recursion or either `sleep 2`.
+   The packaged DRM hotplug rule runs `autorandr --batch --change`, i3 runs
+   `autorandr --change --force` at session start, and the launcher flock
+   serializes concurrent relaunches.

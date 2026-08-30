@@ -1,0 +1,45 @@
+autorandr hook shell-level tests (clitest) — Story 3.17, #129.
+
+Run from repo root: clitest tests/autorandr-hooks.clitest.txt
+
+The preswitch hook removes arbitrary virtual monitors while preserving physical
+ones; xrandr failures remain visible. The home postswitch hook recreates its
+logical split and stable i3 workspace map.
+
+$ hook=.config/autorandr/preswitch.d/10-clear-virtual-monitors; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin"; printf '%s\n' '#!/bin/sh' 'case "${1-}" in' '    --listmonitors) cat "$XRANDR_MONITORS"; exit "${XRANDR_LIST_RC:-0}" ;;' '    --delmonitor) printf "%s\\n" "$2" >> "$XRANDR_LOG" ;;' '    *) exit 2 ;;' 'esac' > "$CLITMP/bin/xrandr"; chmod +x "$CLITMP/bin/xrandr"; export PATH="$CLITMP/bin:$PATH" XRANDR_MONITORS="$CLITMP/monitors" XRANDR_LOG="$CLITMP/deleted"; echo ready
+ready
+$
+
+physical monitors stay; every tilde-named monitor is removed without relying on
+connector names:
+
+$ printf '%s\n' 'Monitors: 4' ' 0: +*eDP-1 1920/344x1080/194+0+0  eDP-1' ' 1: DP-1-2~1 1920/600x1080/170+1920+0  DP-1-2' ' 2: +dock~bottom 1920/600x1080/170+1920+1080  DP-1-2' ' 3: DP-2 2560/600x1440/340+3840+0  DP-2' > "$XRANDR_MONITORS"; : > "$XRANDR_LOG"; "$hook"; cat "$XRANDR_LOG"
+DP-1-2~1
+dock~bottom
+$
+
+no virtual monitor is a clean no-op:
+
+$ printf '%s\n' 'Monitors: 1' ' 0: +*eDP-1 1920/344x1080/194+0+0  eDP-1' > "$XRANDR_MONITORS"; : > "$XRANDR_LOG"; "$hook"; wc -l < "$XRANDR_LOG"
+0
+$
+
+xrandr query failure propagates instead of silently skipping cleanup:
+
+$ XRANDR_LIST_RC=23 "$hook" >/dev/null 2>&1; echo "rc=$?"
+rc=23
+$
+
+the home hook creates both logical halves before issuing its workspace map:
+
+$ home_hook=.config/autorandr/home/postswitch.d/10-split-monitor; export HOOK_LOG="$CLITMP/hook-calls"; printf '%s\n' '#!/bin/sh' 'printf "xrandr %s\\n" "$*" >> "$HOOK_LOG"' > "$CLITMP/bin/xrandr"; printf '%s\n' '#!/bin/sh' 'printf "i3-msg %s\\n" "$*" >> "$HOOK_LOG"' > "$CLITMP/bin/i3-msg"; chmod +x "$CLITMP/bin/xrandr" "$CLITMP/bin/i3-msg"; : > "$HOOK_LOG"; "$home_hook"; cat "$HOOK_LOG"
+xrandr --setmonitor DP-1-1~1 1920/600x1080/170+3840+0 DP-1-1
+xrandr --setmonitor DP-1-1~2 1920/600x1080/170+3840+1080 DP-1-1
+i3-msg [workspace="^1:"] move workspace to output "DP-1-2"
+i3-msg [workspace="^2:"] move workspace to output "DP-1-1~2"
+i3-msg [workspace="^[35]:"] move workspace to output "DP-1-1~1"
+i3-msg workspace number 3; workspace number 1
+$
+
+$ rm -rf "$CLITMP"
+$

@@ -202,21 +202,23 @@ left of MAIN) or EXTRA. autorandr is the integration point for layout changes.
   with zero configuration.
 - Role assignment is a positional heuristic (`tools/monitor-roles`): primary →
   `MONITOR_MAIN`, leftmost monitor left of MAIN → `MONITOR_LEFT`, next →
-  `MONITOR_EXTRA`; monitors beyond the roles get a loud warning. Exposed as a
-  stdin seam with clitest coverage — no X server in tests.
+  `MONITOR_EXTRA`. Final-role resolution merges any profile override before it
+  warns about unassigned monitors, so claimed virtual splits do not produce
+  false warnings. The stdin seam has clitest coverage; tests need no X server.
 - Bars launch only when their role is assigned and the theme config defines
   them — the six-blind-launches shape is gone, and polybar gets the theme
   config via `-c` (nothing ever passed it before; fresh machines fell back to
   polybar's built-in example bar).
-- Setups the heuristic can't infer (the virtual-split docking layouts) come
+- Setups the heuristic cannot infer (the virtual-split docking layouts) come
   from per-autorandr-profile overrides, `~/.config/polybar/layouts/<profile>.env`
   (template: `layouts/example.env.sample`), selected by
-  `$AUTORANDR_CURRENT_PROFILE` and merged on top of the heuristic through the
-  clitest-covered `monitor-roles merge-env` filter — a role the file sets
-  wins, one it omits keeps the heuristic's pick, an empty value clears it.
-  A tracked `autorandr/postswitch` hook relaunches on every layout change.
-  Writing the real override files is 3.17's attended docking work; the old
-  case table survives as a reference comment in launch.sh (Aaron's call).
+  `$AUTORANDR_CURRENT_PROFILE` and resolved with the heuristic in one
+  clitest-covered `monitor-roles` pass. A role the file sets wins, one it omits
+  keeps the heuristic's pick, and an empty value clears it. The tracked global
+  `autorandr/postswitch` relaunches after profile-specific `postswitch.d` hooks
+  create logical monitors. Writing and verifying real profiles and overrides is
+  Story 3.17's attended docking work; the old case table survives as historical
+  reference in `launch.sh`.
 - Failure is loud (hardened after the 2026-08-22 adversarial review of PR
   #161): role-resolution warnings land in the polybar log and as desktop
   notifications, and a run that can't resolve `MONITOR_MAIN` exits without

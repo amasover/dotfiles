@@ -1,6 +1,6 @@
-# monitor-roles (Story 5.5, #152) — positional polybar role assignment.
-# The assign subcommand is the seam: listactivemonitors text in, roles out.
-# merge-env is the override-file seam: role assignments in, filtered roles out.
+# monitor-roles (Stories 5.5/3.17) — topology plus profile role resolution.
+# The assign subcommand is the seam: listactivemonitors text and an optional
+# override file in, final roles and warnings out.
 
 $ t=.local/bin/tools/monitor-roles
 $
@@ -61,7 +61,7 @@ MONITOR_MAIN=A
 MONITOR_LEFT=B
 MONITOR_EXTRA=C
 $ printf 'Monitors: 4\n 0: +*A 1920/1x1080/1+1920+0  A\n 1: B 1920/1x1080/1+0+0  B\n 2: C 1920/1x1080/1+3840+0  C\n 3: D 1920/1x1080/1+5760+0  D\n' | $t assign 2>&1 >/dev/null
-monitor-roles: no role for D (only MAIN/LEFT/EXTRA exist)
+monitor-roles: no role for D after override resolution
 $
 
 output is eval'd, so a name with shell metacharacters is dropped, loudly:
@@ -85,31 +85,47 @@ monitor-roles: no active monitors parsed
 rc=1
 $
 
-merge-env passes only well-formed MONITOR_* assignments through, keeps
-comments and blanks quiet, and warns about everything else:
+an override is merged before unassigned-monitor warnings: every home split
+monitor gets one final role, the heuristic EXTRA is explicitly cleared, and no
+false warning escapes:
 
 $ f=$(mktemp)
-$ printf 'MONITOR_SPLIT_TOP=DP1-2~1\nMONITOR_SPLIT_BOTTOM=DP1-2~2\n# a comment\n\nMONITOR_LEFT=\nPATH=/evil\nMONITOR_MAIN=$(boom)\n' > "$f"
-$ $t merge-env "$f" 2>/dev/null
-MONITOR_SPLIT_TOP=DP1-2~1
-MONITOR_SPLIT_BOTTOM=DP1-2~2
-MONITOR_LEFT=
-$ $t merge-env "$f" 2>&1 >/dev/null
-monitor-roles: merge-env ignoring line: PATH=/evil
-monitor-roles: merge-env ignoring line: MONITOR_MAIN=$(boom)
+$ printf 'MONITOR_MAIN=DP-1-2\nMONITOR_LEFT=eDP-1\nMONITOR_EXTRA=\nMONITOR_SPLIT_TOP=DP-1-1~1\nMONITOR_SPLIT_BOTTOM=DP-1-1~2\n' > "$f"
+$ printf 'Monitors: 4\n 0: +*eDP-1 1920/344x1080/194+0+1460  eDP-1\n 1: DP-1-1~1 1920/600x1080/170+3840+0  DP-1-1\n 2: DP-1-1~2 1920/600x1080/170+3840+1080  DP-1-1\n 3: +DP-1-2 1920/600x2160/340+1920+0  DP-1-2\n' | $t assign "$f"
+MONITOR_MAIN=DP-1-2
+MONITOR_LEFT=eDP-1
+MONITOR_SPLIT_TOP=DP-1-1~1
+MONITOR_SPLIT_BOTTOM=DP-1-1~2
+$ printf 'Monitors: 4\n 0: +*eDP-1 1920/344x1080/194+0+1460  eDP-1\n 1: DP-1-1~1 1920/600x1080/170+3840+0  DP-1-1\n 2: DP-1-1~2 1920/600x1080/170+3840+1080  DP-1-1\n 3: +DP-1-2 1920/600x2160/340+1920+0  DP-1-2\n' | $t assign "$f" 2>&1 >/dev/null; echo "rc=$?"
+rc=0
+$
+
+malformed override lines are ignored loudly; comments, blanks, valid roles,
+and an empty role remain accepted:
+
+$ printf 'MONITOR_SPLIT_TOP=DP-1-1~1\n# a comment\n\nMONITOR_LEFT=\nPATH=/evil\nMONITOR_MAIN=$(boom)\n' > "$f"
+$ printf 'Monitors: 1\n 0: +*eDP-1 1920/1x1080/1+0+0  eDP-1\n' | $t assign "$f" 2>/dev/null
+MONITOR_MAIN=eDP-1
+MONITOR_SPLIT_TOP=DP-1-1~1
+$ printf 'Monitors: 1\n 0: +*eDP-1 1920/1x1080/1+0+0  eDP-1\n' | $t assign "$f" 2>&1 >/dev/null
+monitor-roles: override ignoring line: PATH=/evil
+monitor-roles: override ignoring line: MONITOR_MAIN=$(boom)
 $ rm -f "$f"
 $
 
-merge-env on an unreadable file fails loudly:
+an unreadable override fails loudly:
 
-$ $t merge-env /nonexistent/roles.env 2>&1; echo "rc=$?"
+$ printf 'Monitors: 1\n 0: +*eDP-1 1920/1x1080/1+0+0  eDP-1\n' | $t assign /nonexistent/roles.env 2>&1; echo "rc=$?"
 monitor-roles: cannot read /nonexistent/roles.env
 rc=1
 $
 
-unknown subcommands are rejected:
+unknown subcommands and excess arguments are rejected:
 
 $ $t bogus 2>&1; echo "rc=$?"
-usage: monitor-roles [assign | merge-env FILE]
+usage: monitor-roles [resolve [OVERRIDE] | assign [OVERRIDE]]
+rc=2
+$ $t assign one two 2>&1; echo "rc=$?"
+usage: monitor-roles [resolve [OVERRIDE] | assign [OVERRIDE]]
 rc=2
 $
