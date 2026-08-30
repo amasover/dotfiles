@@ -59,6 +59,18 @@ $ DECLARED | grep -c '^astro-cli$'
 0
 $
 
+harness callers select concrete classes and never inject hardware packages:
+
+$ grep -F 'VM_CLASS="${VM_HARNESS_CLASS:-qemu-harness}"' .local/bin/setup/vm-harness
+VM_CLASS="${VM_HARNESS_CLASS:-qemu-harness}" # concrete package profile validated by this QEMU harness
+$ grep -F "else { 'daily-vm' }" .local/bin/setup/vm-harness-vmware.ps1
+$Class = if ($env:VM_HARNESS_CLASS) { $env:VM_HARNESS_CLASS } else { 'daily-vm' }
+$ grep -R -- '--hardware-pkgs' .local/bin/setup/vm-harness* | wc -l
+0
+$ grep -c 'sudo systemctl enable --now NetworkManager' .local/bin/setup/bootstrap
+1
+$
+
 all profiles keep the shared package contract and all active group files parse
 through metapac:
 

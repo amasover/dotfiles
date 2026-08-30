@@ -127,17 +127,17 @@ $
 --- libvirt bootstrap/check copy and invoke the shared guest glue ---
 
 Stubs exercise the real host orchestration without contacting libvirt or ssh.
-The trace pins the QEMU hardware set, branch forwarding, helper copy, and
+The trace pins the `qemu-harness` class, branch forwarding, helper copy, and
 single-`-t` remote invocation.
 
-$ H=$PWD/.local/bin/setup/vm-harness; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home"; printf '%s\n' '#!/bin/sh' 'case " $* " in *" domifaddr "*) printf "%s\n" "vnet0 52:54:00:00:00:01 ipv4 192.0.2.10/24" ;; esac' > "$T/bin/virsh"; printf '%s\n' '#!/bin/sh' 'printf scp >> "$TRACE"' 'for arg; do printf " <%s>" "$arg" >> "$TRACE"; done' 'printf "\n" >> "$TRACE"' > "$T/bin/scp"; printf '%s\n' '#!/bin/sh' 'printf ssh >> "$TRACE"' 'for arg; do printf " <%s>" "$arg" >> "$TRACE"; done' 'printf "\n" >> "$TRACE"' 'case "$*" in *"bash vm-harness-guest "*) exit "${STUB_GUEST_RC:-0}" ;; esac' 'exit 0' > "$T/bin/ssh"; chmod +x "$T/bin/virsh" "$T/bin/scp" "$T/bin/ssh"; RUN_GUEST() { PATH="$T/bin:$PATH" HOME="$T/home" XDG_STATE_HOME="$T/state" VM_HARNESS_DIR="$T/work" VM_HARNESS_REPO=https://example.invalid/dotfiles.git VM_HARNESS_BRANCH=feature/test VM_HARNESS_CLASS=ci-class TRACE="$T/trace" "$H" --plain "$@"; }; echo ready
+$ H=$PWD/.local/bin/setup/vm-harness; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home"; printf '%s\n' '#!/bin/sh' 'case " $* " in *" domifaddr "*) printf "%s\n" "vnet0 52:54:00:00:00:01 ipv4 192.0.2.10/24" ;; esac' > "$T/bin/virsh"; printf '%s\n' '#!/bin/sh' 'printf scp >> "$TRACE"' 'for arg; do printf " <%s>" "$arg" >> "$TRACE"; done' 'printf "\n" >> "$TRACE"' > "$T/bin/scp"; printf '%s\n' '#!/bin/sh' 'printf ssh >> "$TRACE"' 'for arg; do printf " <%s>" "$arg" >> "$TRACE"; done' 'printf "\n" >> "$TRACE"' 'case "$*" in *"bash vm-harness-guest "*) exit "${STUB_GUEST_RC:-0}" ;; esac' 'exit 0' > "$T/bin/ssh"; chmod +x "$T/bin/virsh" "$T/bin/scp" "$T/bin/ssh"; RUN_GUEST() { PATH="$T/bin:$PATH" HOME="$T/home" XDG_STATE_HOME="$T/state" VM_HARNESS_DIR="$T/work" VM_HARNESS_REPO=https://example.invalid/dotfiles.git VM_HARNESS_BRANCH=feature/test TRACE="$T/trace" "$H" --plain "$@"; }; echo ready
 ready
 $
 
 $ RUN_GUEST bootstrap > "$T/out"; echo "rc=$?"; grep -E '^(scp|ssh.*vm-harness-guest)' "$T/trace" | sed "s|$PWD|REPO|g"
 rc=0
 scp <-q> <-o> <StrictHostKeyChecking=no> <-o> <UserKnownHostsFile=/dev/null> <REPO/.local/bin/setup/vm-harness-guest> <aaron@192.0.2.10:vm-harness-guest>
-ssh <-t> <-o> <StrictHostKeyChecking=no> <-o> <UserKnownHostsFile=/dev/null> <aaron@192.0.2.10> <bash vm-harness-guest bootstrap --class ci-class --repo https://example.invalid/dotfiles.git --hardware-pkgs qemu-guest-agent\ zram-generator --branch feature/test>
+ssh <-t> <-o> <StrictHostKeyChecking=no> <-o> <UserKnownHostsFile=/dev/null> <aaron@192.0.2.10> <bash vm-harness-guest bootstrap --class qemu-harness --repo https://example.invalid/dotfiles.git --branch feature/test>
 $
 
 $ : > "$T/trace"; RUN_GUEST check > "$T/out"; echo "rc=$?"; grep -E '^(scp|ssh.*vm-harness-guest)' "$T/trace" | sed "s|$PWD|REPO|g"
