@@ -536,8 +536,10 @@ function Cmd-Check {
         if (-not (Test-VmRunning)) { throw 'VM not running — run: boot' }
         $ip = Wait-Ssh
         Assert-KeyAuth
-        Say 'Asserting VM end state'
-        Invoke-GuestGlue $ip 'bash vm-harness-guest check'
+        Say "Asserting VM end state (class: $Class)"
+        $cmd = 'bash vm-harness-guest check' +
+               " --class $(ConvertTo-ShellQuoted $Class)"
+        Invoke-GuestGlue $ip $cmd
     }
 }
 

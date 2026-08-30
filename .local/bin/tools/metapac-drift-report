@@ -22,8 +22,11 @@ if [[ ! -d "$groups_dir" || ! -f "$config" ]]; then
     exit 0
 fi
 
-# `metapac-declared` resolves only this host's rendered hostname_groups entry.
-# Scanning groups/*.toml would mix every tracked class into this report.
+# One hostname-aware resolver owns both active group paths and package names.
+active_group_files=$("$tools_dir/metapac-declared" --group-files) || {
+    echo "metapac-drift-report: could not resolve active group files" >&2
+    exit 1
+}
 declared=$("$tools_dir/metapac-declared") || {
     echo "metapac-drift-report: could not resolve active declared packages" >&2
     exit 1
@@ -106,15 +109,14 @@ if [[ -s "$def_file" ]] && grep -q $'\tage\t' "$def_file"; then
     done <"$def_file"
 fi
 
-# 3. Inbox triage reads the single inbox in this host's rendered group list.
-# Other classes' tracked inbox files are neither declarations nor this host's queue.
-mapfile -t inbox_names < <(awk '
-    /^[[:space:]]*"[^"]+"[[:space:]]*=[[:space:]]*\[/ { grab = 1; next }
-    grab && /^[[:space:]]*\]/ { exit }
-    grab && match($0, /"(inbox-[^"]+)"/, m) { print m[1] }
-' "$config")
-if ((${#inbox_names[@]} == 1)); then
-    inbox="$groups_dir/${inbox_names[0]}.toml"
+# 3. Inbox triage reads the single inbox in this host's resolved group files.
+inboxes=()
+while IFS= read -r file; do
+    name=${file##*/}
+    [[ $name == inbox-*.toml ]] && inboxes+=("$file")
+done <<<"$active_group_files"
+if ((${#inboxes[@]} == 1)); then
+    inbox=${inboxes[0]}
     if [[ ! -f $inbox ]]; then
         echo " [!] inbox: active file missing: ${inbox##*/}"
     else
@@ -132,5 +134,5 @@ if ((${#inbox_names[@]} == 1)); then
         fi
     fi
 else
-    echo " [!] inbox: expected one active rendered inbox, found ${#inbox_names[@]}"
+    echo " [!] inbox: expected one active rendered inbox, found ${#inboxes[@]}"
 fi

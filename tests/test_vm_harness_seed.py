@@ -69,6 +69,10 @@ class TestUserConfiguration:
         assert "open-vm-tools" in cfg["packages"]
         assert "qemu-guest-agent" not in cfg["packages"]
 
+    @pytest.mark.parametrize("hypervisor", ["qemu", "vmware"])
+    def test_networkmanager_owns_networking_from_first_boot(self, hypervisor):
+        assert self._cfg(hypervisor)["network_config"] == {"type": "nm"}
+
     def test_root_partition_sized_from_disk(self):
         parts = self._cfg("vmware")["disk_config"]["device_modifications"][0]["partitions"]
         root = [p for p in parts if p["mountpoint"] == "/"][0]

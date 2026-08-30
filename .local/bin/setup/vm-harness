@@ -570,7 +570,7 @@ guest_command() {
                 --repo "$REPO_URL")
             [[ -z "$REPO_BRANCH" ]] || args+=(--branch "$REPO_BRANCH")
             ;;
-        check) args+=(check) ;;
+        check) args+=(check --class "$VM_CLASS") ;;
         *) die "unknown guest command: $mode" ;;
     esac
     printf -v rendered '%q ' "${args[@]}"

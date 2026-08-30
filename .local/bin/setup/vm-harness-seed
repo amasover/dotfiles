@@ -137,7 +137,7 @@ def build_user_configuration(
         "hostname": hostname,
         "kernels": ["linux"],
         "locale_config": {"kb_layout": "us", "sys_enc": "UTF-8", "sys_lang": "en_US"},
-        "network_config": {"type": "iso"},
+        "network_config": {"type": "nm"},
         "ntp": True,
         "packages": ["git", "base-devel", "yadm", "openssh", "zsh", hv["tools"]],
         "swap": {"enabled": True},

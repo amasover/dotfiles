@@ -285,59 +285,43 @@ yay.create_autocmd("AURPreInstall", {
 -- Raw `pacman -S` bypasses yay hooks; `metapac unmanaged` is the backstop.
 -- Docs: docs/decision-bootstrap-architecture.md (auto-capture; drift loop).
 
-local function metapac_dir()
-  return (os.getenv("HOME") or "") .. "/.config/metapac"
+local function shell_quote(s)
+  return "'" .. s:gsub("'", "'\\''") .. "'"
 end
 
--- Resolve only the group files named by this machine's rendered config. Other
--- classes' tracked inboxes must not suppress capture or count as declarations.
-local function active_groups()
-  local cfg = io.open(metapac_dir() .. "/config.toml", "r")
-  if not cfg then return {} end
-  local groups = {}
-  local in_list = false
-  for line in cfg:lines() do
-    if line:match('^%s*"[^"]+"%s*=%s*%[') then
-      in_list = true
-    elseif in_list and line:match("^%s*%]") then
-      break
-    elseif in_list then
-      local name = line:match('^%s*"([^"]+)"')
-      if name then
-        local path = name:sub(1, 1) == "/"
-          and name or (metapac_dir() .. "/groups/" .. name .. ".toml")
-        table.insert(groups, { name = name, path = path })
-      end
-    end
-  end
-  cfg:close()
-  return groups
+-- `metapac-declared` is the hostname-aware resolver shared by shell and Lua
+-- consumers. Its default mode returns packages; --group-files returns paths.
+local function metapac_lines(flag)
+  local home = os.getenv("HOME") or ""
+  local tools = os.getenv("METAPAC_TOOLS_DIR") or (home .. "/.local/bin/tools")
+  local cmd = shell_quote(tools .. "/metapac-declared") ..
+    " --config-dir " .. shell_quote(home .. "/.config/metapac")
+  if flag then cmd = cmd .. " " .. flag end
+  local p = io.popen(cmd .. " 2>/dev/null")
+  if not p then return nil end
+  local lines = {}
+  for line in p:lines() do table.insert(lines, line) end
+  if not p:close() then return nil end
+  return lines
 end
 
 local function find_inbox()
+  local files = metapac_lines("--group-files")
+  if not files then return nil end
   local matches = {}
-  for _, group in ipairs(active_groups()) do
-    if group.name:match("^inbox%-") then table.insert(matches, group.path) end
+  for _, path in ipairs(files) do
+    local name = path:match("([^/]+)%.toml$") or path:match("([^/]+)$")
+    if name and name:match("^inbox%-") then table.insert(matches, path) end
   end
   if #matches == 1 then return matches[1] end
   return nil, #matches
 end
 
 local function declared_set()
+  local names = metapac_lines()
+  if not names then return nil end
   local set = {}
-  for _, group in ipairs(active_groups()) do
-    local f = io.open(group.path, "r")
-    if not f and group.path:sub(-5) ~= ".toml" then
-      f = io.open(group.path .. ".toml", "r")
-    end
-    if f then
-      for line in f:lines() do
-        local name = line:match('^%s*"([^"]+)"')
-        if name then set[name] = true end
-      end
-      f:close()
-    end
-  end
+  for _, name in ipairs(names) do set[name] = true end
   return set
 end
 
@@ -377,13 +361,23 @@ yay.create_autocmd("PostInstall", {
 
     local inbox, count = find_inbox()
     if not inbox then
-      yay.log.warn(string.format(
-        "metapac-inbox: expected exactly one active inbox in rendered config.toml, found %d — not capturing: %s",
-        count or 0, table.concat(fresh, " ")))
+      if count == nil then
+        yay.log.warn("metapac-inbox: could not resolve active groups — not capturing: " ..
+          table.concat(fresh, " "))
+      else
+        yay.log.warn(string.format(
+          "metapac-inbox: expected exactly one active inbox, found %d — not capturing: %s",
+          count, table.concat(fresh, " ")))
+      end
       return
     end
 
     local declared = declared_set()
+    if not declared then
+      yay.log.warn("metapac-inbox: could not resolve active declarations — not capturing: " ..
+        table.concat(fresh, " "))
+      return
+    end
     local capture = {}
     for _, name in ipairs(fresh) do
       if not declared[name] then table.insert(capture, name) end

@@ -13,11 +13,11 @@
 # anything under $HOME.
 #
 # Targets arrive on stdin, one name per line (alpm NeedsTargets), or as arguments
-# for manual repair. Machine-scoped files (inbox-<class>, machine-local) are
-# edited silently — they're per-machine state. Tracked purpose groups are edited
-# too, and the change surfaces as normal yadm/git drift for review at commit time
-# (report-then-human-acts). The drift report's declared-but-missing section stays
-# the backstop for removals that happen with the hook uninstalled.
+# for manual repair. Only this hostname's rendered groups are edited: purpose
+# groups, its class adapter/inbox, and machine-local. Tracked edits surface as
+# normal yadm/git drift for review at commit time (report-then-human-acts). The
+# drift report's declared-but-missing section stays the backstop for removals
+# that happen with the hook uninstalled.
 set -euo pipefail
 
 # alpm runs hooks as root; the group TOMLs live in the dotfiles owner's $HOME.
@@ -27,7 +27,8 @@ fi
 
 groups_dir="$HOME/.config/metapac/groups"
 config="$HOME/.config/metapac/config.toml"
-[[ -d "$groups_dir" && -f "$config" ]] && compgen -G "$groups_dir/*.toml" >/dev/null \
+tools_dir=${BASH_SOURCE[0]%/*}
+[[ -d "$groups_dir" && -f "$config" ]] \
     || exit 0 # no metapac on this machine — nothing to edit
 
 pkgs=("$@")
@@ -38,16 +39,13 @@ if [[ ${#pkgs[@]} -eq 0 && ! -t 0 ]]; then
 fi
 [[ ${#pkgs[@]} -gt 0 ]] || exit 0
 
-# Group files = groups dir + absolute-path groups referenced in the rendered
-# config (the machine-local group). Same discovery as metapac-drift-report.
-group_files=("$groups_dir"/*.toml)
-while IFS= read -r abs; do
-    if [[ -f "$abs" ]]; then
-        group_files+=("$abs")
-    elif [[ -f "$abs.toml" ]]; then
-        group_files+=("$abs.toml")
-    fi
-done < <(grep -o '"/[^"]*"' "$config" | tr -d '"')
+# Resolve only this hostname's rendered group files. Editing every tracked TOML
+# would let one machine mutate another class's adapter or inbox.
+active=$("$tools_dir/metapac-declared" --group-files) || {
+    echo "metapac-dedeclare: could not resolve active group files" >&2
+    exit 1
+}
+mapfile -t group_files <<<"$active"
 
 # Delete a package's declaration line: `  "name",` with optional trailing comma
 # and comment. String comparison, not regex — names like libsigc++ stay literal.

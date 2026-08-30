@@ -23,6 +23,9 @@ rc=2
 $ .local/bin/setup/vm-harness-guest bootstrap --bogus x 2>&1; echo rc=$?
 vm-harness-guest: FATAL: bootstrap: unknown argument '--bogus'
 rc=2
+$ .local/bin/setup/vm-harness-guest check --bogus x 2>&1; echo rc=$?
+vm-harness-guest: FATAL: check: unknown argument '--bogus'
+rc=2
 $
 
 bootstrap validates before acting — missing requireds never touch the system.
@@ -41,12 +44,15 @@ rc=2
 $ .local/bin/setup/vm-harness-guest bootstrap --repo 2>&1; echo rc=$?
 vm-harness-guest: FATAL: --repo needs a value
 rc=2
+$ .local/bin/setup/vm-harness-guest check 2>&1; echo rc=$?
+vm-harness-guest: FATAL: check needs --class
+rc=2
 $
 
 Existing checkout refresh names one remote branch explicitly; it never asks
 `git pull` to infer multiple fetched branches.
 
-$ G=.local/bin/setup/vm-harness-guest; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home/.local/bin/setup"; printf old > "$T/branch"; printf '%s\n' '#!/bin/sh' 'printf yadm >> "$GUEST_LOG"' 'for arg; do printf " <%s>" "$arg" >> "$GUEST_LOG"; done' 'printf "\n" >> "$GUEST_LOG"' 'if [ "$1" = rev-parse ]; then [ "$2" = --git-dir ] && echo .git || cat "$YADM_BRANCH"; fi' 'if [ "$1" = checkout ]; then printf "%s\n" "$2" > "$YADM_BRANCH"; fi' 'exit 0' > "$T/bin/yadm"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$T/bin/sudo"; printf '%s\n' '#!/bin/sh' 'printf "bootstrap <%s> <%s>\n" "$1" "$2" >> "$GUEST_LOG"' > "$T/home/.local/bin/setup/bootstrap"; chmod +x "$T/bin/yadm" "$T/bin/sudo" "$T/home/.local/bin/setup/bootstrap"; PATH="$T/bin:$PATH" HOME="$T/home" GUEST_LOG="$T/log" YADM_BRANCH="$T/branch" "$G" bootstrap --class ci --repo https://example.invalid/dotfiles.git --branch feature/new >/dev/null; grep '^yadm' "$T/log"
+$ G=.local/bin/setup/vm-harness-guest; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home/.local/bin/setup" "$T/home/.local/share/metapac"; printf old > "$T/branch"; printf '%s\n' '# machine-local metapac group — untracked, never published' '# harness-owned guest hardware set, rewritten every bootstrap' '# (interim home until the Story 2.30 class/hardware split, #96)' '[arch]' 'packages = [' '  "private-pkg",' '  "qemu-guest-agent",' '  "zram-generator",' ']' > "$T/home/.local/share/metapac/machine-local.toml"; printf '%s\n' '#!/bin/sh' 'printf yadm >> "$GUEST_LOG"' 'for arg; do printf " <%s>" "$arg" >> "$GUEST_LOG"; done' 'printf "\n" >> "$GUEST_LOG"' 'if [ "$1" = rev-parse ]; then [ "$2" = --git-dir ] && echo .git || cat "$YADM_BRANCH"; fi' 'if [ "$1" = checkout ]; then printf "%s\n" "$2" > "$YADM_BRANCH"; fi' 'exit 0' > "$T/bin/yadm"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$T/bin/sudo"; printf '%s\n' '#!/bin/sh' 'printf "bootstrap <%s> <%s>\n" "$1" "$2" >> "$GUEST_LOG"' > "$T/home/.local/bin/setup/bootstrap"; chmod +x "$T/bin/yadm" "$T/bin/sudo" "$T/home/.local/bin/setup/bootstrap"; PATH="$T/bin:$PATH" HOME="$T/home" GUEST_LOG="$T/log" YADM_BRANCH="$T/branch" "$G" bootstrap --class ci --repo https://example.invalid/dotfiles.git --branch feature/new >/dev/null; grep '^yadm' "$T/log"
 yadm <rev-parse> <--git-dir>
 yadm <fetch> <--prune> <origin>
 yadm <rev-parse> <--abbrev-ref> <HEAD>
@@ -56,12 +62,14 @@ yadm <config> <local.class> <ci>
 yadm <alt>
 $
 
-$ grep '^bootstrap' "$T/log"; tail -n 4 "$T/home/.local/share/metapac/machine-local.toml"
+$ grep '^bootstrap' "$T/log"; cat "$T/home/.local/share/metapac/machine-local.toml"
 bootstrap <--check> <--unattended>
 bootstrap <--unattended> <>
+# machine-local metapac group — untracked, never published
 # concrete class adapters own all guest hardware packages (Story 2.30)
 [arch]
 packages = [
+  "private-pkg",
 ]
 $
 
@@ -69,26 +77,33 @@ $ rm -rf "$T"; echo done
 done
 $
 
-The hard gate excludes only packages owned by the tracked custom-PKGBUILD
-registry. Other unmanaged names still fail, and metapac errors stay distinct.
+The hard gate validates class/adapter/inbox and exclusive NetworkManager
+ownership before accepting package drift. Custom-PKGBUILD packages remain the
+only unmanaged exception; metapac failures stay distinct.
 
-$ G=.local/bin/setup/vm-harness-guest; U=$(mktemp -d); mkdir -p "$U/bin" "$U/home" "$U/tools" "$U/pkgbuilds/vendored"; printf 'pkgname=vendored\n' > "$U/pkgbuilds/vendored/PKGBUILD"; printf '%s\n' '#!/bin/sh' '[ -z "${FAKE_METAPAC_RC:-}" ] || exit "$FAKE_METAPAC_RC"' 'printf "%s\n" "${FAKE_UNMANAGED:-}"' > "$U/bin/metapac"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$U/bin/systemctl"; chmod +x "$U/bin/metapac" "$U/bin/systemctl"; ln -s "$PWD/.local/bin/tools/metapac-unmanaged-names" "$U/tools/metapac-unmanaged-names"; ln -s "$PWD/.local/bin/tools/custom-pkgs" "$U/tools/custom-pkgs"; ln -s "$PWD/.local/bin/tools/metapac-drift-report" "$U/tools/metapac-drift-report"; PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" FAKE_UNMANAGED='arch = { packages = ["vendored"] }' "$G" check
---- unmanaged packages (vendored custom PKGBUILDs are expected):
+$ G=.local/bin/setup/vm-harness-guest; U=$(mktemp -d); mkdir -p "$U/bin" "$U/home/.config/metapac/groups" "$U/tools" "$U/pkgbuilds/vendored"; printf 'pkgname=vendored\n' > "$U/pkgbuilds/vendored/PKGBUILD"; printf '%s\n' '#!/bin/sh' '[ -z "${FAKE_METAPAC_RC:-}" ] || exit "$FAKE_METAPAC_RC"' 'printf "%s\n" "${FAKE_UNMANAGED:-}"' > "$U/bin/metapac"; printf '%s\n' '#!/bin/sh' 'if [ "$1" = config ] && [ "$2" = local.class ]; then printf "%s\n" "${FAKE_CLASS:-qemu-harness}"; fi' > "$U/bin/yadm"; printf '%s\n' '#!/bin/sh' 'unit=' 'for arg; do unit=$arg; done' 'case "$1:$unit" in' '  is-enabled:NetworkManager) exit 0 ;;' '  is-active:NetworkManager) [ "${FAKE_NM_ACTIVE:-1}" = 1 ]; exit $? ;;' '  is-enabled:systemd-networkd|is-active:systemd-networkd) [ "${FAKE_NETWORKD:-0}" = 1 ]; exit $? ;;' '  is-enabled:sshd|status:--no-pager) exit 0 ;;' 'esac' 'exit 1' > "$U/bin/systemctl"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$U/bin/pacman"; chmod +x "$U/bin/metapac" "$U/bin/yadm" "$U/bin/systemctl" "$U/bin/pacman"; printf '[hostname_groups]\n"%s" = [\n  "guest-qemu",\n  "inbox-qemu-harness",\n]\n' "$(uname -n)" > "$U/home/.config/metapac/config.toml"; for group in guest-qemu inbox-qemu-harness; do printf '[arch]\npackages = [\n]\n' > "$U/home/.config/metapac/groups/$group.toml"; done; for tool in metapac-declared metapac-unmanaged-names custom-pkgs metapac-drift-report aur-quarantine; do ln -s "$PWD/.local/bin/tools/$tool" "$U/tools/$tool"; done; RUN_CHECK() { PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" "$G" check --class qemu-harness; }; echo ready
+ready
+$ export METAPAC_TOOLS_DIR="$U/tools"; echo tools-ready
+tools-ready
+$ out=$(FAKE_UNMANAGED='arch = { packages = ["vendored"] }' RUN_CHECK); rc=$?; printf '%s\n' "$out" | grep -E '^--- class profile|^OK$|^NetworkManager enabled|^ \[ok\] inbox'; echo "rc=$rc"
+--- class profile: qemu-harness (guest-qemu, inbox-qemu-harness)
 OK
---- enabled services (sample):
---- graphical target reachable:
---- drift report:
-metapac-drift-report: no metapac config on this machine — skipping.
-$
-
-$ out=$(PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" FAKE_UNMANAGED='arch = { packages = ["vendored", "stale-pkg"] }' "$G" check 2>&1); rc=$?; printf '%s\n' "$out"; echo "rc=$rc"
---- unmanaged packages (vendored custom PKGBUILDs are expected):
+NetworkManager enabled and active; systemd-networkd disabled and inactive
+ [ok] inbox: empty
+rc=0
+$ out=$(FAKE_CLASS=workstation RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
+vm-harness-guest: FATAL: expected yadm class 'qemu-harness', found 'workstation'
+rc=2
+$ out=$(FAKE_NM_ACTIVE=0 RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
+vm-harness-guest: FATAL: NetworkManager is not active
+rc=2
+$ out=$(FAKE_NETWORKD=1 RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
+vm-harness-guest: FATAL: systemd-networkd must be disabled and inactive when NetworkManager owns networking
+rc=2
+$ out=$(FAKE_UNMANAGED='arch = { packages = ["vendored", "stale-pkg"] }' RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep '^stale-pkg$'; echo "rc=$rc"
 stale-pkg
 rc=1
-$
-
-$ out=$(PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" FAKE_METAPAC_RC=9 "$G" check 2>&1); rc=$?; printf '%s\n' "$out"; echo "rc=$rc"
---- unmanaged packages (vendored custom PKGBUILDs are expected):
+$ out=$(FAKE_METAPAC_RC=9 RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
 vm-harness-guest: FATAL: metapac unmanaged failed (rc=9) — the gate did not run
 rc=2
 $

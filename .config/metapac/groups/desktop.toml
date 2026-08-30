@@ -8,9 +8,9 @@
 # bluez/bluez-utils/bluetui: post-inventory arrivals, placed here as session hardware (2.8 call).
 # colorpicker: build-rot relic (2017 GTK, no longer compiles) — machine-local on the
 # workstation; gpick (declared here) is the live alternative (2.7 VM finding).
-# GPU, firmware, and boot packages live in concrete hardware adapters (Story 2.30).
-# The Intel laptop and both guest hypervisors use Xorg's built-in or dedicated
-# driver; no generic xf86-video fallback belongs in this shared group.
+# Machine-specific GPU, firmware, and boot packages live in concrete hardware
+# adapters; generic linux-firmware remains shared in base. The Intel laptop and
+# both guests use Xorg's built-in or dedicated driver; no generic fallback lives here.
 [arch]
 packages = [
   "adobe-source-code-pro-fonts",

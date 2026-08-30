@@ -362,13 +362,20 @@ local inbox_home = state_home .. "/home"
 local inbox_dir = inbox_home .. "/.config/metapac"
 os.execute("mkdir -p '" .. inbox_dir .. "/groups'")
 env_override.HOME = inbox_home
-write_file(inbox_dir .. "/config.toml", [[
+env_override.METAPAC_TOOLS_DIR = init_dir .. "/../../.local/bin/tools"
+local host_pipe = assert(real_popen("uname -n"))
+local inbox_host = assert(host_pipe:read("*l"))
+host_pipe:close()
+write_file(inbox_dir .. "/config.toml", string.format([[
 [hostname_groups]
-"fixture" = [
+"wrong-host" = [
+  "inbox-workstation",
+]
+"%s" = [
   "base",
   "inbox-daily-vm",
 ]
-]])
+]], inbox_host))
 write_file(inbox_dir .. "/groups/base.toml", [[
 [arch]
 packages = [

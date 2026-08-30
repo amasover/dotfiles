@@ -18,7 +18,7 @@ Story 2.10 [#50](https://github.com/amasover/dotfiles/issues/50) (install-time g
 | Package state (native + AUR) | **metapac**, driving **yay** | declarative TOML groups; universal + per-machine |
 | Package updates | **`setup/update`** (unchanged) | imperative loop; AUR quarantine hook stays authoritative |
 | Fresh-machine sequencing | new thin bash **`bootstrap`** | replaces dead 2019 `setup/install` |
-| `/etc` + services | deferred (see gaps) | services via metapac hooks; `/etc` tracked minimally |
+| System services + small `/etc` links | **`bootstrap`**; target provisioner only for pre-bootstrap access | idempotent convergence; no broad `/etc` manager |
 
 Guiding principle discovered in Story 2.6: **everything that touches AUR packages must go
 *through* yay, never around it** — the quarantine hook (age/orphan/maintainer gating) and
@@ -81,8 +81,9 @@ Config lives in `.config/metapac/` (yadm-tracked → placed on every machine).
   Story 2.30 centralizes 15 universal purposes in `profiles/common.groups`, adds
   `work` only to the physical workstation, and composes one hardware adapter plus
   one inbox per concrete class. Fine groups remain independently reusable when a
-  future profile needs a smaller purpose set. Bootstrap owns NetworkManager
-  enablement after package reconcile because every current class selects its stack.
+  future profile needs a smaller purpose set. Bootstrap reconciles NetworkManager
+  enabled/active and systemd-networkd disabled/inactive after package reconcile;
+  harness seeds select NetworkManager from first boot.
 
 - **Auto-capture of new installs (Aaron's requirement):** a small **yay `PostInstall`
   Lua hook** appends newly *explicitly* installed packages (payload has `reason` +

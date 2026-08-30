@@ -143,7 +143,7 @@ $
 $ : > "$T/trace"; RUN_GUEST check > "$T/out"; echo "rc=$?"; grep -E '^(scp|ssh.*vm-harness-guest)' "$T/trace" | sed "s|$PWD|REPO|g"
 rc=0
 scp <-q> <-o> <StrictHostKeyChecking=no> <-o> <UserKnownHostsFile=/dev/null> <REPO/.local/bin/setup/vm-harness-guest> <aaron@192.0.2.10:vm-harness-guest>
-ssh <-t> <-o> <StrictHostKeyChecking=no> <-o> <UserKnownHostsFile=/dev/null> <aaron@192.0.2.10> <bash vm-harness-guest check>
+ssh <-t> <-o> <StrictHostKeyChecking=no> <-o> <UserKnownHostsFile=/dev/null> <aaron@192.0.2.10> <bash vm-harness-guest check --class qemu-harness>
 $
 
 Remote helper failure remains the phase result; only `vm-harness exec` keeps

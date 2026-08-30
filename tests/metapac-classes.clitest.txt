@@ -45,6 +45,12 @@ xf86-video-vmware
 zram-generator
 $ DECLARED | grep -c '^astro-cli$'
 0
+$ if ((EUID == 0)); then chmod 755 "$CLITMP"; chown -R nobody:nobody "$H"; runuser -u nobody -- env HOME="$H" "$ROOT/.local/bin/tools/metapac-dedeclare" zram-generator; else HOME="$H" "$ROOT/.local/bin/tools/metapac-dedeclare" zram-generator; fi
+metapac-dedeclare: zram-generator — removed from guest-vmware.toml   (review via git diff)
+$ grep -c '"zram-generator"' "$H/.config/metapac/groups/guest-vmware.toml"
+0
+$ grep -c '"zram-generator"' "$H/.config/metapac/groups/guest-qemu.toml"
+1
 $
 
 qemu-harness uses the same non-work purpose set with QEMU tools and its own
@@ -72,10 +78,26 @@ $ grep -F "else { 'daily-vm' }" .local/bin/setup/vm-harness-vmware.ps1
 $Class = if ($env:VM_HARNESS_CLASS) { $env:VM_HARNESS_CLASS } else { 'daily-vm' }
 $ grep -R -- '--hardware-pkgs' .local/bin/setup/vm-harness* | wc -l
 0
-$ grep -c 'sudo systemctl enable --now NetworkManager' .local/bin/setup/bootstrap
-1
-$ grep -F 'PROVIDER_PINS=(pipewire-jack libglvnd noto-fonts)' .local/bin/setup/bootstrap
-PROVIDER_PINS=(pipewire-jack libglvnd noto-fonts) # extend for reproduced resolver collisions
+$
+
+bootstrap network/provider seams exercise real branches with command stubs:
+
+$ SERVICE_BIN="$CLITMP/service-bin"; SERVICE_TRACE="$CLITMP/service-trace"; mkdir -p "$SERVICE_BIN"; printf '%s\n' '#!/bin/sh' 'unit=' 'for arg; do unit=$arg; done' 'case "$1:$unit" in' '  is-enabled:NetworkManager|is-active:NetworkManager) [ "${NM_READY:-0}" = 1 ]; exit $? ;;' '  is-enabled:systemd-networkd|is-active:systemd-networkd) [ "${NETWORKD_ON:-0}" = 1 ]; exit $? ;;' 'esac' 'exit 1' > "$SERVICE_BIN/systemctl"; printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$SERVICE_TRACE"' > "$SERVICE_BIN/sudo"; chmod +x "$SERVICE_BIN/systemctl" "$SERVICE_BIN/sudo"; echo ready
+ready
+$ export BOOTSTRAP_TEST_MODE=1; echo seams-enabled
+seams-enabled
+$ PATH="$SERVICE_BIN:$PATH" NM_READY=1 .local/bin/setup/bootstrap --network-services check
+  NetworkManager enabled and active; systemd-networkd disabled and inactive
+$ PATH="$SERVICE_BIN:$PATH" NM_READY=1 NETWORKD_ON=1 .local/bin/setup/bootstrap --network-services check
+  would: systemctl enable --now NetworkManager
+  would: systemctl disable --now systemd-networkd
+$ : > "$SERVICE_TRACE"; PATH="$SERVICE_BIN:$PATH" SERVICE_TRACE="$SERVICE_TRACE" .local/bin/setup/bootstrap --network-services apply >/dev/null; cat "$SERVICE_TRACE"
+systemctl enable --now NetworkManager
+systemctl disable --now systemd-networkd
+$ PATH="$SERVICE_BIN:$PATH" .local/bin/setup/bootstrap --provider-pins check
+  would: pacman -S --needed pipewire-jack libglvnd noto-fonts   (declared providers install first, before any dep resolution picks one)
+$ : > "$SERVICE_TRACE"; PATH="$SERVICE_BIN:$PATH" SERVICE_TRACE="$SERVICE_TRACE" .local/bin/setup/bootstrap --provider-pins unattended; cat "$SERVICE_TRACE"
+pacman -S --needed --noconfirm --ask=4 pipewire-jack libglvnd noto-fonts
 $
 
 drift reporting reads only rendered active groups and the active inbox:
