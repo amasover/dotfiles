@@ -61,7 +61,10 @@ scan_range() {
     fi
 
     git cat-file -e "${head}^{commit}"
-    betterleaks git . \
+    GIT_CONFIG_COUNT=1 \
+        GIT_CONFIG_KEY_0=safe.directory \
+        GIT_CONFIG_VALUE_0="$root" \
+        betterleaks git . \
         --log-opts "$log_opts" \
         --platform github \
         --redact \
