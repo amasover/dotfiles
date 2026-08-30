@@ -78,6 +78,17 @@ $ grep -F 'PROVIDER_PINS=(pipewire-jack libglvnd noto-fonts)' .local/bin/setup/b
 PROVIDER_PINS=(pipewire-jack libglvnd noto-fonts) # extend for reproduced resolver collisions
 $
 
+drift reporting reads only rendered active groups and the active inbox:
+
+$ mkdir -p "$CLITMP/bin" "$CLITMP/pkgbuilds" "$H/.local/bin/tools"; printf '#!/bin/sh\nexit 0\n' > "$CLITMP/bin/metapac"; printf '#!/bin/sh\nexit 0\n' > "$CLITMP/bin/pacman"; chmod +x "$CLITMP/bin/metapac" "$CLITMP/bin/pacman"
+$ for tool in metapac-declared metapac-unmanaged-names custom-pkgs aur-quarantine; do ln -s "$ROOT/.local/bin/tools/$tool" "$H/.local/bin/tools/$tool"; done
+$ sed -i '/packages = \[/a\  "foreign-inbox-pkg",' "$H/.config/metapac/groups/inbox-daily-vm.toml"; RENDER qemu-harness
+$ HOME="$H" XDG_STATE_HOME="$CLITMP/state" CUSTOM_PKGS_DIR="$CLITMP/pkgbuilds" PATH="$CLITMP/bin:/usr/bin" "$ROOT/.local/bin/tools/metapac-drift-report" | grep -E '^     (astro-cli|open-vm-tools|refind|foreign-inbox-pkg)$' | wc -l
+0
+$ HOME="$H" XDG_STATE_HOME="$CLITMP/state" CUSTOM_PKGS_DIR="$CLITMP/pkgbuilds" PATH="$CLITMP/bin:/usr/bin" "$ROOT/.local/bin/tools/metapac-drift-report" | grep -c '\[ok\] inbox: empty'
+1
+$
+
 all profiles keep the shared package contract and all active group files parse
 through metapac:
 

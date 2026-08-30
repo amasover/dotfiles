@@ -15,25 +15,19 @@ set -euo pipefail
 
 groups_dir="$HOME/.config/metapac/groups"
 config="$HOME/.config/metapac/config.toml"
+tools_dir=${METAPAC_TOOLS_DIR:-$HOME/.local/bin/tools}
 
 if [[ ! -d "$groups_dir" || ! -f "$config" ]]; then
     echo "metapac-drift-report: no metapac config on this machine — skipping."
     exit 0
 fi
 
-# Group files = groups dir + absolute-path groups referenced in the rendered config
-# (the machine-local group). Entries may omit the .toml suffix.
-group_files=("$groups_dir"/*.toml)
-while IFS= read -r abs; do
-    if [[ -f "$abs" ]]; then
-        group_files+=("$abs")
-    elif [[ -f "$abs.toml" ]]; then
-        group_files+=("$abs.toml")
-    fi
-done < <(grep -o '"/[^"]*"' "$config" | tr -d '"')
-
-declared=$(grep -h '^[[:space:]]*"' "${group_files[@]}" 2>/dev/null \
-    | sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' | sort -u)
+# `metapac-declared` resolves only this host's rendered hostname_groups entry.
+# Scanning groups/*.toml would mix every tracked class into this report.
+declared=$("$tools_dir/metapac-declared") || {
+    echo "metapac-drift-report: could not resolve active declared packages" >&2
+    exit 1
+}
 
 echo
 echo "=============================================================="
@@ -47,9 +41,9 @@ unmanaged=$(metapac unmanaged 2>/dev/null || true)
 un_names=""
 if [[ -n "$unmanaged" ]]; then
     # Both metapac output shapes (0.10 inline TOML + legacy) — Story 2.42, #135.
-    un_names=$(echo "$unmanaged" | "$HOME/.local/bin/tools/metapac-unmanaged-names")
+    un_names=$(echo "$unmanaged" | "$tools_dir/metapac-unmanaged-names")
 fi
-vendored=$("$HOME/.local/bin/tools/custom-pkgs" list 2>/dev/null || true)
+vendored=$("$tools_dir/custom-pkgs" list 2>/dev/null || true)
 un_vendored=$(comm -12 <(sort <<<"$un_names") <(sort <<<"$vendored") | sed '/^$/d')
 un_real=$(comm -23 <(sort <<<"$un_names") <(sort <<<"$vendored") | sed '/^$/d')
 if [[ -n "$un_real" ]]; then
@@ -69,7 +63,7 @@ fi
 # 2. declared-but-missing — declared in some group, not installed at all.
 # Known-broken and age-deferred names (Story 2.38) split into their own
 # sections below, so `missing` stays surprising enough to stay useful.
-kb_rows=$("$HOME/.local/bin/tools/aur-quarantine" broken-list 2>/dev/null || true)
+kb_rows=$("$tools_dir/aur-quarantine" broken-list 2>/dev/null || true)
 def_file="${XDG_STATE_HOME:-$HOME/.local/state}/aur-quarantine/deferred.tsv"
 held_names=$({
     cut -f1 <<<"$kb_rows"
@@ -112,19 +106,31 @@ if [[ -s "$def_file" ]] && grep -q $'\tage\t' "$def_file"; then
     done <"$def_file"
 fi
 
-# 3. inbox triage nudge — captured installs waiting for a real group.
-inbox=("$groups_dir"/inbox-*.toml)
-if [[ -f "${inbox[0]:-}" ]]; then
-    inboxed=$(sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' "${inbox[0]}")
-    if [[ -n "$inboxed" ]]; then
-        n=$(wc -l <<<"$inboxed")
-        echo
-        echo " [!] inbox: $n package(s) awaiting triage in ${inbox[0]##*/}:"
-        sed 's/^/     /' <<<"$inboxed"
-        echo "     triage: edit ${inbox[0]/#$HOME/\~}"
-        echo "             move each entry to a purpose group (or delete it, then"
-        echo "             'metapac clean' proposes the uninstall)"
+# 3. Inbox triage reads the single inbox in this host's rendered group list.
+# Other classes' tracked inbox files are neither declarations nor this host's queue.
+mapfile -t inbox_names < <(awk '
+    /^[[:space:]]*"[^"]+"[[:space:]]*=[[:space:]]*\[/ { grab = 1; next }
+    grab && /^[[:space:]]*\]/ { exit }
+    grab && match($0, /"(inbox-[^"]+)"/, m) { print m[1] }
+' "$config")
+if ((${#inbox_names[@]} == 1)); then
+    inbox="$groups_dir/${inbox_names[0]}.toml"
+    if [[ ! -f $inbox ]]; then
+        echo " [!] inbox: active file missing: ${inbox##*/}"
     else
-        echo " [ok] inbox: empty"
+        inboxed=$(sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' "$inbox")
+        if [[ -n $inboxed ]]; then
+            n=$(wc -l <<<"$inboxed")
+            echo
+            echo " [!] inbox: $n package(s) awaiting triage in ${inbox##*/}:"
+            sed 's/^/     /' <<<"$inboxed"
+            echo "     triage: edit ${inbox/#$HOME/\~}"
+            echo "             move each entry to a purpose group (or delete it, then"
+            echo "             'metapac clean' proposes the uninstall)"
+        else
+            echo " [ok] inbox: empty"
+        fi
     fi
+else
+    echo " [!] inbox: expected one active rendered inbox, found ${#inbox_names[@]}"
 fi
