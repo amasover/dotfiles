@@ -14,6 +14,14 @@
   (with-eval-after-load 'copilot
     (dotfiles/configure-copilot)))
 
+(defun dotfiles/configure-language-servers ()
+  "Connect language modes to system-owned language servers."
+  (add-hook 'markdown-mode-hook #'lsp-deferred)
+  (add-hook 'gfm-mode-hook #'lsp-deferred)
+  (add-hook 'powershell-mode-hook #'lsp-deferred)
+  (with-eval-after-load 'lsp-pwsh
+    (make-directory lsp-pwsh-log-path t)))
+
 (defun dotspacemacs/layers ()
   "Layer configuration:
 This function should only modify configuration layer settings."
@@ -50,8 +58,11 @@ This function should only modify configuration layer settings."
      windows-scripts
      docker
      (yaml :variables
+           yaml-enable-lsp t
            yaml-indent-offset 2)
-     typescript
+     (typescript :variables
+                 typescript-backend 'lsp
+                 typescript-lsp-linter nil)
      csv
      nginx
      csharp
@@ -60,19 +71,27 @@ This function should only modify configuration layer settings."
      github-copilot
      html
      lsp
+     (lua :variables
+          lua-backend 'lsp
+          lua-lsp-server 'lua-language-server)
      rust
      (go :variables
          godoc-at-point-fuction 'godoc-gogetdoc
          go-format-before-save t)
-     vimscript
-     python
+     (vimscript :variables
+                vimscript-backend 'lsp)
+     (python :variables
+             python-backend 'lsp
+             python-lsp-server 'pyright)
      ;; ----------------------------------------------------------------
      ;; Example of useful layers you may want to use right away.
      ;; Uncomment some layer names and press `SPC f e R' (Vim style) or
      ;; `M-m f e R' (Emacs style) to install them.
      ;; ----------------------------------------------------------------
      helm
-     javascript
+     (javascript :variables
+                 javascript-backend 'lsp
+                 javascript-lsp-linter nil)
      (auto-completion :variables
                       auto-completion-enable-sort-by-usage t)
      better-defaults
@@ -83,6 +102,8 @@ This function should only modify configuration layer settings."
      ;;multiple-cursors
      (org :variables
           org-default-notes-file "~/TODO.org")
+     (shell-scripts :variables
+                    shell-scripts-backend 'lsp)
      (shell :variables
             shell-default-height 30
             shell-default-position 'bottom
@@ -646,6 +667,8 @@ It is mostly for variables that should be set before packages are loaded.
 If you are unsure, try setting them in `dotspacemacs/user-config' first."
   (add-to-list 'warning-suppress-types
                '(files missing-lexbind-cookie))
+  (setq lsp-bash-allowed-shells '(sh bash zsh)
+        lsp-pwsh-dir "/opt/powershell-editor-services")
   )
 
 
@@ -728,10 +751,10 @@ before packages are loaded."
   ;; LSP mode
 
   (setq lsp-ui-sideline-diagnostic-max-lines 2)
+  (dotfiles/configure-language-servers)
   (setq lsp-ui-sideline-diagnostic-max-line-length 500)
 
   ;; az pipelines
-  (add-hook 'yaml-mode-hook #'lsp-deferred)
   (let ((az-pipe-schema "https://raw.githubusercontent.com/microsoft/azure-pipelines-vscode/master/service-schema.json"))
     (setq lsp-yaml-schemas (make-hash-table))
     (puthash az-pipe-schema ["steps/*" "azure-pipelines*" "pipelines/**/*.yml"] lsp-yaml-schemas))
@@ -766,11 +789,6 @@ before packages are loaded."
   ;;                                 (pyvenv-mode t)
   ;;                                 (lsp-python-enable))))
   (setq lsp-pyright-multi-root nil)
-  (use-package lsp-pyright
-    :ensure t
-    :hook (python-mode . (lambda ()
-                           (require 'lsp-pyright)
-                           (lsp))))  ; or lsp-deferred
 
   ;;  (defun )
 

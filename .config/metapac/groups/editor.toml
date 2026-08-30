@@ -3,20 +3,28 @@
 [arch]
 packages = [
   "autopep8",
+  "bash-language-server",
   "editorconfig-core-c",
   "emacs",
   "ex-vi-compat",
   "glow",
   "gvim",
   "intellij-idea-community-edition",
+  "lua-language-server",
+  "marksman",
   "nano",
   "neovim",
   "npm",  # installs the pinned Emacs Copilot language server during bootstrap
   "omnisharp-roslyn-bin",
+  "powershell-editor-services-bin",
   "pyright",  # system server used by .spacemacs lsp-pyright
+  "ruff",
+  "typescript-language-server",
   "vim-airline",
   "vim-gitgutter",
   "vim-go",
+  "vim-language-server",
   "vim-plug",
   "visual-studio-code-bin",
+  "yaml-language-server",
 ]
