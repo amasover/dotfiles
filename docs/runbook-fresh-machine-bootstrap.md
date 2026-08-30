@@ -130,10 +130,11 @@ portable boot policy from machine identifiers:
   root, resume, or partition identifiers.
 - [`setup/refind-config`](../.local/bin/setup/refind-config) derives identity-bearing
   kernel options from live `/proc/cmdline` and `/sys/power/resume`, plus the kernel
-  directory from `/boot` mount metadata. It generates `dotfiles-machine.conf` on the
-  ESP and `/boot/refind_linux.conf`; Intel microcode precedes the normal initramfs.
-- `/usr/share/refind/themes/nord` remains package-owned. The reconciler copies only
-  boot-time theme assets to rEFInd's ESP directory and marks that copy as managed.
+  directory from `/boot` mount target and filesystem-root metadata. It generates
+  `dotfiles-machine.conf` on a verified active FAT ESP and `/boot/refind_linux.conf`;
+  Intel microcode precedes the kernel-matched `initramfs-%v.img`.
+- `/usr/share/refind/themes/nord` remains package-owned. The reconciler verifies that
+  ownership, copies only boot-time theme assets, and marks the ESP copy as managed.
 - The reconciler touches only `EFI/refind/**` and `/boot/refind_linux.conf`. It never
   edits NVRAM, installs a firmware entry, removes another loader, or reboots.
 
@@ -147,16 +148,20 @@ refind-config apply       # missing or already-managed destinations only
 refind-config adopt       # explicit one-time takeover of unmanaged destinations
 ```
 
-`apply` and `adopt` first copy every existing destination to a timestamped directory
-under `/var/backups/dotfiles/refind/`, outside the ESP. `adopt` exists for attended
-migration only; bootstrap never selects it. Normal apply fails before writing when an
-unmanaged destination, ambiguous ESP, missing rEFInd binary, kernel, initramfs, Intel
-microcode, or incomplete Nord package is found. No reboot is automatic.
+`apply` and `adopt` first copy and sync every existing destination to a timestamped
+directory under `/var/backups/dotfiles/refind/`, outside the ESP. Each destination
+replacement is atomic; an ordinary write failure restores the complete prior state
+and reports the backup path. `adopt` exists for attended migration only; bootstrap
+never selects it. Normal apply fails before writing for unmanaged destinations,
+symlinked paths, a missing or inactive ESP mount, missing kernel-matched boot
+artifacts, or an incomplete/unowned Nord package. No reboot is automatic.
 
-Live derivation is the default. A provisioner may instead write untracked,
-root-owned `/etc/dotfiles/refind.json` under its target root, then invoke the same
-reconciler through its `--root` seam. Values below are placeholders, never tracked
-machine values:
+Live derivation is the default and rejects machine-local kernel overrides. A
+provisioner must write untracked, root-owned `/etc/dotfiles/refind.json` under its
+target root before invoking the same reconciler through `--root`; target roots do
+not borrow the installer host's `/proc/cmdline` or `/boot` mount metadata. Operational
+paths below the target root must be real directories, not symlinks. Values below are
+placeholders, never tracked machine values:
 
 ```json
 {
@@ -170,29 +175,18 @@ machine values:
 }
 ```
 
-### Read-only laptop discovery (2026-08-30)
+### Attended adoption and validation
 
-- Active ESP: VFAT at `/efi`, also mounted at `/boot/efi`; root-only mount masks.
-  Active firmware entry launches `EFI/refind/refind_x64.efi` directly. Secure Boot
-  remains disabled.
-- Live alternate path: Ubuntu firmware entry plus `EFI/ubuntu/shimx64.efi`. Both are
-  explicit preservation constraints; fixture tests prove reconciliation leaves them
-  byte-identical.
-- Arch boot files live on a separate ext4 filesystem whose mounted `/boot` directory
-  is filesystem path `/arch`: `vmlinuz-linux`, `initramfs-linux.img`, and
-  `intel-ucode.img` are present.
-- `/boot/refind_linux.conf` exists, is root-owned/untracked, and contains machine
-  identifiers. Its values were inspected only to classify them and were not copied
-  into the repository.
-- rEFInd policy is at `/efi/EFI/refind/refind.conf`; Nord's authoritative package
-  source is `/usr/share/refind/themes/nord`. ESP policy contents remained unread in
-  this no-change pass because root authorization timed out, so current-laptop adoption
-  remains intentionally pending.
-- No root-owned file changed. No backup or reboot occurred.
+Treat first ownership transfer and boot proof as one attended operation:
 
-Fresh-metal acceptance remains attended: run `audit`, reach a converged `--check`,
-reboot once, verify Arch entry/theme and Arch boot, then separately boot Ubuntu and
-return. Record redacted checksums and backup path; never publish generated identifiers.
+1. Run `audit`; confirm active FAT ESP, rEFInd firmware entry, package-owned Nord
+   source, Arch kernel/initramfs pairs, and all three Ubuntu preservation paths.
+2. Compare redacted hashes, then run explicit `adopt` once for unmanaged files.
+3. Run `--check`; require `rEFInd configuration: converged`.
+4. Reboot once; inspect intended Arch entry and Nord theme, then boot Arch.
+5. Separately boot Ubuntu through its firmware entry and return to Arch.
+6. Record redacted checksums, backup path, and boot results on issue #230 or its PR;
+   execution evidence and pending status do not belong in this durable runbook.
 
 ## Daily-drivable acceptance (the cleanup-era milestone bar)
 

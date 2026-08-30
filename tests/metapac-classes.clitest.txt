@@ -99,21 +99,6 @@ $ PATH="$SERVICE_BIN:$PATH" .local/bin/setup/bootstrap --provider-pins check
 $ : > "$SERVICE_TRACE"; PATH="$SERVICE_BIN:$PATH" SERVICE_TRACE="$SERVICE_TRACE" .local/bin/setup/bootstrap --provider-pins unattended; cat "$SERVICE_TRACE"
 pacman -S --needed --noconfirm --ask=4 pipewire-jack libglvnd noto-fonts
 $
-bootstrap routes rEFInd only to the physical workstation and preserves check drift semantics:
-
-$ REFIND_STUB="$CLITMP/refind-config"; REFIND_TRACE="$CLITMP/refind-trace"; printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$REFIND_TRACE"' 'exit "${REFIND_RC:-0}"' > "$REFIND_STUB"; chmod +x "$REFIND_STUB"; echo ready
-ready
-$ : > "$REFIND_TRACE"; REFIND_CONFIG_TOOL="$REFIND_STUB" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config check daily-vm; cat "$REFIND_TRACE"
-  not applicable to class daily-vm
-$ : > "$REFIND_TRACE"; REFIND_CONFIG_TOOL="$REFIND_STUB" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config check workstation; cat "$REFIND_TRACE"
---check
-$ REFIND_CONFIG_TOOL="$REFIND_STUB" REFIND_TRACE="$REFIND_TRACE" REFIND_RC=1 .local/bin/setup/bootstrap --refind-config check workstation; echo "rc=$?"
-rc=0
-$ REFIND_CONFIG_TOOL="$REFIND_STUB" REFIND_TRACE="$REFIND_TRACE" REFIND_RC=2 .local/bin/setup/bootstrap --refind-config check workstation >/dev/null 2>&1; echo "rc=$?"
-rc=1
-$ : > "$REFIND_TRACE"; REFIND_CONFIG_TOOL="$REFIND_STUB" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config apply workstation; cat "$REFIND_TRACE"
-apply
-$
 
 drift reporting reads only rendered active groups and the active inbox:
 

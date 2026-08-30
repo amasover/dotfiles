@@ -82,7 +82,7 @@ reconcile_network_services() {
 
 reconcile_refind_config() {
     local mode=${1:-} class=${2:-}
-    local tool=${REFIND_CONFIG_TOOL:-"$HOME/.local/bin/setup/refind-config"}
+    local tool="$HOME/.local/bin/setup/refind-config"
     [[ $mode == check || $mode == apply ]] \
         || die "refind-config mode must be check or apply"
     [[ -n $class ]] || die "refind-config class is required"
