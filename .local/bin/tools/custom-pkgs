@@ -272,7 +272,7 @@ cmd_sync() {
         fi
         echo "  building $name $pinned (installed: ${inst:-none})..."
         build="$cache_dir/build/$name"
-        rm -rf "$build" && mkdir -p "$build" "$cache_dir/src"
+        rm -rf "$build" && mkdir -p "$build/src" "$cache_dir/src"
         cp "$pkgs_dir/$name/"* "$build/"
         nc=()
         ((noconfirm)) && nc=(--noconfirm)
