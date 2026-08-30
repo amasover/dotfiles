@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016  # sed expressions intentionally contain literal shell metacharacters.
 # metapac-filtered-config — stage a filtered copy of the metapac config for one
 # sync (Story 2.38).
 #
@@ -29,13 +30,19 @@ if [[ "${1:-}" == --config-dir ]]; then
     shift 2
 fi
 dest="${1:-}"
-[[ -n "$dest" ]] || { echo "usage: metapac-filtered-config [--config-dir SRC] DEST [PKG...]" >&2; exit 2; }
+[[ -n "$dest" ]] || {
+    echo "usage: metapac-filtered-config [--config-dir SRC] DEST [PKG...]" >&2
+    exit 2
+}
 shift
 # Absolute on purpose: DEST lands inside the staged config.toml as the
 # machine-local group's path, and metapac resolves relative paths against its
 # groups dir — a relative DEST would point at a file that isn't there.
 dest=$(realpath -m "$dest")
-[[ -f "$src/config.toml" ]] || { echo "metapac-filtered-config: no config.toml under $src" >&2; exit 1; }
+[[ -f "$src/config.toml" ]] || {
+    echo "metapac-filtered-config: no config.toml under $src" >&2
+    exit 1
+}
 
 mkdir -p "$dest/groups"
 
@@ -56,13 +63,13 @@ filter_into() { # $1=src file, $2=dest file — copy minus the named declaration
         return 0
     fi
     # trailing comments are part of the house group style ("valkey",  # why)
-    grep -Ev "^[[:space:]]*\"(${pat})\",?[[:space:]]*(#.*)?$" "$1" > "$2" || true
+    grep -Ev "^[[:space:]]*\"(${pat})\",?[[:space:]]*(#.*)?$" "$1" >"$2" || true
     # per-package audit counts (grep -c per name is clearer than parsing diff)
     local p esc n
     for p in "${!dropped[@]}"; do
         esc=$(printf '%s' "$p" | sed 's/[][\.|$(){}?+*^]/\\&/g')
         n=$(grep -Ec "^[[:space:]]*\"${esc}\",?[[:space:]]*(#.*)?$" "$1" || true)
-        dropped[$p]=$(( dropped[$p] + n ))
+        dropped[$p]=$((dropped[$p] + n))
     done
 }
 
@@ -75,13 +82,15 @@ done
 # (the machine-local group) at filtered copies inside DEST. Entries may omit
 # the .toml suffix (metapac resolves either) — mirror that here.
 i=0
-: > "$dest/config.toml"
+: >"$dest/config.toml"
 while IFS= read -r line; do
     abs=$(sed -n 's/.*"\(\/[^"]*\)".*/\1/p' <<<"$line")
     resolved=""
     if [[ -n "$abs" && "$abs" != "$dest"* ]]; then
-        if [[ -f "$abs" ]]; then resolved="$abs"
-        elif [[ -f "$abs.toml" ]]; then resolved="$abs.toml"
+        if [[ -f "$abs" ]]; then
+            resolved="$abs"
+        elif [[ -f "$abs.toml" ]]; then
+            resolved="$abs.toml"
         fi
     fi
     if [[ -n "$resolved" ]]; then
@@ -91,7 +100,7 @@ while IFS= read -r line; do
         line=${line/"\"$abs\""/"\"$copy\""}
     fi
     printf '%s\n' "$line"
-done < "$src/config.toml" >> "$dest/config.toml"
+done <"$src/config.toml" >>"$dest/config.toml"
 
 # Fail-closed audit: the drop regex only matches the house style (one quoted
 # name per line). A declaration in any other valid TOML form (inline array,
@@ -112,7 +121,7 @@ for p in "${!dropped[@]}"; do
 done
 
 for p in "${!dropped[@]}"; do
-    if (( dropped[$p] > 0 )); then
+    if ((dropped[$p] > 0)); then
         echo "filtered: $p (${dropped[$p]} declaration line(s))"
     else
         echo "filtered: $p (declared nowhere — nothing to drop)"

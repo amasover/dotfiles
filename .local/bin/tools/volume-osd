@@ -17,10 +17,16 @@ set -euo pipefail
 cmd_pct() { awk '$1 == "Volume:" { printf "%d\n", $2 * 100 + 0.5; exit }'; }
 
 case "${1:-}" in
-up) wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ "${2:-3}%+" ;;
-down) wpctl set-volume @DEFAULT_AUDIO_SINK@ "${2:-3}%-" ;;
-pct) cmd_pct; exit 0 ;;
-*) echo "usage: volume-osd up|down [step-pct]" >&2; exit 2 ;;
+    up) wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ "${2:-3}%+" ;;
+    down) wpctl set-volume @DEFAULT_AUDIO_SINK@ "${2:-3}%-" ;;
+    pct)
+        cmd_pct
+        exit 0
+        ;;
+    *)
+        echo "usage: volume-osd up|down [step-pct]" >&2
+        exit 2
+        ;;
 esac
 
 if command -v volnoti-show >/dev/null 2>&1; then

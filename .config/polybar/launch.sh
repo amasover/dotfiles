@@ -71,7 +71,7 @@ layout_env="$layout_dir/${profile}.env"
 
 unset MONITOR_MAIN MONITOR_LEFT MONITOR_EXTRA MONITOR_SPLIT_TOP MONITOR_SPLIT_BOTTOM
 roles_err=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/polybar-roles-err.XXXXXX")
-set -a  # auto-export whatever the role sources assign
+set -a # auto-export whatever the role sources assign
 eval "$("$tools/monitor-roles" 2>>"$roles_err")"
 [[ -n $profile && -f $layout_env ]] && eval "$("$tools/monitor-roles" merge-env "$layout_env" 2>>"$roles_err")"
 set +a
@@ -121,18 +121,24 @@ fi
 # always reflects THIS machine's thermal-zone/battery presence. The path is
 # literal $HOME/.cache (not XDG) because the body's include-file line is.
 mkdir -p "$HOME/.cache/polybar"
-"$tools/hw-junctions" emit > "$HOME/.cache/polybar/hw-junctions" 2>>"$log" \
+"$tools/hw-junctions" emit >"$HOME/.cache/polybar/hw-junctions" 2>>"$log" \
     || warn "hw-junctions emit failed; hardware-segment junction colors may be stale"
 
 # TERM, bounded wait, then KILL: a bar wedged in its event loop can ignore
 # SIGTERM (seen live 2026-08-22 — killall -w parked forever), and the flock
 # above would then deadlock every future launch behind it.
 killall -q polybar
-for _ in $(seq 50); do pgrep -u "$UID" -x polybar >/dev/null || break; sleep 0.1; done
+for _ in $(seq 50); do
+    pgrep -u "$UID" -x polybar >/dev/null || break
+    sleep 0.1
+done
 if pgrep -u "$UID" -x polybar >/dev/null; then
     warn "a polybar ignored SIGTERM for 5s; escalating to SIGKILL"
     killall -q -KILL polybar
-    for _ in $(seq 20); do pgrep -u "$UID" -x polybar >/dev/null || break; sleep 0.1; done
+    for _ in $(seq 20); do
+        pgrep -u "$UID" -x polybar >/dev/null || break
+        sleep 0.1
+    done
 fi
 
 # -c is load-bearing: no config.ini lives in ~/.config/polybar, so without an

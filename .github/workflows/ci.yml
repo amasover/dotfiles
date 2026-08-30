@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      CI_HEAD_SHA: ${{ github.sha }}
+
+    steps:
+      - name: Install Arch validation dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            actionlint \
+            bash \
+            ca-certificates \
+            clitest \
+            coreutils \
+            curl \
+            diffutils \
+            emacs-nox \
+            findutils \
+            gawk \
+            git \
+            grep \
+            jq \
+            lua51 \
+            nodejs \
+            patch \
+            python \
+            python-pytest \
+            sed \
+            shellcheck \
+            shfmt \
+            tar \
+            util-linux \
+            zsh
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Trust checked-out container worktree
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install pinned betterleaks
+        run: |
+          pkgbuild=.config/dotfiles/pkgbuilds/betterleaks/PKGBUILD
+          version=$(sed -n 's/^pkgver=//p' "$pkgbuild")
+          sha256=$(sed -n "s/^sha256sums=('\([0-9a-f]\{64\}\)').*/\1/p" "$pkgbuild")
+          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ $sha256 =~ ^[0-9a-f]{64}$ ]]
+
+          archive=$RUNNER_TEMP/betterleaks.tar.gz
+          curl --proto '=https' --tlsv1.2 --fail --location \
+            --output "$archive" \
+            "https://github.com/betterleaks/betterleaks/releases/download/v${version}/betterleaks_${version}_linux_x64.tar.gz"
+          printf '%s  %s\n' "$sha256" "$archive" | sha256sum --check --strict -
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          install -Dm755 "$RUNNER_TEMP/betterleaks" /usr/local/bin/betterleaks
+          betterleaks version
+
+      - name: Install pinned Python test dependency
+        run: |
+          wheel=$RUNNER_TEMP/pycdlib.whl
+          python_path=$RUNNER_TEMP/python
+          curl --proto '=https' --tlsv1.2 --fail --location \
+            --output "$wheel" \
+            "https://files.pythonhosted.org/packages/d8/2e/624824081e1ceb69bcd2c3b2358d01e8ba7e7c84a0f019bf24e1e822ec01/pycdlib-1.20.0-py2.py3-none-any.whl"
+          printf '%s  %s\n' \
+            cb675959dd6d61e94f02560ed7e9a5d368a3188b5f7f31813bc25a750cff0863 \
+            "$wheel" | sha256sum --check --strict -
+          mkdir -p "$python_path"
+          python -m zipfile -e "$wheel" "$python_path"
+          printf 'PYTHONPATH=%s\n' "$python_path" >> "$GITHUB_ENV"
+          PYTHONPATH="$python_path" python -c \
+            'import importlib.metadata; assert importlib.metadata.version("pycdlib") == "1.20.0"'
+
+      - name: Scan pushed commit range
+        run: .github/scripts/ci scan-range "$CI_BASE_SHA" "$CI_HEAD_SHA"
+
+      - name: Lint tracked scripts
+        run: .github/scripts/ci lint
+
+      - name: Run repository test suites
+        run: .github/scripts/ci test

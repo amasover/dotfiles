@@ -51,7 +51,10 @@ set -euo pipefail
 pkgs_dir="${CUSTOM_PKGS_DIR:-$HOME/.config/dotfiles/pkgbuilds}"
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/custom-pkgs"
 
-die() { echo "custom-pkgs: $*" >&2; exit 1; }
+die() {
+    echo "custom-pkgs: $*" >&2
+    exit 1
+}
 
 pkgbuild_field() { # $1 = PKGBUILD, $2 = field name
     sed -n "s/^$2=['\"]\{0,1\}\([^'\"]*\)['\"]\{0,1\}\$/\1/p" "$1" | head -1
@@ -69,10 +72,12 @@ cmd_upstream() { # owner/repo out of url="https://github.com/owner/repo"
     local url
     url=$(pkgbuild_field "$1" url)
     case "$url" in
-    https://github.com/*/*)
-        echo "${url#https://github.com/}" ;;
-    *)
-        die "url in $1 is not a github repo ($url)" ;;
+        https://github.com/*/*)
+            echo "${url#https://github.com/}"
+            ;;
+        *)
+            die "url in $1 is not a github repo ($url)"
+            ;;
     esac
 }
 
@@ -117,7 +122,7 @@ cmd_ensure_ignore() { # stdin pacman.conf → stdout with $1 in IgnorePkg
     if awk -v p="$pkg" '/^IgnorePkg[ \t]*=/ { n = split($0, w, /[ \t=]+/)
             for (i = 2; i <= n; i++) if (w[i] == p) found = 1 }
             END { exit !found }' <<<"$conf"; then
-        printf '%s\n' "$conf"                                   # already listed
+        printf '%s\n' "$conf" # already listed
     elif grep -q '^IgnorePkg[[:space:]]*=' <<<"$conf"; then
         sed "0,/^IgnorePkg[[:space:]]*=.*/s//& $pkg/" <<<"$conf" # append to the line
     elif grep -q '^\[options\]' <<<"$conf"; then
@@ -172,10 +177,18 @@ cmd_outdated() { # network: GitHub latest release + age per watchable package
         pinned=$(pkgbuild_field "$pb" pkgver)
         repo=$(cmd_upstream "$pb")
         resp=$(curl -fsSL --max-time 15 "https://api.github.com/repos/$repo/releases/latest") \
-            || { echo "custom-pkgs: $name: upstream check failed ($repo)" >&2; rc=2; continue; }
+            || {
+                echo "custom-pkgs: $name: upstream check failed ($repo)" >&2
+                rc=2
+                continue
+            }
         latest=$(jq -r '.tag_name // empty' <<<"$resp")
         latest=${latest#v}
-        [[ -n $latest ]] || { echo "custom-pkgs: $name: no releases at $repo" >&2; rc=2; continue; }
+        [[ -n $latest ]] || {
+            echo "custom-pkgs: $name: no releases at $repo" >&2
+            rc=2
+            continue
+        }
         published=$(jq -r '.published_at // empty' <<<"$resp")
         age=$(((now - $(date -d "${published:-@$now}" +%s)) / 86400))
         if [[ "$(cmd_verdict "$pinned" "$latest")" == outdated ]]; then
@@ -219,9 +232,9 @@ cmd_bump() { # $1 = name, $2 = new version
     if sums=$(curl -fsSL --max-time 15 "$sums_url"); then
         verdict=$(cmd_checksum_verdict "$asset" "$sha" <<<"$sums")
         case "$verdict" in
-        verified) echo "  checksum verified against upstream checksums.txt" ;;
-        mismatch) die "checksum MISMATCH for $asset vs $sums_url — DO NOT COMMIT; investigate, then revert with git/yadm checkout" ;;
-        absent) echo "  WARNING: $asset not listed in upstream checksums.txt — checksum is trust-on-first-download" ;;
+            verified) echo "  checksum verified against upstream checksums.txt" ;;
+            mismatch) die "checksum MISMATCH for $asset vs $sums_url — DO NOT COMMIT; investigate, then revert with git/yadm checkout" ;;
+            absent) echo "  WARNING: $asset not listed in upstream checksums.txt — checksum is trust-on-first-download" ;;
         esac
     else
         echo "  WARNING: no upstream checksums.txt at $sums_url — checksum is trust-on-first-download"
@@ -233,10 +246,10 @@ cmd_sync() {
     local only="" noconfirm=0 check=0 arg name pinned inst build nc
     for arg in "$@"; do
         case "$arg" in
-        --noconfirm) noconfirm=1 ;;
-        --check) check=1 ;;
-        -*) die "unknown sync flag: $arg" ;;
-        *) only="$arg" ;;
+            --noconfirm) noconfirm=1 ;;
+            --check) check=1 ;;
+            -*) die "unknown sync flag: $arg" ;;
+            *) only="$arg" ;;
         esac
     done
     command -v makepkg >/dev/null || die "makepkg not found"
@@ -271,20 +284,35 @@ cmd_sync() {
 }
 
 case "${1:-}" in
-list) cmd_list ;;
-status) cmd_status ;;
-outdated) cmd_outdated ;;
-check) cmd_check ;;
-bump) [[ $# -eq 3 ]] || die "usage: custom-pkgs bump NAME VERSION"; cmd_bump "$2" "$3" ;;
-sync) shift; cmd_sync "$@" ;;
-ensure-pins) cmd_ensure_pins "${2:-}" ;;
-pkgver) cmd_pkgver "${2:?usage: custom-pkgs pkgver FILE}" ;;
-upstream) cmd_upstream "${2:?usage: custom-pkgs upstream FILE}" ;;
-watchable) cmd_watchable "${2:?usage: custom-pkgs watchable FILE}" ;;
-verdict) [[ $# -eq 3 ]] || die "usage: custom-pkgs verdict PINNED LATEST"; cmd_verdict "$2" "$3" ;;
-set-version) [[ $# -eq 3 ]] || die "usage: custom-pkgs set-version FILE VERSION"; cmd_set_version "$2" "$3" ;;
-checksum-verdict) [[ $# -eq 3 ]] || die "usage: custom-pkgs checksum-verdict ASSET SHA256 < checksums.txt"; cmd_checksum_verdict "$2" "$3" ;;
-ensure-ignore) cmd_ensure_ignore "${2:?usage: custom-pkgs ensure-ignore NAME}" ;;
--h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
-*) die "unknown subcommand: ${1:-<none>}   (try: custom-pkgs -h)" ;;
+    list) cmd_list ;;
+    status) cmd_status ;;
+    outdated) cmd_outdated ;;
+    check) cmd_check ;;
+    bump)
+        [[ $# -eq 3 ]] || die "usage: custom-pkgs bump NAME VERSION"
+        cmd_bump "$2" "$3"
+        ;;
+    sync)
+        shift
+        cmd_sync "$@"
+        ;;
+    ensure-pins) cmd_ensure_pins "${2:-}" ;;
+    pkgver) cmd_pkgver "${2:?usage: custom-pkgs pkgver FILE}" ;;
+    upstream) cmd_upstream "${2:?usage: custom-pkgs upstream FILE}" ;;
+    watchable) cmd_watchable "${2:?usage: custom-pkgs watchable FILE}" ;;
+    verdict)
+        [[ $# -eq 3 ]] || die "usage: custom-pkgs verdict PINNED LATEST"
+        cmd_verdict "$2" "$3"
+        ;;
+    set-version)
+        [[ $# -eq 3 ]] || die "usage: custom-pkgs set-version FILE VERSION"
+        cmd_set_version "$2" "$3"
+        ;;
+    checksum-verdict)
+        [[ $# -eq 3 ]] || die "usage: custom-pkgs checksum-verdict ASSET SHA256 < checksums.txt"
+        cmd_checksum_verdict "$2" "$3"
+        ;;
+    ensure-ignore) cmd_ensure_ignore "${2:?usage: custom-pkgs ensure-ignore NAME}" ;;
+    -h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
+    *) die "unknown subcommand: ${1:-<none>}   (try: custom-pkgs -h)" ;;
 esac

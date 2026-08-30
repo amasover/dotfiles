@@ -26,7 +26,10 @@
 #                                  rc 1 + "default" otherwise
 set -euo pipefail
 
-die() { echo "theme-manifest: $*" >&2; exit 2; }
+die() {
+    echo "theme-manifest: $*" >&2
+    exit 2
+}
 
 default_bars() {
     printf '%s\n' \
@@ -49,18 +52,18 @@ parse() { # $1 = manifest file, $2 = want (bars|gap)
         set -- $line
         kw=$1 a=${2-} b=${3-}
         case "$kw" in
-        bar)
-            [[ -n $a ]] || die "$file:$lineno: 'bar' needs a name"
-            [[ $# -le 3 ]] || die "$file:$lineno: too many fields"
-            [[ $want == bars ]] && printf '%s\t%s\n' "$a" "${b:--}"
-            ;;
-        gap-top)
-            [[ $a =~ ^[0-9]+$ ]] || die "$file:$lineno: gap-top needs a number"
-            gap=$a
-            ;;
-        *)
-            die "$file:$lineno: unknown directive '$kw'"
-            ;;
+            bar)
+                [[ -n $a ]] || die "$file:$lineno: 'bar' needs a name"
+                [[ $# -le 3 ]] || die "$file:$lineno: too many fields"
+                [[ $want == bars ]] && printf '%s\t%s\n' "$a" "${b:--}"
+                ;;
+            gap-top)
+                [[ $a =~ ^[0-9]+$ ]] || die "$file:$lineno: gap-top needs a number"
+                gap=$a
+                ;;
+            *)
+                die "$file:$lineno: unknown directive '$kw'"
+                ;;
         esac
     done <"$file"
     [[ $want == gap ]] && printf '%s\n' "$gap"
@@ -74,7 +77,8 @@ parse() { # $1 = manifest file, $2 = want (bars|gap)
 manifest_of() { printf '%s/bars\n' "${1%/}"; }
 
 cmd_bars() {
-    local m; m=$(manifest_of "$1")
+    local m
+    m=$(manifest_of "$1")
     if [[ -f $m ]]; then parse "$m" bars; else default_bars; fi
 }
 
@@ -88,23 +92,30 @@ cmd_launchable() {
 }
 
 cmd_gap_top() {
-    local m; m=$(manifest_of "$1")
+    local m
+    m=$(manifest_of "$1")
     if [[ -f $m ]]; then parse "$m" gap; else echo 0; fi
 }
 
 cmd_has_manifest() {
-    if [[ -f $(manifest_of "$1") ]]; then echo manifest; else echo default; return 1; fi
+    if [[ -f $(manifest_of "$1") ]]; then echo manifest; else
+        echo default
+        return 1
+    fi
 }
 
 case "${1:-}" in
--h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; exit 0 ;;
+    -h | --help)
+        sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+        exit 0
+        ;;
 esac
 dir="${2:?usage: theme-manifest bars|launchable|gap-top|has-manifest THEME_DIR}"
 [[ -d $dir ]] || die "no such theme dir: $dir"
 case "${1:-}" in
-bars) cmd_bars "$dir" ;;
-launchable) cmd_launchable "$dir" ;;
-gap-top) cmd_gap_top "$dir" ;;
-has-manifest) cmd_has_manifest "$dir" ;;
-*) die "unknown subcommand: ${1:-<none>}   (try: theme-manifest -h)" ;;
+    bars) cmd_bars "$dir" ;;
+    launchable) cmd_launchable "$dir" ;;
+    gap-top) cmd_gap_top "$dir" ;;
+    has-manifest) cmd_has_manifest "$dir" ;;
+    *) die "unknown subcommand: ${1:-<none>}   (try: theme-manifest -h)" ;;
 esac

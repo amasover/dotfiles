@@ -1,116 +1,103 @@
-# Runbook: Shell Script Validation (shellcheck + shfmt)
+# Runbook: Repository Validation (CI + local)
 
-**Epic/Story:** Story 4.5 — [docs/epic-4-workflow-and-governance.md](./epic-4-workflow-and-governance.md)
-**Issue:** [#36](https://github.com/amasover/dotfiles/issues/36)
+**Stories:** 4.5 shell tooling and 4.7 minimal CI
+**Issues:** [#36](https://github.com/amasover/dotfiles/issues/36) and [#94](https://github.com/amasover/dotfiles/issues/94)
 
-Standard tooling for validating the repo's shell scripts, plus the recorded
-baseline. Findings feed Epic 2 (script classification) and Story 3.4 (helper
-script inventory) — they are **not** fixed blindly from here; a script gets its
-findings addressed when its own cleanup story touches it.
+This runbook defines the checks enforced by
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml). The workflow delegates repository
+logic to [`.github/scripts/ci`](../.github/scripts/ci), so local and hosted validation use the
+same commands.
 
-## Standard tooling
+## Enforced workflow
 
-| Tool | Role | Status |
-| --- | --- | --- |
-| `shellcheck` | Lint bash/sh scripts for correctness hazards | Installed (`/usr/bin/shellcheck`) |
-| `shfmt` | Canonical formatting (diff-only in validation, never auto-applied wholesale) | Installed (v3.13.1, 2026-07-09) |
+CI runs for every pull request and every push to `main`. One `archlinux:latest` job installs
+pacman-native validation tools, checks out full history with a commit-pinned
+`actions/checkout`, and runs these stages in order:
 
-Validation-time invocations:
+1. checksum-verified betterleaks installation from the version and SHA-256 pinned by the
+   vendored [`PKGBUILD`](../.config/dotfiles/pkgbuilds/betterleaks/PKGBUILD);
+2. checksum-verified pycdlib 1.20.0 wheel extraction for the seed-ISO tests;
+3. betterleaks scan of exactly the pull-request or pushed commit range;
+4. repository-wide script lint and syntax checks;
+5. every host-independent regression suite.
 
-```bash
-# lint — all bash/sh scripts under the two script dirs
-shellcheck --format=gcc .local/bin/setup/bootstrap .local/bin/setup/vm-harness .local/bin/tools/*
+Workflow permissions are `contents: read`. It uses `pull_request`, never
+`pull_request_target`, and receives no repository secrets. Story 4.7 changes no branch
+protection or ruleset: checks are reported, while the documented direct-to-`main` exception
+for small bookkeeping-only docs remains usable.
 
-# formatting drift (read-only diff) — flags are the repo's canonical style, see below
-shfmt -i 4 -bn -ci -d .local/bin/setup/bootstrap .local/bin/setup/vm-harness .local/bin/tools/*
-```
+## Script lint contract
 
-**Canonical shfmt style: `-i 4 -bn -ci`** — the flag set closest to how the
-code is already written: 4-space indent (no tabs anywhere in the tree), binary
-ops (`|`, `&&`) at line starts, indented `case` labels.
+`bash .github/scripts/ci lint` discovers tracked scripts from their first-line shebang. It
+then enforces:
 
-**Do not use `-kp` (keep-padding).** It initially looked attractive (kept
-aligned trailing comments, smallest raw diff), but it is deprecated upstream
-(removal planned — mvdan/sh#658) and it mangles one-liner blocks: shfmt always
-expands `cmd && { a; b; }` onto multiple lines, and `-kp` then "aligns" the
-statements to their old columns, producing absurd deep indentation. Caught in
-PR #91's first formatting pass.
+- `shellcheck --format=gcc` on every tracked Bash and POSIX sh script;
+- `shfmt -i 4 -bn -ci -d` on the same complete set;
+- `bash -n` or `sh -n` according to each shebang;
+- `zsh -n` on tracked Zsh scripts (`setup/update` today);
+- `luac5.1 -p` on every tracked Lua file;
+- `actionlint` on every GitHub Actions workflow, including shellcheck integration for
+  embedded `run` blocks.
 
-**Exclusion:** `.local/bin/setup/update` is a zsh script; shellcheck does not
-support zsh. It stays validated by `zsh -n` only.
+There is no ignored lint baseline. Story 4.7 formatted the full tracked Bash/sh set and
+resolved every shellcheck finding so future regressions fail directly instead of being
+compared with a warning snapshot.
 
-New or modified shell scripts in a PR should be shellcheck-clean; the baseline
-below grandfathers existing findings until each script's own story.
+## Test contract
 
-## Baseline — 2026-07-09
-
-17 bash/sh scripts scanned; **65 findings, 0 errors** (all warning/info/style).
-Full output: comment on [#36](https://github.com/amasover/dotfiles/issues/36).
-
-Clean (5): `bootstrap`, `vm-harness`, `check_for_arch_updates`,
-`metapac-dedeclare`, `quick-git-check-in` — notably, every script written
-during the current cleanup era.
-
-| Script | Findings | Dominant issue |
-| --- | --- | --- |
-| `tools/yadm-checker.sh` | 20 | unused nord color vars (SC2034), unquoted expansions |
-| `tools/dot-update` | 14 | unquoted expansions (SC2086), unchecked `cd` (SC2164) |
-| `tools/polybar_alsa_module` | 11 | unquoted `[[ ]]` comparisons (SC2053), expansions |
-| `tools/vendor_repos` | 6 | unquoted expansions |
-| `tools/screenshot` | 3 | unquoted expansions |
-| `squash`, `pulseaudio-tail.sh`, `metapac-drift-report`, `aur-quarantine` | 2 each | misc |
-| `new_script`, `lock`, `dot-color` | 1 each | misc |
-
-Aggregate by code: SC2086 unquoted expansion ×33, SC2034 unused variable ×15,
-SC2053 unquoted `==` RHS ×4, rest ×1–2.
-
-Reading of the baseline: findings concentrate in the legacy i3-era helpers
-(`yadm-checker.sh`, `dot-update`, `polybar_alsa_module`), several of which are
-already candidates for archive/replacement (e.g. Story 3.12 replaces the audio
-tooling). That supports classify-then-decide over lint-fixing scripts that may
-not survive cleanup.
-
-## Formatting baseline (shfmt) — 2026-07-09
-
-The 13 small-drift files (spacing/blank-line nits) were formatted in PR #91
-itself with the canonical flags — validated by `bash -n` and an identical
-shellcheck finding set before/after. Two deliberate exclusions remain, to be
-formatted when their own stories touch them:
-
-| Script | Changed lines / total | Why deferred |
-| --- | --- | --- |
-| `tools/aur-quarantine` | 160 / 199 | deliberate dense style — compact multi-statement one-liner functions that shfmt always expands; reformatting is a rewrite decision for its own story |
-| `setup/vm-harness` | 102 / 642 | mixed 2-/4-space indent pockets; actively developed (2.21/2.22) — format inside the next story that touches it to avoid blame noise |
-
-Everything else is `shfmt -i 4 -bn -ci` clean, and new or modified scripts in
-a PR should stay that way.
-
-## Regression tests (clitest) — adopted 2026-07-10
-
-Lint checks that scripts are *written* safely; `tests/*.clitest.txt` checks
-they *behave* correctly, via [clitest](https://github.com/aureliojargas/clitest)
-(host-installed 2026-07-10):
+`bash .github/scripts/ci test` runs:
 
 ```bash
-# from the repo root
 clitest tests/*.clitest.txt
+pytest tests/
+emacs --batch -Q -l tests/spacemacs-config-test.el -f ert-run-tests-batch-and-exit
+lua5.1 .config/yay/hook-harness.lua .config/yay/init.lua
+.config/dotfiles/tests/chaotic-quarantine-gate-test
 ```
 
-- **Ship tests with new logic in the same commit/PR** (Aaron's standing
-  preference): pytest-style tests for python-internal logic, clitest for
-  shell seams — sed/awk filters, CLI flag handling, pass-through/pipeline
-  guarantees, pty behavior (via `script(1)` inside a test).
-- Design testable seams while writing — e.g. `vm-harness scrub` exposes the
-  state-log filter as a subcommand precisely so tests can reach it.
-- Tests must not depend on host state (no libvirt, no network); they are the
-  natural payload for Story 4.7's minimal CI ([#94](https://github.com/amasover/dotfiles/issues/94)).
-- Format gotchas (block termination with a lone `$`, one shared shell session
-  per file): [knowledge/reference/clitest-shell-tests.md](../knowledge/reference/clitest-shell-tests.md).
-- First suite: `tests/vm-harness.clitest.txt` (Story 2.21, PR #102) — scrub
-  filters, display-tool pass-through, display-flag rejections.
+Baseline when Story 4.7 landed:
 
-## Re-running / updating the baseline
+- clitest: 446 cases across 20 files;
+- pytest: 112 cases across five vm-harness modules;
+- Spacemacs config ERT: four isolated contracts;
+- yay hook harness and chaotic quarantine gate: both pass their complete policy matrices.
 
-1. Run the shellcheck and shfmt invocations above; compare against the tables.
-2. A story that cleans up a script updates its row (or removes it) in the same
-   PR and links the story issue.
+Tests must remain deterministic and host-independent: no libvirt, display server, network,
+package mutation, live `$HOME`, or workstation service state. Add tests to these commands;
+do not create an uncalled side suite.
+
+## Secret-scan contract
+
+CI derives betterleaks version and checksum from the tracked PKGBUILD, validates both fields,
+downloads the official release archive, verifies SHA-256, then installs only the binary in
+the disposable job container. The scan uses full Git history plus an explicit range:
+
+- pull request: `github.event.pull_request.base.sha..github.sha` (the tested merge commit);
+- push: `github.event.before..github.sha`;
+- zero/absent before-SHA fallback: the head commit only.
+
+Local equivalent:
+
+```bash
+bash .github/scripts/ci scan-range "$(git merge-base origin/main HEAD)" HEAD
+```
+
+The command requires betterleaks already installed locally. Output is always redacted.
+
+## Local reproduction
+
+Install the same tools through the declared Arch packages, then run:
+
+```bash
+bash .github/scripts/ci lint
+bash .github/scripts/ci test
+```
+
+Run `betterleaks dir . --redact --no-banner` plus a manual privacy pass before publishing.
+The pre-commit hook separately scans the staged diff.
+
+## Safety boundary
+
+CI never runs `setup/bootstrap`, `setup/update`, VM create/up/destroy operations, package
+reconciliation, YADM decrypt/encrypt, desktop commands, or live editor/package mutation.
+Those remain attended workflows with their existing approval gates.

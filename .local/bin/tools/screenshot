@@ -47,6 +47,7 @@ ARGUMENTS
 ####################################################################
 
 quiet=false
+args=()
 
 ####################################################################
 #                                                                  #
@@ -65,13 +66,13 @@ while test $# -gt 0; do
             ;;
         -s | --selected)
             #notify-send "Screenshot" "Select an area to capture in screenshot."
-            args=" -s"
+            args+=(-s)
             ;;
         -f | --focused)
-            args=$args" -u"
+            args+=(-u)
             ;;
         -b | --border)
-            args=$args" -b"
+            args+=(-b)
             ;;
         \?)
             echo "Invalid option: -$OPTARG" >&2
@@ -92,9 +93,9 @@ done
 ####################################################################
 
 function main {
-    screenshot_directory=~/screenshots/$(date +"%Y")/
-    mkdir -p $screenshot_directory
-    scrot -d 2 $screenshot_directory%Y-%m-%d_%H_%M_%S_\$wx\$h.png $args
+    screenshot_directory="$HOME/screenshots/$(date +"%Y")/"
+    mkdir -p "$screenshot_directory"
+    scrot -d 2 "${args[@]}" "${screenshot_directory}%Y-%m-%d_%H_%M_%S_\$wx\$h.png"
 
     if [ "$quiet" = false ]; then
         notify-send "Screenshot Taken" "Saved to ${screenshot_directory}"

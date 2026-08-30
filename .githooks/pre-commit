@@ -11,14 +11,14 @@
 set -u -o pipefail
 
 if command -v betterleaks >/dev/null 2>&1; then
-  git diff --staged | betterleaks stdin --redact --no-banner
+    git diff --staged | betterleaks stdin --redact --no-banner
 elif command -v gitleaks >/dev/null 2>&1; then
-  gitleaks protect --staged --redact --no-banner
+    gitleaks protect --staged --redact --no-banner
 else
-  echo "pre-commit: no secret scanner installed — refusing to commit unscanned." >&2
-  echo "  install:  winget install Betterleaks.Betterleaks   (Windows)" >&2
-  echo "  install:  pacman -S gitleaks   (Arch, until betterleaks is packaged)" >&2
-  echo "  details:  knowledge/recipes/secret-scan.md" >&2
-  echo "  bypass this once (scan manually!):  git commit --no-verify" >&2
-  exit 1
+    echo "pre-commit: no secret scanner installed — refusing to commit unscanned." >&2
+    echo "  install:  winget install Betterleaks.Betterleaks   (Windows)" >&2
+    echo "  install:  pacman -S gitleaks   (Arch, until betterleaks is packaged)" >&2
+    echo "  details:  knowledge/recipes/secret-scan.md" >&2
+    echo "  bypass this once (scan manually!):  git commit --no-verify" >&2
+    exit 1
 fi

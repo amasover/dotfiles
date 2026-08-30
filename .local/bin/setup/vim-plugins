@@ -32,12 +32,12 @@ plugin_names() {
 
 action=${1:-apply}
 case "$action" in
-apply | update | --check | list) ;;
--h | --help)
-    usage
-    exit 0
-    ;;
-*) die "unknown argument: $action   (try: vim-plugins -h)" ;;
+    apply | update | --check | list) ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *) die "unknown argument: $action   (try: vim-plugins -h)" ;;
 esac
 
 vimrc=${2:-$HOME/.vimrc}
@@ -96,20 +96,20 @@ run_plug() {
 }
 
 case "$action" in
-apply)
-    if ((${#drift[@]} == 0)); then
-        echo "  already installed (packaged vim-plug + ${#plugins[@]} fallback plugins)"
-        exit 0
-    fi
-    run_plug PlugInstall
-    find_drift
-    ((${#drift[@]} == 0)) || die "vim-plug returned with unresolved drift: ${drift[*]}"
-    echo "  installed fallback Vim plugins from $vimrc"
-    ;;
-update)
-    run_plug PlugUpdate
-    find_drift
-    ((${#drift[@]} == 0)) || die "vim-plug returned with unresolved drift: ${drift[*]}"
-    echo "  updated fallback Vim plugins from $vimrc"
-    ;;
+    apply)
+        if ((${#drift[@]} == 0)); then
+            echo "  already installed (packaged vim-plug + ${#plugins[@]} fallback plugins)"
+            exit 0
+        fi
+        run_plug PlugInstall
+        find_drift
+        ((${#drift[@]} == 0)) || die "vim-plug returned with unresolved drift: ${drift[*]}"
+        echo "  installed fallback Vim plugins from $vimrc"
+        ;;
+    update)
+        run_plug PlugUpdate
+        find_drift
+        ((${#drift[@]} == 0)) || die "vim-plug returned with unresolved drift: ${drift[*]}"
+        echo "  updated fallback Vim plugins from $vimrc"
+        ;;
 esac

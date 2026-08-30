@@ -24,11 +24,14 @@
 set -euo pipefail
 
 say() { printf '\n==> %s\n' "$*"; }
-die() { printf 'vm-harness-guest: FATAL: %s\n' "$*" >&2; exit 2; }
+die() {
+    printf 'vm-harness-guest: FATAL: %s\n' "$*" >&2
+    exit 2
+}
 
 # Guard a flag that takes a value: `need "$@"` before reading $2, so a
 # dangling `--class` dies with the usual message instead of tripping `set -u`.
-need() { (( $# >= 2 )) || die "$1 needs a value"; }
+need() { (($# >= 2)) || die "$1 needs a value"; }
 
 usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; }
 
@@ -48,12 +51,28 @@ render_toml() {
 
 cmd_bootstrap() {
     local class='' repo='' branch='' hardware=''
-    while (( $# )); do
+    while (($#)); do
         case $1 in
-            --class)         need "$@"; class=$2; shift 2 ;;
-            --repo)          need "$@"; repo=$2; shift 2 ;;
-            --branch)        need "$@"; branch=$2; shift 2 ;;
-            --hardware-pkgs) need "$@"; hardware=$2; shift 2 ;;
+            --class)
+                need "$@"
+                class=$2
+                shift 2
+                ;;
+            --repo)
+                need "$@"
+                repo=$2
+                shift 2
+                ;;
+            --branch)
+                need "$@"
+                branch=$2
+                shift 2
+                ;;
+            --hardware-pkgs)
+                need "$@"
+                hardware=$2
+                shift 2
+                ;;
             *) die "bootstrap: unknown argument '$1'" ;;
         esac
     done
@@ -86,7 +105,7 @@ cmd_bootstrap() {
     yadm config local.class "$class"
     yadm alt
     mkdir -p "$HOME/.local/share/metapac"
-    render_toml "$hardware" > "$HOME/.local/share/metapac/machine-local.toml"
+    render_toml "$hardware" >"$HOME/.local/share/metapac/machine-local.toml"
     "$HOME/.local/bin/setup/bootstrap" --check --unattended
     "$HOME/.local/bin/setup/bootstrap" --unattended
 }
@@ -98,8 +117,11 @@ cmd_check() {
     # `2>/dev/null` and set -e this died silently, and the host only saw
     # "guest command failed (rc=127)". Keep stderr, report the rc.
     out=$(metapac unmanaged) || rc=$?
-    (( rc == 0 )) || die "metapac unmanaged failed (rc=$rc) — the gate did not run"
-    if [ -z "$out" ]; then echo OK; else echo "$out"; exit 1; fi
+    ((rc == 0)) || die "metapac unmanaged failed (rc=$rc) — the gate did not run"
+    if [ -z "$out" ]; then echo OK; else
+        echo "$out"
+        exit 1
+    fi
     echo '--- enabled services (sample):'
     systemctl is-enabled sshd NetworkManager 2>/dev/null || true
     echo '--- graphical target reachable:'
@@ -110,9 +132,13 @@ cmd_check() {
 
 cmd_render_toml() {
     local hardware=''
-    while (( $# )); do
+    while (($#)); do
         case $1 in
-            --hardware-pkgs) need "$@"; hardware=$2; shift 2 ;;
+            --hardware-pkgs)
+                need "$@"
+                hardware=$2
+                shift 2
+                ;;
             *) die "render-toml: unknown argument '$1'" ;;
         esac
     done
@@ -121,9 +147,18 @@ cmd_render_toml() {
 }
 
 case "${1:-}" in
-    bootstrap)   shift; cmd_bootstrap "$@" ;;
-    check)       cmd_check ;;
-    render-toml) shift; cmd_render_toml "$@" ;;
-    ''|help)     usage; [[ "${1:-}" == help ]] || exit 2 ;;
-    *)           die "unknown subcommand '$1'" ;;
+    bootstrap)
+        shift
+        cmd_bootstrap "$@"
+        ;;
+    check) cmd_check ;;
+    render-toml)
+        shift
+        cmd_render_toml "$@"
+        ;;
+    '' | help)
+        usage
+        [[ "${1:-}" == help ]] || exit 2
+        ;;
+    *) die "unknown subcommand '$1'" ;;
 esac

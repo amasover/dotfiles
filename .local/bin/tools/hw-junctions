@@ -25,9 +25,9 @@ set -euo pipefail
 
 # nord palette, matching themes/nord/colors (inline hexes: polybar resolves
 # ${colors.x} references only as whole values, so generated keys carry hex)
-nord7='#8FBCBB'  # volume-tail bg
-nord8='#88C0D0'  # temperature bg
-nord9='#81A1C1'  # battery bg
+nord7='#8FBCBB' # volume-tail bg
+nord8='#88C0D0' # temperature bg
+nord9='#81A1C1' # battery bg
 
 cmd_emit() {
     local sys="${1:-/sys}" temp=0 bat=0 bat_prev time_prev
@@ -41,7 +41,10 @@ cmd_emit() {
 }
 
 case "${1:-}" in
-emit) cmd_emit "${2:-}" ;;
--h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
-*) echo "hw-junctions: unknown subcommand: ${1:-<none>}   (try: hw-junctions -h)" >&2; exit 1 ;;
+    emit) cmd_emit "${2:-}" ;;
+    -h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
+    *)
+        echo "hw-junctions: unknown subcommand: ${1:-<none>}   (try: hw-junctions -h)" >&2
+        exit 1
+        ;;
 esac

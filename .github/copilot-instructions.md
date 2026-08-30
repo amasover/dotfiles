@@ -257,6 +257,9 @@ Use a staged cleanup model.
 
 ## Validation expectations
 
+`.github/scripts/ci` is the local and hosted source of truth; `.github/workflows/ci.yml`
+runs it for every pull request and `main` push.
+
 For docs-only changes:
 
 - Check Markdown readability.
@@ -265,8 +268,8 @@ For docs-only changes:
 
 For shell scripts:
 
-- Prefer `shellcheck` when available.
-- Run syntax-only validation where safe, for example `bash -n <script>`.
+- Run `bash .github/scripts/ci lint`; every tracked Bash/sh script must stay
+  shellcheck-clean and canonical-shfmt-clean, with syntax checks for Bash/sh/Zsh/Lua.
 - Do not execute install/update scripts unless explicitly approved.
 
 For tests (see [docs/runbook-script-validation.md](../docs/runbook-script-validation.md)):
@@ -275,14 +278,14 @@ For tests (see [docs/runbook-script-validation.md](../docs/runbook-script-valida
   agents write to be unit-tested. Python-internal logic gets pytest-style
   tests; shell seams (sed/awk filters, CLI flag handling, pass-through and
   pipeline guarantees, pty behavior) get clitest cases.
-- Shell-level regression tests live in `tests/*.clitest.txt`; run from the
-  repo root: `clitest tests/*.clitest.txt`. Run the suite when touching
-  anything it covers, and extend it alongside the change.
+- Shell-level regression tests live in `tests/*.clitest.txt`. Run the complete enforced
+  set with `bash .github/scripts/ci test` when touching covered behavior, and extend it
+  alongside the change.
 - Design testable seams while writing: expose internal filters/logic as
   invokable subcommands (example: `vm-harness scrub`) rather than leaving
   them reachable only through a full run.
-- Tests must not depend on host state (no libvirt, no network) — they are
-  CI candidates (Story 4.7, #94). Format gotchas and conventions:
+- Tests must not depend on host state (no libvirt, network, live `$HOME`, or services);
+  CI runs them on disposable Arch. Format gotchas and conventions:
   [knowledge/reference/clitest-shell-tests.md](../knowledge/reference/clitest-shell-tests.md).
 
 For shell config:

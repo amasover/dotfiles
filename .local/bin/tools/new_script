@@ -59,7 +59,7 @@ full=${path}/$name
 if [[ -f "${full}" ]]; then
     echo "Error: ${name} already exists in ${path}"
     echo "Edit $name? y/n"
-    read answer
+    read -r answer
     if [[ "${answer}" != "n" ]]; then
         nvim "${full}"
     fi

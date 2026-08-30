@@ -19,24 +19,24 @@ cmd_pct() { # "Volume: 0.45 [MUTED]" → 45
 }
 
 case "${1:-}" in
---up) wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ "${2:-3}%+" ;;
---down) wpctl set-volume @DEFAULT_AUDIO_SINK@ "${2:-3}%-" ;;
---mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
-pct) cmd_pct ;;
--h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
---padright | "")
-    padright=""
-    [[ "${1:-}" == --padright ]] && padright="${2-}"
-    while true; do
-        printf '%s%s\n' "$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | cmd_pct)" "$padright"
-        sleep 0.2 &
-        wait $!
-    done
-    ;;
-*)
-    # a typo'd flag in a theme's click/scroll action must not detach an
-    # infinite tail loop per click — fail loudly instead
-    echo "usage: volume-tail [--padright S] | --up|--down [N] | --mute | pct" >&2
-    exit 2
-    ;;
+    --up) wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ "${2:-3}%+" ;;
+    --down) wpctl set-volume @DEFAULT_AUDIO_SINK@ "${2:-3}%-" ;;
+    --mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+    pct) cmd_pct ;;
+    -h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
+    --padright | "")
+        padright=""
+        [[ "${1:-}" == --padright ]] && padright="${2-}"
+        while true; do
+            printf '%s%s\n' "$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | cmd_pct)" "$padright"
+            sleep 0.2 &
+            wait $!
+        done
+        ;;
+    *)
+        # a typo'd flag in a theme's click/scroll action must not detach an
+        # infinite tail loop per click — fail loudly instead
+        echo "usage: volume-tail [--padright S] | --up|--down [N] | --mute | pct" >&2
+        exit 2
+        ;;
 esac

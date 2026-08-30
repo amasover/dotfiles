@@ -37,7 +37,10 @@ EOF
 }
 set -euo pipefail
 
-command -v jq >/dev/null || { echo "claude-plugins: jq not found" >&2; exit 1; }
+command -v jq >/dev/null || {
+    echo "claude-plugins: jq not found" >&2
+    exit 1
+}
 
 # stdin: current settings JSON; stdout: settings with the declaration merged.
 # Our entries win for our keys; everything else (other plugins included) is
@@ -56,35 +59,35 @@ settings_or_empty() { # $1 = settings path; {} when absent or empty
 }
 
 case "${1:-apply}" in
-merge)
-    merge
-    ;;
---check)
-    file="${2:-$HOME/.claude/settings.json}"
-    if [[ "$(settings_or_empty "$file")" == "$(settings_or_empty "$file" | merge)" ]]; then
-        echo "  already declared ($file)"
-    else
-        echo "  would: merge plugin declaration into $file"
+    merge)
+        merge
+        ;;
+    --check)
+        file="${2:-$HOME/.claude/settings.json}"
+        if [[ "$(settings_or_empty "$file")" == "$(settings_or_empty "$file" | merge)" ]]; then
+            echo "  already declared ($file)"
+        else
+            echo "  would: merge plugin declaration into $file"
+            exit 1
+        fi
+        ;;
+    apply)
+        file="${2:-$HOME/.claude/settings.json}"
+        if [[ "$(settings_or_empty "$file")" == "$(settings_or_empty "$file" | merge)" ]]; then
+            echo "  already declared ($file)"
+            exit 0
+        fi
+        mkdir -p "$(dirname "$file")"
+        tmp=$(mktemp "$(dirname "$file")/.settings.XXXXXX")
+        settings_or_empty "$file" | merge >"$tmp"
+        mv "$tmp" "$file"
+        echo "  declared Claude Code plugins in $file (registered on next claude launch)"
+        ;;
+    -h | --help)
+        sed -n '2,/^declaration/{/^declaration/d; s/^# \{0,1\}//p;}' "$0"
+        ;;
+    *)
+        echo "claude-plugins: unknown argument: $1   (try: claude-plugins -h)" >&2
         exit 1
-    fi
-    ;;
-apply)
-    file="${2:-$HOME/.claude/settings.json}"
-    if [[ "$(settings_or_empty "$file")" == "$(settings_or_empty "$file" | merge)" ]]; then
-        echo "  already declared ($file)"
-        exit 0
-    fi
-    mkdir -p "$(dirname "$file")"
-    tmp=$(mktemp "$(dirname "$file")/.settings.XXXXXX")
-    settings_or_empty "$file" | merge >"$tmp"
-    mv "$tmp" "$file"
-    echo "  declared Claude Code plugins in $file (registered on next claude launch)"
-    ;;
--h | --help)
-    sed -n '2,/^declaration/{/^declaration/d; s/^# \{0,1\}//p;}' "$0"
-    ;;
-*)
-    echo "claude-plugins: unknown argument: $1   (try: claude-plugins -h)" >&2
-    exit 1
-    ;;
+        ;;
 esac

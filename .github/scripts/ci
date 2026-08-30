@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Local/CI entry point for Story 4.7 repository validation.
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+fail() {
+    printf 'ci: %s\n' "$*" >&2
+    exit 1
+}
+
+lint() {
+    local path first
+    local -a bash_files=() sh_files=() zsh_files=() lua_files=()
+
+    while IFS= read -r -d '' path; do
+        [[ -f $path ]] || continue
+        first=
+        IFS= read -r first <"$path" || true
+        case "$first" in
+            *bash) bash_files+=("$path") ;;
+            */sh) sh_files+=("$path") ;;
+            *zsh) zsh_files+=("$path") ;;
+        esac
+    done < <(git ls-files -z)
+
+    ((${#bash_files[@]} > 0)) || fail "no tracked Bash scripts found"
+    ((${#sh_files[@]} > 0)) || fail "no tracked sh scripts found"
+    shellcheck --format=gcc "${bash_files[@]}" "${sh_files[@]}"
+    shfmt -i 4 -bn -ci -d "${bash_files[@]}" "${sh_files[@]}"
+
+    for path in "${bash_files[@]}"; do bash -n "$path"; done
+    for path in "${sh_files[@]}"; do sh -n "$path"; done
+    for path in "${zsh_files[@]}"; do zsh -n "$path"; done
+
+    mapfile -d '' lua_files < <(git ls-files -z -- '*.lua')
+    ((${#lua_files[@]} > 0)) || fail "no tracked Lua files found"
+    luac5.1 -p "${lua_files[@]}"
+    actionlint
+}
+
+test_suites() {
+    clitest tests/*.clitest.txt
+    pytest tests/
+    emacs --batch -Q \
+        -l tests/spacemacs-config-test.el \
+        -f ert-run-tests-batch-and-exit
+    lua5.1 .config/yay/hook-harness.lua .config/yay/init.lua
+    .config/dotfiles/tests/chaotic-quarantine-gate-test
+}
+
+scan_range() {
+    local base=${1:-} head=${2:-} log_opts
+    [[ $head =~ ^[0-9a-f]{40,64}$ ]] || fail "invalid head commit: ${head:-<empty>}"
+    if [[ -z $base || $base =~ ^0+$ ]]; then
+        log_opts="${head}^!"
+    else
+        [[ $base =~ ^[0-9a-f]{40,64}$ ]] || fail "invalid base commit: $base"
+        log_opts="${base}..${head}"
+    fi
+
+    git cat-file -e "${head}^{commit}"
+    GIT_CONFIG_COUNT=1 \
+        GIT_CONFIG_KEY_0=safe.directory \
+        GIT_CONFIG_VALUE_0="$root" \
+        betterleaks git . \
+        --log-opts "$log_opts" \
+        --platform github \
+        --redact \
+        --no-banner \
+        --no-color \
+        --timeout 120
+}
+
+case "${1:-}" in
+    lint) lint ;;
+    test) test_suites ;;
+    scan-range)
+        shift
+        scan_range "$@"
+        ;;
+    *) fail "usage: .github/scripts/ci lint|test|scan-range BASE HEAD" ;;
+esac

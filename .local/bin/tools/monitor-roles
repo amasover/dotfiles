@@ -77,7 +77,10 @@ case "${1-}" in
     assign) assign ;;
     merge-env)
         [ $# -eq 2 ] || usage
-        [ -r "$2" ] || { echo "monitor-roles: cannot read $2" >&2; exit 1; }
+        [ -r "$2" ] || {
+            echo "monitor-roles: cannot read $2" >&2
+            exit 1
+        }
         merge_env "$2"
         ;;
     *) usage ;;
