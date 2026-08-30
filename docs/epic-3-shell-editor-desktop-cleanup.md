@@ -170,9 +170,9 @@ So that intentional changes are salvaged and genuinely stale config is dropped w
 
 ---
 
-### Story 3.7: Fix xidlehook not starting on boot
+### Story 3.7: Fix xidlehook not starting on boot ✅
 
-**Issue:** [#14](https://github.com/amasover/dotfiles/issues/14)
+**Issue:** [#14](https://github.com/amasover/dotfiles/issues/14) (closed, PR [#221](https://github.com/amasover/dotfiles/pull/221))
 
 As the repo owner,
 I want xidlehook to start automatically at boot,
