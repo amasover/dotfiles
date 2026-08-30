@@ -129,25 +129,25 @@ find $DOTFILES_CHECKOUT/docs -type f -name '*.md' -print | sort
 
 ---
 
-### 5. Shell and script validation
+### 5. Shell, workflow, and regression validation
 
-For shell config and scripts, prefer syntax checks over execution.
-
-Examples:
-
-```bash
-bash -n $DOTFILES_CHECKOUT/.local/bin/setup/install
-bash -n $DOTFILES_CHECKOUT/.local/bin/setup/update
-find $DOTFILES_CHECKOUT/.local/bin/tools -type f -maxdepth 1 -print
-```
-
-If `shellcheck` is available:
+The enforced command set lives in [`.github/scripts/ci`](../.github/scripts/ci) and
+runs through [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) on every pull
+request and `main` push. Reproduce it locally from the repo root:
 
 ```bash
-shellcheck $DOTFILES_CHECKOUT/.local/bin/setup/install
+bash .github/scripts/ci lint
+bash .github/scripts/ci test
 ```
 
-Do not execute setup scripts as tests unless explicitly approved.
+The lint command discovers every tracked Bash/sh/Zsh script by shebang, applies the
+repository-wide shellcheck/shfmt/syntax contract, parses all Lua, and validates workflow
+YAML with actionlint. The test command runs clitest, pytest, isolated Spacemacs ERT, and
+the standalone yay/chaotic policy suites.
+
+CI and local regression validation exercise host-independent seams only. Do not execute
+`setup/bootstrap`, `setup/update`, package reconciliation, VM lifecycle commands, or live
+desktop/editor mutations as tests.
 
 ---
 
