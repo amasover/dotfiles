@@ -71,7 +71,7 @@ else
 fi
 
 print $'\nEmacs Copilot language server...'
-"$HOME/.local/bin/setup/copilot-language-server" apply || {
+"$HOME/.local/bin/setup/emacs-copilot-server" apply || {
     echo $'\nCopilot language server reconciliation failed; Emacs was left running.' >&2
     exit 1
 }

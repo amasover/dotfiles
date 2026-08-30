@@ -86,9 +86,15 @@ shows its own plan and prompts (makepkg, metapac sync, chsh). What it does, in o
 Focused editor validation from the repo checkout:
 
 ```bash
-clitest tests/copilot-language-server.clitest.txt
+clitest tests/emacs-copilot-server.clitest.txt
 emacs --batch -Q -l tests/spacemacs-config-test.el -f ert-run-tests-batch-and-exit
+SPACEMACS_EXPECT_TREEMACS_PROJECTS=1 tests/spacemacs-live-smoke  # attended laptop
 ```
+
+The first two checks are host-independent. The GUI smoke runs after normal Spacemacs
+startup and fails on programming-mode hook exceptions, missing line numbers, hidden or
+broken Treemacs, and (when requested) an empty persisted Treemacs workspace. Its JSON
+result contains state/counts only—never project paths.
 
 ## Class table
 

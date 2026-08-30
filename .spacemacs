@@ -2,6 +2,18 @@
 ;; This file is loaded by Spacemacs at startup.
 ;; It must be stored in your home directory.
 
+(defun dotfiles/configure-copilot ()
+  "Apply key bindings and server settings after copilot.el is loaded."
+  (define-key copilot-completion-map (kbd "<C-tab>") 'copilot-accept-completion)
+  (define-key copilot-completion-map (kbd "C-TAB") 'copilot-accept-completion)
+  (setq copilot-lsp-settings
+        '(:github (:copilot (:selectedCompletionModel "gpt-41-copilot")))))
+
+(defun dotfiles/register-copilot-config ()
+  "Defer Copilot customization until its package defines the keymap."
+  (with-eval-after-load 'copilot
+    (dotfiles/configure-copilot)))
+
 (defun dotspacemacs/layers ()
   "Layer configuration:
 This function should only modify configuration layer settings."
@@ -840,9 +852,7 @@ before packages are loaded."
   ;;   :load-path "~/.emacs.d/lisp/init-gptel.el")
 
   ;;(add-to-list 'auto-mode-alist '("\\.*\\'" . copilot-mode))
-  (define-key copilot-completion-map (kbd "<C-tab>") 'copilot-accept-completion)
-  (define-key copilot-completion-map (kbd "C-TAB") 'copilot-accept-completion)
-  (setq copilot-lsp-settings '(:github (:copilot (:selectedCompletionModel "gpt-41-copilot"))))
+  (dotfiles/register-copilot-config)
 
   ;; (load "~/.emacs.d/lisp/init-gptel.el")
 

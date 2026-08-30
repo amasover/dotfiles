@@ -1035,7 +1035,7 @@ fi
 # github-copilot.el needs its separate npm-distributed server before first GUI
 # launch. Pin and verify it here; metapac installed official nodejs/npm above.
 say "Emacs Copilot language server"
-copilot_server="${BASH_SOURCE[0]%/*}/copilot-language-server"
+copilot_server="${BASH_SOURCE[0]%/*}/emacs-copilot-server"
 if [[ $CHECK -eq 1 ]]; then
     "$copilot_server" --check || true
 else
