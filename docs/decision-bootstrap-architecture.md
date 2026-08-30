@@ -69,33 +69,28 @@ Config lives in `.config/metapac/` (yadm-tracked → placed on every machine).
   "{{ yadm.hostname }}" = [ ...class-conditional purpose groups..., "inbox-<class>" ]
   ```
 
-  **`yadm.class` is the machine profile selector**: a public-safe label, unique per
-  machine by convention (e.g. `workstation`, `laptop`). It picks the group list in the
-  template *and* names the machine's inbox. If two machines ever want the same profile,
-  give them distinct classes (yadm ≥3.2 allows multiple classes if a shared profile
-  class is ever worth it). This resolves the Story 2.2 privacy heads-up: the
-  work-shaped hostname exists only in the rendered, untracked file.
+- **`yadm.class` is the concrete machine-profile selector**: a public-safe label
+  that chooses the shared purpose set, one real hardware adapter, and one inbox.
+  Story 2.30 establishes `workstation` (Intel laptop), `daily-vm` (VMware), and
+  `qemu-harness` (libvirt/QEMU). New hardware gets a new adapter/class instead of
+  a caller-injected package list.
+  Class labels stay public-safe; the real hostname exists only in rendered, untracked config.
 
-- **Groups** (`groups/*.toml`) = the Story 2.2 purpose groups made executable.
-  **The inventory's fine-grained taxonomy is normative** (grill 2026-07-02): ~16 groups
-  as proposed in [package-inventory.md](./package-inventory.md) — with two renames:
-  core-system → `base`, cloud-infra → `work` (opt-in per class, decision D2) — plus
-  `inbox-<class>` (see below). Fine groups compose better per class (a laptop takes
-  `browsers`/`office` but not `printing`/`virt`/`gaming`) and the per-package triage
-  behind them is already done. Any shorter group list elsewhere in this doc is
-  illustrative. Per-package `hooks` handle service enablement next to the package that
-  needs it (e.g. `after_sync` → `systemctl enable`).
+- **Groups** (`groups/*.toml`) keep the Story 2.2 fine-grained purpose taxonomy.
+  Story 2.30 centralizes 15 universal purposes in `profiles/common.groups`, adds
+  `work` only to the physical workstation, and composes one hardware adapter plus
+  one inbox per concrete class. Fine groups remain independently reusable when a
+  future profile needs a smaller purpose set. Bootstrap owns NetworkManager
+  enablement after package reconcile because every current class selects its stack.
 
 - **Auto-capture of new installs (Aaron's requirement):** a small **yay `PostInstall`
   Lua hook** appends newly *explicitly* installed packages (payload has `reason` +
   `source`, and `local_version` is empty on a first install — upgrades are skipped)
-  that aren't declared in any group to **`groups/inbox-<class>.toml`** — one inbox
-  file per machine, each machine's group list naming only its own (grill 2026-07-02: a
-  single shared `inbox.toml` would auto-*install* untriaged packages onto every other
-  machine at its next `metapac sync`, and is a merge-conflict magnet once a second
-  machine exists; named by *class*, not hostname, because a tracked filename is as
-  public as its contents). Inbox files stay YADM-tracked so untriaged drift is visible
-  in `yadm status`.
+  that aren't declared in this machine's rendered groups to its active
+  **`groups/inbox-<class>.toml`**. All class inboxes are tracked, so directory
+  counting is invalid; the hook resolves the single active inbox from rendered
+  `hostname_groups`. This prevents one machine's untriaged install from being
+  auto-installed elsewhere and avoids cross-machine merge conflicts.
   Triage flow: packages land in the host's inbox automatically at install time; Aaron
   periodically moves them to their proper group (or drops them, and `metapac clean`
   proposes the uninstall). Backstop: `metapac unmanaged` catches anything the hook

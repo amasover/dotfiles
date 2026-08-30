@@ -98,13 +98,19 @@ result contains state/counts only—never project paths.
 
 ## Class table
 
-| Class | Meaning | Group list |
-| --- | --- | --- |
-| `workstation` | the daily driver (this machine) | all 16 purpose groups + `inbox-workstation` + machine-local |
+All classes include the same 15 purpose groups from
+`.config/metapac/profiles/common.groups` plus the private machine-local group.
 
-New machine ≈ new class: add a branch to `config.toml##template` with its group list
-and an `inbox-<class>.toml`, set `yadm config local.class`, `yadm alt`. Classes are
-public-safe labels; one per machine (see CONTEXT.md).
+| Class | Intended machine | Added groups |
+| --- | --- | --- |
+| `workstation` | Current physical Intel laptop | `work`, `hardware-intel-laptop`, `inbox-workstation` |
+| `daily-vm` | Windows-hosted VMware daily driver | `guest-vmware`, `inbox-daily-vm` |
+| `qemu-harness` | Disposable libvirt validation guest | `guest-qemu`, `inbox-qemu-harness` |
+
+Each concrete class selects exactly one hardware adapter and one inbox. To add a
+machine profile, add its guarded template branch, adapter, and inbox; set
+`yadm config local.class <class>`, then run `yadm alt`. Bootstrap enables
+NetworkManager for every class after package reconcile.
 
 ## Daily-drivable acceptance (the cleanup-era milestone bar)
 

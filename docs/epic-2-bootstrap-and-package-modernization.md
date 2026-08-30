@@ -666,26 +666,48 @@ Issue: [#95](https://github.com/amasover/dotfiles/issues/95) · The vm-harness a
 
 ---
 
-### Story 2.30: `daily-vm` class — hardware group split + guest tools
+### Story 2.30: concrete machine classes and hardware adapters
 
 As the repo owner,
-I want a machine class for the daily-driver VM, with hardware-bound packages split
-out of the shared groups,
-So that the Windows-hosted VM (the cleanup era's rebuild milestone target —
-[decision-daily-driver-vm.md](./decision-daily-driver-vm.md)) reconciles from the
-same purpose groups as metal machines instead of forked variants.
+I want each managed machine profile to select one concrete hardware adapter and
+its own package inbox,
+So that laptop, VMware, and QEMU packages cannot leak across machines that share
+the same purpose groups.
 
-Issue: [#96](https://github.com/amasover/dotfiles/issues/96) · Origin: 2026-07-10 repo-direction grill Q4/Q5. Class name `daily-vm` is a working name — finalize in-story (public-safe, lands in the tracked template).
+Issue: [#96](https://github.com/amasover/dotfiles/issues/96) · Origin: 2026-07-10
+repo-direction grill plus live Intel/harness/shared-inbox evidence.
+
+Decision (2026-08-30): three public-safe classes are real adapters at the
+`yadm.class` seam: `workstation` selects `hardware-intel-laptop`, `daily-vm`
+selects `guest-vmware`, and `qemu-harness` selects `guest-qemu`. All consume one
+included 15-group purpose list; only `workstation` adds `work`. Each class names
+exactly one `inbox-<class>`, and yay resolves that inbox from rendered
+`hostname_groups` rather than counting every tracked inbox file.
+
+The Intel adapter owns ACPI, firmware, refind, Intel media, and 64/32-bit Intel
+Vulkan. AMD and VESA DDX/Vulkan packages are retired; built-in Xorg modesetting
+stays the laptop driver. Guest adapters own their hypervisor tools and zram.
+Both harnesses now pass only a class; the temporary `--hardware-pkgs` and
+machine-local hardware injection interface is deleted. NetworkManager is
+enabled idempotently after package reconcile for every class.
+
+The old workstation inbox is fully triaged: existing duplicates leave the
+inbox; `1password-cli` moves to security; `bun`, `playwright`, and
+`python-pycdlib` move to development. Playwright remains intentionally shared.
 
 **Acceptance criteria:**
 
-- Given the nine hardware-bound packages (`acpi`, `acpid`, `intel-ucode`, `linux-firmware`, `refind`, `refind-theme-nord`, `xf86-video-{amdgpu,intel,vesa}`), when the split lands, then they move from `base`/`desktop` into a new `hardware` purpose group, and the `workstation` class activates it — a dry-run reconcile on the live machine shows a no-op
-- Given the new class, when its template branch renders, then it activates every purpose group except `work` and `hardware`, plus a new guest-tools group (`open-vm-tools`, `xf86-video-vmware`) and its own `inbox-<class>.toml`
-- Given the runbook's class table, when the class lands, then the table documents both classes and their group deltas
-- Given the vm-harness default class is `workstation`, when the split lands, then harness runs still converge (the hardware group installs harmlessly under QEMU, or the harness class choice is revisited — decided in-story)
-- Given harness guests boot with NetworkManager disabled (archinstall's default networking — observed in the 2026-07-19 check-phase service sample), when the daily-vm class lands, then the guest's network stack is decided deliberately: enable NetworkManager to match the declared NM applet/dispatcher stack, or document the alternative
+- Given each class, isolated `yadm alt` rendering selects the shared purpose set, exactly one concrete hardware adapter, exactly one inbox, and no other class's adapter/inbox
+- Given the laptop profile, Intel media plus 64/32-bit Vulkan are declared while AMD/VESA packages are absent
+- Given either VM harness, guest bootstrap passes only its concrete class and tracked groups own every hypervisor package; machine-local remains private-only
+- Given multiple tracked inbox files, a fresh explicit yay install is compared only with active rendered groups and appends only to that class's inbox
+- Given every class selects the NetworkManager stack, bootstrap check/apply reports or establishes NetworkManager enabled and active
+- Given live laptop reconciliation, declared-but-missing is empty and the class split introduces zero new unmanaged packages
 
-**Evidence artifact:** groups/template diff, a live no-op dry-run, and the updated class table.
+**Evidence artifact:** `tests/metapac-classes.clitest.txt` (25 cases), yay hook
+harness active-inbox case, updated shared-guest tests, full CI suite, live
+`workstation` render/bootstrap check, signed repo install of Intel Vulkan
+(64/32-bit) and Playwright, and removal of the obsolete AMD/VESA/xautolock set.
 
 ---
 
@@ -829,12 +851,11 @@ story. Slice-3 decisions:
 - **Guest glue is one shared file**, `.local/bin/setup/vm-harness-guest`
   (`bootstrap`|`check` subcommands, clitest-covered, LF-pinned): scp'd into the
   guest at bootstrap time so the guest runs the host checkout's version;
-  parameterized `--class`/`--repo`/`--branch`/`--hardware-pkgs`. The hardware
-  set is the one per-hypervisor difference (VMware: `open-vm-tools
-  zram-generator`; QEMU: `qemu-guest-agent zram-generator`) and is what Story
-  2.30's class/hardware split later absorbs. The libvirt harness swaps its
-  inline ssh strings for the same file in a later Linux-side PR where it can be
-  validated; until then the duplication is deliberate and tracked on #119.
+  parameterized `--class`/`--repo`/`--branch` plus a temporary
+  `--hardware-pkgs` adapter. Story 2.30 later removed that hardware parameter:
+  concrete class groups now own VMware/QEMU tools instead of machine-local
+  injection. Story 2.41 later swapped libvirt's inline strings for the shared
+  helper and validated the cutover on the Linux host.
 - **`exec` is ssh-backed with the agent's limitations dropped**: root@ip while
   install media is attached (live ISO), aaron@ip after eject (picked via the
   `media` query, no flag); remote exit code propagated (divergence from the
@@ -1150,6 +1171,10 @@ package names are not glob-expanded against the guest's cwd).
 branch, completed bootstrap with `rc=0`, then completed check with `rc=0`;
 unmanaged and declared-but-missing were both empty. Log set:
 `20260829-201006-{bootstrap,check}.log`.
+
+Story 2.30 later removes 2.41's per-hypervisor hardware argument; the shared
+helper still owns both harness paths, while each harness now selects a concrete
+tracked class adapter.
 
 ---
 
