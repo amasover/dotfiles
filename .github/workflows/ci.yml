@@ -62,6 +62,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Trust checked-out container worktree
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Install pinned betterleaks
         run: |
           pkgbuild=.config/dotfiles/pkgbuilds/betterleaks/PKGBUILD
