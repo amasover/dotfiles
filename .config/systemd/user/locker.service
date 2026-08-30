@@ -1,0 +1,12 @@
+[Unit]
+Description=Lock i3 session on logind lock events
+After=lock.target
+PartOf=lock.target
+OnSuccess=unlock.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/tools/lock --no-fork
+
+[Install]
+WantedBy=lock.target

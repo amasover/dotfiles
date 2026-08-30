@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+tools=$HOME/.local/bin/tools
+
+exec xidlehook \
+    --detect-sleep \
+    --not-when-fullscreen \
+    --timer 300 "$tools/lock" "" \
+    --timer 600 "xset dpms force off" "" \
+    --timer 900 "$tools/hibernate on-battery" "" \
+    --timer 3600 "$tools/hibernate on-laptop" ""

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+    echo "usage: hibernate on-battery|on-laptop" >&2
+    exit 2
+}
+
+mode=${1-}
+[[ $# -eq 1 ]] || usage
+
+power_root=${POWER_SUPPLY_ROOT:-/sys/class/power_supply}
+systemctl_cmd=${HIBERNATE_SYSTEMCTL-}
+if [[ $power_root != /sys/class/power_supply && -z $systemctl_cmd ]]; then
+    echo "hibernate: POWER_SUPPLY_ROOT requires HIBERNATE_SYSTEMCTL" >&2
+    exit 2
+fi
+if [[ -n $systemctl_cmd && ! -x $systemctl_cmd ]]; then
+    echo "hibernate: HIBERNATE_SYSTEMCTL is not executable: $systemctl_cmd" >&2
+    exit 2
+fi
+systemctl_cmd=${systemctl_cmd:-systemctl}
+shopt -s nullglob
+status_files=("$power_root"/BAT*/status)
+((${#status_files[@]})) || exit 0
+
+case $mode in
+    on-battery)
+        for status_file in "${status_files[@]}"; do
+            read -r status <"$status_file" || continue
+            if [[ $status == Discharging ]]; then
+                exec "$systemctl_cmd" hibernate
+            fi
+        done
+        ;;
+    on-laptop)
+        exec "$systemctl_cmd" hibernate
+        ;;
+    *) usage ;;
+esac
