@@ -178,12 +178,33 @@ As the repo owner,
 I want xidlehook to start automatically at boot,
 So that idle-lock / screen-off works without starting it by hand.
 
+Decision (2026-08-29): i3 owns one `xidlehook` process through an
+`exec_always` launcher guarded by a runtime `flock`, so initial startup and i3
+restarts are covered without duplicates. X blanks at 3 minutes; xidlehook locks
+at 5, explicitly powers the panel off at 15, hibernates a discharging laptop at
+30, and hibernates any still-idle laptop at 90. Fullscreen postpones the chain;
+background audio does not. Renewed activity resets it.
+
+`systemd-lock-handler` continues to translate logind events into `lock.target`;
+a tracked `locker.service` now routes that target through the same portable
+pixelated-screen helper. The old xautolock declaration, inline shell pipeline,
+hardcoded home paths, fixed screenshot filename, and commented bespoke DPMS
+implementation are retired.
+
 **Acceptance criteria:**
 
-- Given the machine boots, when the desktop session starts, then xidlehook starts automatically (i3 `exec`, systemd `--user` service, or `.xprofile`)
-- Given xidlehook replaces the old bespoke lock/DPMS logic, when configured, then its behavior is documented and the retired logic is confirmed gone
+- Given initial i3 startup or an in-place restart, exactly one `xidlehook` process runs with the documented timer chain
+- Given i3 reloads repeatedly, the runtime lock prevents duplicate processes
+- Given 3/5/15-minute X and xidlehook policy, blanking, authentication lock, and explicit DPMS power-off each occur at their boundary
+- Given logind starts `lock.target`, tracked `locker.service` locks through the same helper and transitions to `unlock.target` after authentication
+- Given battery fixtures and command stubs, 30/90-minute hibernation selection is deterministic and no fixture can reach real `systemctl hibernate`
 
-**Evidence artifact:** xidlehook autostart config + notes
+**Evidence artifact:** `tests/idle-lock.clitest.txt` (32/32); clean shellcheck,
+shfmt, syntax, and systemd-unit checks; accelerated live blank/lock/DPMS tests;
+one-process i3 restart/reload probes; live `lock.target`/`unlock.target` round trip.
+The existing manual hibernate path remains, but a live hibernate attempt during
+validation was not counted: current swap occupancy left insufficient image
+headroom and the kernel returned `ENOSPC` before thawing the session.
 
 ---
 
