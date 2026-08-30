@@ -122,36 +122,18 @@ mode $mode_gaps {
 set $mode_system " l |  o |  s |   h |   r |  S"
 
 bindsym $mod+Shift+e mode $mode_system
-set $hibernatelocker ~/.local/bin/tools/lock
+set $locker ~/.local/bin/tools/lock
 mode $mode_system {
     bindsym l exec --no-startup-id $locker, mode "default"
     bindsym o exec --no-startup-id i3-msg exit, mode "default"  
     bindsym s exec --no-startup-id systemctl suspend, mode "default"
-    bindsym h exec --no-startup-id $hibernatelocker && systemctl hibernate, mode "default"
+    bindsym h exec --no-startup-id $locker && systemctl hibernate, mode "default"
     bindsym r exec --no-startup-id systemctl reboot, mode "default"
     bindsym Shift+s exec --no-startup-id systemctl poweroff -i, mode "default"
     ## back to normal: Enter or Escape
     bindsym Return mode "default"
     bindsym Escape mode "default"
 }
-
-#set $mode_system "[syst(E)m] | (l)ock, l(o)gout, (s)uspend, (h)ibernate, (r)eboot, (S)hutdown"
-# set $mode_system " l |  o |  s |   h |   r |  S"
-
-#bindsym $mod+Shift+e exec sh ~/.config/rofi/on
-#bindsym $mod+Shift+e mode $mode_system
-#set $locker ~/.local/bin/tools/lock
-#mode $mode_system {
-#    bindsym l exec --no-startup-id $locker, mode "default"
-#    bindsym o exec --no-startup-id i3-msg exit, mode "default"  
-#    bindsym s exec --no-startup-id $locker && systemctl suspend, mode "default"
-#    bindsym h exec --no-startup-id $locker && systemctl hibernate, mode "default"
-#    bindsym r exec --no-startup-id systemctl reboot, mode "default"
-#    bindsym Shift+s exec --no-startup-id systemctl poweroff -i, mode "default"
-#    ## back to normal: Enter or Escape
-#    bindsym Return mode "default"
-#    bindsym Escape mode "default"
-#}
 
 set $mode_modes "[(m)odes] | (g)aps, (r)esize, syst(E)m, (Print)"
 bindsym $mod+m mode $mode_modes
@@ -400,9 +382,8 @@ exec --no-startup-id autorandr --change --force
 #move mail and calendar to ws5. need to sleep in script due to delay in window getting title
 exec --no-startup-id sh ~/.local/bin/tools/move-mail.sh
 
-#suspend stuff
-set $hibernate /home/aaron/.local/bin/tools/hibernate
-set $locker "/home/aaron/.local/bin/tools/lock -n"
-#exec_always --no-startup-id xautolock -detectsleep -time 10 -locker \\"$locker\\" -killtime 15 -killer $hibernate &
-exec_always --no-startup-id xidlehook --not-when-fullscreen --not-when-audio --timer 900 ~/.local/bin/tools/lock pgrep -f ~/.local/bin/tools/hibernate | xargs kill --timer 900 ~/.local/bin/tools/hibernate pgrep -f ~/.local/bin/tools/hibernate | xargs kill
+# Idle policy: .xinitrc supplies blank and fallback DPMS timeouts; idle-lock owns
+# authentication, explicit DPMS power-off, and hibernation. exec_always covers
+# i3 restarts; the launcher's runtime lock prevents duplicate xidlehook processes.
+exec_always --no-startup-id ~/.local/bin/tools/idle-lock
 exec_always --no-startup-id flashfocus

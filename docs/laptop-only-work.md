@@ -96,14 +96,6 @@ pickup so status and decisions have a source of truth.
 
 ### 2. Verify boot, hardware, and host package decisions
 
-#### Story 3.7 — start xidlehook with the desktop ([#14](https://github.com/amasover/dotfiles/issues/14))
-
-**Why laptop-only:** completion requires a real login/boot and observed idle-lock/DPMS
-behavior. `xidlehook` was not running during the 2026-08-27 check.
-
-**Remaining:** choose one autostart owner, remove any retired competing logic, restart the
-session or reboot, and verify lock/screen-off behavior.
-
 #### Story 2.30 — machine class and hardware split ([#96](https://github.com/amasover/dotfiles/issues/96))
 
 **Why laptop-only:** the hardware group must match this Intel laptop and produce a live

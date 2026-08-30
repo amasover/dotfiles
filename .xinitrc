@@ -37,11 +37,11 @@ fi
 #xrandr --output eDP-1 --primary --mode 1920x1080 --pos 1080x1080 --rotate normal --output DP-1 --mode 1920x1080 --pos 0x0 --rotate left --output HDMI-1 --off --output DP-2 --mode 1920x1080 --pos 1080x0 --rotate normal --output HDMI-2 --off --output DP-3 --off --output HDMI-3 --off
 xrandr --output eDP-1 --primary --mode 1920x1080 --pos 1080x1080 --rotate normal --output DP-1 --off --output HDMI-1 --off --output DP-2 --off --output HDMI-2 --off --output DP-3 --off --output HDMI-3 --off
 
-# set display timeout to 10min
-# xset dpms 0 0 1200
-
-# lock screen after 5min
-#xautolock -time 15 -locker '/home/$USER/.local/bin/tools/lock' &
+# Idle policy: blank after 3 minutes and power the display off after 15.
+# tools/idle-lock independently locks after 5 minutes.
+xset s 180 180
+xset +dpms
+xset dpms 0 0 900
 
 # start some nice programs
 

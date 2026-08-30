@@ -1,0 +1,102 @@
+# Idle lock policy and helpers (Story 3.7, #14).
+# Host-independent: fake power-supply roots and command stubs under $CLITMP.
+#
+# Run from the repo root: clitest tests/idle-lock.clitest.txt
+
+$ idle=.local/bin/tools/idle-lock; hib=.local/bin/tools/hibernate; lock=.local/bin/tools/lock; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin" "$CLITMP/runtime"; echo ok
+ok
+$ printf '#!/bin/sh\nprintf "%%s\\n" "$@"\n' > "$CLITMP/bin/xidlehook"
+$ printf '#!/bin/sh\nprintf "%%s\\n" "$*"\n' > "$CLITMP/bin/systemctl"
+$ printf '#!/bin/sh\n[ ! -e "$1" ] || { echo "screenshot target already exists" >&2; exit 1; }\n: > "$1"\n' > "$CLITMP/bin/scrot"
+$ printf '#!/bin/sh\nexit 0\n' > "$CLITMP/bin/magick"
+$ printf '#!/bin/sh\nprintf "%%s\\n" "$*"\n' > "$CLITMP/bin/i3lock"
+$ chmod +x "$CLITMP/bin/"*
+$
+idle-lock passes four complete timer triples as argv: lock at 5 minutes,
+DPMS off at 15 minutes, battery hibernate at 30 minutes, and laptop hibernate
+at 90 minutes. Fullscreen inhibits the chain; background audio does not:
+
+$ XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle
+--detect-sleep
+--not-when-fullscreen
+--timer
+300
+/fixture/.local/bin/tools/lock
+
+--timer
+600
+xset dpms force off
+
+--timer
+900
+/fixture/.local/bin/tools/hibernate on-battery
+
+--timer
+3600
+/fixture/.local/bin/tools/hibernate on-laptop
+
+$
+the runtime lock keeps exec_always idempotent across i3 reloads and restarts:
+
+$ printf '#!/bin/sh\nprintf "start\\n" >> "$XIDLEHOOK_LOG"\nsleep 2\n' > "$CLITMP/bin/xidlehook"; chmod +x "$CLITMP/bin/xidlehook"
+$ : > "$CLITMP/starts"; XIDLEHOOK_LOG="$CLITMP/starts" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle & first=$!; sleep 0.1; XIDLEHOOK_LOG="$CLITMP/starts" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle; wait "$first"; cat "$CLITMP/starts"
+start
+$
+
+
+on-battery hibernates only for a discharging battery:
+
+$ mkdir -p "$CLITMP/power/BAT1"; printf 'Discharging\n' > "$CLITMP/power/BAT1/status"
+$ POWER_SUPPLY_ROOT="$CLITMP/power" $hib on-battery 2>&1; echo "rc=$?"
+hibernate: POWER_SUPPLY_ROOT requires HIBERNATE_SYSTEMCTL
+rc=2
+$ export HIBERNATE_SYSTEMCTL="$CLITMP/bin/systemctl"
+$ POWER_SUPPLY_ROOT="$CLITMP/power" $hib on-battery
+hibernate
+$ printf 'Charging\n' > "$CLITMP/power/BAT1/status"; POWER_SUPPLY_ROOT="$CLITMP/power" $hib on-battery
+$ printf 'Full\n' > "$CLITMP/power/BAT1/status"; POWER_SUPPLY_ROOT="$CLITMP/power" $hib on-battery
+$
+
+on-laptop hibernates whenever battery hardware exists; guests/desktops without
+a battery do nothing at either deadline:
+
+$ POWER_SUPPLY_ROOT="$CLITMP/power" PATH="$CLITMP/bin:$PATH" $hib on-laptop
+hibernate
+$ mkdir -p "$CLITMP/no-power"; POWER_SUPPLY_ROOT="$CLITMP/no-power" PATH="$CLITMP/bin:$PATH" $hib on-battery
+$ POWER_SUPPLY_ROOT="$CLITMP/no-power" PATH="$CLITMP/bin:$PATH" $hib on-laptop
+$ POWER_SUPPLY_ROOT="$CLITMP/power" PATH="$CLITMP/bin:$PATH" $hib wat 2>&1; echo "rc=$?"
+usage: hibernate on-battery|on-laptop
+rc=2
+$
+
+lock uses a private runtime image, passes no empty argv, and supports the
+foreground mode required by locker.service:
+
+$ XDG_RUNTIME_DIR="$CLITMP/runtime" PATH="$CLITMP/bin:$PATH" $lock | sed "s#$CLITMP/runtime/i3lock-screen\.[^ ]*#IMAGE#"
+-i IMAGE
+$ XDG_RUNTIME_DIR="$CLITMP/runtime" PATH="$CLITMP/bin:$PATH" $lock --no-fork | sed "s#$CLITMP/runtime/i3lock-screen\.[^ ]*#IMAGE#"
+-n -i IMAGE
+$ find "$CLITMP/runtime" -type f ! -name dotfiles-idle-lock.lock -print
+$
+
+tracked session config owns every boundary and starts one daemon only:
+
+$ grep -F 'xset s 180 180' .xinitrc
+xset s 180 180
+$ grep -F 'xset dpms 0 0 900' .xinitrc
+xset dpms 0 0 900
+$ grep -F 'xset +dpms' .xinitrc
+xset +dpms
+$ grep -F 'exec_always --no-startup-id ~/.local/bin/tools/idle-lock' .config/i3/config
+exec_always --no-startup-id ~/.local/bin/tools/idle-lock
+$ grep -c 'exec_always.*xidlehook\|exec .*xidlehook' .config/i3/config
+0
+$ grep -F 'ExecStart=%h/.local/bin/tools/lock --no-fork' .config/systemd/user/locker.service
+ExecStart=%h/.local/bin/tools/lock --no-fork
+$ readlink .config/systemd/user/lock.target.wants/locker.service
+../locker.service
+$ grep -c '"xautolock"' .config/metapac/groups/desktop.toml
+0
+$ rm -r "$CLITMP"; echo done
+done
+$

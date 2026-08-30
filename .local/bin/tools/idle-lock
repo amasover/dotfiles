@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+tools=$HOME/.local/bin/tools
+runtime_dir=${XDG_RUNTIME_DIR:-/tmp}
+exec 9>"$runtime_dir/dotfiles-idle-lock.lock"
+flock -n 9 || exit 0
+
+exec xidlehook \
+    --detect-sleep \
+    --not-when-fullscreen \
+    --timer 300 "$tools/lock" "" \
+    --timer 600 "xset dpms force off" "" \
+    --timer 900 "$tools/hibernate on-battery" "" \
+    --timer 3600 "$tools/hibernate on-laptop" ""
