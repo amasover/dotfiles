@@ -57,9 +57,9 @@ lua5.1 .config/yay/hook-harness.lua .config/yay/init.lua
 
 Baseline when Story 4.7 landed:
 
-- clitest: 446 cases across 20 files;
+- clitest: 479 cases across 21 files;
 - pytest: 112 cases across five vm-harness modules;
-- Spacemacs config ERT: four isolated contracts;
+- Spacemacs config ERT: six isolated contracts;
 - yay hook harness and chaotic quarantine gate: both pass their complete policy matrices.
 
 Tests must remain deterministic and host-independent: no libvirt, display server, network,

@@ -75,7 +75,7 @@ Post-inventory arrivals and dual-listed packages got a primary group:
   [pacman-provides note](../knowledge/reference/pacman-provides-and-binary-ownership.md)).
 - **Node/npm ownership:** project-selected Node versions remain nvm-managed. The
   `editor` group declares official-repo `npm` and `pyright`; their pacman dependencies
-  supply system `nodejs`. `setup/copilot-language-server` explicitly uses the system
+  supply system `nodejs`. `setup/emacs-copilot-server` explicitly uses the system
   npm/Node pair.
 - **kind without docker**: use `KIND_EXPERIMENTAL_PROVIDER=podman` (docker dropped, D5).
 - **First `yadm checkout` on this machine** will meet the hand-rendered (identical)

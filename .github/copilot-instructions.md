@@ -281,6 +281,12 @@ For tests (see [docs/runbook-script-validation.md](../docs/runbook-script-valida
 - Shell-level regression tests live in `tests/*.clitest.txt`. Run the complete enforced
   set with `bash .github/scripts/ci test` when touching covered behavior, and extend it
   alongside the change.
+- A new test is incomplete until `.github/scripts/ci test` executes it in the same PR.
+  Existing globs/runners count only after running the aggregate command proves inclusion;
+  otherwise update the CI runner and its declared workflow dependencies with the test.
+- A test that genuinely requires live hardware, GUI state, credentials, network, or mutable
+  `$HOME` must document why CI cannot run it and ship the closest host-independent regression
+  in the same PR. Keep the live smoke command documented; never mislabel it as CI coverage.
 - Design testable seams while writing: expose internal filters/logic as
   invokable subcommands (example: `vm-harness scrub`) rather than leaving
   them reachable only through a full run.

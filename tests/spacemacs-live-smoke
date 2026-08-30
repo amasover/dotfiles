@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Live GUI smoke test for startup hooks, line numbers, Copilot, and Treemacs.
+# Requires installed Spacemacs packages and a graphical display; it creates a
+# temporary Emacs frame, writes a path-free JSON verdict, and exits.
+set -euo pipefail
+
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+probe="$root/tests/spacemacs-live-smoke.el"
+result=$(mktemp)
+trap 'rm -f "$result"' EXIT
+
+SPACEMACS_SMOKE_RESULT="$result" \
+    emacs --eval "(add-hook 'emacs-startup-hook (lambda () (run-at-time 1 nil (lambda () (load \"$probe\")))) 100)"
+cat "$result"
