@@ -94,15 +94,24 @@ archinstall's TUI errors show on the virt-manager console.
   passphrase prompt can't run without a TTY, so no yadm passphrase or secret
   contents ever enter the harness. If a test needs real secrets, run `yadm decrypt`
   in the guest manually.
+- **Shared guest glue (Story 2.41):** every `bootstrap` and `check` scp's the host
+  checkout's `vm-harness-guest` into the VM, then invokes it over ssh. QEMU passes
+  `qemu-guest-agent zram-generator`; VMware passes its own hardware set. Repo/class/
+  branch selection and the exactly-empty metapac gate therefore have one owner.
+- **Intentional host differences stay outside the helper:** QEMU's `exec` debugging
+  peephole uses qemu-guest-agent and does not propagate guest exit status; guest-glue
+  bootstrap/check use ssh and do propagate it through the phase result. Both harnesses
+  request one pty with `ssh -t`; the Bash host streams bytes while PowerShell line-buffers
+  redraws.
 - **AUR trust baseline (Story 2.10):** the bootstrap phase injects the host's
   `~/.local/state/aur-quarantine/{maintainers.tsv,exempt.txt}` into the VM over
   ssh before running bootstrap, so install-gate identity checks see the same
   baseline a decrypt-restored machine would. These are identity judgments, not
   secrets — the no-secrets rule above is unaffected. `VM_HARNESS_FRESH_TRUST=1`
   skips the copy to exercise the fresh-TOFU path.
-- **Profile guard in the VM:** `yadm config local.class workstation` + `yadm alt`
-  renders the VM's own hostname into `config.toml` — the guard passes without any
-  repo change; `machine-local.toml` is auto-created empty by bootstrap step 3.
+- **Profile guard in the VM:** the shared helper runs
+  `yadm config local.class workstation`, then `yadm alt`, and rewrites
+  `machine-local.toml` with the QEMU hardware set before bootstrap validates the hostname.
 - **The acceptance assert:** `vm-harness check` fails unless `metapac unmanaged` is
   exactly empty — same bar as live adoption (Story 2.8).
 
