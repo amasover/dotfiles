@@ -1,22 +1,25 @@
-# Idle lock policy and helpers (Story 3.7, #14).
+# Idle lock policy and helpers (Story 3.7, #14; regression #233).
 # Host-independent: fake power-supply roots and command stubs under $CLITMP.
 #
 # Run from the repo root: clitest tests/idle-lock.clitest.txt
 
-$ idle=.local/bin/tools/idle-lock; hib=.local/bin/tools/hibernate; lock=.local/bin/tools/lock; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin" "$CLITMP/runtime"; echo ok
+$ idle=.local/bin/tools/idle-lock; hib=.local/bin/tools/hibernate; lock=.local/bin/tools/lock; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin" "$CLITMP/runtime" "$CLITMP/xidlehook"; echo ok
 ok
-$ printf '#!/bin/sh\nprintf "%%s\\n" "$@"\n' > "$CLITMP/bin/xidlehook"
+$ printf '#!/bin/sh\ncase " $* " in\n  *" --not-when-fullscreen "*) name=soft ;;\n  *) name=hard ;;\nesac\nprintf "%%s\\n" "$@" > "$XIDLEHOOK_LOG_DIR/$name"\nfor fd in /proc/$$/fd/*; do\n  [ "$(readlink "$fd")" != "$XDG_RUNTIME_DIR/dotfiles-idle-lock.lock" ] || : > "$XIDLEHOOK_LOG_DIR/$name.lock-inherited"\ndone\nexec sleep 10\n' > "$CLITMP/bin/xidlehook"
 $ printf '#!/bin/sh\nprintf "%%s\\n" "$*"\n' > "$CLITMP/bin/systemctl"
 $ printf '#!/bin/sh\n[ ! -e "$1" ] || { echo "screenshot target already exists" >&2; exit 1; }\n: > "$1"\n' > "$CLITMP/bin/scrot"
 $ printf '#!/bin/sh\nexit 0\n' > "$CLITMP/bin/magick"
 $ printf '#!/bin/sh\nprintf "%%s\\n" "$*"\n' > "$CLITMP/bin/i3lock"
 $ chmod +x "$CLITMP/bin/"*
 $
-idle-lock passes four complete timer triples as argv: lock at 5 minutes,
-DPMS off at 15 minutes, battery hibernate at 30 minutes, and laptop hibernate
-at 90 minutes. Fullscreen inhibits the chain; background audio does not:
+idle-lock runs a fullscreen-aware soft chain for lock, DPMS, and battery
+hibernate plus an uninhibited hard chain for laptop hibernation at 90 minutes:
 
-$ XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle
+$ XIDLEHOOK_LOG_DIR="$CLITMP/xidlehook" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle & launcher=$!; i=0; while { [ ! -s "$CLITMP/xidlehook/soft" ] || [ ! -s "$CLITMP/xidlehook/hard" ]; } && [ "$i" -lt 50 ]; do sleep 0.02; i=$((i + 1)); done; kill "$launcher" 2>/dev/null || :; wait "$launcher" 2>/dev/null || :; for name in soft hard; do [ -s "$CLITMP/xidlehook/$name" ] && echo "$name-started"; done
+soft-started
+hard-started
+$ echo soft; cat "$CLITMP/xidlehook/soft"; echo hard; cat "$CLITMP/xidlehook/hard"
+soft
 --detect-sleep
 --not-when-fullscreen
 --timer
@@ -31,15 +34,25 @@ xset dpms force off
 900
 /fixture/.local/bin/tools/hibernate on-battery
 
+hard
+--detect-sleep
 --timer
-3600
+5400
 /fixture/.local/bin/tools/hibernate on-laptop
 
 $
-the runtime lock keeps exec_always idempotent across i3 reloads and restarts:
+policy workers cannot leak the singleton lock into timer descendants:
+
+$ find "$CLITMP/xidlehook" -name '*.lock-inherited' -print
+$
+
+
+the runtime lock keeps one launcher with exactly two policy workers across i3
+reloads and restarts:
 
 $ printf '#!/bin/sh\nprintf "start\\n" >> "$XIDLEHOOK_LOG"\nsleep 2\n' > "$CLITMP/bin/xidlehook"; chmod +x "$CLITMP/bin/xidlehook"
 $ : > "$CLITMP/starts"; XIDLEHOOK_LOG="$CLITMP/starts" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle & first=$!; sleep 0.1; XIDLEHOOK_LOG="$CLITMP/starts" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle; wait "$first"; cat "$CLITMP/starts"
+start
 start
 $
 
