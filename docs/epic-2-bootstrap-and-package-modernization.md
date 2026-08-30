@@ -1567,6 +1567,38 @@ a simulated newer nord-vim release is detected.
 
 ---
 
+### Story 2.52: Track rEFInd configuration safely
+
+As the repo owner,
+I want rEFInd policy and kernel-entry generation owned by the repository,
+So that a rebuilt metal machine reproduces its boot menu without copying
+machine-specific disk identifiers into portable config.
+
+Issue: [#230](https://github.com/amasover/dotfiles/issues/230) · Origin: Story
+2.30 moved rEFInd package ownership into the Intel-laptop adapter and exposed
+that root-owned configuration on the ESP and under `/boot` has no tracked owner.
+
+The source must separate portable policy (timeout/defaults, scan/menu behavior,
+Nord theme, Arch boot intent) from root/resume identifiers, partition paths,
+and other machine-derived kernel arguments. Story 2.29 consumes the same
+generator for fresh metal provisioning; no parallel hand-maintained path.
+
+**Acceptance criteria:**
+
+- Read-only discovery records active ESP mounts, rEFInd binary/config locations, firmware boot entry, theme ownership, `/boot/refind_linux.conf`, and kernel/initramfs paths without publishing disk identifiers
+- Before root-owned changes, exact files are backed up outside the ESP; every live write uses separately approved `pkexec`, never bare `sudo`
+- Portable rEFInd policy is tracked while machine-specific root/resume identifiers are derived from authoritative live state or explicit machine-local input, never committed as literals
+- One reconciler supports read-only `--check` and idempotent atomic apply against a fixture root, failing closed on ambiguous ESPs, missing boot artifacts, and unmanaged destination files
+- Ubuntu's existing dual-boot shim/ESP files from Story 2.43 remain untouched, with fixture coverage proving preservation
+- Story 2.29's metal recipe consumes the same source/generator
+- Attended validation proves a converged check, intended menu/theme, successful Arch boot, and preserved alternate boot path after reboot
+
+**Evidence artifact:** tracked policy/template + fixture-tested reconciler;
+redacted before/after checksums and drift; backup location; firmware entry
+summary; attended reboot/menu/boot validation.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
