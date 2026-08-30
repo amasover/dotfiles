@@ -54,6 +54,7 @@ dofile(init_path)
 assert(hooks["AURPreInstall"], "AURPreInstall hook did not register")
 assert(hooks["UpgradeSelect"], "UpgradeSelect hook missing (regression)")
 local gate = hooks["AURPreInstall"]
+assert(hooks["PostInstall"], "PostInstall inbox hook missing")
 
 -- --- helpers ---------------------------------------------------------------
 local now = os.time()
@@ -352,6 +353,52 @@ acase("unknown age", "pkg alice @never 0 @nil 14", 1)
 acase("repo handoff", "pkg attacker @repo-handoff 0 30 14", 1)
 acase("accepted repo handoff", "pkg reviewed @repo-accepted:reviewed 0 30 14", 0)
 acase("accepted handoff, owner changes again", "pkg newowner @repo-accepted:reviewed 0 30 14", 1)
+
+-- --- PostInstall inbox selection --------------------------------------------
+-- Several inbox files are tracked, but only the one named by rendered
+-- config.toml belongs to this machine. A fresh explicit package must land there
+-- and nowhere else; declared/dependency packages remain absent.
+local inbox_home = state_home .. "/home"
+local inbox_dir = inbox_home .. "/.config/metapac"
+os.execute("mkdir -p '" .. inbox_dir .. "/groups'")
+env_override.HOME = inbox_home
+write_file(inbox_dir .. "/config.toml", [[
+[hostname_groups]
+"fixture" = [
+  "base",
+  "inbox-daily-vm",
+]
+]])
+write_file(inbox_dir .. "/groups/base.toml", [[
+[arch]
+packages = [
+  "declared-pkg",
+]
+]])
+for _, name in ipairs({ "workstation", "daily-vm", "qemu-harness" }) do
+  write_file(inbox_dir .. "/groups/inbox-" .. name .. ".toml", "[arch]\npackages = [\n]\n")
+end
+hooks["PostInstall"]({ data = { packages = {
+  { name = "captured-pkg", reason = "explicit", local_version = "" },
+  { name = "declared-pkg", reason = "explicit", local_version = "" },
+  { name = "dependency-pkg", reason = "dependency", local_version = "" },
+} } })
+local function slurp(path)
+  local f = assert(io.open(path, "r"))
+  local text = f:read("*a")
+  f:close()
+  return text
+end
+local daily = slurp(inbox_dir .. "/groups/inbox-daily-vm.toml")
+local workstation = slurp(inbox_dir .. "/groups/inbox-workstation.toml")
+local qemu = slurp(inbox_dir .. "/groups/inbox-qemu-harness.toml")
+if daily:match('"captured%-pkg"') and not daily:match('"declared%-pkg"')
+    and not workstation:match('"captured%-pkg"') and not qemu:match('"captured%-pkg"') then
+  print("ok   inbox: rendered class selection")
+else
+  print("FAIL inbox: rendered class selection")
+  all = false
+end
 
 os.getenv = real_getenv
 io.popen = real_popen

@@ -289,40 +289,47 @@ local function metapac_dir()
   return (os.getenv("HOME") or "") .. "/.config/metapac"
 end
 
--- The single inbox-*.toml in the groups dir names this machine's inbox
--- (one per machine by design; the filename carries the yadm class).
+-- Resolve only the group files named by this machine's rendered config. Other
+-- classes' tracked inboxes must not suppress capture or count as declarations.
+local function active_groups()
+  local cfg = io.open(metapac_dir() .. "/config.toml", "r")
+  if not cfg then return {} end
+  local groups = {}
+  local in_list = false
+  for line in cfg:lines() do
+    if line:match('^%s*"[^"]+"%s*=%s*%[') then
+      in_list = true
+    elseif in_list and line:match("^%s*%]") then
+      break
+    elseif in_list then
+      local name = line:match('^%s*"([^"]+)"')
+      if name then
+        local path = name:sub(1, 1) == "/"
+          and name or (metapac_dir() .. "/groups/" .. name .. ".toml")
+        table.insert(groups, { name = name, path = path })
+      end
+    end
+  end
+  cfg:close()
+  return groups
+end
+
 local function find_inbox()
-  local p = io.popen('ls "' .. metapac_dir() .. '/groups/inbox-"*.toml 2>/dev/null')
-  if not p then return nil end
   local matches = {}
-  for line in p:lines() do table.insert(matches, line) end
-  p:close()
+  for _, group in ipairs(active_groups()) do
+    if group.name:match("^inbox%-") then table.insert(matches, group.path) end
+  end
   if #matches == 1 then return matches[1] end
   return nil, #matches
 end
 
--- Set of every package name declared in any group: all groups-dir files plus
--- absolute-path groups referenced from the rendered config.toml (machine-local).
 local function declared_set()
   local set = {}
-  local files = {}
-  local p = io.popen('ls "' .. metapac_dir() .. '/groups/"*.toml 2>/dev/null')
-  if p then
-    for line in p:lines() do table.insert(files, line) end
-    p:close()
-  end
-  local cfg = io.open(metapac_dir() .. "/config.toml", "r")
-  if cfg then
-    for line in cfg:lines() do
-      for abs in line:gmatch('"(/[^"]+)"') do
-        local f = io.open(abs, "r") and abs or (abs .. ".toml")
-        table.insert(files, f)
-      end
+  for _, group in ipairs(active_groups()) do
+    local f = io.open(group.path, "r")
+    if not f and group.path:sub(-5) ~= ".toml" then
+      f = io.open(group.path .. ".toml", "r")
     end
-    cfg:close()
-  end
-  for _, path in ipairs(files) do
-    local f = io.open(path, "r")
     if f then
       for line in f:lines() do
         local name = line:match('^%s*"([^"]+)"')
@@ -371,7 +378,7 @@ yay.create_autocmd("PostInstall", {
     local inbox, count = find_inbox()
     if not inbox then
       yay.log.warn(string.format(
-        "metapac-inbox: expected exactly one groups/inbox-*.toml, found %d — not capturing: %s",
+        "metapac-inbox: expected exactly one active inbox in rendered config.toml, found %d — not capturing: %s",
         count or 0, table.concat(fresh, " ")))
       return
     end
