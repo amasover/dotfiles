@@ -6,6 +6,7 @@ packages = [
   "acpid",
   "intel-media-driver",
   "intel-ucode",
+  "lib32-vulkan-intel",
   "linux-firmware",
   "refind",
   "refind-theme-nord",

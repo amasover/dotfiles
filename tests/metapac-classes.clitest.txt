@@ -19,8 +19,9 @@ $ grep -c '"inbox-workstation"' "$H/.config/metapac/config.toml"
 1
 $ grep -c '"guest-vmware"\|"guest-qemu"\|"inbox-daily-vm"\|"inbox-qemu-harness"' "$H/.config/metapac/config.toml"
 0
-$ DECLARED | grep -E '^(intel-media-driver|vulkan-intel|vulkan-radeon|open-vm-tools|qemu-guest-agent)$'
+$ DECLARED | grep -E '^(intel-media-driver|lib32-vulkan-intel|vulkan-intel|vulkan-radeon|open-vm-tools|qemu-guest-agent)$'
 intel-media-driver
+lib32-vulkan-intel
 vulkan-intel
 $ DECLARED | grep -c '^astro-cli$'
 1
