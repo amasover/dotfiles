@@ -382,8 +382,8 @@ exec --no-startup-id autorandr --change --force
 #move mail and calendar to ws5. need to sleep in script due to delay in window getting title
 exec --no-startup-id sh ~/.local/bin/tools/move-mail.sh
 
-# Idle policy: X blank/DPMS timeouts live in .xinitrc; idle-lock owns the
-# authentication and hibernation chain. Plain exec starts it once per session,
-# not again on every i3 reload.
-exec --no-startup-id ~/.local/bin/tools/idle-lock
+# Idle policy: .xinitrc supplies blank and fallback DPMS timeouts; idle-lock owns
+# authentication, explicit DPMS power-off, and hibernation. exec_always covers
+# i3 restarts; the launcher's runtime lock prevents duplicate xidlehook processes.
+exec_always --no-startup-id ~/.local/bin/tools/idle-lock
 exec_always --no-startup-id flashfocus

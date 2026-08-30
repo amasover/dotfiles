@@ -16,7 +16,7 @@ idle-lock passes four complete timer triples as argv: lock at 5 minutes,
 DPMS off at 15 minutes, battery hibernate at 30 minutes, and laptop hibernate
 at 90 minutes. Fullscreen inhibits the chain; background audio does not:
 
-$ HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle
+$ XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle
 --detect-sleep
 --not-when-fullscreen
 --timer
@@ -36,6 +36,13 @@ xset dpms force off
 /fixture/.local/bin/tools/hibernate on-laptop
 
 $
+the runtime lock keeps exec_always idempotent across i3 reloads and restarts:
+
+$ printf '#!/bin/sh\nprintf "start\\n" >> "$XIDLEHOOK_LOG"\nsleep 2\n' > "$CLITMP/bin/xidlehook"; chmod +x "$CLITMP/bin/xidlehook"
+$ : > "$CLITMP/starts"; XIDLEHOOK_LOG="$CLITMP/starts" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle & first=$!; sleep 0.1; XIDLEHOOK_LOG="$CLITMP/starts" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle; wait "$first"; cat "$CLITMP/starts"
+start
+$
+
 
 on-battery hibernates only for a discharging battery:
 
@@ -69,7 +76,7 @@ $ XDG_RUNTIME_DIR="$CLITMP/runtime" PATH="$CLITMP/bin:$PATH" $lock | sed "s#$CLI
 -i IMAGE
 $ XDG_RUNTIME_DIR="$CLITMP/runtime" PATH="$CLITMP/bin:$PATH" $lock --no-fork | sed "s#$CLITMP/runtime/i3lock-screen\.[^ ]*#IMAGE#"
 -n -i IMAGE
-$ find "$CLITMP/runtime" -type f -print
+$ find "$CLITMP/runtime" -type f ! -name dotfiles-idle-lock.lock -print
 $
 
 tracked session config owns every boundary and starts one daemon only:
@@ -80,8 +87,8 @@ $ grep -F 'xset dpms 0 0 900' .xinitrc
 xset dpms 0 0 900
 $ grep -F 'xset +dpms' .xinitrc
 xset +dpms
-$ grep -F 'exec --no-startup-id ~/.local/bin/tools/idle-lock' .config/i3/config
-exec --no-startup-id ~/.local/bin/tools/idle-lock
+$ grep -F 'exec_always --no-startup-id ~/.local/bin/tools/idle-lock' .config/i3/config
+exec_always --no-startup-id ~/.local/bin/tools/idle-lock
 $ grep -c 'exec_always.*xidlehook\|exec .*xidlehook' .config/i3/config
 0
 $ grep -F 'ExecStart=%h/.local/bin/tools/lock --no-fork' .config/systemd/user/locker.service

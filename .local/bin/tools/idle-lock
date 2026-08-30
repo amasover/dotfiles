@@ -3,6 +3,9 @@
 set -euo pipefail
 
 tools=$HOME/.local/bin/tools
+runtime_dir=${XDG_RUNTIME_DIR:-/tmp}
+exec 9>"$runtime_dir/dotfiles-idle-lock.lock"
+flock -n 9 || exit 0
 
 exec xidlehook \
     --detect-sleep \
