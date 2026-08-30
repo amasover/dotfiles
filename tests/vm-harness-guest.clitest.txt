@@ -47,6 +47,60 @@ vm-harness-guest: FATAL: --hardware-pkgs needs a value
 rc=2
 $
 
+Existing checkout refresh names one remote branch explicitly; it never asks
+`git pull` to infer multiple fetched branches.
+
+$ G=.local/bin/setup/vm-harness-guest; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home/.local/bin/setup"; printf old > "$T/branch"; printf '%s\n' '#!/bin/sh' 'printf yadm >> "$GUEST_LOG"' 'for arg; do printf " <%s>" "$arg" >> "$GUEST_LOG"; done' 'printf "\n" >> "$GUEST_LOG"' 'if [ "$1" = rev-parse ]; then [ "$2" = --git-dir ] && echo .git || cat "$YADM_BRANCH"; fi' 'if [ "$1" = checkout ]; then printf "%s\n" "$2" > "$YADM_BRANCH"; fi' 'exit 0' > "$T/bin/yadm"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$T/bin/sudo"; printf '%s\n' '#!/bin/sh' 'printf "bootstrap <%s> <%s>\n" "$1" "$2" >> "$GUEST_LOG"' > "$T/home/.local/bin/setup/bootstrap"; chmod +x "$T/bin/yadm" "$T/bin/sudo" "$T/home/.local/bin/setup/bootstrap"; PATH="$T/bin:$PATH" HOME="$T/home" GUEST_LOG="$T/log" YADM_BRANCH="$T/branch" "$G" bootstrap --class ci --repo https://example.invalid/dotfiles.git --branch feature/new --hardware-pkgs 'qemu-guest-agent zram-generator' >/dev/null; grep '^yadm' "$T/log"
+yadm <rev-parse> <--git-dir>
+yadm <fetch> <--prune> <origin>
+yadm <rev-parse> <--abbrev-ref> <HEAD>
+yadm <checkout> <feature/new>
+yadm <merge> <--ff-only> <origin/feature/new>
+yadm <config> <local.class> <ci>
+yadm <alt>
+$
+
+$ grep '^bootstrap' "$T/log"; tail -n 4 "$T/home/.local/share/metapac/machine-local.toml"
+bootstrap <--check> <--unattended>
+bootstrap <--unattended> <>
+packages = [
+  "qemu-guest-agent",
+  "zram-generator",
+]
+$
+
+$ rm -rf "$T"; echo done
+done
+$
+
+The hard gate excludes only packages owned by the tracked custom-PKGBUILD
+registry. Other unmanaged names still fail, and metapac errors stay distinct.
+
+$ G=.local/bin/setup/vm-harness-guest; U=$(mktemp -d); mkdir -p "$U/bin" "$U/home" "$U/tools" "$U/pkgbuilds/vendored"; printf 'pkgname=vendored\n' > "$U/pkgbuilds/vendored/PKGBUILD"; printf '%s\n' '#!/bin/sh' '[ -z "${FAKE_METAPAC_RC:-}" ] || exit "$FAKE_METAPAC_RC"' 'printf "%s\n" "${FAKE_UNMANAGED:-}"' > "$U/bin/metapac"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$U/bin/systemctl"; chmod +x "$U/bin/metapac" "$U/bin/systemctl"; ln -s "$PWD/.local/bin/tools/metapac-unmanaged-names" "$U/tools/metapac-unmanaged-names"; ln -s "$PWD/.local/bin/tools/custom-pkgs" "$U/tools/custom-pkgs"; ln -s "$PWD/.local/bin/tools/metapac-drift-report" "$U/tools/metapac-drift-report"; PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" FAKE_UNMANAGED='arch = { packages = ["vendored"] }' "$G" check
+--- unmanaged packages (vendored custom PKGBUILDs are expected):
+OK
+--- enabled services (sample):
+--- graphical target reachable:
+--- drift report:
+metapac-drift-report: no metapac config on this machine — skipping.
+$
+
+$ out=$(PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" FAKE_UNMANAGED='arch = { packages = ["vendored", "stale-pkg"] }' "$G" check 2>&1); rc=$?; printf '%s\n' "$out"; echo "rc=$rc"
+--- unmanaged packages (vendored custom PKGBUILDs are expected):
+stale-pkg
+rc=1
+$
+
+$ out=$(PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" FAKE_METAPAC_RC=9 "$G" check 2>&1); rc=$?; printf '%s\n' "$out"; echo "rc=$rc"
+--- unmanaged packages (vendored custom PKGBUILDs are expected):
+vm-harness-guest: FATAL: metapac unmanaged failed (rc=9) — the gate did not run
+rc=2
+$
+
+$ rm -rf "$U"; echo done
+done
+$
+
 render-toml: the exact machine-local.toml bootstrap writes, one line per
 package, VMware's set here.
 

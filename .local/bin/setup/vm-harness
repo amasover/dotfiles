@@ -99,6 +99,8 @@ LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/bootstrap-harness/logs" # survive
 RUN_STAMP=$(date +%Y%m%d-%H%M%S)                                       # one stamp per invocation — an `up` run's phases share it
 RESUME_HEADER=""                                                       # set by a resuming `up`; run_phase logs it once
 DISPLAY_TOOL="$HOME/.local/bin/tools/vm-harness-display"
+GUEST_TOOL="${BASH_SOURCE[0]%/*}/vm-harness-guest"
+QEMU_HARDWARE_PKGS="qemu-guest-agent zram-generator"
 DISPLAY_MODE=plain # resolved at dispatch: bar | compact | plain
 PHASES_STATUS=""   # cmd_up breadcrumb for the display: name:done|current|pending,...
 
@@ -557,6 +559,40 @@ vm_ssh() {
     ssh -t -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$VM_USER@$ip" "$@"
 }
 
+# Render the one remote Bash command used after scp. `%q` preserves operator-set
+# class/repo/branch values as single guest-side arguments.
+guest_command() {
+    local mode=$1 rendered
+    local -a args=(bash vm-harness-guest)
+    case "$mode" in
+        bootstrap)
+            args+=(bootstrap
+                --class "$VM_CLASS"
+                --repo "$REPO_URL"
+                --hardware-pkgs "$QEMU_HARDWARE_PKGS")
+            [[ -z "$REPO_BRANCH" ]] || args+=(--branch "$REPO_BRANCH")
+            ;;
+        check) args+=(check) ;;
+        *) die "unknown guest command: $mode" ;;
+    esac
+    printf -v rendered '%q ' "${args[@]}"
+    printf '%s\n' "${rendered% }"
+}
+
+# Copy the host checkout's shared helper on every invocation, then stream its
+# status through ssh. Single -t remains in vm_ssh: attended runs get guest color;
+# redirected runs warn and continue without a pty.
+invoke_guest_glue() {
+    local remote_cmd=$1 ip
+    [[ -f "$GUEST_TOOL" ]] || die "guest helper missing: $GUEST_TOOL"
+    ip=$(vm_ip)
+    [[ -n "$ip" ]] || die "VM has no IP (is it booted?)"
+    scp -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "$GUEST_TOOL" "$VM_USER@$ip:vm-harness-guest" \
+        || die "scp vm-harness-guest failed"
+    vm_ssh "$remote_cmd"
+}
+
 # Poll for an authenticated shell — not port 22, not the qemu agent: an ssh
 # login is exactly what the next phase needs. Closes the boot→bootstrap race.
 wait_ssh() {
@@ -612,36 +648,12 @@ cmd_bootstrap() {
     wait_ssh
     inject_trust_baseline
     say "Running repo bootstrap inside the VM (class: $VM_CLASS, unattended; AUR builds take a while)"
-    # shellcheck disable=SC2016  # the inner single quotes are for the REMOTE
-    # shell; $REPO_BRANCH/$REPO_URL expand host-side in this double-quoted string
-    vm_ssh "set -e
-        sudo pacman -S --needed --noconfirm git base-devel yadm
-        yadm clone --no-bootstrap ${REPO_BRANCH:+-b '$REPO_BRANCH'} '$REPO_URL' || true
-        yadm config local.class '$VM_CLASS'
-        yadm alt
-        mkdir -p ~/.local/share/metapac
-        { printf '# machine-local metapac group — untracked, never published\n'
-          printf '# harness-owned guest hardware set, rewritten every bootstrap\n'
-          printf '# (interim home until the Story 2.30 class/hardware split, #96)\n'
-          printf '[arch]\npackages = [\n'
-          printf '  \"%s\",\n' qemu-guest-agent zram-generator
-          printf ']\n'
-        } > ~/.local/share/metapac/machine-local.toml
-        ~/.local/bin/setup/bootstrap --check --unattended
-        ~/.local/bin/setup/bootstrap --unattended"
+    invoke_guest_glue "$(guest_command bootstrap)"
 }
 
 cmd_check() {
     say "Asserting VM end state"
-    vm_ssh "set -e
-        echo '--- metapac unmanaged (must be exactly empty):'
-        out=\$(metapac unmanaged 2>/dev/null); [ -z \"\$out\" ] && echo OK || { echo \"\$out\"; exit 1; }
-        echo '--- enabled services (sample):'
-        systemctl is-enabled sshd NetworkManager 2>/dev/null || true
-        echo '--- graphical target reachable:'
-        systemctl status graphical.target --no-pager | head -3 || true
-        echo '--- drift report:'
-        ~/.local/bin/tools/metapac-drift-report"
+    invoke_guest_glue "$(guest_command check)"
 }
 
 cmd_destroy() {

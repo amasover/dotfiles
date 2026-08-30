@@ -1116,7 +1116,7 @@ reinstalls) + an unchanged drift-report pair.
 
 ---
 
-### Story 2.41: libvirt harness adopts the shared `vm-harness-guest` glue
+### Story 2.41: libvirt harness adopts the shared `vm-harness-guest` glue ✅
 
 As the repo owner,
 I want the libvirt harness to run the same guest-side `bootstrap`/`check` file
@@ -1125,7 +1125,7 @@ So that guest-glue fixes land once instead of the two copies drifting — three
 PR #128 review fixes exist on the VMware path only, and the libvirt harness is
 the one producing the fresh-run evidence the epic is waiting on.
 
-Issue: [#132](https://github.com/amasover/dotfiles/issues/132) · Origin: Story
+Issue: [#132](https://github.com/amasover/dotfiles/issues/132) (closed, PR [#226](https://github.com/amasover/dotfiles/pull/226)) · Origin: Story
 2.36 (#119) extracted `.local/bin/setup/vm-harness-guest` from the libvirt
 harness's inline ssh strings, but the switchover needs Linux-side validation,
 so the duplication was deliberate and only recorded as a note on #119 — this
@@ -1145,8 +1145,11 @@ package names are not glob-expanded against the guest's cwd).
 - Given the switchover, then it is validated by a real `up` on the Linux host — the validation Story 2.36 could not do from Windows
 - Given the shared file's existing clitest suite, then it passes unchanged
 
-**Evidence artifact:** a libvirt `up` run log with the guest phases executed
-via `vm-harness-guest`.
+**Evidence artifact:** resumed libvirt `up` on 2026-08-30 copied and invoked
+`vm-harness-guest`, switched the existing guest to the requested validation
+branch, completed bootstrap with `rc=0`, then completed check with `rc=0`;
+unmanaged and declared-but-missing were both empty. Log set:
+`20260829-201006-{bootstrap,check}.log`.
 
 ---
 

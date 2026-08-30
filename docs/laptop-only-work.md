@@ -133,18 +133,9 @@ acceptance is otherwise met.
 
 ### 3. Use Linux-only host capabilities
 
-#### Story 2.41 — converge libvirt guest glue ([#132](https://github.com/amasover/dotfiles/issues/132))
-
-**Why this laptop:** it is the configured libvirt/QEMU host; Windows-side validation
-cannot prove this path.
-
-**Remaining:** replace inline guest commands with `vm-harness-guest`, preserve only
-intentional hypervisor differences, then run a real libvirt `up` with QEMU hardware
-parameters.
-
 #### Fresh libvirt evidence batch
 
-After Story 2.41 and pending bootstrap fixes land, one clean `destroy` → `up` can provide
+After the remaining bootstrap fixes land, one clean `destroy` → `up` can provide
 fresh-run evidence for several open stories: 2.19 [#70](https://github.com/amasover/dotfiles/issues/70),
 2.21 [#73](https://github.com/amasover/dotfiles/issues/73), 2.26 [#83](https://github.com/amasover/dotfiles/issues/83),
 2.27 [#87](https://github.com/amasover/dotfiles/issues/87), 2.32 [#100](https://github.com/amasover/dotfiles/issues/100),

@@ -3,17 +3,16 @@
 #
 # Runs INSIDE the throwaway Arch guest, delivered by the harness at bootstrap
 # time (scp/ssh), so the guest always executes the host checkout's version.
-# Extracted from the libvirt harness's inline ssh strings; consumed first by
-# the VMware harness — the libvirt harness swaps over in a Linux-side PR
-# (until then the inline copies in vm-harness are the recorded duplication).
+# Extracted from the libvirt harness's inline ssh strings; both the QEMU and
+# VMware harnesses now copy and invoke this file for bootstrap/check.
 #
 # Subcommands:
 #   bootstrap --class C --repo URL --hardware-pkgs "P..." [--branch B]
 #              clone the repo via yadm, set the class, write the harness-owned
 #              hardware set, then run the repo's real bootstrap (check pass,
 #              then converge) unattended
-#   check      assert the end state: metapac unmanaged exactly empty (the hard
-#              gate), service/target samples (informational), drift report
+#   check      assert the end state: no unmanaged packages beyond the custom
+#              PKGBUILDs' expected vendored set, service samples, drift report
 #   render-toml --hardware-pkgs "P..."
 #              print the machine-local.toml bootstrap writes — exposed as its
 #              own subcommand so tests can cover it without a guest
@@ -22,6 +21,7 @@
 # qemu-guest-agent; VMware: open-vm-tools; both: zram-generator) — interim
 # home until the Story 2.30 class/hardware split (#96) absorbs it.
 set -euo pipefail
+tools_dir=${VM_HARNESS_GUEST_TOOLS_DIR:-$HOME/.local/bin/tools}
 
 say() { printf '\n==> %s\n' "$*"; }
 die() {
@@ -50,7 +50,7 @@ render_toml() {
 }
 
 cmd_bootstrap() {
-    local class='' repo='' branch='' hardware=''
+    local class='' repo='' branch='' hardware='' current_branch
     while (($#)); do
         case $1 in
             --class)
@@ -79,12 +79,11 @@ cmd_bootstrap() {
     [[ -n "$class" && -n "$repo" && -n "$hardware" ]] \
         || die 'bootstrap needs --class, --repo, and --hardware-pkgs'
     sudo pacman -S --needed --noconfirm git base-devel yadm
-    # Clone, or refresh an existing checkout. The libvirt harness runs
-    # `yadm clone || true`, which silently no-ops on a resumed guest and
-    # leaves it converging against stale dotfiles (2.31/#98) — a real miss:
-    # on 2026-08-13 a resumed run kept building a package main had already
-    # removed. --ff-only so a surprise divergence fails loudly instead of
-    # merging something nobody asked for.
+    # Clone, or refresh an existing checkout. A resumed guest cannot rely on
+    # `yadm clone || true`: that silently keeps converging the first branch.
+    # A live miss proved it: on 2026-08-13 a resumed run built a package
+    # main had already removed. --ff-only makes surprise divergence fail
+    # loudly instead of merging something nobody asked for.
     #
     # A resumed guest must also honour a CHANGED --branch: the harness
     # advertises VM_HARNESS_BRANCH as the way to validate guest-side bootstrap
@@ -94,11 +93,15 @@ cmd_bootstrap() {
     if yadm rev-parse --git-dir >/dev/null 2>&1; then
         echo "==> Refreshing the existing yadm checkout"
         yadm fetch --prune origin
-        if [[ -n "$branch" && "$(yadm rev-parse --abbrev-ref HEAD)" != "$branch" ]]; then
+        current_branch=$(yadm rev-parse --abbrev-ref HEAD)
+        if [[ -n "$branch" && "$current_branch" != "$branch" ]]; then
             echo "==> Switching the checkout to '$branch'"
             yadm checkout "$branch"
+            current_branch=$branch
         fi
-        yadm pull --ff-only
+        [[ -n "$current_branch" && "$current_branch" != HEAD ]] \
+            || die 'existing yadm checkout has no branch to fast-forward'
+        yadm merge --ff-only "origin/$current_branch"
     else
         yadm clone --no-bootstrap ${branch:+-b "$branch"} "$repo"
     fi
@@ -111,15 +114,26 @@ cmd_bootstrap() {
 }
 
 cmd_check() {
-    local out rc=0
-    echo '--- metapac unmanaged (must be exactly empty):'
+    local out rc=0 names='' vendored='' real=''
+    echo '--- unmanaged packages (vendored custom PKGBUILDs are expected):'
     # metapac's own failure must not look like the gate finding drift: with
     # `2>/dev/null` and set -e this died silently, and the host only saw
     # "guest command failed (rc=127)". Keep stderr, report the rc.
     out=$(metapac unmanaged) || rc=$?
     ((rc == 0)) || die "metapac unmanaged failed (rc=$rc) — the gate did not run"
-    if [ -z "$out" ]; then echo OK; else
-        echo "$out"
+    if [[ -n "$out" ]]; then
+        names=$(printf '%s\n' "$out" | "$tools_dir/metapac-unmanaged-names") \
+            || die 'could not parse metapac unmanaged output'
+    fi
+    vendored=$("$tools_dir/custom-pkgs" list) \
+        || die 'could not list vendored packages'
+    real=$(comm -23 \
+        <(printf '%s\n' "$names" | sed '/^$/d' | sort -u) \
+        <(printf '%s\n' "$vendored" | sed '/^$/d' | sort -u))
+    if [[ -z "$real" ]]; then
+        echo OK
+    else
+        printf '%s\n' "$real"
         exit 1
     fi
     echo '--- enabled services (sample):'
@@ -127,7 +141,7 @@ cmd_check() {
     echo '--- graphical target reachable:'
     systemctl status graphical.target --no-pager | head -3 || true
     echo '--- drift report:'
-    "$HOME/.local/bin/tools/metapac-drift-report"
+    "$tools_dir/metapac-drift-report"
 }
 
 cmd_render_toml() {
