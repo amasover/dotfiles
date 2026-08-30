@@ -1,0 +1,15 @@
+#!/bin/sh
+# Virtual monitors survive physical layout switches. Clear every split monitor
+# before autorandr applies the next profile; profile hooks recreate those needed.
+set -eu
+
+monitors=$(xrandr --listmonitors)
+printf '%s\n' "$monitors" \
+    | awk 'NR > 1 {
+        name = $2
+        sub(/^[+*]+/, "", name)
+        if (name ~ /~/) print name
+    }' \
+    | while IFS= read -r monitor; do
+        xrandr --delmonitor "$monitor"
+    done

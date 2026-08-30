@@ -436,32 +436,50 @@ Issue: [#129](https://github.com/amasover/dotfiles/issues/129) · Origin: fallou
 Story 3.16 (#126, PR #127), found during post-reboot verification. Not a regression to
 reverse — the driver switch was correct; the rename has to be followed through.
 
-Xorg outputs renamed `eDP1`/`HDMI1`/`DP1`/`DP1-1`/`DP1-2`/`VIRTUAL1` →
-`eDP-1`/`HDMI-1`/`DP-1`/`DP-2`. Broken by the rename: all six autorandr profiles
-(their EDID fingerprints are keyed by output name, so `autorandr --detected` matches
-nothing and dock/undock auto-switching is dead) and `.config/polybar/launch.sh`'s
-hardcoded layout table. Incidentally fixed by it: `~/.screenlayout/*.sh` already used
-dashed names. Unaffected: i3's monitor block (commented out, already dashed).
+Story 5.5 (#152, PR #161) removed `launch.sh`'s hardcoded layout table before
+this story started. The launcher now assigns `MAIN`/`LEFT`/`EXTRA` from active
+monitor geometry and loads a profile override only for roles geometry cannot
+infer. Story 3.21 made bar selection manifest-driven, and the tracked autorandr
+`postswitch` owns relaunches. The old claim that `launch.sh` itself needs
+connector-name edits is therefore obsolete. Remaining name-coupled state is in
+autorandr profiles, split-monitor hooks and overrides, and the override sample.
+i3's active display commands are direction-based; manual `.screenlayout`
+scripts no longer autostart.
 
 **Acceptance criteria:**
 
-- Given each autorandr profile, when the corresponding monitors are attached, then the profile is re-saved under `modesetting` naming and `autorandr --detected` matches it
-- Given `.config/polybar/launch.sh`, when the layout table is updated to dashed output names, then each layout selects the intended bars
-- Given a profile cannot be re-created (hardware no longer available), then it is deleted or marked stale rather than left silently non-matching
-- Given the migration lands, when docs are updated, then the naming dependency is recorded so a future driver change does not silently break the same configs again
+- Given every retained physical setup, when its monitors are attached, then a
+  tracked autorandr profile uses current `xrandr` names and both
+  `autorandr --detected` and `autorandr --current` match it
+- Given an ordinary profile, then `monitor-roles` assigns the intended bars
+  without an override; given a virtual-split profile, then its
+  `layouts/<profile>.env` maps roles to current physical and logical monitor
+  names and the theme manifest launches the intended bars
+- Given a switch away from a split profile, then a global preswitch hook removes
+  every stale `~` monitor without connector-specific names; given a switch into
+  one, then its profile hook recreates the split before the global Polybar
+  relaunch
+- Given hardware that no longer exists, then its profile is retired rather than
+  left silently non-matching; laptop `.screenlayout` scripts superseded by a
+  retained profile are retired too
+- Given the migration lands, when docs are updated, then the driver/output-name
+  dependency and hook ordering are recorded so a future rename cannot silently
+  break the same configs
 
-Re-saving autorandr profiles needs the physical monitors, so this is attended
-work done per docking setup, not a single repo edit.
+Re-saving autorandr profiles and checking bar/workspace placement needs the
+physical monitors, so this remains attended work done one docking setup at a
+time. Profile fingerprints are captured from hardware, never reconstructed by
+renaming stale connector keys.
 
-The historical 4K split-monitor setup (virtual-monitor geometry, the
-per-profile autorandr hooks, i3 workspace placement, and rebuild guidance) is
-preserved in
-[knowledge/reference/4k-split-monitor-layout.md](../knowledge/reference/4k-split-monitor-layout.md)
-— captured 2026-08-22 when the pre-5.5 global postswitch was archived off the
-laptop (raw hook contents also on [#129](https://github.com/amasover/dotfiles/issues/129)).
+The historical 4K split-monitor setup (virtual-monitor geometry, old hooks, i3
+workspace placement, and rebuild guidance) is preserved in
+[knowledge/reference/4k-split-monitor-layout.md](../knowledge/reference/4k-split-monitor-layout.md).
+It was captured 2026-08-22 before Story 5.5 replaced layout matching and made
+Polybar relaunching a global autorandr concern.
 
-**Evidence artifact:** `autorandr --detected` matching on each re-saved setup +
-the updated `launch.sh` layout table.
+**Evidence artifact:** matching `autorandr --detected`/`--current` output plus
+`xrandr --listactivemonitors`, Polybar process placement, and i3 workspace
+placement after each retained setup is reconnected.
 
 ---
 

@@ -23,6 +23,13 @@ Disposable handoff for active work. GitHub issues own durable detail; the
 
 ## In flight
 
+- **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
+  laptop and home-4K profiles now match current modesetting names; home split
+  bars and workspace placement are live-verified. Story 5.5 already removed the
+  obsolete `launch.sh` layout table, so remaining work is hardware profile
+  capture, not launcher name replacement. Next: reconnect offsite work-4K,
+  office, and DisplayLink setups; all remain relevant.
+
 - **3.30 Spacemacs modernization** ([#210](https://github.com/amasover/dotfiles/issues/210)):
   active in another agent session. Preserve Spacemacs, Vim-style interaction,
   and established workflows while modernizing tracked `.spacemacs`.

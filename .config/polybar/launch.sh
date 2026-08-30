@@ -71,9 +71,10 @@ layout_env="$layout_dir/${profile}.env"
 
 unset MONITOR_MAIN MONITOR_LEFT MONITOR_EXTRA MONITOR_SPLIT_TOP MONITOR_SPLIT_BOTTOM
 roles_err=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/polybar-roles-err.XXXXXX")
-set -a # auto-export whatever the role sources assign
-eval "$("$tools/monitor-roles" 2>>"$roles_err")"
-[[ -n $profile && -f $layout_env ]] && eval "$("$tools/monitor-roles" merge-env "$layout_env" 2>>"$roles_err")"
+role_args=(resolve)
+[[ -n $profile && -f $layout_env ]] && role_args+=("$layout_env")
+set -a # auto-export the resolved roles
+eval "$("$tools/monitor-roles" "${role_args[@]}" 2>>"$roles_err")"
 set +a
 while IFS= read -r line; do warn "$line"; done <"$roles_err"
 rm -f "$roles_err"
