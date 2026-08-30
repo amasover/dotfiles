@@ -450,9 +450,9 @@ fi
 # "remove the conflicting provider?" prompt to yes, so a wrong provider
 # already on the system is replaced instead of killing the run; unattended is
 # VM-only (the metal gate above), so that auto-removal never touches metal.
-PROVIDER_PINS=(pipewire-jack libglvnd) # extend when a new pre-build provider collision appears
-# (jack2 2026-07-19; libgl 2026-08-16 — chaotic's nvidia-340xx-utils also provides it,
-#  and the resolver's "2 providers available" prompt hangs an unattended sync)
+PROVIDER_PINS=(pipewire-jack libglvnd noto-fonts) # extend for reproduced resolver collisions
+# jack2 2026-07-19; libgl 2026-08-16 (chaotic's nvidia-340xx-utils); ttf-font
+# 2026-08-30 (zoom on a fresh class render). Unattended prompts must never choose implicitly.
 say "Provider pins"
 if [[ $CHECK -eq 1 ]]; then
     echo "  would: pacman -S --needed ${PROVIDER_PINS[*]}   (declared providers install first, before any dep resolution picks one)"

@@ -25,6 +25,8 @@ lib32-vulkan-intel
 vulkan-intel
 $ DECLARED | grep -c '^astro-cli$'
 1
+$ DECLARED | grep -E '^(cava|cli-visualizer)$'
+cava
 $
 
 daily-vm drops work and metal hardware, selects VMware tools, and owns a
@@ -70,6 +72,8 @@ $ grep -R -- '--hardware-pkgs' .local/bin/setup/vm-harness* | wc -l
 0
 $ grep -c 'sudo systemctl enable --now NetworkManager' .local/bin/setup/bootstrap
 1
+$ grep -F 'PROVIDER_PINS=(pipewire-jack libglvnd noto-fonts)' .local/bin/setup/bootstrap
+PROVIDER_PINS=(pipewire-jack libglvnd noto-fonts) # extend for reproduced resolver collisions
 $
 
 all profiles keep the shared package contract and all active group files parse
