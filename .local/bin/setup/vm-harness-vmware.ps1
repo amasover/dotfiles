@@ -107,10 +107,7 @@ $VmPass = 'vm'    # throwaway VM only; reachable only from this host's NAT
 $Repo = if ($env:VM_HARNESS_REPO) { $env:VM_HARNESS_REPO } else { 'https://github.com/amasover/dotfiles.git' }
 $Branch = $env:VM_HARNESS_BRANCH  # guest clones this branch (default: repo default = main);
                                   # set it to validate guest-side bootstrap changes pre-merge
-$Class = if ($env:VM_HARNESS_CLASS) { $env:VM_HARNESS_CLASS } else { 'workstation' }
-# The harness-owned guest hardware set (interim home until 2.30's split, #96) —
-# the one per-hypervisor difference the shared guest glue takes as a parameter.
-$HardwarePkgs = 'open-vm-tools zram-generator'
+$Class = if ($env:VM_HARNESS_CLASS) { $env:VM_HARNESS_CLASS } else { 'daily-vm' }
 $SshOpts = @('-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=NUL',
              '-o', 'LogLevel=ERROR')
 $Vmx = Join-Path $VmDir "$VmName.vmx"
@@ -526,8 +523,7 @@ function Cmd-Bootstrap {
         Say "Running repo bootstrap inside the VM (class: $Class, unattended; AUR builds take a while)"
         $cmd = 'bash vm-harness-guest bootstrap' +
                " --class $(ConvertTo-ShellQuoted $Class)" +
-               " --repo $(ConvertTo-ShellQuoted $Repo)" +
-               " --hardware-pkgs $(ConvertTo-ShellQuoted $HardwarePkgs)"
+               " --repo $(ConvertTo-ShellQuoted $Repo)"
         if ($Branch) { $cmd += " --branch $(ConvertTo-ShellQuoted $Branch)" }
         Invoke-GuestGlue $ip $cmd
     }
@@ -540,8 +536,10 @@ function Cmd-Check {
         if (-not (Test-VmRunning)) { throw 'VM not running — run: boot' }
         $ip = Wait-Ssh
         Assert-KeyAuth
-        Say 'Asserting VM end state'
-        Invoke-GuestGlue $ip 'bash vm-harness-guest check'
+        Say "Asserting VM end state (class: $Class)"
+        $cmd = 'bash vm-harness-guest check' +
+               " --class $(ConvertTo-ShellQuoted $Class)"
+        Invoke-GuestGlue $ip $cmd
     }
 }
 

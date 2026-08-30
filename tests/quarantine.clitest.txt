@@ -12,10 +12,18 @@ Network-dependent behavior (live RPC verdicts) is deliberately untested here.
 
 --- metapac-declared: hostname_groups -> group files -> sorted union ---
 
-$ t=$(mktemp -d) && mkdir -p "$t/groups" && printf '[hostname_groups]\n"testhost" = [\n  "alpha",\n  "%s/local.toml",\n]\n' "$t" > "$t/config.toml" && printf '[arch]\npackages = [\n  # "Hack" is a display family, not a package\n  "zeta-pkg",\n  "alpha-pkg",  # "quoted rationale" stays a comment\n]\n' > "$t/groups/alpha.toml" && printf '[arch]\npackages = [\n  # "Source Code Pro for Powerline" is provided elsewhere\n  "local-pkg",\n  "alpha-pkg",\n]\n' > "$t/local.toml" && .local/bin/tools/metapac-declared --config-dir "$t" --hostname testhost
+$ t=$(mktemp -d) && mkdir -p "$t/groups" && printf '[hostname_groups]\n"wronghost" = [\n  "missing-for-wrong-host",\n]\n"testhost" = [\n  "alpha",\n  "%s/local.toml",\n]\n' "$t" > "$t/config.toml" && printf '[arch]\npackages = [\n  # "Hack" is a display family, not a package\n  "zeta-pkg",\n  "alpha-pkg",  # "quoted rationale" stays a comment\n]\n' > "$t/groups/alpha.toml" && printf '[arch]\npackages = [\n  # "Source Code Pro for Powerline" is provided elsewhere\n  "local-pkg",\n  "alpha-pkg",\n]\n' > "$t/local.toml" && .local/bin/tools/metapac-declared --config-dir "$t" --hostname testhost
 alpha-pkg
 local-pkg
 zeta-pkg
+$
+
+The same resolver exposes active group paths to every mutating/reporting caller;
+the unrelated first hostname never wins:
+
+$ .local/bin/tools/metapac-declared --config-dir "$t" --hostname testhost --group-files | sed "s|$t|CFG|"
+CFG/groups/alpha.toml
+CFG/local.toml
 $
 
 --- metapac-declared: unknown hostname fails with the config path ---

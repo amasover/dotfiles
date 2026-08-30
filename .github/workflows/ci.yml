@@ -54,6 +54,7 @@ jobs:
             shfmt \
             tar \
             util-linux \
+            yadm \
             zsh
 
       - name: Check out repository

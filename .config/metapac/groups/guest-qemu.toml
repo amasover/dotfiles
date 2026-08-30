@@ -1,0 +1,6 @@
+# metapac hardware adapter: libvirt/QEMU validation guest (Story 2.30, #96).
+[arch]
+packages = [
+  "qemu-guest-agent",
+  "zram-generator",
+]

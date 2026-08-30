@@ -7,19 +7,14 @@
 # VMware harnesses now copy and invoke this file for bootstrap/check.
 #
 # Subcommands:
-#   bootstrap --class C --repo URL --hardware-pkgs "P..." [--branch B]
-#              clone the repo via yadm, set the class, write the harness-owned
-#              hardware set, then run the repo's real bootstrap (check pass,
-#              then converge) unattended
-#   check      assert the end state: no unmanaged packages beyond the custom
-#              PKGBUILDs' expected vendored set, service samples, drift report
-#   render-toml --hardware-pkgs "P..."
-#              print the machine-local.toml bootstrap writes — exposed as its
-#              own subcommand so tests can cover it without a guest
+#   bootstrap --class C --repo URL [--branch B]
+#              clone/refresh yadm, select the concrete machine class, ensure an
+#              empty machine-local group exists, then run bootstrap check+apply
+#   check --class C
+#              assert the selected class/adapter/inbox, package drift, services
 #
-# The hardware set is the one per-hypervisor difference (QEMU:
-# qemu-guest-agent; VMware: open-vm-tools; both: zram-generator) — interim
-# home until the Story 2.30 class/hardware split (#96) absorbs it.
+# Hardware packages come only from the class's tracked adapter group (Story
+# 2.30). This helper never injects them into machine-local.toml.
 set -euo pipefail
 tools_dir=${VM_HARNESS_GUEST_TOOLS_DIR:-$HOME/.local/bin/tools}
 
@@ -35,22 +30,72 @@ need() { (($# >= 2)) || die "$1 needs a value"; }
 
 usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; }
 
-render_toml() {
-    local pkgs=$1 p
-    local -a list
-    # read -ra splits on IFS without globbing — a bare `for p in $pkgs` would
-    # expand a package named `*` against the guest's cwd.
-    read -ra list <<<"$pkgs"
+write_empty_machine_local() {
     printf '# machine-local metapac group — untracked, never published\n'
-    printf '# harness-owned guest hardware set, rewritten every bootstrap\n'
-    printf '# (interim home until the Story 2.30 class/hardware split, #96)\n'
-    printf '[arch]\npackages = [\n'
-    for p in "${list[@]}"; do printf '  "%s",\n' "$p"; done
-    printf ']\n'
+    printf '# concrete class adapters own all guest hardware packages (Story 2.30)\n'
+    printf '[arch]\npackages = [\n]\n'
+}
+
+migrate_legacy_machine_local() {
+    local file=$1 tmp
+    tmp=$(mktemp "${file}.tmp.XXXXXX")
+    awk '
+        /^# harness-owned guest hardware set/ {
+            print "# concrete class adapters own all guest hardware packages (Story 2.30)"
+            next
+        }
+        /^# \(interim home until the Story 2[.]30 class\/hardware split, #96\)$/ { next }
+        /^[[:space:]]*"(open-vm-tools|qemu-guest-agent|zram-generator)",?[[:space:]]*(#.*)?$/ { next }
+        { print }
+    ' "$file" >"$tmp" || {
+        rm -f "$tmp"
+        return 1
+    }
+    chmod --reference="$file" "$tmp"
+    mv "$tmp" "$file"
+}
+
+expected_profile() {
+    case $1 in
+        workstation) printf '%s\t%s\n' hardware-intel-laptop inbox-workstation ;;
+        daily-vm) printf '%s\t%s\n' guest-vmware inbox-daily-vm ;;
+        qemu-harness) printf '%s\t%s\n' guest-qemu inbox-qemu-harness ;;
+        *) die "unsupported machine class '$1'" ;;
+    esac
+}
+
+assert_class_profile() {
+    local expected=$1 actual adapter inbox files file name
+    local active_adapter='' active_inbox='' adapter_count=0 inbox_count=0
+    actual=$(yadm config local.class 2>/dev/null || true)
+    [[ $actual == "$expected" ]] \
+        || die "expected yadm class '$expected', found '${actual:-unset}'"
+    IFS=$'\t' read -r adapter inbox < <(expected_profile "$expected")
+    files=$("$tools_dir/metapac-declared" --group-files) \
+        || die 'could not resolve active metapac groups'
+    while IFS= read -r file; do
+        name=${file##*/}
+        name=${name%.toml}
+        case $name in
+            hardware-* | guest-*)
+                active_adapter=$name
+                adapter_count=$((adapter_count + 1))
+                ;;
+            inbox-*)
+                active_inbox=$name
+                inbox_count=$((inbox_count + 1))
+                ;;
+        esac
+    done <<<"$files"
+    ((adapter_count == 1)) && [[ $active_adapter == "$adapter" ]] \
+        || die "class '$expected' expected adapter '$adapter'; active: ${active_adapter:-none} (count $adapter_count)"
+    ((inbox_count == 1)) && [[ $active_inbox == "$inbox" ]] \
+        || die "class '$expected' expected inbox '$inbox'; active: ${active_inbox:-none} (count $inbox_count)"
+    echo "--- class profile: $expected ($adapter, $inbox)"
 }
 
 cmd_bootstrap() {
-    local class='' repo='' branch='' hardware='' current_branch
+    local class='' repo='' branch='' current_branch ml
     while (($#)); do
         case $1 in
             --class)
@@ -68,16 +113,11 @@ cmd_bootstrap() {
                 branch=$2
                 shift 2
                 ;;
-            --hardware-pkgs)
-                need "$@"
-                hardware=$2
-                shift 2
-                ;;
             *) die "bootstrap: unknown argument '$1'" ;;
         esac
     done
-    [[ -n "$class" && -n "$repo" && -n "$hardware" ]] \
-        || die 'bootstrap needs --class, --repo, and --hardware-pkgs'
+    [[ -n "$class" && -n "$repo" ]] \
+        || die 'bootstrap needs --class and --repo'
     sudo pacman -S --needed --noconfirm git base-devel yadm
     # Clone, or refresh an existing checkout. A resumed guest cannot rely on
     # `yadm clone || true`: that silently keeps converging the first branch.
@@ -105,16 +145,33 @@ cmd_bootstrap() {
     else
         yadm clone --no-bootstrap ${branch:+-b "$branch"} "$repo"
     fi
+    ml="$HOME/.local/share/metapac/machine-local.toml"
     yadm config local.class "$class"
     yadm alt
-    mkdir -p "$HOME/.local/share/metapac"
-    render_toml "$hardware" >"$HOME/.local/share/metapac/machine-local.toml"
+    mkdir -p "${ml%/*}"
+    if [[ ! -e $ml ]]; then
+        write_empty_machine_local >"$ml"
+    elif grep -q '^# harness-owned guest hardware set' "$ml"; then
+        migrate_legacy_machine_local "$ml"
+    fi
     "$HOME/.local/bin/setup/bootstrap" --check --unattended
     "$HOME/.local/bin/setup/bootstrap" --unattended
 }
 
 cmd_check() {
-    local out rc=0 names='' vendored='' real=''
+    local class='' out rc=0 names='' vendored='' real=''
+    while (($#)); do
+        case $1 in
+            --class)
+                need "$@"
+                class=$2
+                shift 2
+                ;;
+            *) die "check: unknown argument '$1'" ;;
+        esac
+    done
+    [[ -n $class ]] || die 'check needs --class'
+    assert_class_profile "$class"
     echo '--- unmanaged packages (vendored custom PKGBUILDs are expected):'
     # metapac's own failure must not look like the gate finding drift: with
     # `2>/dev/null` and set -e this died silently, and the host only saw
@@ -136,28 +193,22 @@ cmd_check() {
         printf '%s\n' "$real"
         exit 1
     fi
+    echo '--- network service ownership:'
+    systemctl is-enabled --quiet NetworkManager 2>/dev/null \
+        || die 'NetworkManager is not enabled'
+    systemctl is-active --quiet NetworkManager 2>/dev/null \
+        || die 'NetworkManager is not active'
+    if systemctl is-enabled --quiet systemd-networkd 2>/dev/null \
+        || systemctl is-active --quiet systemd-networkd 2>/dev/null; then
+        die 'systemd-networkd must be disabled and inactive when NetworkManager owns networking'
+    fi
+    echo 'NetworkManager enabled and active; systemd-networkd disabled and inactive'
     echo '--- enabled services (sample):'
-    systemctl is-enabled sshd NetworkManager 2>/dev/null || true
+    systemctl is-enabled sshd 2>/dev/null || true
     echo '--- graphical target reachable:'
     systemctl status graphical.target --no-pager | head -3 || true
     echo '--- drift report:'
     "$tools_dir/metapac-drift-report"
-}
-
-cmd_render_toml() {
-    local hardware=''
-    while (($#)); do
-        case $1 in
-            --hardware-pkgs)
-                need "$@"
-                hardware=$2
-                shift 2
-                ;;
-            *) die "render-toml: unknown argument '$1'" ;;
-        esac
-    done
-    [[ -n "$hardware" ]] || die 'render-toml needs --hardware-pkgs'
-    render_toml "$hardware"
 }
 
 case "${1:-}" in
@@ -165,10 +216,9 @@ case "${1:-}" in
         shift
         cmd_bootstrap "$@"
         ;;
-    check) cmd_check ;;
-    render-toml)
+    check)
         shift
-        cmd_render_toml "$@"
+        cmd_check "$@"
         ;;
     '' | help)
         usage

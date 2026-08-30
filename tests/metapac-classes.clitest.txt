@@ -1,0 +1,122 @@
+# Metapac machine classes and hardware adapters (Story 2.30, #96).
+# Renders the real YADM template inside an isolated HOME.
+#
+# Run from the repo root: clitest tests/metapac-classes.clitest.txt
+
+$ ROOT=$PWD; CLITMP=$(mktemp -d); H=$CLITMP/home; C=$CLITMP/config; D=$CLITMP/data; mkdir -p "$H/.config" "$H/.local/share/metapac"; cp -R .config/metapac "$H/.config/"; printf '# fixture machine-local group\n[arch]\npackages = []\n' > "$H/.local/share/metapac/machine-local.toml"; echo ready
+ready
+$ YADM() { HOME="$H" XDG_CONFIG_HOME="$C" XDG_DATA_HOME="$D" yadm "$@"; }; YADM init >/dev/null 2>&1; YADM add '.config/metapac/config.toml##template' .config/metapac/profiles/common.groups; echo initialized
+initialized
+$ RENDER() { YADM config --unset-all local.class >/dev/null 2>&1 || true; YADM config --add local.class "$1"; rm -f "$H/.config/metapac/config.toml"; YADM alt >/dev/null; }; DECLARED() { HOME="$H" "$ROOT/.local/bin/tools/metapac-declared" --config-dir "$H/.config/metapac"; }
+$
+
+workstation gets shared purpose groups, work, Intel-laptop hardware, and only
+its own inbox:
+
+$ RENDER workstation; grep -c '"hardware-intel-laptop"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"inbox-workstation"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"guest-vmware"\|"guest-qemu"\|"inbox-daily-vm"\|"inbox-qemu-harness"' "$H/.config/metapac/config.toml"
+0
+$ DECLARED | grep -E '^(intel-media-driver|lib32-vulkan-intel|vulkan-intel|vulkan-radeon|open-vm-tools|qemu-guest-agent)$'
+intel-media-driver
+lib32-vulkan-intel
+vulkan-intel
+$ DECLARED | grep -c '^astro-cli$'
+1
+$ DECLARED | grep -E '^(cava|cli-visualizer)$'
+cava
+$
+
+daily-vm drops work and metal hardware, selects VMware tools, and owns a
+separate inbox:
+
+$ RENDER daily-vm; grep -c '"guest-vmware"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"inbox-daily-vm"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"work"\|"hardware-intel-laptop"\|"guest-qemu"\|"inbox-workstation"' "$H/.config/metapac/config.toml"
+0
+$ DECLARED | grep -E '^(linux-firmware|open-vm-tools|xf86-video-vmware|zram-generator|refind|qemu-guest-agent)$'
+linux-firmware
+open-vm-tools
+xf86-video-vmware
+zram-generator
+$ DECLARED | grep -c '^astro-cli$'
+0
+$ if ((EUID == 0)); then chmod 755 "$CLITMP"; chown -R nobody:nobody "$H"; runuser -u nobody -- env HOME="$H" "$ROOT/.local/bin/tools/metapac-dedeclare" zram-generator; else HOME="$H" "$ROOT/.local/bin/tools/metapac-dedeclare" zram-generator; fi
+metapac-dedeclare: zram-generator — removed from guest-vmware.toml   (review via git diff)
+$ grep -c '"zram-generator"' "$H/.config/metapac/groups/guest-vmware.toml"
+0
+$ grep -c '"zram-generator"' "$H/.config/metapac/groups/guest-qemu.toml"
+1
+$
+
+qemu-harness uses the same non-work purpose set with QEMU tools and its own
+inbox:
+
+$ RENDER qemu-harness; grep -c '"guest-qemu"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"inbox-qemu-harness"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"work"\|"hardware-intel-laptop"\|"guest-vmware"\|"inbox-workstation"' "$H/.config/metapac/config.toml"
+0
+$ DECLARED | grep -E '^(linux-firmware|qemu-guest-agent|zram-generator|refind|open-vm-tools)$'
+linux-firmware
+qemu-guest-agent
+zram-generator
+$ DECLARED | grep -c '^astro-cli$'
+0
+$
+
+harness callers select concrete classes and never inject hardware packages:
+
+$ grep -F 'VM_CLASS="${VM_HARNESS_CLASS:-qemu-harness}"' .local/bin/setup/vm-harness
+VM_CLASS="${VM_HARNESS_CLASS:-qemu-harness}" # concrete package profile validated by this QEMU harness
+$ grep -F "else { 'daily-vm' }" .local/bin/setup/vm-harness-vmware.ps1
+$Class = if ($env:VM_HARNESS_CLASS) { $env:VM_HARNESS_CLASS } else { 'daily-vm' }
+$ grep -R -- '--hardware-pkgs' .local/bin/setup/vm-harness* | wc -l
+0
+$
+
+bootstrap network/provider seams exercise real branches with command stubs:
+
+$ SERVICE_BIN="$CLITMP/service-bin"; SERVICE_TRACE="$CLITMP/service-trace"; mkdir -p "$SERVICE_BIN"; printf '%s\n' '#!/bin/sh' 'unit=' 'for arg; do unit=$arg; done' 'case "$1:$unit" in' '  is-enabled:NetworkManager|is-active:NetworkManager) [ "${NM_READY:-0}" = 1 ]; exit $? ;;' '  is-enabled:systemd-networkd|is-active:systemd-networkd) [ "${NETWORKD_ON:-0}" = 1 ]; exit $? ;;' 'esac' 'exit 1' > "$SERVICE_BIN/systemctl"; printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$SERVICE_TRACE"' > "$SERVICE_BIN/sudo"; chmod +x "$SERVICE_BIN/systemctl" "$SERVICE_BIN/sudo"; echo ready
+ready
+$ export BOOTSTRAP_TEST_MODE=1; echo seams-enabled
+seams-enabled
+$ PATH="$SERVICE_BIN:$PATH" NM_READY=1 .local/bin/setup/bootstrap --network-services check
+  NetworkManager enabled and active; systemd-networkd disabled and inactive
+$ PATH="$SERVICE_BIN:$PATH" NM_READY=1 NETWORKD_ON=1 .local/bin/setup/bootstrap --network-services check
+  would: systemctl enable --now NetworkManager
+  would: systemctl disable --now systemd-networkd
+$ : > "$SERVICE_TRACE"; PATH="$SERVICE_BIN:$PATH" SERVICE_TRACE="$SERVICE_TRACE" .local/bin/setup/bootstrap --network-services apply >/dev/null; cat "$SERVICE_TRACE"
+systemctl enable --now NetworkManager
+systemctl disable --now systemd-networkd
+$ PATH="$SERVICE_BIN:$PATH" .local/bin/setup/bootstrap --provider-pins check
+  would: pacman -S --needed pipewire-jack libglvnd noto-fonts   (declared providers install first, before any dep resolution picks one)
+$ : > "$SERVICE_TRACE"; PATH="$SERVICE_BIN:$PATH" SERVICE_TRACE="$SERVICE_TRACE" .local/bin/setup/bootstrap --provider-pins unattended; cat "$SERVICE_TRACE"
+pacman -S --needed --noconfirm --ask=4 pipewire-jack libglvnd noto-fonts
+$
+
+drift reporting reads only rendered active groups and the active inbox:
+
+$ mkdir -p "$CLITMP/bin" "$CLITMP/pkgbuilds" "$H/.local/bin/tools"; printf '#!/bin/sh\nexit 0\n' > "$CLITMP/bin/metapac"; printf '#!/bin/sh\nexit 0\n' > "$CLITMP/bin/pacman"; chmod +x "$CLITMP/bin/metapac" "$CLITMP/bin/pacman"
+$ for tool in metapac-declared metapac-unmanaged-names custom-pkgs aur-quarantine; do ln -s "$ROOT/.local/bin/tools/$tool" "$H/.local/bin/tools/$tool"; done
+$ sed -i '/packages = \[/a\  "foreign-inbox-pkg",' "$H/.config/metapac/groups/inbox-daily-vm.toml"; RENDER qemu-harness
+$ HOME="$H" XDG_STATE_HOME="$CLITMP/state" CUSTOM_PKGS_DIR="$CLITMP/pkgbuilds" PATH="$CLITMP/bin:/usr/bin" "$ROOT/.local/bin/tools/metapac-drift-report" | grep -E '^     (astro-cli|open-vm-tools|refind|foreign-inbox-pkg)$' | wc -l
+0
+$ HOME="$H" XDG_STATE_HOME="$CLITMP/state" CUSTOM_PKGS_DIR="$CLITMP/pkgbuilds" PATH="$CLITMP/bin:/usr/bin" "$ROOT/.local/bin/tools/metapac-drift-report" | grep -c '\[ok\] inbox: empty'
+1
+$
+
+all profiles keep the shared package contract and all active group files parse
+through metapac:
+
+$ for class in workstation daily-vm qemu-harness; do RENDER "$class"; DECLARED >/dev/null || exit; done; echo all-render
+all-render
+$ for group in hardware-intel-laptop guest-vmware guest-qemu inbox-workstation inbox-daily-vm inbox-qemu-harness; do test -f ".config/metapac/groups/$group.toml" || echo "missing $group"; done
+$ rm -rf "$CLITMP"; echo done
+done
+$

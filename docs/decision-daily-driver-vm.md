@@ -23,13 +23,14 @@ Supporting choices, decided together:
   and the `gaming` group live or die on it. Hyper-V rejected (no practical Linux 3D;
   xrdp session hack); VirtualBox rejected (weak 3D); WSL2 rejected (runs apps, not
   the platform — no archinstall, bootloader, or full session to rehearse).
-- **Class model:** the VM is its own machine class (working name `daily-vm`,
-  finalized in Story 2.30) activating every purpose group except `work` and the new
-  `hardware` group, plus a hypervisor guest-tools group (`open-vm-tools`,
-  `xf86-video-vmware`). The nine hardware-bound packages (`acpi`, `acpid`,
-  `intel-ucode`, `linux-firmware`, `refind`+theme, `xf86-video-{amdgpu,intel,vesa}`)
-  move out of `base`/`desktop` into `hardware`, activated only by metal classes —
-  keeping the shared groups honest instead of forking VM variants.
+- **Class model:** Story 2.30 finalized three concrete profiles at the
+  `yadm.class` seam. `workstation` adds `work` plus the Intel-laptop adapter;
+  `daily-vm` adds VMware tools; `qemu-harness` adds QEMU tools. All share one
+  purpose-group list, while each owns a distinct inbox. The VMware adapter
+  declares `open-vm-tools`, `xf86-video-vmware`, and `zram-generator`; Intel
+  boot/GPU packages stay only on the laptop, while archinstall-owned
+  `linux-firmware` remains shared. Harnesses pass a class, never an ad hoc
+  hardware package list.
 - **Secrets: full archive, host trusted.** The VM decrypts the real archive; the
   Windows host is accepted into the trust boundary (it can read guest memory/disk
   regardless). A second-tier secret set was rejected as permanent curation friction

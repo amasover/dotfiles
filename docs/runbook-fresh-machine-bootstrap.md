@@ -29,8 +29,9 @@ for its autopsy; history via `git log -- .local/bin/setup/install`).
 ~/.local/bin/setup/bootstrap           # the real run
 ```
 
-The script is linear and re-runnable; every mutating step is delegated to a tool that
-shows its own plan and prompts (makepkg, metapac sync, chsh). What it does, in order:
+The script is linear and re-runnable. Every mutation is explicit and idempotent;
+package tools show plans/prompts, while service/file steps print their exact action.
+What it does, in order:
 
 1. **Secrets** — `yadm decrypt` (interactive passphrase; symmetric GPG, no key
    transfer needed; secret contents are never printed). Skipped when `~/.zshenv`
@@ -61,27 +62,30 @@ shows its own plan and prompts (makepkg, metapac sync, chsh). What it does, in o
    Shell ownership includes official `nvm` and `zsh-autosuggestions`; `.zshrc` sources
    their packaged entry points directly. NVM never reacts to `cd`—run `nvm use`
    explicitly when a Node project needs its `.nvmrc` version.
-8. **AUR trust baseline** — `aur-quarantine seed` (trust-first-seen, announced;
+8. **Network ownership** — enables and starts NetworkManager, then disables and stops
+   systemd-networkd. Harness seeds select NetworkManager from first boot; this step also
+   migrates older ISO-networked guests. `--check` requires or reports the exact cutover.
+9. **AUR trust baseline** — `aur-quarantine seed` (trust-first-seen, announced;
    interim until 2.10's portable baseline).
-9. **oh-my-zsh** — official installer, `KEEP_ZSHRC=yes` so yadm's `.zshrc` survives;
-   then symlinks the tracked patched agnoster theme into its custom theme directory.
-   No custom plugin clone supplies autosuggestions or NVM.
-10. **Spacemacs checkout** — `setup/spacemacs-checkout apply` clones upstream `develop`
+10. **oh-my-zsh** — official installer, `KEEP_ZSHRC=yes` so yadm's `.zshrc` survives;
+    then symlinks the tracked patched agnoster theme into its custom theme directory.
+    No custom plugin clone supplies autosuggestions or NVM.
+11. **Spacemacs checkout** — `setup/spacemacs-checkout apply` clones upstream `develop`
     when `~/.emacs.d` is absent. An existing wrong/dirty/ahead checkout stops with manual
     repair instructions; bootstrap never overwrites it. Tracked `~/.spacemacs` owns user
     configuration.
-11. **Emacs Copilot server** — installs a pinned `@github/copilot-language-server`
+12. **Emacs Copilot server** — installs a pinned `@github/copilot-language-server`
     under Spacemacs' cache through declared official `nodejs`/`npm` in `/usr/bin`,
     then verifies both package version and launcher. This runs before first Emacs launch.
-12. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
+13. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
     unrelated settings.
-13. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
+14. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
     reconciles active `Plug` declarations; `--check` is read-only.
-14. **User services** — enables tracked user units; services awaiting attended auth may
+15. **User services** — enables tracked user units; services awaiting attended auth may
     start later through their restart policy.
-15. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and
+16. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and
     leaves metal/non-VMware hosts without the managed link.
-16. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
+17. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
 
 Focused editor validation from the repo checkout:
 
@@ -98,13 +102,19 @@ result contains state/counts only—never project paths.
 
 ## Class table
 
-| Class | Meaning | Group list |
-| --- | --- | --- |
-| `workstation` | the daily driver (this machine) | all 16 purpose groups + `inbox-workstation` + machine-local |
+All classes include the same 15 purpose groups from
+`.config/metapac/profiles/common.groups` plus the private machine-local group.
 
-New machine ≈ new class: add a branch to `config.toml##template` with its group list
-and an `inbox-<class>.toml`, set `yadm config local.class`, `yadm alt`. Classes are
-public-safe labels; one per machine (see CONTEXT.md).
+| Class | Intended machine | Added groups |
+| --- | --- | --- |
+| `workstation` | Current physical Intel laptop | `work`, `hardware-intel-laptop`, `inbox-workstation` |
+| `daily-vm` | Windows-hosted VMware daily driver | `guest-vmware`, `inbox-daily-vm` |
+| `qemu-harness` | Disposable libvirt validation guest | `guest-qemu`, `inbox-qemu-harness` |
+
+Each concrete class selects exactly one hardware adapter and one inbox. To add a
+machine profile, add its guarded template branch, adapter, and inbox; set
+`yadm config local.class <class>`, then run `yadm alt`. Bootstrap enables
+NetworkManager for every class after package reconcile.
 
 ## Daily-drivable acceptance (the cleanup-era milestone bar)
 

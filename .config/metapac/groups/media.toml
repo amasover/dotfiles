@@ -20,7 +20,7 @@
 [arch]
 packages = [
   "alsa-utils",
-  "cli-visualizer",
+  "cava",
   "feishin-bin",
   "ffmpegthumbnailer",
   "gimp",

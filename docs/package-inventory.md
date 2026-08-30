@@ -63,8 +63,9 @@ Each old entry classified SELF / PROVIDED-BY / ABSENT.
 
 `antergos-keyring`, `antergos-midnight-timers`, `antergos-mirrorlist` (dead distro,
 EOL 2019) · `nvidia-390xx`, `nvidia-390xx-settings`, `nvidia-390xx-utils`,
-`lib32-nvidia-390xx-utils` (legacy NVIDIA — machine is now **AMD**: `vulkan-radeon`,
-`xf86-video-amdgpu`) · `compton` (no compositor installed now) · `pulseaudio`
+`lib32-nvidia-390xx-utils` (legacy NVIDIA — current laptop is Intel Iris Xe;
+Story 2.30 declares Intel media plus 64/32-bit Vulkan) · `compton` (no compositor
+installed now) · `pulseaudio`
 (→ PipeWire: `pipewire-pulse`) · `termite` (dead terminal → `alacritty`) ·
 `reiserfsprogs` (reiserfs deprecated) · `dropbox`, `steam`, `task`, `pgadmin4`
 (not installed — optional/per-machine).
@@ -103,33 +104,36 @@ EOL 2019) · `nvidia-390xx`, `nvidia-390xx-settings`, `nvidia-390xx-utils`,
 Grouping is **proposed** — the genuinely ambiguous calls are deferred to the Open
 Questions below before manifests are split. Native = official repos; **bold** = AUR.
 
-- **core-system** — base/kernel/fs/boot/toolchain: `filesystem` `linux` `linux-headers`
-  `linux-firmware` `intel-ucode` `systemd*` `glibc` `coreutils` `bash` `sudo` `shadow`
-  `util-linux` `pacman-contrib` `pkgfile` `reflector` `licenses` `man-db`/`man-pages`
-  GNU build (`gcc` `make` `autoconf` `automake` `binutils` `bison` `flex` `m4` `libtool`
-  `patch` `pkgconf` `fakeroot`) · filesystems (`btrfs-progs` `e2fsprogs` `dosfstools`
+- **core-system** — base/kernel/fs/toolchain: `filesystem` `linux` `linux-headers`
+  `linux-firmware` `systemd*` `glibc` `coreutils` `bash` `sudo` `shadow` `util-linux`
+  `pacman-contrib` `pkgfile` `reflector` `licenses` `man-db`/`man-pages` · GNU build
+  (`gcc` `make` `autoconf` `automake` `binutils` `bison` `flex` `m4` `libtool` `patch`
+  `pkgconf` `fakeroot`) · filesystems (`btrfs-progs` `e2fsprogs` `dosfstools`
   `exfat-utils` `f2fs-tools` `jfsutils` `nilfs-utils` `xfsprogs` `ntfs-3g` `cryptsetup`
-  `cryfs` `lvm2` `mdadm` `dmraid` `device-mapper` `cifs-utils` `nfs-utils`) · UEFI/secure-boot
-  (`efibootmgr` `efivar` `edk2-shell` `refind` `sbsigntools` `pesign` `bolt` **shim-signed**
-  **mokutil-git** **refind-theme-nord** **bootinfoscript**) · archives (`tar` `zip` `unzip`
-  `7zip` `unrar` `gzip` `bzip2` `xz` `cabextract` `sharutils`)
+  `cryfs` `lvm2` `mdadm` `dmraid` `device-mapper` `cifs-utils` `nfs-utils`) ·
+  UEFI/secure-boot tools (`efibootmgr` `efivar` `edk2-shell` `sbsigntools` `pesign`
+  `bolt` **shim-signed** **mokutil-git** **bootinfoscript**) · archives (`tar` `zip`
+  `unzip` `7zip` `unrar` `gzip` `bzip2` `xz` `cabextract` `sharutils`)
 - **shell-cli** — `zsh` `bash-completion` `keychain` `screen` `ranger` `broot` `htop`
   `gtop` `ncdu` `tree` `ripgrep` `the_silver_searcher` `jq` `jaq` `yq` `eza` `entr` `pv`
   `dos2unix` `calc` `cloc` `gource` `w3m` `expac` **antibody** **bashmount** **ccat** **metapac**
 - **editor** — `neovim` `gvim` `emacs` `nano` `ex-vi-compat` `intellij-idea-community-edition`
   `editorconfig-core-c` `autopep8` **visual-studio-code-bin** **nord-vim** **omnisharp-roslyn-bin**
 - **desktop** — Xorg (`xorg-server` `xorg-xinit` `xorg-server-xephyr` `xorg-appres`
-  `xorg-xev` `xorg-xfd` `xorg-xkill`) · GPU (`xf86-video-amdgpu` `xf86-video-intel`
-  `xf86-video-vesa` `vulkan-radeon` `lib32-vulkan-radeon` `lib32-glu`) · WM/bar/launcher
-  (`i3-wm` `i3lock` `polybar` `rofi` `dunst` `conky` **polybar-wireguard-git** **siji-git**
-  **flashfocus**) · session/util (`feh` `redshift` `parcellite` `lxappearance` `lxqt-policykit`
+  `xorg-xev` `xorg-xfd` `xorg-xkill`) · WM/bar/launcher (`i3-wm` `i3lock` `polybar`
+  `rofi` `dunst` `conky` **polybar-wireguard-git** **siji-git** **flashfocus**) ·
+  session/util (`feh` `redshift` `parcellite` `lxappearance` `lxqt-policykit`
   `network-manager-applet` `arandr` `autorandr` `xbindkeys` `xclip` `scrot` `kwallet5`
-  `gpick` `thunar` `tumbler` `alacritty` `ibus-chewing` **xautolock** **xidlehook**
-  **colorpicker** **clight** **clight-gui-git** **hardcode-tray** **lsdesktopf**) ·
-  themes/fonts (`terminus-font` `ttf-liberation` `ttf-nerd-fonts-symbols*` `noto-fonts`
+  `gpick` `thunar` `tumbler` `alacritty` `ibus-chewing` **xidlehook** **colorpicker**
+  **clight** **clight-gui-git** **hardcode-tray** **lsdesktopf**) · themes/fonts
+  (`terminus-font` `ttf-liberation` `ttf-nerd-fonts-symbols*` `noto-fonts`
   `noto-fonts-emoji` `awesome-terminal-fonts` `adobe-source-code-pro-fonts`
   `papirus-icon-theme` `opendesktop-fonts` **arc-gtk-theme** **arc-solid-gtk-theme**
   **noto-fonts-sc** **noto-fonts-tc**) · login (`lightdm-webkit-theme-litarvan`)
+- **hardware-intel-laptop** — ACPI, `intel-ucode`, `refind` + theme,
+  `intel-media-driver`, `vulkan-intel`, and `lib32-vulkan-intel`; Xorg uses
+  built-in modesetting
+- **guest-vmware / guest-qemu** — hypervisor agent/display packages + zram
 - **development** — languages/runtimes (`go` `go-tools` `rustup` `python-pip` `python-pipx`
   `pyenv` `uv` `nodejs` `npm` `groovy` `mono-msbuild` `nuget` **golangci-lint-bin**
   **dotnet-sdk-bin** **dotnet-sdk-9.0-bin** **aspnet-runtime-bin** **aspnet-runtime-9.0-bin**
@@ -152,7 +156,7 @@ Questions below before manifests are split. Native = official repos; **bold** = 
   → **Open question Q3** (VPN sprawl)
 - **media** — `vlc` `mpv` `yt-dlp` `playerctl` `ffmpegthumbnailer` `imagemagick` `gimp`
   `pavucontrol` `pamixer` `alsa-utils` `pipewire-pulse` `tesseract` `perl-image-exiftool`
-  `zathura` `zathura-ps` `guvcview` **tidal-hifi-bin** **feishin-bin** **cli-visualizer**
+  `zathura` `zathura-ps` `guvcview` **tidal-hifi-bin** **feishin-bin** `cava`
   · screen-record (`peek` **byzanz** **kazam** **simplescreenrecorder**) → resolved by **D7**
 - **comms** — `signal-desktop` `discord` `weechat` **teams-for-linux-bin** **zoom**
   **bitlbee** **chatmcp**

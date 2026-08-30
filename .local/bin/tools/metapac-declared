@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
-# metapac-declared — print this host's declared package set, one per line.
+# metapac-declared — resolve this host's active groups and declared packages.
 #
 # metapac has no list command, so this parses the rendered config the same way
-# metapac reads it: [hostname_groups] entry for this host -> group entries
-# (names under <config>/groups/, or absolute paths like machine-local.toml) ->
-# every quoted name on uncommented lines inside each file's `[arch]` packages
-# array. Coupled to the repo's group-file convention (one quoted name per line)
-# just as bootstrap 6b is coupled to metapac's output shape; the harness's
-# exactly-empty `unmanaged` assert is the backstop for both.
+# metapac reads it: this hostname's [hostname_groups] entry -> group files ->
+# quoted names inside each file's `[arch]` package array. Default output is the
+# sorted package set. `--group-files` exposes the resolved active file paths so
+# inbox capture, drift reporting, removal capture, and harness checks share one
+# hostname-aware resolver instead of maintaining divergent parsers.
 #
-# Output may include never-publish machine-local names — do not paste it into
-# tracked files, issues, or transcripts (Story 2.11).
+# Package output may include never-publish machine-local names — do not paste it
+# into tracked files, issues, or transcripts (Story 2.11).
 #
 # Flags: --config-dir DIR   (default: ~/.config/metapac)
 #        --hostname NAME    (default: uname -n)
+#        --group-files      print active group paths instead of package names
 set -euo pipefail
 
 cfg_dir="$HOME/.config/metapac"
 host="$(uname -n)"
+mode=packages
 while (($#)); do
     case "$1" in
         --config-dir)
@@ -28,8 +29,12 @@ while (($#)); do
             host=$2
             shift 2
             ;;
+        --group-files)
+            mode=group-files
+            shift
+            ;;
         *)
-            echo "usage: metapac-declared [--config-dir DIR] [--hostname NAME]" >&2
+            echo "usage: metapac-declared [--config-dir DIR] [--hostname NAME] [--group-files]" >&2
             exit 2
             ;;
     esac
@@ -51,12 +56,28 @@ mapfile -t entries < <(awk -v h="\"$host\" = [" '
     exit 1
 }
 
+group_files=()
 for e in "${entries[@]}"; do
-    if [[ "$e" == /* ]]; then f="$e"; else f="$cfg_dir/groups/$e.toml"; fi
+    if [[ "$e" == /* ]]; then
+        f=$e
+        if [[ ! -f $f && $f != *.toml && -f $f.toml ]]; then f+=.toml; fi
+    else
+        f="$cfg_dir/groups/$e"
+        [[ $f == *.toml ]] || f+=.toml
+    fi
     [[ -f "$f" ]] || {
         echo "metapac-declared: missing group file $f" >&2
         exit 1
     }
+    group_files+=("$f")
+done
+
+if [[ $mode == group-files ]]; then
+    printf '%s\n' "${group_files[@]}"
+    exit 0
+fi
+
+for f in "${group_files[@]}"; do
     awk '{ line = $0; sub(/[[:space:]]*#.*/, "", line) }
          line ~ /^\[arch\]/ { a = 1; next }
          line ~ /^\[/       { a = 0 }

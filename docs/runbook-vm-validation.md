@@ -17,9 +17,9 @@ vm-harness install    # unattended: archiso's cloud-init runs archinstall --sile
                       #   VM powers off, media auto-ejected; watch: vm-harness tail install
 vm-harness boot       # start the domain; prints its NAT IP when the lease appears
 vm-harness ip         # the VM's IPv4 (ssh aaron@$(vm-harness ip))
-vm-harness bootstrap  # waits for ssh, then: yadm clone → class workstation → repo
+vm-harness bootstrap  # waits for ssh, then: yadm clone → class qemu-harness → repo
                       #   bootstrap --unattended (metapac sync --no-confirm inside)
-vm-harness check      # assert: metapac unmanaged EXACTLY empty, services, graphical target
+vm-harness check      # assert: class/adapter/inbox, network owner, drift, graphical target
 vm-harness destroy    # undefine domain + delete disk/seed volumes — next run is pristine
 ```
 
@@ -95,9 +95,9 @@ archinstall's TUI errors show on the virt-manager console.
   contents ever enter the harness. If a test needs real secrets, run `yadm decrypt`
   in the guest manually.
 - **Shared guest glue (Story 2.41):** every `bootstrap` and `check` scp's the host
-  checkout's `vm-harness-guest` into the VM, then invokes it over ssh. QEMU passes
-  `qemu-guest-agent zram-generator`; VMware passes its own hardware set. Repo/class/
-  branch selection and the exactly-empty metapac gate therefore have one owner.
+  checkout's `vm-harness-guest` into the VM, then invokes it over ssh. Each harness
+  passes its concrete class (`qemu-harness` or `daily-vm`); tracked class adapters own
+  hypervisor packages. Repo/class/branch selection and end-state gates have one owner.
 - **Intentional host differences stay outside the helper:** QEMU's `exec` debugging
   peephole uses qemu-guest-agent and does not propagate guest exit status; guest-glue
   bootstrap/check use ssh and do propagate it through the phase result. Both harnesses
@@ -109,13 +109,13 @@ archinstall's TUI errors show on the virt-manager console.
   baseline a decrypt-restored machine would. These are identity judgments, not
   secrets — the no-secrets rule above is unaffected. `VM_HARNESS_FRESH_TRUST=1`
   skips the copy to exercise the fresh-TOFU path.
-- **Profile guard in the VM:** the shared helper runs
-  `yadm config local.class workstation`, then `yadm alt`, and rewrites
-  `machine-local.toml` with the QEMU hardware set before bootstrap validates the hostname.
-- **The acceptance assert:** `vm-harness check` fails unless every explicit package is
-  metapac-declared or owned by the tracked custom-PKGBUILD registry. Vendored packages
-  remain visible in the drift report's separate expected bucket; every other unmanaged
-  name remains fatal.
+- **Profile guard in the VM:** the shared helper sets the harness's concrete class,
+  renders alternatives, and verifies the expected adapter and inbox during `check`.
+  Legacy harness-owned `machine-local.toml` files lose only the formerly injected
+  hypervisor packages; any private declarations survive.
+- **Acceptance asserts:** `vm-harness check` requires the expected class/adapter/inbox,
+  NetworkManager enabled and active with systemd-networkd disabled/inactive, and no
+  unmanaged packages except tracked custom-PKGBUILD outputs. Drift remains visible.
 
 ## archinstall schema skew (debugging record, 2026-07-03)
 
@@ -184,20 +184,19 @@ master.
   signal back to the guest, so resizing the watching terminal garbles the
   picture until the next linear output. Inherent to serial consoles — wait it
   out or don't resize mid-TUI.
-- **Class profile**: `vm-harness bootstrap` sets `yadm config local.class` to
-  `$VM_HARNESS_CLASS` (default `workstation` — the full 16-group daily-driver set,
-  ~375 packages; that's the profile 2.7 exists to prove). When other classes exist,
-  validate them with e.g. `VM_HARNESS_CLASS=laptop vm-harness bootstrap`.
+- **Class profile**: the libvirt harness defaults to `qemu-harness`; the VMware harness
+  defaults to `daily-vm`. `VM_HARNESS_CLASS` can select another concrete profile when
+  deliberately testing it, e.g. `VM_HARNESS_CLASS=workstation vm-harness bootstrap`.
 
 - `vm-harness bootstrap` runs `bootstrap --unattended` in the guest (no prompts),
   but the AUR set (dotnet, storageexplorer, etc.) builds for **hours** in the VM.
   A closed terminal kills an *attached* harness run (the qemu process survives;
   the driver doesn't) — use `--detach` when walking away.
 - The VM clones the repo from **GitHub main** — bootstrap-affecting PRs must merge
-  before their VM validation run (or pass a branch clone URL via `VM_HARNESS_REPO`).
-- archinstall's network choice is the ISO's (systemd-networkd/dhcp); `metapac sync`
-  later installs official-repo `networkmanager` per the groups, with its required
-  `wpa_supplicant` dependency (Story 3.9). No iwd-provider replacement remains.
+  before their VM validation run (or set `VM_HARNESS_BRANCH` to the branch).
+- archinstall selects NetworkManager in the installed system from first boot. Bootstrap
+  reasserts it as sole network manager and retires systemd-networkd on older ISO-networked
+  guests; `wpa_supplicant` remains NetworkManager's declared backend (Story 3.9).
 - First `yay -Syu` inside the VM is quarantine-gated like any machine (2.6 hook
   arrives with the dotfiles; baseline seeded by bootstrap step 7).
 - **Disk sizing:** the full workstation profile filled a 38G root mid-run (1,500+

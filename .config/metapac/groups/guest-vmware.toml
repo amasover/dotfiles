@@ -1,0 +1,7 @@
+# metapac hardware adapter: VMware daily-driver guest (Story 2.30, #96).
+[arch]
+packages = [
+  "open-vm-tools",
+  "xf86-video-vmware",
+  "zram-generator",
+]

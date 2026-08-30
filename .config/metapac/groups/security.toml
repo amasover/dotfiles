@@ -5,6 +5,7 @@
 [arch]
 packages = [
   "1password",
+  "1password-cli",
   "gitleaks",
   "pwgen",
   "sedutil",

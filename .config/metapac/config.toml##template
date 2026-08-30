@@ -11,28 +11,30 @@ package_manager = "yay"
 
 [hostname_groups]
 {% if yadm.class == "workstation" %}
-# Class "workstation": the daily driver — every purpose group incl. opt-in `work`.
-# machine-local.toml holds never-publish package names (Story 2.11); metapac errors
-# on a missing group file, so a fresh machine must create it (empty is fine) before
-# the first metapac run — Story 2.3's bootstrap owns that step.
+# Physical Intel laptop: shared purposes + work + its concrete hardware adapter.
 "{{ yadm.hostname }}" = [
-  "base",
-  "shell-cli",
-  "editor",
-  "desktop",
-  "development",
+{% include "profiles/common.groups" %}
   "work",
-  "network-vpn",
-  "media",
-  "comms",
-  "browsers",
-  "office",
-  "printing",
-  "virt",
-  "gaming",
-  "security",
-  "optional",
+  "hardware-intel-laptop",
   "inbox-workstation",
+  "{{ env.HOME }}/.local/share/metapac/machine-local.toml",
+]
+{% endif %}
+{% if yadm.class == "daily-vm" %}
+# Windows-hosted VMware daily driver: no work or metal hardware packages.
+"{{ yadm.hostname }}" = [
+{% include "profiles/common.groups" %}
+  "guest-vmware",
+  "inbox-daily-vm",
+  "{{ env.HOME }}/.local/share/metapac/machine-local.toml",
+]
+{% endif %}
+{% if yadm.class == "qemu-harness" %}
+# Disposable libvirt validation guest: daily-VM purposes with QEMU tools.
+"{{ yadm.hostname }}" = [
+{% include "profiles/common.groups" %}
+  "guest-qemu",
+  "inbox-qemu-harness",
   "{{ env.HOME }}/.local/share/metapac/machine-local.toml",
 ]
 {% endif %}

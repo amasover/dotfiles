@@ -40,6 +40,46 @@ die() {
 }
 usage() { sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"; } # the header is the help
 
+PROVIDER_PINS=(pipewire-jack libglvnd noto-fonts) # extend for reproduced resolver collisions
+
+install_provider_pins() {
+    case $1 in
+        check)
+            echo "  would: pacman -S --needed ${PROVIDER_PINS[*]}   (declared providers install first, before any dep resolution picks one)"
+            ;;
+        unattended)
+            sudo pacman -S --needed --noconfirm --ask=4 "${PROVIDER_PINS[@]}"
+            ;;
+        attended)
+            sudo pacman -S --needed "${PROVIDER_PINS[@]}"
+            ;;
+        *) die "provider-pins mode must be check, unattended, or attended" ;;
+    esac
+}
+
+network_services_ready() {
+    systemctl is-enabled --quiet NetworkManager \
+        && systemctl is-active --quiet NetworkManager \
+        && ! systemctl is-enabled --quiet systemd-networkd \
+        && ! systemctl is-active --quiet systemd-networkd
+}
+
+reconcile_network_services() {
+    local mode=$1
+    [[ $mode == check || $mode == apply ]] \
+        || die "network-services mode must be check or apply"
+    if network_services_ready; then
+        echo "  NetworkManager enabled and active; systemd-networkd disabled and inactive"
+    elif [[ $mode == check ]]; then
+        echo "  would: systemctl enable --now NetworkManager"
+        echo "  would: systemctl disable --now systemd-networkd"
+    else
+        sudo systemctl enable --now NetworkManager
+        sudo systemctl disable --now systemd-networkd
+        echo "  NetworkManager enabled and active; systemd-networkd disabled and inactive"
+    fi
+}
+
 # One provider-substitution probe (step 5c): -Spdd resolves just the named
 # target (no deps); a different name back means a repo package 'provides' the
 # declared one and the resolver would swap it in. Prints the provider, or
@@ -121,6 +161,8 @@ sync_fatal_line() {
 #   --step-outcome INSTALLED       classify one stepping attempt (note on stdin)
 #   --syu-hold-action CODE INSTALLED  classify a hold that aborted the 3c upgrade
 #   --sync-fatal                   print the deterministic-fatal line from a sync log (stdin)
+#   --provider-pins MODE           exercise provider pin installation (test-only)
+#   --network-services MODE        exercise NetworkManager convergence (test-only)
 if [[ "${1:-}" == "--probe-provider" ]]; then
     shift
     for p in "$@"; do
@@ -143,6 +185,16 @@ if [[ "${1:-}" == "--syu-hold-action" ]]; then
 fi
 if [[ "${1:-}" == "--sync-fatal" ]]; then
     sync_fatal_line
+    exit 0
+fi
+if [[ "${1:-}" == "--provider-pins" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "provider-pins seam is test-only"
+    install_provider_pins "${2:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--network-services" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "network-services seam is test-only"
+    reconcile_network_services "${2:-}"
     exit 0
 fi
 
@@ -450,16 +502,15 @@ fi
 # "remove the conflicting provider?" prompt to yes, so a wrong provider
 # already on the system is replaced instead of killing the run; unattended is
 # VM-only (the metal gate above), so that auto-removal never touches metal.
-PROVIDER_PINS=(pipewire-jack libglvnd) # extend when a new pre-build provider collision appears
-# (jack2 2026-07-19; libgl 2026-08-16 — chaotic's nvidia-340xx-utils also provides it,
-#  and the resolver's "2 providers available" prompt hangs an unattended sync)
+# jack2 2026-07-19; libgl 2026-08-16 (chaotic's nvidia-340xx-utils); ttf-font
+# 2026-08-30 (zoom on a fresh class render). Unattended prompts must never choose implicitly.
 say "Provider pins"
 if [[ $CHECK -eq 1 ]]; then
-    echo "  would: pacman -S --needed ${PROVIDER_PINS[*]}   (declared providers install first, before any dep resolution picks one)"
+    install_provider_pins check
 elif [[ $UNATTENDED -eq 1 ]]; then
-    sudo pacman -S --needed --noconfirm --ask=4 "${PROVIDER_PINS[@]}"
+    install_provider_pins unattended
 else
-    sudo pacman -S --needed "${PROVIDER_PINS[@]}"
+    install_provider_pins attended
 fi
 
 # --- 4. yay (AUR helper; one manual makepkg, everything else goes through it) ---
@@ -913,6 +964,16 @@ elif [[ $UNATTENDED -eq 1 ]]; then
     report_deferred
 else
     metapac sync
+fi
+
+# --- 6a. network service (Story 2.30) -----------------------------------------
+# Every class selects network-vpn and its NetworkManager stack. Package presence
+# without service ownership left fresh archinstall guests offline after reboot.
+say "Network service"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_network_services check
+else
+    reconcile_network_services apply
 fi
 
 # --- 6b. normalize install reasons ---------------------------------------------
