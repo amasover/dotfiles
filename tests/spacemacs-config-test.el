@@ -33,4 +33,11 @@
   (dotspacemacs/init)
   (should-not (memq 'omtose-phellack dotspacemacs-themes)))
 
+(ert-deftest dotfiles-spacemacs-suppresses-missing-lexbind-popup ()
+  (load dotfiles-spacemacs-file nil nil)
+  (let ((warning-suppress-types nil))
+    (dotspacemacs/user-init)
+    (should (equal warning-suppress-types
+                   '((files missing-lexbind-cookie))))))
+
 ;;; spacemacs-config-test.el ends here
