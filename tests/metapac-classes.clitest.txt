@@ -111,6 +111,21 @@ $ HOME="$H" XDG_STATE_HOME="$CLITMP/state" CUSTOM_PKGS_DIR="$CLITMP/pkgbuilds" P
 1
 $
 
+shared editor tooling keeps OMP language servers declared:
+
+$ RENDER workstation; DECLARED | grep -E '^(bash-language-server|lua-language-server|marksman|omnisharp-roslyn-bin|powershell-editor-services-bin|pyright|ruff|typescript-language-server|vim-language-server|yaml-language-server)$'
+bash-language-server
+lua-language-server
+marksman
+omnisharp-roslyn-bin
+powershell-editor-services-bin
+pyright
+ruff
+typescript-language-server
+vim-language-server
+yaml-language-server
+$
+
 all profiles keep the shared package contract and all active group files parse
 through metapac:
 

@@ -1,5 +1,34 @@
-# Built-in Pyright markers do not match this Python-using dotfiles repository.
+# Built-in Lua, Python, Ruff, and TypeScript markers do not match this repo.
 servers:
+  lua-language-server:
+    rootMarkers:
+      - .git
+  # OMP has no built-in PowerShell server definition.
+  powershell-editor-services:
+    command: pwsh
+    args:
+      - -NoLogo
+      - -NoProfile
+      - -File
+      - /opt/powershell-editor-services/PowerShellEditorServices/Start-EditorServices.ps1
+      - -Stdio
+      - -SessionDetailsPath
+      - /dev/null
+      - -LogLevel
+      - Normal
+    fileTypes:
+      - .ps1
+      - .psd1
+      - .psm1
+    languageId: powershell
+    rootMarkers:
+      - .git
   pyright:
+    rootMarkers:
+      - .git
+  ruff:
+    rootMarkers:
+      - .git
+  typescript-language-server:
     rootMarkers:
       - .git
