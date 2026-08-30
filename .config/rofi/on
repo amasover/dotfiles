@@ -21,15 +21,21 @@ echo "This is your selection: $selection"
 
 case "${selection}" in
     "         lock")
-        lock;;
+        lock
+        ;;
     "       logout")
-        i3-msg exit;;
+        i3-msg exit
+        ;;
     "        sleep")
-        lock && systemctl suspend;;
+        lock && systemctl suspend
+        ;;
     "   hibernate")
-        lock && systemctl hibernate;;
+        lock && systemctl hibernate
+        ;;
     "      reboot")
-        systemctl reboot;;
+        systemctl reboot
+        ;;
     "      shutdown")
-        systemctl poweroff -i;;
+        systemctl poweroff -i
+        ;;
 esac

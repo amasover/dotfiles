@@ -152,7 +152,7 @@ RETRY_BROKEN=0
 for arg in "$@"; do
     case "$arg" in
         --check) CHECK=1 ;;
-        --unattended) UNATTENDED=1 ;; # harness/VM runs: pass tools their no-confirm flags
+        --unattended) UNATTENDED=1 ;;     # harness/VM runs: pass tools their no-confirm flags
         --retry-broken) RETRY_BROKEN=1 ;; # attempt known-broken packages even at an unchanged commit (2.38)
         -h | --help)
             usage
@@ -326,7 +326,7 @@ step_age_hold() { # $1 = held package; captures the attempt for die_still_held
 # reliable exclusion, since both install gates can only abort a whole
 # transaction. The real config is untouched: metapac-drift-report keeps seeing
 # the full declared set and reports these in their own buckets.
-deferred_report=()      # rows: pkg<TAB>class<TAB>why  (class: age | broken)
+deferred_report=() # rows: pkg<TAB>class<TAB>why  (class: age | broken)
 declare -A sync_filter=()
 defer_pkg() { # $1=pkg $2=class $3=why
     sync_filter[$1]=1
@@ -334,7 +334,7 @@ defer_pkg() { # $1=pkg $2=class $3=why
     # persist immediately: a run that defers and then dies must not leave
     # deferred.tsv understating the holds (it only rewrote on success before)
     mkdir -p "$qstate"
-    printf '%s\n' "${deferred_report[@]}" > "$qstate/deferred.tsv"
+    printf '%s\n' "${deferred_report[@]}" >"$qstate/deferred.tsv"
     echo "  DEFERRED [$2]: $1 — $3"
 }
 sync_cmd="metapac sync --no-confirm"
@@ -346,17 +346,17 @@ cleanup_tmp() { # EXIT trap: the mktemp artifacts outlived every earlier exit pa
 }
 trap cleanup_tmp EXIT
 stage_filtered_sync() { # (re)build the filtered config; no filters = no-op
-    (( ${#sync_filter[@]} > 0 )) || return 0
+    ((${#sync_filter[@]} > 0)) || return 0
     [[ -n "$staged_cfg" ]] || staged_cfg=$(mktemp -d)
     "$HOME/.local/bin/tools/metapac-filtered-config" "$staged_cfg" "${!sync_filter[@]}" \
         | sed 's/^/  /'
     sync_cmd="metapac --config-dir $staged_cfg sync --no-confirm"
 }
 report_deferred() { # end-of-run summary; the drift report carries it onward
-    (( ${#deferred_report[@]} > 0 )) || return 0
+    ((${#deferred_report[@]} > 0)) || return 0
     # mid-sync deferrals happen after 5c wrote the state file — rewrite it
     mkdir -p "$qstate"
-    printf '%s\n' "${deferred_report[@]}" > "$qstate/deferred.tsv"
+    printf '%s\n' "${deferred_report[@]}" >"$qstate/deferred.tsv"
     echo
     echo "bootstrap: ${#deferred_report[@]} declared package(s) HELD this run — tolerable, not fatal (Story 2.38):"
     local dp dc dw
@@ -584,7 +584,8 @@ else
     # DBs don't know is AUR-sourced, and chaotic-aur hits stay gated (2.28)
     while IFS=$'\t' read -r r n; do repo_of[$n]=$r; done < <(
         pacman -Si "${declared[@]}" 2>/dev/null \
-            | awk -F': *' '/^Repository/ { r = $2 } /^Name/ { printf "%s\t%s\n", r, $2 }')
+            | awk -F': *' '/^Repository/ { r = $2 } /^Name/ { printf "%s\t%s\n", r, $2 }'
+    )
     for p in "${declared[@]}"; do
         case "${repo_of[$p]:-}" in
             "" | chaotic-aur) candidates+=("$p") ;;
@@ -669,7 +670,7 @@ else
             presolve+=("$p")
         fi
     done
-    if (( ${#candidates[@]} == 0 )); then
+    if ((${#candidates[@]} == 0)); then
         echo "  every declared package is repo-sourced — nothing to pre-flight"
     else
         verdicts=$("$aq" preflight "${candidates[@]}") \
@@ -726,7 +727,7 @@ else
             queued[$p]=1
             to_build+=("$p")
         done
-        if (( ${#to_build[@]} == 0 )); then
+        if ((${#to_build[@]} == 0)); then
             echo "  no age holds, no substitutions (${#candidates[@]} non-repo packages checked)"
         else
             echo "  pre-building (${#to_build[@]}): ${to_build[*]}"
@@ -742,13 +743,16 @@ else
                             || echo "  *** known-broken '$p' NOW BUILDS — remove its entry: aur-quarantine unbroken $p ***"
                         ;;
                     defer-missing)
-                        defer_pkg "$p" age "no version passes the ${AUR_QUARANTINE_DAYS:-14}d window yet — converges by itself once one ages in" ;;
+                        defer_pkg "$p" age "no version passes the ${AUR_QUARANTINE_DAYS:-14}d window yet — converges by itself once one ages in"
+                        ;;
                     defer-upgrade)
-                        defer_pkg "$p" age "installed $(pacman -Q "$p" 2>/dev/null | awk '{print $2}') stays; only the too-new upgrade is deferred" ;;
+                        defer_pkg "$p" age "installed $(pacman -Q "$p" 2>/dev/null | awk '{print $2}') stays; only the too-new upgrade is deferred"
+                        ;;
                     build-failed)
                         [[ -z "${kb_retry[$p]+x}" ]] || die "known-broken '$p' STILL fails at the retried commit (a newer aged version, or --retry-broken) — re-stamp the entry so runs skip it again:
     aur-quarantine broken $p --reason '...' [--upstream URL]"
-                        build_failed+="$p " ;;
+                        build_failed+="$p "
+                        ;;
                     *) no_verdict+="$p " ;;
                 esac
             done
@@ -761,14 +765,14 @@ else
             for p in "${to_build[@]}"; do
                 [[ -n "${sync_filter[$p]+x}" ]] || ok_built+=("$p")
             done
-            (( ${#ok_built[@]} == 0 )) || echo "  pre-built and installed: ${ok_built[*]}"
+            ((${#ok_built[@]} == 0)) || echo "  pre-built and installed: ${ok_built[*]}"
         fi
     fi
     # Drift-report state (2.38): age-deferred is per-run knowledge — recorded
     # fresh each unattended run (empty file = nothing deferred last run).
     mkdir -p "$qstate"
-    : > "$qstate/deferred.tsv"
-    (( ${#deferred_report[@]} == 0 )) || printf '%s\n' "${deferred_report[@]}" > "$qstate/deferred.tsv"
+    : >"$qstate/deferred.tsv"
+    ((${#deferred_report[@]} == 0)) || printf '%s\n' "${deferred_report[@]}" >"$qstate/deferred.tsv"
 fi
 
 # --- 5d. AUR PKGBUILD cache warm (Story 2.22) ----------------------------------
@@ -783,7 +787,7 @@ if [[ $CHECK -eq 1 ]]; then
     echo "  would: git clone each declared AUR pkgbase into ~/.cache/yay, \${AUR_SEED_DELAY:-0.1}s apart"
 elif [[ $UNATTENDED -eq 0 ]]; then
     echo "  attended run — skipped (day-to-day yay usage is not throttled; this serves VM bursts)"
-elif (( ${#candidates[@]} == 0 )); then
+elif ((${#candidates[@]} == 0)); then
     echo "  no AUR-sourced packages — nothing to warm"
 else
     seed_delay="${AUR_SEED_DELAY:-0.1}"
@@ -874,10 +878,12 @@ elif [[ $UNATTENDED -eq 1 ]]; then
             case "$(step_outcome "$inst" <<<"${step_note:-}")" in
                 defer-missing)
                     defer_pkg "$held_pkg" age "held mid-sync; no version passes the window yet"
-                    stage_filtered_sync ;;
+                    stage_filtered_sync
+                    ;;
                 defer-upgrade)
                     defer_pkg "$held_pkg" age "held mid-sync; installed aged version stays, upgrade deferred"
-                    stage_filtered_sync ;;
+                    stage_filtered_sync
+                    ;;
             esac
             last_held="$held_pkg"
             continue

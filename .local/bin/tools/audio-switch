@@ -30,12 +30,30 @@ parse_flags() { # consumes leading color flags; leftover args land in ARGS
     ARGS=()
     while (($#)); do
         case "$1" in
-        --fg) fg=$2; shift 2 ;;
-        --bg) bg=$2; shift 2 ;;
-        --mutefg) mute_fg=$2; shift 2 ;;
-        --mutebg) mute_bg=$2; shift 2 ;;
-        --padleft) padleft=$2; shift 2 ;;
-        *) ARGS+=("$1"); shift ;;
+            --fg)
+                fg=$2
+                shift 2
+                ;;
+            --bg)
+                bg=$2
+                shift 2
+                ;;
+            --mutefg)
+                mute_fg=$2
+                shift 2
+                ;;
+            --mutebg)
+                mute_bg=$2
+                shift 2
+                ;;
+            --padleft)
+                padleft=$2
+                shift 2
+                ;;
+            *)
+                ARGS+=("$1")
+                shift
+                ;;
         esac
     done
 }
@@ -67,8 +85,8 @@ cmd_next_port() { # $1 = current port; ports on stdin. Wraps; unknown → first.
 cmd_render() { # $1 = port ("none" ok), $2 = muted (true/false)
     local icon colors
     case "$1" in
-    *headphone*) icon=$'' ;; # FontAwesome headphones
-    *) icon=$'' ;;           # FontAwesome volume-up (speaker)
+        *headphone*) icon=$'' ;; # FontAwesome headphones
+        *) icon=$'' ;;           # FontAwesome volume-up (speaker)
     esac
     if [[ "$2" == true ]]; then
         colors="%{ F#$mute_fg B#$mute_bg }"
@@ -118,13 +136,24 @@ cmd_listen() {
 }
 
 case "${1:-}" in
-listen) shift; parse_flags "$@"; cmd_listen ;;
-switch) cmd_switch ;;
-current) cmd_current ;;
-parse-active) cmd_parse_active "${2:?usage: audio-switch parse-active SINK < pactl-list-sinks}" ;;
-parse-ports) cmd_parse_ports "${2:?usage: audio-switch parse-ports SINK < pactl-list-sinks}" ;;
-next-port) cmd_next_port "${2-}" ;;
-render) shift; parse_flags "$@"; cmd_render "${ARGS[0]:?usage: audio-switch render [flags] PORT MUTED}" "${ARGS[1]:?MUTED (true/false) required}" ;;
--h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
-*) echo "audio-switch: unknown subcommand: ${1:-<none>}   (try: audio-switch -h)" >&2; exit 1 ;;
+    listen)
+        shift
+        parse_flags "$@"
+        cmd_listen
+        ;;
+    switch) cmd_switch ;;
+    current) cmd_current ;;
+    parse-active) cmd_parse_active "${2:?usage: audio-switch parse-active SINK < pactl-list-sinks}" ;;
+    parse-ports) cmd_parse_ports "${2:?usage: audio-switch parse-ports SINK < pactl-list-sinks}" ;;
+    next-port) cmd_next_port "${2-}" ;;
+    render)
+        shift
+        parse_flags "$@"
+        cmd_render "${ARGS[0]:?usage: audio-switch render [flags] PORT MUTED}" "${ARGS[1]:?MUTED (true/false) required}"
+        ;;
+    -h | --help) sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0" ;;
+    *)
+        echo "audio-switch: unknown subcommand: ${1:-<none>}   (try: audio-switch -h)" >&2
+        exit 1
+        ;;
 esac

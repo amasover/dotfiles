@@ -80,7 +80,7 @@ REPO_ACCEPTED_PREFIX="@repo-accepted:"
 
 # rpc_info NAME...  ->  "name<TAB>pkgbase<TAB>lastmod<TAB>maintainer" per resolved package
 rpc_info() {
-    (( $# == 0 )) && return 0
+    (($# == 0)) && return 0
     local p args=()
     for p in "$@"; do args+=(--data-urlencode "arg[]=$p"); done
     curl -fsG --max-time 20 "${args[@]}" 'https://aur.archlinux.org/rpc/v5/info' 2>/dev/null \
@@ -91,7 +91,7 @@ rpc_info() {
 # Arch packager who built it. That is a repository-to-AUR trust transition,
 # not evidence that the current AUR owner was ever trusted.
 installed_packagers() {
-    (( $# == 0 )) && return 0
+    (($# == 0)) && return 0
     LC_ALL=C "$PACMAN" -Qi "$@" 2>/dev/null | awk -F':' '
         {
             key=$1; gsub(/[[:space:]]/, "", key)
@@ -102,16 +102,32 @@ installed_packagers() {
 }
 is_official_arch_packager() { [[ $1 == *"@archlinux.org"* ]]; }
 
-load_baseline() { declare -gA trusted=(); [[ -f $baseline ]] || return 0
-    local k v; while IFS=$'\t' read -r k v; do [[ -n $k ]] && trusted[$k]=$v; done < "$baseline"; }
-save_baseline() { mkdir -p "$state_dir"; : > "$baseline.tmp"
-    local k; for k in "${!trusted[@]}"; do printf '%s\t%s\n' "$k" "${trusted[$k]}" >> "$baseline.tmp"; done
-    mv "$baseline.tmp" "$baseline"; }
-load_exempt() { declare -gA exempt=(); [[ -f $exempt_file ]] || return 0
-    local l; while read -r l; do [[ -n $l ]] && exempt[$l]=1; done < "$exempt_file"; }
-save_exempt() { mkdir -p "$state_dir"; : > "$exempt_file.tmp"
-    local k; for k in "${!exempt[@]}"; do echo "$k" >> "$exempt_file.tmp"; done
-    mv "$exempt_file.tmp" "$exempt_file"; }
+load_baseline() {
+    declare -gA trusted=()
+    [[ -f $baseline ]] || return 0
+    local k v
+    while IFS=$'\t' read -r k v; do [[ -n $k ]] && trusted[$k]=$v; done <"$baseline"
+}
+save_baseline() {
+    mkdir -p "$state_dir"
+    : >"$baseline.tmp"
+    local k
+    for k in "${!trusted[@]}"; do printf '%s\t%s\n' "$k" "${trusted[$k]}" >>"$baseline.tmp"; done
+    mv "$baseline.tmp" "$baseline"
+}
+load_exempt() {
+    declare -gA exempt=()
+    [[ -f $exempt_file ]] || return 0
+    local l
+    while read -r l; do [[ -n $l ]] && exempt[$l]=1; done <"$exempt_file"
+}
+save_exempt() {
+    mkdir -p "$state_dir"
+    : >"$exempt_file.tmp"
+    local k
+    for k in "${!exempt[@]}"; do echo "$k" >>"$exempt_file.tmp"; done
+    mv "$exempt_file.tmp" "$exempt_file"
+}
 
 # --- known-broken list (Story 2.38) ------------------------------------------
 kb_file="${AUR_KNOWN_BROKEN_FILE:-$HOME/.config/metapac/known-broken.toml}"
@@ -121,13 +137,16 @@ patches_dir="${AUR_PATCHES_DIR:-$HOME/.config/dotfiles/aur-patches}" # repo-loca
 # (patch -Np1 against the single extracted source under src/). A patch that
 # no longer applies fails LOUDLY — stale patches must be refreshed or deleted,
 # never forced. No-op when the pkgbase has no patch dir.
-apply_patches() {               # $1=recipe dir, $2=pkgbase
+apply_patches() { # $1=recipe dir, $2=pkgbase
     local pdir="$patches_dir/$2" sdir p
     compgen -G "$pdir/*.patch" >/dev/null || return 0
     sdir=$(find "$1/src" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)
-    [[ -n $sdir ]] || { echo "aur-quarantine: $2 has local patches but no extracted source under $1/src" >&2; return 1; }
+    [[ -n $sdir ]] || {
+        echo "aur-quarantine: $2 has local patches but no extracted source under $1/src" >&2
+        return 1
+    }
     for p in "$pdir"/*.patch; do
-        if patch --forward -Np1 -d "$sdir" < "$p" >&2; then
+        if patch --forward -Np1 -d "$sdir" <"$p" >&2; then
             echo "aur-quarantine: applied local patch ${p##*/} to ${sdir##*/}" >&2
         else
             echo "aur-quarantine: local patch ${p##*/} FAILED to apply to $2 — stale (upstream moved?). Refresh or delete $pdir." >&2
@@ -166,7 +185,7 @@ kb_rows() {
     ' "$kb_file"
 }
 kb_row() { kb_rows | awk -F'\t' -v p="$1" '$1 == p { print; exit }'; }
-kb_remove() {                   # drop $1's section; everything else verbatim
+kb_remove() { # drop $1's section; everything else verbatim
     [[ -f $kb_file ]] || return 0
     awk -v p="$1" '
         /^[[:space:]]*\[/ {
@@ -175,22 +194,22 @@ kb_remove() {                   # drop $1's section; everything else verbatim
             drop = (sec == p)
         }
         !drop { print }
-    ' "$kb_file" > "$kb_file.tmp" && mv "$kb_file.tmp" "$kb_file"
+    ' "$kb_file" >"$kb_file.tmp" && mv "$kb_file.tmp" "$kb_file"
 }
-sha_match() {                   # $1/$2: full or abbreviated commit ids
+sha_match() { # $1/$2: full or abbreviated commit ids
     # case-normalized: git prints lowercase, but a hand-typed uppercase
     # broken_at must still match (else the entry silently never skips)
     local a=${1,,} b=${2,,}
     [[ -n $a && -n $b ]] || return 1
     [[ $a == "$b"* || $b == "$a"* ]]
 }
-aur_head() {                    # $1=pkgbase -> its current AUR commit, exactly one line
+aur_head() { # $1=pkgbase -> its current AUR commit, exactly one line
     # timeout: a black-holed network must not hang an unattended run for
     # TCP-stack minutes per package (curl paths already cap at 20s)
     timeout 20 git ls-remote "https://aur.archlinux.org/$1.git" HEAD 2>/dev/null | head -1 | cut -f1
 }
 
-fetch_repo() {                  # $1=pkgbase -> ensures clone in cache; echoes its path
+fetch_repo() { # $1=pkgbase -> ensures clone in cache; echoes its path
     local base=$1 dir="$cache_dir/$1"
     mkdir -p "$cache_dir"
     if [[ -d $dir/.git ]]; then
@@ -202,21 +221,24 @@ fetch_repo() {                  # $1=pkgbase -> ensures clone in cache; echoes i
     printf '%s\n' "$dir"
 }
 
-srcinfo_version() {             # stdin = .SRCINFO -> "epoch:pkgver-pkgrel"
+srcinfo_version() { # stdin = .SRCINFO -> "epoch:pkgver-pkgrel"
     awk -F' = ' '
         /^[[:space:]]*pkgver = /{pv=$2} /^[[:space:]]*pkgrel = /{pr=$2} /^[[:space:]]*epoch = /{ep=$2}
         END{ if(ep!="") printf "%s:",ep; printf "%s-%s",pv,pr }'
 }
 
 # newest .SRCINFO commit with date <= cutoff AND version > installed; echoes "sha<TAB>ver"
-target_at_or_before() {         # $1=repo_dir $2=cutoff_epoch $3=installed_ver
+target_at_or_before() { # $1=repo_dir $2=cutoff_epoch $3=installed_ver
     local dir=$1 cutoff=$2 inst=$3 h ct ver
     while read -r h ct; do
-        (( ct > cutoff )) && continue
+        ((ct > cutoff)) && continue
         ver=$(git -C "$dir" show "$h:.SRCINFO" 2>/dev/null | srcinfo_version)
         [[ -z $ver || $ver == "-" ]] && return 1
-        if [[ -z $inst ]] || (( $(vercmp "$ver" "$inst") > 0 )); then printf '%s\t%s\n' "$h" "$ver"; return 0; fi
-        return 1   # newest aged version isn't newer than installed -> nothing to step to
+        if [[ -z $inst ]] || (($(vercmp "$ver" "$inst") > 0)); then
+            printf '%s\t%s\n' "$h" "$ver"
+            return 0
+        fi
+        return 1 # newest aged version isn't newer than installed -> nothing to step to
     done < <(git -C "$dir" log --format='%H %ct' -- .SRCINFO)
     return 1
 }
@@ -229,11 +251,11 @@ target_at_or_before() {         # $1=repo_dir $2=cutoff_epoch $3=installed_ver
 # strictly newer than broken_at; a broken_at the clone no longer contains
 # (history rewrite) can't be ordered against, and a rewritten recipe is new
 # content, so a non-matching target counts as newer then.
-fix_target_after() {            # $1=repo_dir $2=cutoff_epoch $3=broken_at $4=installed_ver
+fix_target_after() { # $1=repo_dir $2=cutoff_epoch $3=broken_at $4=installed_ver
     local dir=$1 cutoff=$2 bat=$3 inst=$4 res sha
     res=$(target_at_or_before "$dir" "$cutoff" "$inst") || return 1
     sha=${res%%$'\t'*}
-    sha_match "$bat" "$sha" && return 1     # the recipe already known broken
+    sha_match "$bat" "$sha" && return 1 # the recipe already known broken
     if git -C "$dir" cat-file -e "${bat}^{commit}" 2>/dev/null; then
         git -C "$dir" merge-base --is-ancestor "$bat" "$sha" 2>/dev/null || return 1
     fi
@@ -242,18 +264,23 @@ fix_target_after() {            # $1=repo_dir $2=cutoff_epoch $3=broken_at $4=in
 
 cmd_seed() {
     load_baseline
-    local -a installed; mapfile -t installed < <("$PACMAN" -Qqm 2>/dev/null)
-    (( ${#installed[@]} == 0 )) && { echo "aur-quarantine: no foreign/AUR packages installed." >&2; return 0; }
+    local -a installed
+    mapfile -t installed < <("$PACMAN" -Qqm 2>/dev/null)
+    ((${#installed[@]} == 0)) && {
+        echo "aur-quarantine: no foreign/AUR packages installed." >&2
+        return 0
+    }
     local rpc_out
     if ! rpc_out=$(rpc_info "${installed[@]}") || [[ -z $rpc_out ]]; then
-        echo "aur-quarantine: AUR RPC unreachable/empty — baseline NOT updated this run." >&2; return 1
+        echo "aur-quarantine: AUR RPC unreachable/empty — baseline NOT updated this run." >&2
+        return 1
     fi
     local packager_out name packager
     packager_out=$(installed_packagers "${installed[@]}")
     declare -A packagers=()
     while IFS=$'\t' read -r name packager; do
         [[ -n $name ]] && packagers[$name]=$packager
-    done <<< "$packager_out"
+    done <<<"$packager_out"
 
     local base lm mt prior added=0 held=0
     while IFS=$'\t' read -r name base lm mt; do
@@ -273,24 +300,30 @@ cmd_seed() {
             echo "    verify:  $AURWEB/$name" >&2
             echo "    then:    aur-quarantine accept $name" >&2
         elif [[ -z ${trusted[$name]+x} ]]; then
-            trusted[$name]=$mt; ((added++))
+            trusted[$name]=$mt
+            ((added++))
             echo "aur-quarantine: now trusting $name @ ${mt:-ORPHANED} (first seen)." >&2
         fi
-    done <<< "$rpc_out"
+    done <<<"$rpc_out"
     save_baseline
-    (( held > 0 )) && echo "aur-quarantine: held $held repository-to-AUR handoff(s) for explicit review." >&2
-    (( added > 0 )) && echo "aur-quarantine: recorded $added new package(s); baseline now ${#trusted[@]}." >&2
+    ((held > 0)) && echo "aur-quarantine: held $held repository-to-AUR handoff(s) for explicit review." >&2
+    ((added > 0)) && echo "aur-quarantine: recorded $added new package(s); baseline now ${#trusted[@]}." >&2
     return 0
 }
 
 cmd_accept() {
-    (( $# )) || { echo "usage: aur-quarantine accept PKG..." >&2; return 2; }
+    (($#)) || {
+        echo "usage: aur-quarantine accept PKG..." >&2
+        return 2
+    }
     load_baseline
     local rpc_out
     if ! rpc_out=$(rpc_info "$@") || [[ -z $rpc_out ]]; then
-        echo "aur-quarantine: AUR RPC unreachable or package(s) not found — nothing accepted." >&2; return 1
+        echo "aur-quarantine: AUR RPC unreachable or package(s) not found — nothing accepted." >&2
+        return 1
     fi
-    local name base lm mt prior; declare -A seen=()
+    local name base lm mt prior
+    declare -A seen=()
     while IFS=$'\t' read -r name base lm mt; do
         [[ -z $name ]] && continue
         prior=${trusted[$name]-}
@@ -302,32 +335,55 @@ cmd_accept() {
             echo "aur-quarantine: accepted maintainer for $name (${mt:-ORPHANED})." >&2
         fi
         seen[$name]=1
-    done <<< "$rpc_out"
-    local p; for p in "$@"; do
+    done <<<"$rpc_out"
+    local p
+    for p in "$@"; do
         [[ -z ${seen[$p]+x} ]] && echo "aur-quarantine: WARNING $p not found in AUR RPC — not accepted." >&2
     done
     save_baseline
 }
 
 cmd_auto() {
-    (( $# )) || { echo "usage: aur-quarantine auto PKG..." >&2; return 2; }
-    load_exempt; local p
-    for p in "$@"; do exempt[$p]=1
-        echo "aur-quarantine: '$p' set to auto-update (age delay skipped; maintainer changes still held)." >&2; done
+    (($#)) || {
+        echo "usage: aur-quarantine auto PKG..." >&2
+        return 2
+    }
+    load_exempt
+    local p
+    for p in "$@"; do
+        exempt[$p]=1
+        echo "aur-quarantine: '$p' set to auto-update (age delay skipped; maintainer changes still held)." >&2
+    done
     save_exempt
 }
 cmd_auto_off() {
-    (( $# )) || { echo "usage: aur-quarantine auto-off PKG..." >&2; return 2; }
-    load_exempt; local p
-    for p in "$@"; do unset "exempt[$p]"; echo "aur-quarantine: '$p' no longer auto-updates." >&2; done
+    (($#)) || {
+        echo "usage: aur-quarantine auto-off PKG..." >&2
+        return 2
+    }
+    load_exempt
+    local p
+    for p in "$@"; do
+        unset "exempt[$p]"
+        echo "aur-quarantine: '$p' no longer auto-updates." >&2
+    done
     save_exempt
 }
 
-cmd_build() {                   # $1=pkgbase $2=sha  (installs)
-    (( $# == 2 )) || { echo "usage: aur-quarantine build PKGBASE SHA" >&2; return 2; }
+cmd_build() { # $1=pkgbase $2=sha  (installs)
+    (($# == 2)) || {
+        echo "usage: aur-quarantine build PKGBASE SHA" >&2
+        return 2
+    }
     local base=$1 sha=$2 dir
-    dir=$(fetch_repo "$base") || { echo "aur-quarantine: build $base: fetch failed." >&2; return 1; }
-    git -C "$dir" checkout --quiet "$sha" 2>/dev/null || { echo "aur-quarantine: build $base: checkout ${sha:0:8} failed." >&2; return 1; }
+    dir=$(fetch_repo "$base") || {
+        echo "aur-quarantine: build $base: fetch failed." >&2
+        return 1
+    }
+    git -C "$dir" checkout --quiet "$sha" 2>/dev/null || {
+        echo "aur-quarantine: build $base: checkout ${sha:0:8} failed." >&2
+        return 1
+    }
     # Repo-local patches (Story 3.18): extract first (--nobuild; -d defers the
     # dep check to the real build), patch the source, then build unextracted
     # (-e). The plain path stays a single makepkg run.
@@ -339,30 +395,42 @@ cmd_build() {                   # $1=pkgbase $2=sha  (installs)
     # checksums, which --nobuild still verifies; the -e build re-verifies
     # nothing (it reuses src/), so this is the only gate on the patched path.
     if has_patches "$base"; then
-        if ! ( cd "$dir" && rm -rf src && makepkg --nobuild -d --noconfirm --skippgpcheck ) \
+        if ! (cd "$dir" && rm -rf src && makepkg --nobuild -d --noconfirm --skippgpcheck) \
             || ! apply_patches "$dir" "$base"; then
             echo "aur-quarantine: build $base: local patch stage failed — not built." >&2
-            git -C "$dir" checkout --quiet - 2>/dev/null || true; return 1
+            git -C "$dir" checkout --quiet - 2>/dev/null || true
+            return 1
         fi
-        if ( cd "$dir" && makepkg -esi --noconfirm ); then
-            git -C "$dir" checkout --quiet - 2>/dev/null || true; return 0
+        if (cd "$dir" && makepkg -esi --noconfirm); then
+            git -C "$dir" checkout --quiet - 2>/dev/null || true
+            return 0
         fi
     # makepkg -s installs repo deps; AUR deps are NOT resolved here. Any failure -> hold.
-    elif ( cd "$dir" && makepkg -si --noconfirm ); then
-        git -C "$dir" checkout --quiet - 2>/dev/null || true; return 0
+    elif (cd "$dir" && makepkg -si --noconfirm); then
+        git -C "$dir" checkout --quiet - 2>/dev/null || true
+        return 0
     fi
     echo "aur-quarantine: $base @ ${sha:0:8} failed (deps/build/source/install) — not installed. If the build succeeded, re-run in a terminal (sudo needs a password prompt); makepkg will reuse the built package." >&2
-    git -C "$dir" checkout --quiet - 2>/dev/null || true; return 1
+    git -C "$dir" checkout --quiet - 2>/dev/null || true
+    return 1
 }
 
-cmd_update() {                  # manual: step PKG(s) to the newest vetted (aged) version
-    (( $# )) || { echo "usage: aur-quarantine update PKG..." >&2; return 2; }
+cmd_update() { # manual: step PKG(s) to the newest vetted (aged) version
+    (($#)) || {
+        echo "usage: aur-quarantine update PKG..." >&2
+        return 2
+    }
     local threshold_days="${AUR_QUARANTINE_DAYS:-14}"
-    load_baseline; local now; now=$(date +%s)
+    load_baseline
+    local now
+    now=$(date +%s)
     local p n base lm mt inst cutoff repo res sha ver known
     for p in "$@"; do
         IFS=$'\t' read -r n base lm mt < <(rpc_info "$p")
-        if [[ -z ${base:-} ]]; then echo "aur-quarantine: $p not found in AUR RPC." >&2; continue; fi
+        if [[ -z ${base:-} ]]; then
+            echo "aur-quarantine: $p not found in AUR RPC." >&2
+            continue
+        fi
         known=${trusted[$p]-}
         if [[ $known == "$REPO_HANDOFF" ]]; then
             echo "aur-quarantine: $p left official Arch repos; its current AUR identity is not trusted." >&2
@@ -377,11 +445,15 @@ cmd_update() {                  # manual: step PKG(s) to the newest vetted (aged
             echo "    then:    aur-quarantine accept $p   (required before stepping)" >&2
             continue
         fi
-        repo=$(fetch_repo "$base") || { echo "aur-quarantine: could not fetch AUR git ($base)." >&2; continue; }
+        repo=$(fetch_repo "$base") || {
+            echo "aur-quarantine: could not fetch AUR git ($base)." >&2
+            continue
+        }
         inst=$("$PACMAN" -Q "$p" 2>/dev/null | awk '{print $2}')
-        cutoff=$(( now - threshold_days*86400 ))
+        cutoff=$((now - threshold_days * 86400))
         if res=$(target_at_or_before "$repo" "$cutoff" "$inst"); then
-            sha=${res%%$'\t'*}; ver=${res#*$'\t'}
+            sha=${res%%$'\t'*}
+            ver=${res#*$'\t'}
             echo "aur-quarantine: building $p $ver (pinned ${sha:0:8}; installed: ${inst:-none})..." >&2
             # chaotic-carried packages: the gate would abort makepkg's own
             # pacman -U of this vetted aged build (it only sees the name and
@@ -410,29 +482,47 @@ cmd_update() {                  # manual: step PKG(s) to the newest vetted (aged
     done
 }
 
-cmd_preflight() {              # PKG... -> TSV pkg<TAB>code<TAB>pkgbase; installs nothing
-    (( $# )) || { echo "usage: aur-quarantine preflight PKG..." >&2; return 2; }
+cmd_preflight() { # PKG... -> TSV pkg<TAB>code<TAB>pkgbase; installs nothing
+    (($#)) || {
+        echo "usage: aur-quarantine preflight PKG..." >&2
+        return 2
+    }
     local days="${AUR_QUARANTINE_DAYS:-14}" policy="$HOME/.config/yay/quarantine-policy.lua"
-    command -v lua5.1 >/dev/null || { echo "aur-quarantine: preflight needs lua5.1 (bootstrap step 4b installs it)" >&2; return 1; }
-    [[ -f $policy ]] || { echo "aur-quarantine: policy module missing ($policy) — yadm checkout it" >&2; return 1; }
-    load_baseline; load_exempt
+    command -v lua5.1 >/dev/null || {
+        echo "aur-quarantine: preflight needs lua5.1 (bootstrap step 4b installs it)" >&2
+        return 1
+    }
+    [[ -f $policy ]] || {
+        echo "aur-quarantine: policy module missing ($policy) — yadm checkout it" >&2
+        return 1
+    }
+    load_baseline
+    load_exempt
     local rpc_out
-    if ! rpc_out=$(rpc_info "$@") ; then
-        echo "aur-quarantine: AUR RPC unreachable — cannot pre-flight." >&2; return 1
+    if ! rpc_out=$(rpc_info "$@"); then
+        echo "aur-quarantine: AUR RPC unreachable — cannot pre-flight." >&2
+        return 1
     fi
     local now p line base lm mt known ex age out code
     now=$(date +%s)
     for p in "$@"; do
         line=$(grep -m1 -P "^\Q$p\E\t" <<<"$rpc_out" || true)
-        if [[ -z $line ]]; then printf '%s\tmissing\t-\n' "$p"; continue; fi
+        if [[ -z $line ]]; then
+            printf '%s\tmissing\t-\n' "$p"
+            continue
+        fi
         IFS=$'\t' read -r _ base lm mt <<<"$line"
-        known="@never"; [[ -n ${trusted[$p]+x} ]] && known="${trusted[$p]:-@orphan}"
-        ex=0; [[ -n ${exempt[$p]+x} ]] && ex=1
-        age="@nil"; [[ $lm =~ ^[0-9]+$ && $lm -gt 0 ]] && age=$(( (now - lm) / 86400 ))
+        known="@never"
+        [[ -n ${trusted[$p]+x} ]] && known="${trusted[$p]:-@orphan}"
+        ex=0
+        [[ -n ${exempt[$p]+x} ]] && ex=1
+        age="@nil"
+        [[ $lm =~ ^[0-9]+$ && $lm -gt 0 ]] && age=$(((now - lm) / 86400))
         if out=$(lua5.1 "$policy" "$p" "${mt:-@orphan}" "$known" "$ex" "$age" "$days"); then
             printf '%s\tok\t%s\n' "$p" "$base"
         else
-            code=${out%%$'\t'*}; code=${code%%$'\n'*}
+            code=${out%%$'\t'*}
+            code=${code%%$'\n'*}
             printf '%s\t%s\t%s\n' "$p" "$code" "$base"
         fi
     done
@@ -441,21 +531,43 @@ cmd_preflight() {              # PKG... -> TSV pkg<TAB>code<TAB>pkgbase; install
 
 cmd_bypass_once() {
     mkdir -p "$state_dir"
-    : > "$state_dir/bypass-once"
+    : >"$state_dir/bypass-once"
     echo "aur-quarantine: chaotic install gate will be bypassed for the NEXT pacman transaction only." >&2
 }
 
 kb_usage_broken="usage: aur-quarantine broken PKG --reason STR [--upstream URL] [--at SHA [--base PKGBASE]]"
-cmd_broken() {                  # record a human known-broken decision (Story 2.38)
+cmd_broken() { # record a human known-broken decision (Story 2.38)
     local pkg="" reason="" upstream="" at="" base=""
-    while (( $# )); do
+    while (($#)); do
         case "$1" in
-            --reason)   reason="${2:-}"; shift; shift ;;
-            --upstream) upstream="${2:-}"; shift; shift ;;
-            --at)       at="${2:-}"; shift; shift ;;
-            --base)     base="${2:-}"; shift; shift ;;
-            *)          if [[ -n $pkg || $1 == -* ]]; then pkg=""; break; fi
-                        pkg="$1"; shift ;;
+            --reason)
+                reason="${2:-}"
+                shift
+                shift
+                ;;
+            --upstream)
+                upstream="${2:-}"
+                shift
+                shift
+                ;;
+            --at)
+                at="${2:-}"
+                shift
+                shift
+                ;;
+            --base)
+                base="${2:-}"
+                shift
+                shift
+                ;;
+            *)
+                if [[ -n $pkg || $1 == -* ]]; then
+                    pkg=""
+                    break
+                fi
+                pkg="$1"
+                shift
+                ;;
         esac
     done
     if [[ -z $pkg || -z $reason ]]; then
@@ -463,10 +575,14 @@ cmd_broken() {                  # record a human known-broken decision (Story 2.
         echo "aur-quarantine: a known-broken entry is a recorded human decision — the reason is not optional." >&2
         return 2
     fi
-    reason=${reason//$'\t'/ }; reason=${reason//$'\n'/ }; reason=${reason//\"/\'}
+    reason=${reason//$'\t'/ }
+    reason=${reason//$'\n'/ }
+    reason=${reason//\"/\'}
     # same treatment as reason: a pasted newline here would inject raw TOML
     # lines (a foreign [section] could even steal the broken_at stamp)
-    upstream=${upstream//$'\t'/ }; upstream=${upstream//$'\n'/ }; upstream=${upstream//\"/}
+    upstream=${upstream//$'\t'/ }
+    upstream=${upstream//$'\n'/ }
+    upstream=${upstream//\"/}
     if [[ -z $at ]]; then
         local line
         line=$(rpc_info "$pkg" | head -1)
@@ -477,20 +593,26 @@ cmd_broken() {                  # record a human known-broken decision (Story 2.
         fi
         IFS=$'\t' read -r _ base _ _ <<<"$line"
         at=$(aur_head "$base")
-        [[ -n $at ]] || { echo "aur-quarantine: could not read ${base}'s current AUR commit (git ls-remote failed)." >&2; return 1; }
+        [[ -n $at ]] || {
+            echo "aur-quarantine: could not read ${base}'s current AUR commit (git ls-remote failed)." >&2
+            return 1
+        }
     fi
     # one line, hex only — ls-remote can match several refs (seen live: HEAD
     # twice), and a newline inside broken_at is malformed TOML
     [[ $at =~ ^[0-9a-fA-F]{4,40}$ ]] \
-        || { echo "aur-quarantine: '$at' is not a commit id (4-40 hex chars, one line)." >&2; return 1; }
-    at=${at,,}                  # git shas are lowercase; an uppercase stamp would never match
+        || {
+            echo "aur-quarantine: '$at' is not a commit id (4-40 hex chars, one line)." >&2
+            return 1
+        }
+    at=${at,,} # git shas are lowercase; an uppercase stamp would never match
     [[ -n $base ]] || base="$pkg"
     kb_remove "$pkg"
     mkdir -p "$(dirname "$kb_file")"
-    if [[ -s $kb_file ]]; then  # exactly one blank line between entries
+    if [[ -s $kb_file ]]; then # exactly one blank line between entries
         awk 'NF { last = NR } { l[NR] = $0 } END { for (i = 1; i <= last; i++) print l[i] }' \
-            "$kb_file" > "$kb_file.tmp" && mv "$kb_file.tmp" "$kb_file"
-        echo >> "$kb_file"
+            "$kb_file" >"$kb_file.tmp" && mv "$kb_file.tmp" "$kb_file"
+        echo >>"$kb_file"
     fi
     local sec="$pkg"
     [[ $sec =~ ^[A-Za-z0-9_-]+$ ]] || sec="\"$sec\""
@@ -501,14 +623,17 @@ cmd_broken() {                  # record a human known-broken decision (Story 2.
         printf 'broken_at = "%s"   # skip while the AUR commit still equals this\n' "$at"
         printf 'since     = "%s"\n' "$(date +%F)"
         [[ $base == "$pkg" ]] || printf 'base      = "%s"\n' "$base"
-    } >> "$kb_file"
+    } >>"$kb_file"
     echo "aur-quarantine: $pkg recorded known-broken at ${at:0:8} — unattended runs skip it, and auto-retry once a NEWER version ages past the quarantine window." >&2
     echo "    entry: $kb_file — repo-tracked, commit it (yadm add / git add)" >&2
     echo "    undo:  aur-quarantine unbroken $pkg" >&2
 }
 
 cmd_unbroken() {
-    (( $# == 1 )) || { echo "usage: aur-quarantine unbroken PKG" >&2; return 2; }
+    (($# == 1)) || {
+        echo "usage: aur-quarantine unbroken PKG" >&2
+        return 2
+    }
     if [[ -z $(kb_row "$1") ]]; then
         echo "aur-quarantine: no known-broken entry for '$1' in $kb_file" >&2
         return 1
@@ -517,11 +642,17 @@ cmd_unbroken() {
     echo "aur-quarantine: $1 is no longer known-broken — the next run builds it normally." >&2
 }
 
-cmd_broken_status() {           # PKG SHA -> skip|retry|absent (+detail); no network
-    (( $# == 2 )) || { echo "usage: aur-quarantine broken-status PKG CURRENT_SHA" >&2; return 2; }
+cmd_broken_status() { # PKG SHA -> skip|retry|absent (+detail); no network
+    (($# == 2)) || {
+        echo "usage: aur-quarantine broken-status PKG CURRENT_SHA" >&2
+        return 2
+    }
     local row base at since reason
     row=$(kb_row "$1")
-    [[ -n $row ]] || { echo absent; return 0; }
+    [[ -n $row ]] || {
+        echo absent
+        return 0
+    }
     IFS=$'\t' read -r _ base at since reason <<<"$row"
     if sha_match "$at" "$2"; then
         printf 'skip\t%s\t%s\n' "$since" "$reason"
@@ -530,31 +661,56 @@ cmd_broken_status() {           # PKG SHA -> skip|retry|absent (+detail); no net
     fi
 }
 
-cmd_broken_fix() {              # PKG [--repo DIR] -> aged fix newer than broken_at, or rc 1
+cmd_broken_fix() { # PKG [--repo DIR] -> aged fix newer than broken_at, or rc 1
     local pkg="" repo=""
-    while (( $# )); do
+    while (($#)); do
         case "$1" in
-            --repo) repo="${2:-}"; shift; shift ;;
-            *)      if [[ -n $pkg || $1 == -* ]]; then pkg=""; break; fi
-                    pkg="$1"; shift ;;
+            --repo)
+                repo="${2:-}"
+                shift
+                shift
+                ;;
+            *)
+                if [[ -n $pkg || $1 == -* ]]; then
+                    pkg=""
+                    break
+                fi
+                pkg="$1"
+                shift
+                ;;
         esac
     done
-    [[ -n $pkg ]] || { echo "usage: aur-quarantine broken-fix PKG [--repo DIR]" >&2; return 2; }
+    [[ -n $pkg ]] || {
+        echo "usage: aur-quarantine broken-fix PKG [--repo DIR]" >&2
+        return 2
+    }
     local row base at inst cutoff
     row=$(kb_row "$pkg")
-    [[ -n $row ]] || { echo "aur-quarantine: no known-broken entry for '$pkg'." >&2; return 2; }
+    [[ -n $row ]] || {
+        echo "aur-quarantine: no known-broken entry for '$pkg'." >&2
+        return 2
+    }
     IFS=$'\t' read -r _ base at _ _ <<<"$row"
-    [[ -n $at ]] || { echo "aur-quarantine: '$pkg' entry has no broken_at." >&2; return 2; }
+    [[ -n $at ]] || {
+        echo "aur-quarantine: '$pkg' entry has no broken_at." >&2
+        return 2
+    }
     if [[ -z $repo ]]; then
-        repo=$(fetch_repo "$base") || { echo "aur-quarantine: could not fetch AUR git ($base)." >&2; return 1; }
+        repo=$(fetch_repo "$base") || {
+            echo "aur-quarantine: could not fetch AUR git ($base)." >&2
+            return 1
+        }
     fi
     inst=$("$PACMAN" -Q "$pkg" 2>/dev/null | awk '{print $2}')
-    cutoff=$(( $(date +%s) - ${AUR_QUARANTINE_DAYS:-14}*86400 ))
+    cutoff=$(($(date +%s) - ${AUR_QUARANTINE_DAYS:-14} * 86400))
     fix_target_after "$repo" "$cutoff" "$at" "$inst"
 }
 
-cmd_broken_current() {          # PKG -> current AUR pkgbase commit (network)
-    (( $# == 1 )) || { echo "usage: aur-quarantine broken-current PKG" >&2; return 2; }
+cmd_broken_current() { # PKG -> current AUR pkgbase commit (network)
+    (($# == 1)) || {
+        echo "usage: aur-quarantine broken-current PKG" >&2
+        return 2
+    }
     local row base="" sha
     row=$(kb_row "$1")
     if [[ -n $row ]]; then
@@ -564,26 +720,74 @@ cmd_broken_current() {          # PKG -> current AUR pkgbase commit (network)
     fi
     [[ -n ${base:-} ]] || base="$1"
     sha=$(aur_head "$base")
-    [[ -n $sha ]] || { echo "aur-quarantine: could not read ${base}'s current AUR commit." >&2; return 1; }
+    [[ -n $sha ]] || {
+        echo "aur-quarantine: could not read ${base}'s current AUR commit." >&2
+        return 1
+    }
     printf '%s\n' "$sha"
 }
 
 case "${1:-}" in
-    seed)         shift; cmd_seed "$@" ;;
-    accept)       shift; cmd_accept "$@" ;;
-    auto)         shift; cmd_auto "$@" ;;
-    auto-off)     shift; cmd_auto_off "$@" ;;
-    update)       shift; cmd_update "$@" ;;
-    preflight)    shift; cmd_preflight "$@" ;;
-    bypass-once)  shift; cmd_bypass_once "$@" ;;
-    broken)       shift; cmd_broken "$@" ;;
-    unbroken)     shift; cmd_unbroken "$@" ;;
-    broken-status)  shift; cmd_broken_status "$@" ;;
-    broken-current) shift; cmd_broken_current "$@" ;;
-    broken-fix)   shift; cmd_broken_fix "$@" ;;
-    broken-list)  kb_rows ;;
-    apply-patches) shift; apply_patches "$@" ;; # (internal/test seam) RECIPE_DIR PKGBASE
-    build)        shift; cmd_build "$@" ;;
-    -h|--help|"") grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//' ;;
-    *)            echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|preflight|bypass-once|broken|unbroken|broken-status|broken-current|broken-fix|broken-list|build)" >&2; exit 2 ;;
+    seed)
+        shift
+        cmd_seed "$@"
+        ;;
+    accept)
+        shift
+        cmd_accept "$@"
+        ;;
+    auto)
+        shift
+        cmd_auto "$@"
+        ;;
+    auto-off)
+        shift
+        cmd_auto_off "$@"
+        ;;
+    update)
+        shift
+        cmd_update "$@"
+        ;;
+    preflight)
+        shift
+        cmd_preflight "$@"
+        ;;
+    bypass-once)
+        shift
+        cmd_bypass_once "$@"
+        ;;
+    broken)
+        shift
+        cmd_broken "$@"
+        ;;
+    unbroken)
+        shift
+        cmd_unbroken "$@"
+        ;;
+    broken-status)
+        shift
+        cmd_broken_status "$@"
+        ;;
+    broken-current)
+        shift
+        cmd_broken_current "$@"
+        ;;
+    broken-fix)
+        shift
+        cmd_broken_fix "$@"
+        ;;
+    broken-list) kb_rows ;;
+    apply-patches)
+        shift
+        apply_patches "$@"
+        ;; # (internal/test seam) RECIPE_DIR PKGBASE
+    build)
+        shift
+        cmd_build "$@"
+        ;;
+    -h | --help | "") grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//' ;;
+    *)
+        echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|preflight|bypass-once|broken|unbroken|broken-status|broken-current|broken-fix|broken-list|build)" >&2
+        exit 2
+        ;;
 esac
