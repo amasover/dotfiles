@@ -3,9 +3,8 @@
 #
 # Runs INSIDE the throwaway Arch guest, delivered by the harness at bootstrap
 # time (scp/ssh), so the guest always executes the host checkout's version.
-# Extracted from the libvirt harness's inline ssh strings; consumed first by
-# the VMware harness — the libvirt harness swaps over in a Linux-side PR
-# (until then the inline copies in vm-harness are the recorded duplication).
+# Extracted from the libvirt harness's inline ssh strings; both the QEMU and
+# VMware harnesses now copy and invoke this file for bootstrap/check.
 #
 # Subcommands:
 #   bootstrap --class C --repo URL --hardware-pkgs "P..." [--branch B]
@@ -79,12 +78,11 @@ cmd_bootstrap() {
     [[ -n "$class" && -n "$repo" && -n "$hardware" ]] \
         || die 'bootstrap needs --class, --repo, and --hardware-pkgs'
     sudo pacman -S --needed --noconfirm git base-devel yadm
-    # Clone, or refresh an existing checkout. The libvirt harness runs
-    # `yadm clone || true`, which silently no-ops on a resumed guest and
-    # leaves it converging against stale dotfiles (2.31/#98) — a real miss:
-    # on 2026-08-13 a resumed run kept building a package main had already
-    # removed. --ff-only so a surprise divergence fails loudly instead of
-    # merging something nobody asked for.
+    # Clone, or refresh an existing checkout. A resumed guest cannot rely on
+    # `yadm clone || true`: that silently keeps converging the first branch.
+    # A live miss proved it: on 2026-08-13 a resumed run built a package
+    # main had already removed. --ff-only makes surprise divergence fail
+    # loudly instead of merging something nobody asked for.
     #
     # A resumed guest must also honour a CHANGED --branch: the harness
     # advertises VM_HARNESS_BRANCH as the way to validate guest-side bootstrap
