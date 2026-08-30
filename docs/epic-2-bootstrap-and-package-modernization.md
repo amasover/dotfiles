@@ -666,7 +666,7 @@ Issue: [#95](https://github.com/amasover/dotfiles/issues/95) · The vm-harness a
 
 ---
 
-### Story 2.30: concrete machine classes and hardware adapters
+### Story 2.30: concrete machine classes and hardware adapters ✅
 
 As the repo owner,
 I want each managed machine profile to select one concrete hardware adapter and
@@ -674,7 +674,7 @@ its own package inbox,
 So that laptop, VMware, and QEMU packages cannot leak across machines that share
 the same purpose groups.
 
-Issue: [#96](https://github.com/amasover/dotfiles/issues/96) · Origin: 2026-07-10
+Issue: [#96](https://github.com/amasover/dotfiles/issues/96) (closed, PR [#229](https://github.com/amasover/dotfiles/pull/229)) · Origin: 2026-07-10
 repo-direction grill plus live Intel/harness/shared-inbox evidence.
 
 Decision (2026-08-30): three public-safe classes are real adapters at the

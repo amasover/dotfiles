@@ -96,16 +96,6 @@ pickup so status and decisions have a source of truth.
 
 ### 2. Verify boot, hardware, and host package decisions
 
-#### Story 2.30 — machine class and hardware split ([#96](https://github.com/amasover/dotfiles/issues/96))
-
-**Why laptop-only:** the hardware group must match this Intel laptop and produce a live
-no-op reconcile. Current declarations still contain old AMD graphics packages and omit
-`vulkan-intel`; existing inbox entries also need per-machine attribution.
-
-**Remaining:** separate class from hardware groups, correct Intel/AMD GPU membership,
-give guest and laptop distinct inboxes, render both classes, and prove the laptop dry run
-is safe before any approved package mutation.
-
 #### Story 2.25 — finish host .NET transition ([#82](https://github.com/amasover/dotfiles/issues/82))
 
 **Why laptop-only:** repo declarations already use official packages; closure needs the
