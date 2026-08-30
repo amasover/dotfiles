@@ -915,6 +915,19 @@ else
     metapac sync
 fi
 
+# --- 6a. network service (Story 2.30) -----------------------------------------
+# Every class selects network-vpn and its NetworkManager stack. Package presence
+# without service ownership left fresh archinstall guests offline after reboot.
+say "Network service"
+if systemctl is-enabled --quiet NetworkManager && systemctl is-active --quiet NetworkManager; then
+    echo "  NetworkManager enabled and active"
+elif [[ $CHECK -eq 1 ]]; then
+    echo "  would: systemctl enable --now NetworkManager"
+else
+    sudo systemctl enable --now NetworkManager
+    echo "  NetworkManager enabled and active"
+fi
+
 # --- 6b. normalize install reasons ---------------------------------------------
 # pacman tags each package "explicit" (a human asked for it) or "dependency",
 # and `metapac unmanaged` trusts that tag: explicit + undeclared = reported

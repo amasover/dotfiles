@@ -1,0 +1,5 @@
+# metapac inbox for class "qemu-harness" — disposable-guest captures land here.
+# Only qemu-harness's rendered group list references this file.
+[arch]
+packages = [
+]

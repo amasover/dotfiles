@@ -1,0 +1,13 @@
+# metapac hardware adapter: current Intel laptop only (Story 2.30, #96).
+# Xorg uses its built-in modesetting DDX; no xf86-video-* fallback belongs here.
+[arch]
+packages = [
+  "acpi",
+  "acpid",
+  "intel-media-driver",
+  "intel-ucode",
+  "linux-firmware",
+  "refind",
+  "refind-theme-nord",
+  "vulkan-intel",
+]

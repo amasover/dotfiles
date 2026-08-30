@@ -1,0 +1,70 @@
+# Metapac machine classes and hardware adapters (Story 2.30, #96).
+# Renders the real YADM template inside an isolated HOME.
+#
+# Run from the repo root: clitest tests/metapac-classes.clitest.txt
+
+$ ROOT=$PWD; CLITMP=$(mktemp -d); H=$CLITMP/home; C=$CLITMP/config; D=$CLITMP/data; mkdir -p "$H/.config" "$H/.local/share/metapac"; cp -R .config/metapac "$H/.config/"; printf '# fixture machine-local group\n[arch]\npackages = []\n' > "$H/.local/share/metapac/machine-local.toml"; echo ready
+ready
+$ YADM() { HOME="$H" XDG_CONFIG_HOME="$C" XDG_DATA_HOME="$D" yadm "$@"; }; YADM init >/dev/null 2>&1; YADM add '.config/metapac/config.toml##template' .config/metapac/profiles/common.groups; echo initialized
+initialized
+$ RENDER() { YADM config --unset-all local.class >/dev/null 2>&1 || true; YADM config --add local.class "$1"; rm -f "$H/.config/metapac/config.toml"; YADM alt >/dev/null; }; DECLARED() { HOME="$H" "$ROOT/.local/bin/tools/metapac-declared" --config-dir "$H/.config/metapac"; }
+$
+
+workstation gets shared purpose groups, work, Intel-laptop hardware, and only
+its own inbox:
+
+$ RENDER workstation; grep -c '"hardware-intel-laptop"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"inbox-workstation"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"guest-vmware"\|"guest-qemu"\|"inbox-daily-vm"\|"inbox-qemu-harness"' "$H/.config/metapac/config.toml"
+0
+$ DECLARED | grep -E '^(intel-media-driver|vulkan-intel|vulkan-radeon|open-vm-tools|qemu-guest-agent)$'
+intel-media-driver
+vulkan-intel
+$ DECLARED | grep -c '^astro-cli$'
+1
+$
+
+daily-vm drops work and metal hardware, selects VMware tools, and owns a
+separate inbox:
+
+$ RENDER daily-vm; grep -c '"guest-vmware"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"inbox-daily-vm"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"work"\|"hardware-intel-laptop"\|"guest-qemu"\|"inbox-workstation"' "$H/.config/metapac/config.toml"
+0
+$ DECLARED | grep -E '^(open-vm-tools|xf86-video-vmware|zram-generator|refind|qemu-guest-agent)$'
+open-vm-tools
+xf86-video-vmware
+zram-generator
+$ DECLARED | grep -c '^astro-cli$'
+0
+$
+
+qemu-harness uses the same non-work purpose set with QEMU tools and its own
+inbox:
+
+$ RENDER qemu-harness; grep -c '"guest-qemu"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"inbox-qemu-harness"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"work"\|"hardware-intel-laptop"\|"guest-vmware"\|"inbox-workstation"' "$H/.config/metapac/config.toml"
+0
+$ DECLARED | grep -E '^(qemu-guest-agent|zram-generator|refind|open-vm-tools)$'
+qemu-guest-agent
+zram-generator
+$ DECLARED | grep -c '^astro-cli$'
+0
+$
+
+all profiles keep the shared package contract and all active group files parse
+through metapac:
+
+$ for class in workstation daily-vm qemu-harness; do RENDER "$class"; DECLARED >/dev/null || exit; done; echo all-render
+all-render
+$ for group in hardware-intel-laptop guest-vmware guest-qemu inbox-workstation inbox-daily-vm inbox-qemu-harness; do test -f ".config/metapac/groups/$group.toml" || echo "missing $group"; done
+$ rm -rf "$CLITMP"; echo done
+done
+$
