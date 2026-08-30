@@ -19,41 +19,12 @@ function delay() {
 ## COLOR PALETTE ##
 ###################
 
-# [colors]
-# Nord
-# ===================== #
-# blacks
+# Nord colors used by this block.
 nord0="#2E3440"
 nord1="#3B4252"
-nord2="#434C5E"
-nord3="#4C566A"
-# whites
-nord4="#D8DEE9"
-nord5="#E5E9F0"
-nord6="#ECEFF4"
-
-# ===================== #
-# blues
-# seafoam
-nord7="#8FBCBB"
-# turquoise
-nord8="#88C0D0"
-# pastel
-nord9="#81A1C1"
-# blue
-nord10="#5E81AC"
-
-# ===================== #
-# red
 nord11="#BF616A"
-# orange
-nord12="#D08770"
-# yellow
 nord13="#EBCB8B"
-# green
 nord14="#A3BE8C"
-# purple
-nord15="#B48EAD"
 
 yadm fetch >/dev/null 2>&1
 
@@ -61,8 +32,7 @@ staged=$(yadm diff --cached --numstat | wc -l)
 modified=$(yadm ls-files -m | wc -l)
 # shows how many commits ahead and behind local main is from origin
 ahead_behind_count=$(yadm rev-list --left-right --count main...origin/main)
-ahead=$(echo $ahead_behind_count | cut -d ' ' -f1)
-behind=$(echo $ahead_behind_count | cut -d ' ' -f2)
+read -r ahead behind <<<"$ahead_behind_count"
 
 ahead_icon=
 behind_icon=
@@ -75,7 +45,7 @@ staged_icon=
 commits_prompt="  $yadm_icon $behind $behind_icon $ahead $ahead_icon "
 
 # TODO: fix this, not sure how to hand parameters to this script from polybar
-if [[ $1 == true ]]; then
+if [[ ${1:-} == true ]]; then
     arrow=" "
 else
     arrow=""
@@ -99,16 +69,16 @@ fi
 if [[ $staged != "0" || $modified != "0" ]]; then
 
     bg=$nord13
-    staged_prompt=$(color "${nord13}" "${nord1}" " $staged_icon $staged $modified_icon $modified  $no ")$(color "${nord0}" "${nord13}" $arrow)
+    staged_prompt=$(color "${nord13}" "${nord1}" " $staged_icon $staged $modified_icon $modified  $no ")$(color "${nord0}" "${nord13}" "$arrow")
 else
     bg=$nord14
-    staged_prompt=$(color "${nord14}" "${nord1}" " $staged_icon $staged $modified_icon $modified  $yes ")$(color "${nord0}" "${nord14}" $arrow)
+    staged_prompt=$(color "${nord14}" "${nord1}" " $staged_icon $staged $modified_icon $modified  $yes ")$(color "${nord0}" "${nord14}" "$arrow")
 fi
 
-if [[ $bg == $fg ]]; then
+if [[ $bg == "$fg" ]]; then
     separator=$(color "${bg}" "${nord1}" "")
 else
-    separator=$(color "${bg}" "${fg}" $arrow)
+    separator=$(color "${bg}" "${fg}" "$arrow")
 fi
 
-echo $commits_prompt${separator}$staged_prompt
+printf '%s\n' "${commits_prompt}${separator}${staged_prompt}"

@@ -25,19 +25,16 @@ IFS=$'\n'
 
 # Script arguments
 FILE_PATH="${1}"        # Full path of the highlighted file
-PV_WIDTH="${2}"         # Width of the preview pane (number of fitting characters)
-PV_HEIGHT="${3}"        # Height of the preview pane (number of fitting characters)
 IMAGE_CACHE_PATH="${4}" # Full path that should be used to cache image preview
 PV_IMAGE_ENABLED="${5}" # 'True' if image previews are enabled, 'False' otherwise.
 
 FILE_EXTENSION="${FILE_PATH##*.}"
-FILE_EXTENSION_LOWER=$(echo ${FILE_EXTENSION} | tr '[:upper:]' '[:lower:]')
+FILE_EXTENSION_LOWER=$(printf '%s\n' "$FILE_EXTENSION" | tr '[:upper:]' '[:lower:]')
 
 # Settings
 HIGHLIGHT_SIZE_MAX=262143 # 256KiB
 HIGHLIGHT_TABWIDTH=8
 HIGHLIGHT_STYLE='pablo'
-PYGMENTIZE_STYLE='autumn'
 
 handle_extension() {
     case "${FILE_EXTENSION_LOWER}" in
@@ -141,10 +138,8 @@ handle_mime() {
                 exit 2
             fi
             if [[ "$(tput colors)" -ge 256 ]]; then
-                local pygmentize_format='terminal256'
                 local highlight_format='xterm256'
             else
-                local pygmentize_format='terminal'
                 local highlight_format='ansi'
             fi
             highlight --replace-tabs="${HIGHLIGHT_TABWIDTH}" --out-format="${highlight_format}" \
@@ -182,5 +177,3 @@ fi
 handle_extension
 handle_mime "${MIMETYPE}"
 handle_fallback
-
-exit 1

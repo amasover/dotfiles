@@ -424,9 +424,9 @@ cmd_update() { # manual: step PKG(s) to the newest vetted (aged) version
     load_baseline
     local now
     now=$(date +%s)
-    local p n base lm mt inst cutoff repo res sha ver known
+    local p base lm mt inst cutoff repo res sha ver known
     for p in "$@"; do
-        IFS=$'\t' read -r n base lm mt < <(rpc_info "$p")
+        IFS=$'\t' read -r _ base lm mt < <(rpc_info "$p")
         if [[ -z ${base:-} ]]; then
             echo "aur-quarantine: $p not found in AUR RPC." >&2
             continue

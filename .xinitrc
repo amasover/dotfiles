@@ -6,7 +6,7 @@
 
 # Workaround virtualbox bug
 # See: https://www.virtualbox.org/ticket/13653?cversion=0&cnum_hist=40
-CR_RENDER_FORCE_PRESENT_MAIN_THREAD=0
+export CR_RENDER_FORCE_PRESENT_MAIN_THREAD=0
 
 userresources=$HOME/.Xresources
 usermodmap=$HOME/.Xmodmap
@@ -47,6 +47,7 @@ xrandr --output eDP-1 --primary --mode 1920x1080 --pos 1080x1080 --rotate normal
 
 if [ -d /etc/X11/xinit/xinitrc.d ]; then
     for f in /etc/X11/xinit/xinitrc.d/?*.sh; do
+        # shellcheck disable=SC1090  # xinit dynamically sources every executable hook.
         [ -x "$f" ] && . "$f"
     done
     unset f
@@ -74,4 +75,3 @@ fi
 #DISPLAY=:0.1 i3 &
 #exec i3 -V -d all &>> "$HOME/i3.log"
 exec i3
-/usr/bin/dropbox &

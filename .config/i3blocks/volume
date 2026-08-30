@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2016  # Perl capture variables below are intentionally literal.
 # Copyright (C) 2014 Julien Bonjean <julien@bonjean.info>
 # Copyright (C) 2014 Alexander Keller <github@nycroth.com>
 
@@ -23,15 +24,15 @@
 # For ALSA users, you may use "default" for your primary card
 # or you may use hw:# where # is the number of the card desired
 MIXER="default"
-[ -n "$(lsmod | grep pulse)" ] && MIXER="pulse"
-[ -n "$(lsmod | grep jack)" ] && MIXER="jackplug"
+lsmod | grep -q pulse && MIXER="pulse"
+lsmod | grep -q jack && MIXER="jackplug"
 MIXER="${2:-$MIXER}"
 
 # The instance option sets the control to report and configure
 # This defaults to the first control of your selected mixer
 # For a list of the available, use `amixer -D $Your_Mixer scontrols`
 SCONTROL="${BLOCK_INSTANCE:-$(
-    amixer -D $MIXER scontrols \
+    amixer -D "$MIXER" scontrols \
         | sed -n "s/Simple mixer control '\([A-Za-z ]*\)',0/\1/p" \
         | head -n1
 )}"
@@ -43,12 +44,28 @@ STEP="${1:-5%}"
 #------------------------------------------------------------------------
 
 capability() { # Return "Capture" if the device is a capture device
-    amixer -D $MIXER get $SCONTROL \
+    amixer -D "$MIXER" get "$SCONTROL" \
         | sed -n "s/  Capabilities:.*cvolume.*/Capture/p"
 }
 
 volume() {
-    amixer -D $MIXER get $SCONTROL $(capability)
+    local cap
+    cap=$(capability)
+    if [[ -n $cap ]]; then
+        amixer -D "$MIXER" get "$SCONTROL" "$cap"
+    else
+        amixer -D "$MIXER" get "$SCONTROL"
+    fi
+}
+
+set_volume() {
+    local cap
+    cap=$(capability)
+    if [[ -n $cap ]]; then
+        amixer -q -D "$MIXER" sset "$SCONTROL" "$cap" "$@"
+    else
+        amixer -q -D "$MIXER" sset "$SCONTROL" "$@"
+    fi
 }
 
 format() {
@@ -63,9 +80,9 @@ format() {
 #------------------------------------------------------------------------
 
 case $BLOCK_BUTTON in
-    3) amixer -q -D $MIXER sset $SCONTROL $(capability) toggle ;;          # right click, mute/unmute
-    4) amixer -q -D $MIXER sset $SCONTROL $(capability) ${STEP}+ unmute ;; # scroll up, increase
-    5) amixer -q -D $MIXER sset $SCONTROL $(capability) ${STEP}- unmute ;; # scroll down, decrease
+    3) set_volume toggle ;;            # right click, mute/unmute
+    4) set_volume "${STEP}+" unmute ;; # scroll up, increase
+    5) set_volume "${STEP}-" unmute ;; # scroll down, decrease
 esac
 
 volume | format

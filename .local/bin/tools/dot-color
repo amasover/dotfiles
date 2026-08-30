@@ -36,7 +36,7 @@ export UWhite='\033[4;37m'  # White
 export On_Black='\033[40m' # Black
 
 function color {
-    printf "$1$2$Nocolor"
+    printf '%b%b%b' "$1" "$2" "$Nocolor"
 }
 
 if [[ $1 == "-h" ]]; then
