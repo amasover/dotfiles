@@ -1,0 +1,610 @@
+#!/usr/bin/env python3
+"""Safely reconcile repository-owned rEFInd policy and generated kernel entries.
+
+Production interface:
+  refind-config audit       read-only, redacted boot-path inventory
+  refind-config --check     read-only drift check; 0 converged, 1 drift, 2 unsafe
+  refind-config apply       create/update missing or already-managed files
+  refind-config adopt       one-time backup + replacement of unmanaged files
+
+Production runs re-exec through pkexec, including read-only modes, because ESPs
+are commonly mounted root-only. No command edits firmware variables or reboots.
+Apply/adopt back up every existing destination below /var/backups/dotfiles/refind
+before writing. --root is a fixture/provisioner seam and never invokes pkexec.
+
+Optional machine-local input: /etc/dotfiles/refind.json below the selected root.
+Keys: esp (absolute mount path), boot_fsroot (absolute path inside its filesystem),
+and kernel_options (array of identity-bearing kernel tokens). When absent, live
+ESP mounts, /proc/cmdline, /sys/power/resume, and /boot mount metadata are used.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
+
+MANAGED = "# Managed by dotfiles refind-config (Story 2.52, #230)."
+THEME_MARKER = ".dotfiles-refind-managed"
+ESP_CANDIDATES = ("/efi", "/boot/efi", "/boot")
+MACHINE_PATH = "/etc/dotfiles/refind.json"
+ALLOWED_MACHINE_KEYS = {"esp", "boot_fsroot", "kernel_options"}
+SINGLETON_KEYS = {"root", "resume", "resume_offset", "rootflags", "rootfstype", "zfs"}
+IDENTITY_KEYS = SINGLETON_KEYS | {
+    "cryptdevice",
+    "cryptkey",
+    "rd.luks.uuid",
+    "rd.luks.name",
+    "rd.lvm.lv",
+    "rd.md.uuid",
+    "md",
+}
+
+
+class RefindError(Exception):
+    """Unsafe, ambiguous, or incomplete boot state."""
+
+
+def repo_policy() -> Path:
+    return Path(__file__).resolve().parents[3] / ".config/dotfiles/refind/refind.conf"
+
+
+def rooted(root: Path, logical: str) -> Path:
+    pure = PurePosixPath(logical)
+    if not pure.is_absolute() or ".." in pure.parts:
+        raise RefindError(f"machine path must be absolute without '..': {logical}")
+    return root.joinpath(*pure.parts[1:])
+
+
+def logical_path(value: object, key: str) -> str:
+    if not isinstance(value, str):
+        raise RefindError(f"{MACHINE_PATH}: {key} must be a string")
+    pure = PurePosixPath(value)
+    if not pure.is_absolute() or ".." in pure.parts:
+        raise RefindError(f"{MACHINE_PATH}: {key} must be an absolute path without '..'")
+    return str(pure)
+
+
+def load_machine(root: Path) -> dict:
+    path = rooted(root, MACHINE_PATH)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RefindError(f"cannot read valid JSON from {MACHINE_PATH}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise RefindError(f"{MACHINE_PATH}: top level must be an object")
+    unknown = sorted(set(data) - ALLOWED_MACHINE_KEYS)
+    if unknown:
+        raise RefindError(f"{MACHINE_PATH}: unknown keys: {', '.join(unknown)}")
+    if "esp" in data:
+        data["esp"] = logical_path(data["esp"], "esp")
+    if "boot_fsroot" in data:
+        data["boot_fsroot"] = logical_path(data["boot_fsroot"], "boot_fsroot")
+    if "kernel_options" in data:
+        if not isinstance(data["kernel_options"], list) or not all(
+            isinstance(item, str) for item in data["kernel_options"]
+        ):
+            raise RefindError(f"{MACHINE_PATH}: kernel_options must be an array of strings")
+        data["kernel_options"] = validate_identity(data["kernel_options"], MACHINE_PATH)
+    return data
+
+
+def same_directory(left: Path, right: Path) -> bool:
+    try:
+        return os.path.samefile(left, right)
+    except OSError:
+        return False
+
+
+def discover_esp(root: Path, machine: dict) -> tuple[str, Path]:
+    if "esp" in machine:
+        logical = machine["esp"]
+        path = rooted(root, logical)
+        if not (path / "EFI/refind/refind_x64.efi").is_file():
+            raise RefindError(f"rEFInd binary missing from explicit ESP {logical}")
+        return logical, path
+
+    found: list[tuple[str, Path]] = []
+    for logical in ESP_CANDIDATES:
+        path = rooted(root, logical)
+        if not (path / "EFI/refind/refind_x64.efi").is_file():
+            continue
+        if any(same_directory(path, prior) for _, prior in found):
+            continue
+        found.append((logical, path))
+    if not found:
+        raise RefindError(
+            "no mounted ESP contains EFI/refind/refind_x64.efi "
+            f"(checked {', '.join(ESP_CANDIDATES)})"
+        )
+    if len(found) > 1:
+        raise RefindError("ambiguous ESPs contain rEFInd: " + ", ".join(item[0] for item in found))
+    return found[0]
+
+
+def validate_boot_fsroot(value: str) -> str:
+    value = logical_path(value, "boot_fsroot")
+    return "/" if value == "/" else value.rstrip("/")
+
+
+def discover_boot_fsroot(root: Path, machine: dict) -> str:
+    if "boot_fsroot" in machine:
+        return validate_boot_fsroot(machine["boot_fsroot"])
+    if root != Path("/"):
+        return "/"
+    proc = subprocess.run(
+        ["/usr/bin/findmnt", "--noheadings", "--output", "FSROOT", "--target", "/boot"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    values = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    if proc.returncode or len(values) != 1:
+        raise RefindError("cannot derive one filesystem-root path for /boot")
+    return validate_boot_fsroot(values[0])
+
+
+def option_key(token: str) -> str:
+    return token.split("=", 1)[0]
+
+
+def validate_identity(tokens: list[str], source: str) -> list[str]:
+    if not tokens:
+        raise RefindError(f"{source}: no machine identity kernel options")
+    counts: dict[str, int] = {}
+    clean: list[str] = []
+    for token in tokens:
+        if not token or any(ch.isspace() for ch in token) or any(ch in token for ch in '"\''):
+            raise RefindError(f"{source}: malformed kernel option")
+        key = option_key(token)
+        if key not in IDENTITY_KEYS or "=" not in token or not token.split("=", 1)[1]:
+            raise RefindError(f"{source}: unsupported identity option key: {key}")
+        counts[key] = counts.get(key, 0) + 1
+        clean.append(token)
+    if counts.get("root") != 1:
+        raise RefindError(f"{source}: exactly one root= option is required")
+    duplicates = sorted(key for key in SINGLETON_KEYS if counts.get(key, 0) > 1)
+    if duplicates:
+        raise RefindError(f"{source}: duplicate singleton options: {', '.join(duplicates)}")
+    return clean
+
+
+def kernel_identity_from_cmdline(text: str) -> list[str]:
+    tokens = [token for token in text.strip().split() if option_key(token) in IDENTITY_KEYS]
+    return validate_identity(tokens, "/proc/cmdline")
+
+
+def walk_blockdevices(devices: list[dict]):
+    for device in devices:
+        yield device
+        children = device.get("children")
+        if isinstance(children, list):
+            yield from walk_blockdevices(children)
+
+
+def resume_options(root: Path) -> list[str]:
+    resume_path = rooted(root, "/sys/power/resume")
+    if not resume_path.is_file():
+        return []
+    value = resume_path.read_text().strip()
+    if value in {"", "0:0"}:
+        return []
+    if not re.fullmatch(r"\d+:\d+", value):
+        raise RefindError("/sys/power/resume is malformed")
+    if root != Path("/"):
+        raise RefindError(
+            f"fixture with active resume must provide kernel_options in {MACHINE_PATH}"
+        )
+    proc = subprocess.run(
+        ["/usr/bin/lsblk", "--json", "--output", "MAJ:MIN,UUID"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    try:
+        devices = json.loads(proc.stdout).get("blockdevices", [])
+    except json.JSONDecodeError as exc:
+        raise RefindError("cannot parse lsblk while deriving resume device") from exc
+    matches = [item for item in walk_blockdevices(devices) if item.get("maj:min") == value]
+    uuids = {item.get("uuid") for item in matches if item.get("uuid")}
+    if proc.returncode or len(uuids) != 1:
+        raise RefindError("cannot derive one UUID for /sys/power/resume device")
+    options = [f"resume=UUID={uuids.pop()}"]
+    offset_path = rooted(root, "/sys/power/resume_offset")
+    if offset_path.is_file():
+        offset = offset_path.read_text().strip()
+        if not re.fullmatch(r"\d+", offset):
+            raise RefindError("/sys/power/resume_offset is malformed")
+        if offset != "0":
+            options.append(f"resume_offset={offset}")
+    return options
+
+
+def resolve_identity(root: Path, machine: dict) -> list[str]:
+    if "kernel_options" in machine:
+        return list(machine["kernel_options"])
+    cmdline = rooted(root, "/proc/cmdline")
+    try:
+        identity = kernel_identity_from_cmdline(cmdline.read_text())
+    except OSError as exc:
+        raise RefindError("cannot read /proc/cmdline") from exc
+    if not any(option_key(token) == "resume" for token in identity):
+        identity.extend(resume_options(root))
+    return validate_identity(identity, "derived live state")
+
+
+def uefi_path(boot_fsroot: str, filename: str) -> str:
+    parts = [part for part in PurePosixPath(boot_fsroot).parts if part != "/"]
+    return "\\" + "\\".join([*parts, filename])
+
+
+def render_machine_config(boot_fsroot: str) -> bytes:
+    lines = [
+        MANAGED,
+        "# Generated from boot mount metadata; never edit or commit this file.",
+    ]
+    if boot_fsroot == "/":
+        lines.append("# Kernel directory is the filesystem root; default scanning covers it.")
+    else:
+        lines.append(f"also_scan_dirs +,@{boot_fsroot}")
+    return ("\n".join(lines) + "\n").encode()
+
+
+def render_linux_config(identity: list[str], boot_fsroot: str) -> bytes:
+    base = " ".join(identity)
+    initrds = " ".join(
+        [
+            f"initrd={uefi_path(boot_fsroot, 'intel-ucode.img')}",
+            f"initrd={uefi_path(boot_fsroot, 'initramfs-linux.img')}",
+        ]
+    )
+    entries = [
+        ("Boot with standard options", f"{base} rw add_efi_memmap {initrds}"),
+        ("Boot to single-user mode", f"{base} rw add_efi_memmap single {initrds}"),
+        ("Boot with minimal options", f"{base} ro {initrds}"),
+    ]
+    lines = [
+        MANAGED,
+        "# Machine identifiers generated from live or explicit machine-local state.",
+        *[f'"{label}"  "{options}"' for label, options in entries],
+    ]
+    return ("\n".join(lines) + "\n").encode()
+
+
+def required_boot_artifacts(root: Path) -> None:
+    missing = [
+        logical
+        for logical in ("/boot/vmlinuz-linux", "/boot/initramfs-linux.img", "/boot/intel-ucode.img")
+        if not rooted(root, logical).is_file()
+    ]
+    if missing:
+        raise RefindError("missing boot artifacts: " + ", ".join(missing))
+
+
+def load_policy() -> bytes:
+    path = repo_policy()
+    try:
+        content = path.read_bytes()
+    except OSError as exc:
+        raise RefindError(f"tracked policy missing: {path}") from exc
+    if not content.startswith((MANAGED + "\n").encode()):
+        raise RefindError("tracked policy lacks management marker")
+    if re.search(rb"(?:PART)?UUID=|/dev/", content):
+        raise RefindError("tracked policy contains a machine identifier")
+    return content
+
+
+def load_theme(root: Path) -> dict[str, bytes]:
+    source = rooted(root, "/usr/share/refind/themes/nord")
+    required = ("theme.conf", "bg.png", "selection_big.png", "selection_small.png")
+    missing = [name for name in required if not (source / name).is_file()]
+    icons = sorted((source / "icons").glob("*.png")) if (source / "icons").is_dir() else []
+    if missing or not icons:
+        detail = ", ".join(missing or ["icons/*.png"])
+        raise RefindError(f"package-owned Nord theme incomplete: {detail}")
+    files = {name: (source / name).read_bytes() for name in required}
+    files.update({f"icons/{path.name}": path.read_bytes() for path in icons})
+    return files
+
+
+def is_managed_file(path: Path) -> bool:
+    try:
+        return path.read_bytes().startswith((MANAGED + "\n").encode())
+    except OSError:
+        return False
+
+
+def theme_payload_matches(destination: Path, desired: dict[str, bytes]) -> bool:
+    if not destination.is_dir():
+        return False
+    actual: set[str] = set()
+    for path in destination.rglob("*"):
+        if path.is_symlink():
+            return False
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            return False
+        rel = path.relative_to(destination).as_posix()
+        if rel == THEME_MARKER:
+            continue
+        actual.add(rel)
+        if rel not in desired or path.read_bytes() != desired[rel]:
+            return False
+    return actual == set(desired)
+
+
+def build_state(root: Path) -> dict:
+    machine = load_machine(root)
+    esp_logical, esp = discover_esp(root, machine)
+    required_boot_artifacts(root)
+    boot_fsroot = discover_boot_fsroot(root, machine)
+    identity = resolve_identity(root, machine)
+    policy = load_policy()
+    theme = load_theme(root)
+    refind_dir = esp / "EFI/refind"
+    files = [
+        ("refind.conf", refind_dir / "refind.conf", policy),
+        ("dotfiles-machine.conf", refind_dir / "dotfiles-machine.conf", render_machine_config(boot_fsroot)),
+        ("refind_linux.conf", rooted(root, "/boot/refind_linux.conf"), render_linux_config(identity, boot_fsroot)),
+    ]
+    return {
+        "root": root,
+        "machine": machine,
+        "esp_logical": esp_logical,
+        "esp": esp,
+        "boot_fsroot": boot_fsroot,
+        "identity": identity,
+        "files": files,
+        "theme": theme,
+        "theme_dir": refind_dir / "themes/nord",
+    }
+
+
+def preflight(state: dict, adopt: bool) -> None:
+    for name, path, desired in state["files"]:
+        if not path.exists() or path.read_bytes() == desired:
+            continue
+        if not adopt and not is_managed_file(path):
+            raise RefindError(f"refusing to overwrite unmanaged destination: {name}")
+    theme_dir = state["theme_dir"]
+    if (
+        theme_dir.exists()
+        and not theme_payload_matches(theme_dir, state["theme"])
+        and not (theme_dir / THEME_MARKER).is_file()
+        and not adopt
+    ):
+        raise RefindError("refusing to overwrite unmanaged destination: Nord theme")
+
+
+def drift_items(state: dict) -> list[str]:
+    drift = [name for name, path, desired in state["files"] if not path.is_file() or path.read_bytes() != desired]
+    theme_dir = state["theme_dir"]
+    if not theme_payload_matches(theme_dir, state["theme"]) or not (theme_dir / THEME_MARKER).is_file():
+        drift.append("Nord theme")
+    return drift
+
+
+def backup_existing(state: dict) -> Path | None:
+    existing = [(name, path) for name, path, _ in state["files"] if path.exists()]
+    if state["theme_dir"].exists():
+        existing.append(("Nord theme", state["theme_dir"]))
+    if not existing:
+        return None
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    destination = rooted(state["root"], f"/var/backups/dotfiles/refind/{stamp}")
+    destination.mkdir(parents=True, mode=0o700)
+    mapping = {
+        "refind.conf": Path("esp/EFI/refind/refind.conf"),
+        "dotfiles-machine.conf": Path("esp/EFI/refind/dotfiles-machine.conf"),
+        "refind_linux.conf": Path("boot/refind_linux.conf"),
+        "Nord theme": Path("esp/EFI/refind/themes/nord"),
+    }
+    entries = []
+    for name, source in existing:
+        target = destination / mapping[name]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            shutil.copytree(source, target, symlinks=True)
+        else:
+            shutil.copy2(source, target, follow_symlinks=False)
+        entries.append(name)
+    manifest = {"created_utc": stamp, "entries": entries}
+    (destination / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    return destination
+
+
+def atomic_write(path: Path, content: bytes, mode: int = 0o644) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".refind-config-", dir=path.parent)
+    temp_path = Path(temporary)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, mode)
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
+def atomic_theme_replace(destination: Path, files: dict[str, bytes]) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=".nord-new-", dir=destination.parent))
+    old: Path | None = None
+    try:
+        for rel, content in files.items():
+            atomic_write(stage / rel, content)
+        atomic_write(stage / THEME_MARKER, (MANAGED + "\n").encode())
+        if destination.exists():
+            old = Path(tempfile.mkdtemp(prefix=".nord-old-", dir=destination.parent))
+            old.rmdir()
+            os.replace(destination, old)
+        try:
+            os.replace(stage, destination)
+        except BaseException:
+            if old is not None and old.exists() and not destination.exists():
+                os.replace(old, destination)
+            raise
+        if old is not None:
+            shutil.rmtree(old)
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)
+        if old is not None and old.exists():
+            shutil.rmtree(old)
+
+
+def apply_state(state: dict, items: list[str]) -> Path | None:
+    backup = backup_existing(state)
+    if "Nord theme" in items:
+        atomic_theme_replace(state["theme_dir"], state["theme"])
+    order = {"dotfiles-machine.conf": 0, "refind_linux.conf": 1, "refind.conf": 2}
+    for name, path, desired in sorted(state["files"], key=lambda item: order[item[0]]):
+        if name in items:
+            atomic_write(path, desired)
+    return backup
+
+
+def short_hash(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "unreadable"
+
+
+def firmware_text(root: Path) -> str:
+    fixture = rooted(root, "/run/refind-config/efibootmgr.txt")
+    if fixture.is_file():
+        return fixture.read_text()
+    if root != Path("/"):
+        return ""
+    proc = subprocess.run(["/usr/bin/efibootmgr", "-v"], text=True, capture_output=True, check=False)
+    return proc.stdout
+
+
+def firmware_flags(text: str) -> tuple[bool, bool]:
+    current_match = re.search(r"^BootCurrent:\s*([0-9A-Fa-f]{4})\s*$", text, re.MULTILINE)
+    current_refind = False
+    if current_match:
+        entry = re.search(
+            rf"^Boot{re.escape(current_match.group(1))}\*?.*$", text, re.MULTILINE | re.IGNORECASE
+        )
+        current_refind = bool(entry and re.search(r"\\EFI\\refind\\refind_x64\.efi", entry.group(0), re.I))
+    ubuntu = bool(re.search(r"^Boot[0-9A-Fa-f]{4}\*?.*(?:ubuntu|\\EFI\\ubuntu\\)", text, re.MULTILINE | re.I))
+    return current_refind, ubuntu
+
+
+def audit(root: Path) -> int:
+    machine = load_machine(root)
+    esp_logical, esp = discover_esp(root, machine)
+    boot_fsroot = discover_boot_fsroot(root, machine)
+    identity = resolve_identity(root, machine)
+    refind_dir = esp / "EFI/refind"
+    current_refind, ubuntu_entry = firmware_flags(firmware_text(root))
+    keys = {option_key(token) for token in identity}
+    print("rEFInd audit (identifiers redacted)")
+    print(f"  ESP: {esp_logical}; rEFInd binary: present")
+    print(f"  firmware current path: {'rEFInd' if current_refind else 'not verified as rEFInd'}")
+    config = refind_dir / "refind.conf"
+    if not config.exists():
+        config_state = "missing"
+    elif is_managed_file(config):
+        config_state = "managed"
+    else:
+        config_state = "present, unmanaged"
+    print(f"  portable config: {config_state}; sha256={short_hash(config)}")
+    print(f"  Nord source: /usr/share/refind/themes/nord; installed: {'yes' if (refind_dir / 'themes/nord/theme.conf').is_file() else 'no'}")
+    print(f"  boot directory: /boot; filesystem root: {boot_fsroot}")
+    for name in ("vmlinuz-linux", "initramfs-linux.img", "intel-ucode.img"):
+        print(f"  {name}: {'present' if rooted(root, '/boot/' + name).is_file() else 'missing'}")
+    print(
+        "  kernel identity: "
+        f"root=yes; crypt={'yes' if {'cryptdevice', 'rd.luks.uuid', 'rd.luks.name'} & keys else 'no'}; "
+        f"resume={'yes' if 'resume' in keys else 'no'}; values redacted"
+    )
+    print(f"  refind_linux.conf: sha256={short_hash(rooted(root, '/boot/refind_linux.conf'))}")
+    ubuntu_shim = esp / "EFI/ubuntu/shimx64.efi"
+    print(
+        "  Ubuntu alternate path: "
+        f"firmware-entry={'present' if ubuntu_entry else 'not observed'}; "
+        f"shim={'present' if ubuntu_shim.is_file() else 'missing'}"
+    )
+    print(f"  machine input: {'explicit ' + MACHINE_PATH if machine else 'derived live state'}")
+    return 0
+
+
+def reconcile(root: Path, action: str) -> int:
+    state = build_state(root)
+    adopt = action == "adopt"
+    preflight(state, adopt)
+    items = drift_items(state)
+    if not items:
+        print("rEFInd configuration: converged")
+        return 0
+    if action == "check":
+        print("rEFInd configuration: would reconcile " + ", ".join(items))
+        return 1
+    backup = apply_state(state, items)
+    if backup is not None:
+        logical_backup = "/" + backup.relative_to(root).as_posix() if root != Path("/") else str(backup)
+        print(f"rEFInd configuration: backup {logical_backup}")
+    print("rEFInd configuration: reconciled " + ", ".join(items))
+    return 0
+
+
+def parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("action", nargs="?", choices=("audit", "apply", "adopt"))
+    ap.add_argument("--check", action="store_true", help="report drift without mutation")
+    ap.add_argument("--root", default="/", help=argparse.SUPPRESS)
+    ap.add_argument("--elevated", action="store_true", help=argparse.SUPPRESS)
+    return ap
+
+
+def elevate(argv: list[str]) -> int:
+    command = ["/usr/bin/pkexec", "/usr/bin/python3", str(Path(__file__).resolve()), *argv, "--elevated"]
+    try:
+        return subprocess.run(command, check=False).returncode
+    except OSError as exc:
+        raise RefindError(f"cannot execute pkexec: {exc}") from exc
+
+
+def main(argv: list[str] | None = None) -> int:
+    raw = list(sys.argv[1:] if argv is None else argv)
+    ap = parser()
+    args = ap.parse_args(raw)
+    if args.check and args.action:
+        ap.error("--check cannot be combined with an action")
+    action = "check" if args.check else args.action
+    if action is None:
+        ap.error("choose audit, --check, apply, or adopt")
+    root = Path(args.root)
+    if not root.is_absolute() or not root.is_dir():
+        ap.error("--root must name an existing absolute directory")
+    root = root.resolve()
+    try:
+        if root == Path("/") and not args.elevated:
+            return elevate(raw)
+        if root == Path("/") and os.geteuid() != 0:
+            raise RefindError("production access must run through pkexec")
+        return audit(root) if action == "audit" else reconcile(root, action)
+    except (OSError, RefindError) as exc:
+        print(f"refind-config: FATAL: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
