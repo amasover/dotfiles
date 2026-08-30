@@ -655,14 +655,25 @@ everything else, instead of hand-typed disk commands at an ISO prompt.
 
 Issue: [#95](https://github.com/amasover/dotfiles/issues/95) · The vm-harness already proves the pattern: cloud-init on the official ISO drives unattended `archinstall` from a generated seed (Story 2.7). **Primary consumer (amended 2026-07-10, [decision-daily-driver-vm.md](./decision-daily-driver-vm.md)): the daily-driver VM on the Windows machine** — same recipe, LUKS root inside the guest; the spare-laptop metal run (months out) is the later variant and inherits it.
 
+Hibernate-storage follow-up [#235](https://github.com/amasover/dotfiles/issues/235)
+defines the metal-only storage seam: installer owns encrypted partition layout;
+post-install `hibernate-storage` owns swap sizing, priorities, resume selection,
+and fstab convergence.
+
 **Acceptance criteria:**
 
 - Given a machine booted from the official Arch ISO (VMware guest or metal), when the recipe runs, then a tracked, parameterized generator produces an archinstall config provisioning GPT partitions (ESP + LUKS-encrypted root sized from the disk), disk encryption, the boot path fitting the target (VM vs refind metal), a user, and sshd
+- Given a metal target intended to hibernate, when its disk recipe is generated, then exactly one swap partition/LV inside encrypted storage is at least as large as physical RAM and persists through fstab; generic zram or unencrypted swap does not satisfy the contract
+- Given that installed target first boots, when `hibernate-storage apply` runs, then it selects the unambiguous dedicated resume swap, creates a routine swapfile inside encrypted ext4 root at 1.5 times rounded RAM, drains the resume area, persists priority 100 for routine paging, and leaves the resume priority lower
 - Given secrets (LUKS passphrase, user password), when the seed is generated, then they are supplied at run time (prompt or env) and never land in tracked files; any generated seed containing them is destroyed after use
 - Given vm-harness's seed generation exists, when the generator is built, then shared logic is factored once (harness, daily-VM, metal as consumers) or the divergence is explicitly recorded with reasons
 - Given the daily-driver VM is the first real consumer, when the story lands, then its creation run is the primary evidence; the spare-laptop run later revalidates the metal variant
 
 **Evidence artifact:** tracked generator + recipe, the daily-VM creation record, and (later) the metal run record.
+Hibernate-storage slice evidence: `tests/hibernate-storage.clitest.txt`, clean
+shell validation, and a converged read-only check against the live encrypted
+layout; destructive fresh-metal proof remains with Story 2.29.
+
 
 ---
 

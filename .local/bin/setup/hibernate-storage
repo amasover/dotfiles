@@ -1,0 +1,307 @@
+#!/usr/bin/env bash
+# hibernate-storage — reserve encrypted swap for hibernation on bare metal.
+#
+# Interface:
+#   hibernate-storage --check   read-only; 0 converged, 1 drift, 2 unsafe
+#   hibernate-storage apply     create/reconcile routine swap; requires root
+#
+# Contract: installer already created one encrypted, active swap partition at
+# least as large as physical RAM and persisted it in fstab. If the kernel has no
+# resume target yet, this module selects that unambiguous partition.
+# This module creates /swapfile inside encrypted ext4 root for routine paging,
+# sized to 1.5x rounded RAM and preferred at priority 100. The resume partition
+# stays active at priority -1 but empty, leaving room for the hibernation image.
+set -euo pipefail
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+}
+
+die() {
+    echo "hibernate-storage: $*" >&2
+    exit 2
+}
+
+root=${HIBERNATE_STORAGE_ROOT:-/}
+[[ $root == /* && -d $root ]] || die "HIBERNATE_STORAGE_ROOT must be an absolute directory"
+root=${root%/}
+[[ -n $root ]] || root=/
+if [[ $root == / ]]; then
+    PATH=/usr/bin:/usr/sbin
+fi
+
+rooted() {
+    if [[ $root == / ]]; then
+        printf '%s\n' "$1"
+    else
+        printf '%s%s\n' "$root" "$1"
+    fi
+}
+
+encrypted_storage() {
+    local type
+    while IFS= read -r type; do
+        [[ $type != crypt ]] || return 0
+    done < <(lsblk -s -n -o TYPE "$1")
+    return 1
+}
+
+swap_record() {
+    local device=$1 swaps
+    swaps=$(rooted /proc/swaps)
+    awk -v device="$device" '
+        NR > 1 && $1 == device {
+            count++
+            record = $2 " " $3 " " $4 " " $5
+        }
+        END {
+            if (count != 1) exit 1
+            print record
+        }
+    ' "$swaps"
+}
+
+fstab_has_routine_swap() {
+    local fstab
+    fstab=$(rooted /etc/fstab)
+    awk '
+        /^[[:space:]]*#/ || NF == 0 { next }
+        $1 == "/swapfile" {
+            count++
+            valid = ($2 == "none" && $3 == "swap" && $4 ~ /(^|,)pri=100(,|$)/)
+        }
+        END { exit !(count == 1 && valid) }
+    ' "$fstab"
+}
+
+fstab_has_resume_swap() {
+    local source fstype options priority=-1
+    local -a rows=()
+    mapfile -t rows < <(
+        findmnt --fstab --evaluate --noheadings \
+            --output SOURCE,FSTYPE,OPTIONS --source "$resume_device" 2>/dev/null
+    )
+    ((${#rows[@]} == 1)) || return 1
+    read -r source fstype options <<<"${rows[0]}"
+    [[ -n $source && $fstype == swap ]] || return 1
+    if [[ $options =~ (^|,)pri=(-?[0-9]+)(,|$) ]]; then
+        priority=${BASH_REMATCH[2]}
+    fi
+    ((priority < 100))
+}
+
+report_drift() {
+    local item first=1
+    printf 'hibernate-storage: drift — '
+    for item in "${drift[@]}"; do
+        if ((first)); then
+            first=0
+        else
+            printf '; '
+        fi
+        printf '%s' "$item"
+    done
+    printf '\n'
+}
+
+inspect() {
+    local meminfo resume_code root_fstype root_source
+    local resume_record routine_record expected_bytes actual_bytes mode swaps
+    local -a candidates=()
+
+    meminfo=$(rooted /proc/meminfo)
+    mem_kib=$(awk '$1 == "MemTotal:" { print $2; found = 1 } END { if (!found) exit 1 }' "$meminfo") \
+        || die "cannot read physical memory size"
+    [[ $mem_kib =~ ^[1-9][0-9]*$ ]] || die "physical memory size is malformed"
+    ram_gib=$(((mem_kib + 1048575) / 1048576))
+    routine_gib=$(((ram_gib * 3 + 1) / 2))
+    expected_bytes=$((routine_gib * 1073741824))
+
+    root_fstype=$(findmnt -n -o FSTYPE --target "$root") \
+        || die "cannot identify root filesystem"
+    [[ $root_fstype == ext4 ]] || die "root filesystem must be ext4"
+    root_source=$(findmnt -n -o SOURCE --target "$root") \
+        || die "cannot identify root storage"
+    encrypted_storage "$root_source" \
+        || die "root filesystem is not backed by encrypted storage"
+
+    resume_sysfs=$(rooted /sys/power/resume)
+    read -r resume_code <"$resume_sysfs" || die "cannot read kernel resume device"
+    [[ $resume_code =~ ^[0-9]+:[0-9]+$ ]] \
+        || die "kernel resume device is malformed"
+    resume_configured=1
+    if [[ $resume_code == 0:0 ]]; then
+        resume_configured=0
+        swaps=$(rooted /proc/swaps)
+        mapfile -t candidates < <(awk 'NR > 1 && $2 == "partition" && $1 !~ /\/zram/ { print $1 }' "$swaps")
+        ((${#candidates[@]} == 1)) \
+            || die "unconfigured resume needs exactly one active swap partition"
+        resume_device=${candidates[0]}
+    else
+        resume_device=$(readlink -f "$(rooted "/dev/block/$resume_code")") \
+            || die "cannot resolve kernel resume device"
+    fi
+    if [[ $root == / ]]; then
+        [[ -b $resume_device ]] || die "kernel resume device is not a block device"
+    else
+        [[ -e $resume_device ]] || die "fixture resume device is missing"
+    fi
+    encrypted_storage "$resume_device" \
+        || die "dedicated resume swap is not backed by encrypted storage"
+    resume_record=$(swap_record "$resume_device") \
+        || die "kernel resume device is not exactly one active swap area"
+    read -r resume_type resume_size_kib resume_used_kib resume_priority <<<"$resume_record"
+    [[ $resume_type == partition ]] \
+        || die "kernel resume device must be a dedicated swap partition"
+    ((resume_size_kib >= mem_kib)) \
+        || die "dedicated resume swap is smaller than physical memory"
+    ((resume_priority < 100)) \
+        || die "dedicated resume swap priority must stay below routine swap"
+    fstab_has_resume_swap \
+        || die "dedicated resume swap needs one persistent low-priority fstab entry"
+
+    routine_path=$(rooted /swapfile)
+    routine_active=0
+    routine_priority=
+    if routine_record=$(swap_record "$routine_path" 2>/dev/null); then
+        routine_active=1
+        read -r _ _ _ routine_priority <<<"$routine_record"
+    fi
+
+    routine_file_ok=0
+    if [[ -e $routine_path ]]; then
+        [[ -f $routine_path && ! -L $routine_path ]] \
+            || die "/swapfile exists but is not a safe regular file"
+        actual_bytes=$(stat -c %s "$routine_path")
+        ((actual_bytes == expected_bytes)) \
+            || die "/swapfile size does not match ${routine_gib} GiB policy"
+        mode=$(stat -c %a "$routine_path")
+        [[ $mode == 600 ]] || die "/swapfile mode must be 600"
+        if [[ $root == / ]]; then
+            [[ $(stat -c '%u:%g' "$routine_path") == 0:0 ]] \
+                || die "/swapfile must be owned by root"
+        fi
+        routine_file_ok=1
+    elif ((routine_active)); then
+        die "active /swapfile is missing from the filesystem"
+    fi
+
+    if ! fstab_has_routine_swap; then
+        local fstab_count
+        fstab_count=$(awk '
+            /^[[:space:]]*#/ || NF == 0 { next }
+            $1 == "/swapfile" { count++ }
+            END { print count + 0 }
+        ' "$(rooted /etc/fstab)")
+        ((fstab_count == 0)) \
+            || die "existing /swapfile fstab policy is unmanaged or conflicting"
+        fstab_ok=0
+    else
+        fstab_ok=1
+    fi
+
+    drift=()
+    ((resume_configured)) || drift+=("select dedicated resume swap")
+    ((routine_file_ok)) || drift+=("create ${routine_gib} GiB routine swapfile")
+    if ((!routine_active)); then
+        drift+=("activate priority 100")
+    elif [[ $routine_priority != 100 ]]; then
+        die "active /swapfile priority must be 100"
+    fi
+    ((resume_used_kib == 0)) || drift+=("drain resume swap")
+    ((fstab_ok)) || drift+=("persist fstab")
+}
+
+converged() {
+    echo "hibernate-storage: converged — routine ${routine_gib} GiB, resume reserved"
+}
+
+mode=${1-}
+[[ $# -eq 1 ]] || {
+    usage >&2
+    exit 2
+}
+case $mode in
+    --check | apply) ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
+
+inspect
+if ((${#drift[@]} == 0)); then
+    converged
+    exit 0
+fi
+if [[ $mode == --check ]]; then
+    report_drift
+    exit 1
+fi
+if [[ $root == / && $EUID -ne 0 ]]; then
+    die "apply requires root; run: pkexec /usr/bin/bash $0 apply"
+fi
+if ((resume_configured == 0)); then
+    resume_code=$(lsblk -n -o MAJ:MIN "$resume_device") \
+        || die "cannot derive dedicated resume device number"
+    [[ $resume_code =~ ^[0-9]+:[0-9]+$ && $resume_code != 0:0 ]] \
+        || die "dedicated resume device number is malformed"
+    resume_offset_sysfs=$(rooted /sys/power/resume_offset)
+    [[ -e $resume_offset_sysfs ]] \
+        || die "kernel resume offset control is missing"
+    printf '%s\n' "$resume_code" >"$resume_sysfs"
+    printf '0\n' >"$resume_offset_sysfs"
+    echo "hibernate-storage: selected dedicated resume swap"
+fi
+
+if ((routine_file_ok == 0)); then
+    available=$(findmnt --bytes -n -o AVAIL --target "$root") \
+        || die "cannot read root free space"
+    required=$((routine_gib * 1073741824 + 10 * 1073741824))
+    ((available >= required)) \
+        || die "root needs ${routine_gib} GiB for routine swap plus 10 GiB free"
+    fallocate --length "${routine_gib}G" "$routine_path"
+    chmod 600 "$routine_path"
+    if ! mkswap "$routine_path" >/dev/null; then
+        rm -f "$routine_path"
+        die "mkswap failed; removed incomplete /swapfile"
+    fi
+    echo "hibernate-storage: created ${routine_gib} GiB routine swapfile"
+fi
+
+if ((routine_active == 0)); then
+    swapon --priority 100 "$routine_path"
+    echo "hibernate-storage: activated routine swap at priority 100"
+fi
+
+if ((resume_used_kib > 0)); then
+    swapoff "$resume_device"
+    swapon --priority -1 "$resume_device"
+    echo "hibernate-storage: drained dedicated resume swap"
+fi
+
+if ((fstab_ok == 0)); then
+    fstab=$(rooted /etc/fstab)
+    backup_dir=$(rooted "/var/backups/dotfiles/hibernate-storage/$(date -u +%Y%m%dT%H%M%SZ)")
+    install -d -m 700 "$backup_dir"
+    install -m 600 "$fstab" "$backup_dir/fstab"
+    tmp=$(mktemp "${fstab}.XXXXXX")
+    cat "$fstab" >"$tmp"
+    printf '\n# Managed by dotfiles hibernate-storage (#235).\n/swapfile none swap sw,pri=100 0 0\n' >>"$tmp"
+    chown --reference="$fstab" "$tmp"
+    chmod --reference="$fstab" "$tmp"
+    mv "$tmp" "$fstab"
+    sync
+    echo "hibernate-storage: persisted fstab policy"
+fi
+
+inspect
+((${#drift[@]} == 0)) || {
+    report_drift >&2
+    exit 2
+}
+converged

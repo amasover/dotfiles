@@ -1,0 +1,68 @@
+# Bare-metal hibernate storage provisioning (Story 2.29, #235).
+# Host-independent: rooted fixtures and command stubs never touch host swap.
+# Run from repo root: clitest tests/hibernate-storage.clitest.txt
+
+$ tool=.local/bin/setup/hibernate-storage; HTMP=$(mktemp -d); R=$HTMP/root; B=$HTMP/bin; TRACE=$HTMP/trace; mkdir -p "$R/etc" "$R/proc" "$R/sys/power" "$R/dev/block" "$R/dev" "$B"; printf 'MemTotal:       33554432 kB\n' > "$R/proc/meminfo"; printf '0:0\n' > "$R/sys/power/resume"; printf '99\n' > "$R/sys/power/resume_offset"; : > "$R/dev/root"; : > "$R/dev/resume"; ln -s ../resume "$R/dev/block/253:3"; printf 'Filename Type Size Used Priority\n%s partition 34603008 10485760 -1\n' "$R/dev/resume" > "$R/proc/swaps"; printf '/dev/resume none swap sw 0 0\n' > "$R/etc/fstab"; : > "$TRACE"; echo ready
+ready
+$ printf '#!/bin/sh\ncase " $* " in\n  *" --fstab "*) [ "${HIBERNATE_STORAGE_FSTAB_RESUME:-1}" -eq 0 ] || echo "$HIBERNATE_STORAGE_ROOT/dev/resume swap sw" ;;\n  *" FSTYPE "*) echo ext4 ;;\n  *" SOURCE "*) echo "$HIBERNATE_STORAGE_ROOT/dev/root" ;;\n  *" AVAIL "*) echo 214748364800 ;;\n  *) exit 2 ;;\nesac\n' > "$B/findmnt"
+$ printf '#!/bin/sh\ncase " $* " in\n  *" MAJ:MIN "*) echo 253:3 ;;\n  *) printf "%%s\\n" ${HIBERNATE_STORAGE_LSBLK_TYPES:-lvm crypt part disk} ;;\nesac\n' > "$B/lsblk"
+$ printf '#!/bin/sh\nprintf "fallocate %%s\\n" "$*" >> "$HIBERNATE_STORAGE_TRACE"\nexec /usr/bin/truncate -s "$2" "$3"\n' > "$B/fallocate"
+$ printf '#!/bin/sh\nprintf "mkswap %%s\\n" "$*" >> "$HIBERNATE_STORAGE_TRACE"\n' > "$B/mkswap"
+$ printf '#!/bin/sh\nprintf "swapoff %%s\\n" "$*" >> "$HIBERNATE_STORAGE_TRACE"\n/usr/bin/awk -v d="$1" '\''NR == 1 || $1 != d'\'' "$HIBERNATE_STORAGE_ROOT/proc/swaps" > "$HIBERNATE_STORAGE_ROOT/proc/swaps.new"\n/usr/bin/mv "$HIBERNATE_STORAGE_ROOT/proc/swaps.new" "$HIBERNATE_STORAGE_ROOT/proc/swaps"\n' > "$B/swapoff"
+$ printf '#!/bin/sh\nprintf "swapon %%s\\n" "$*" >> "$HIBERNATE_STORAGE_TRACE"\npriority=$2; path=$3; size=$(( $(/usr/bin/stat -c %%s "$path") / 1024 )); type=file; [ "$path" != "$HIBERNATE_STORAGE_ROOT/dev/resume" ] || { type=partition; size=34603008; }; /usr/bin/printf "%%s %%s %%s 0 %%s\\n" "$path" "$type" "$size" "$priority" >> "$HIBERNATE_STORAGE_ROOT/proc/swaps"\n' > "$B/swapon"
+$ chmod +x "$B"/*
+$
+
+check reports every required change without mutating the fixture:
+
+$ HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check; echo "rc=$?"
+hibernate-storage: drift — select dedicated resume swap; create 48 GiB routine swapfile; activate priority 100; drain resume swap; persist fstab
+rc=1
+$ cat "$TRACE"
+$
+
+apply creates routine swap, drains the dedicated resume area, and persists policy:
+
+$ HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool apply
+hibernate-storage: selected dedicated resume swap
+hibernate-storage: created 48 GiB routine swapfile
+hibernate-storage: activated routine swap at priority 100
+hibernate-storage: drained dedicated resume swap
+hibernate-storage: persisted fstab policy
+hibernate-storage: converged — routine 48 GiB, resume reserved
+$ sed "s#$R#ROOT#g" "$TRACE"
+fallocate --length 48G ROOT/swapfile
+mkswap ROOT/swapfile
+swapon --priority 100 ROOT/swapfile
+swapoff ROOT/dev/resume
+swapon --priority -1 ROOT/dev/resume
+$ tail -n 2 "$R/etc/fstab"
+# Managed by dotfiles hibernate-storage (#235).
+/swapfile none swap sw,pri=100 0 0
+$ cat "$R/sys/power/resume" "$R/sys/power/resume_offset"
+253:3
+0
+$ : > "$TRACE"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check; echo "rc=$?"; cat "$TRACE"
+hibernate-storage: converged — routine 48 GiB, resume reserved
+rc=0
+$ HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool apply; cat "$TRACE"
+hibernate-storage: converged — routine 48 GiB, resume reserved
+$
+
+unsafe storage fails before mutation:
+
+$ HIBERNATE_STORAGE_FSTAB_RESUME=0 HIBERNATE_STORAGE_LSBLK_TYPES='lvm crypt part disk' HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
+hibernate-storage: dedicated resume swap needs one persistent low-priority fstab entry
+rc=2
+$ HIBERNATE_STORAGE_LSBLK_TYPES='part disk' HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
+hibernate-storage: root filesystem is not backed by encrypted storage
+rc=2
+$ HIBERNATE_STORAGE_LSBLK_TYPES='lvm crypt part disk' /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$5=100} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; HIBERNATE_STORAGE_LSBLK_TYPES='lvm crypt part disk' HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
+hibernate-storage: dedicated resume swap priority must stay below routine swap
+rc=2
+$ HIBERNATE_STORAGE_LSBLK_TYPES='lvm crypt part disk' /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$3=32505856; $5=-1} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; HIBERNATE_STORAGE_LSBLK_TYPES='lvm crypt part disk' HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
+hibernate-storage: dedicated resume swap is smaller than physical memory
+rc=2
+$ rm -rf "$HTMP"; echo done
+done
+$
