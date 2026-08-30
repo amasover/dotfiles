@@ -1145,8 +1145,11 @@ package names are not glob-expanded against the guest's cwd).
 - Given the switchover, then it is validated by a real `up` on the Linux host — the validation Story 2.36 could not do from Windows
 - Given the shared file's existing clitest suite, then it passes unchanged
 
-**Evidence artifact:** a libvirt `up` run log with the guest phases executed
-via `vm-harness-guest`.
+**Evidence artifact:** resumed libvirt `up` on 2026-08-30 copied and invoked
+`vm-harness-guest`, switched the existing guest to the requested validation
+branch, completed bootstrap with `rc=0`, then completed check with `rc=0`;
+unmanaged and declared-but-missing were both empty. Log set:
+`20260829-201006-{bootstrap,check}.log`.
 
 ---
 
