@@ -59,6 +59,7 @@ packages = [
   "libtool",
   "licenses",
   "linux",
+  "linux-firmware",
   "linux-headers",
   "logrotate",
   "lshw",

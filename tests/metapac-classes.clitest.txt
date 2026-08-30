@@ -38,7 +38,8 @@ $ grep -c '"inbox-daily-vm"' "$H/.config/metapac/config.toml"
 1
 $ grep -c '"work"\|"hardware-intel-laptop"\|"guest-qemu"\|"inbox-workstation"' "$H/.config/metapac/config.toml"
 0
-$ DECLARED | grep -E '^(open-vm-tools|xf86-video-vmware|zram-generator|refind|qemu-guest-agent)$'
+$ DECLARED | grep -E '^(linux-firmware|open-vm-tools|xf86-video-vmware|zram-generator|refind|qemu-guest-agent)$'
+linux-firmware
 open-vm-tools
 xf86-video-vmware
 zram-generator
@@ -55,7 +56,8 @@ $ grep -c '"inbox-qemu-harness"' "$H/.config/metapac/config.toml"
 1
 $ grep -c '"work"\|"hardware-intel-laptop"\|"guest-vmware"\|"inbox-workstation"' "$H/.config/metapac/config.toml"
 0
-$ DECLARED | grep -E '^(qemu-guest-agent|zram-generator|refind|open-vm-tools)$'
+$ DECLARED | grep -E '^(linux-firmware|qemu-guest-agent|zram-generator|refind|open-vm-tools)$'
+linux-firmware
 qemu-guest-agent
 zram-generator
 $ DECLARED | grep -c '^astro-cli$'
