@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# copilot-language-server — install the Emacs Copilot server reproducibly.
+# emacs-copilot-server — install the Emacs Copilot server reproducibly.
 #
 # Usage:
-#   copilot-language-server apply      install/repair the pinned npm package
-#   copilot-language-server --check    report drift without mutation
+#   emacs-copilot-server apply      install/repair the pinned npm package
+#   emacs-copilot-server --check    report drift without mutation
 #
 # Environment overrides support host-independent tests:
 #   COPILOT_SERVER_PREFIX, COPILOT_SERVER_VERSION, NPM
 set -euo pipefail
 
 fail() {
-    printf 'copilot-language-server: %s\n' "$*" >&2
+    printf 'emacs-copilot-server: %s\n' "$*" >&2
     exit 1
 }
 
@@ -35,7 +35,7 @@ case "$action" in
         sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
         exit 0
         ;;
-    *) fail "unknown action: $action   (try: copilot-language-server -h)" ;;
+    *) fail "unknown action: $action   (try: emacs-copilot-server -h)" ;;
 esac
 
 run_launcher() {

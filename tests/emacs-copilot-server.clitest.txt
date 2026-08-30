@@ -1,11 +1,15 @@
-# setup/copilot-language-server — pinned Emacs Copilot server reconciliation
+# setup/emacs-copilot-server — pinned Emacs Copilot server reconciliation
 # (Story 3.30). Host-independent: fake npm writes only under $CLITMP; no network
 # or live ~/.emacs.d state.
 #
-# Run from repo root: clitest tests/copilot-language-server.clitest.txt
+# Run from repo root: clitest tests/emacs-copilot-server.clitest.txt
 
-$ CS=.local/bin/setup/copilot-language-server; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin"; printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" > "$FAKE_NPM_LOG"' 'pkg="$COPILOT_SERVER_PREFIX/lib/node_modules/@github/copilot-language-server"' 'mkdir -p "$pkg" "$COPILOT_SERVER_PREFIX/bin"' 'printf "{\"version\":\"%s\"}\n" "$COPILOT_SERVER_VERSION" > "$pkg/package.json"' 'printf "#!/usr/bin/env bash\necho %s\n" "$COPILOT_SERVER_VERSION" > "$COPILOT_SERVER_PREFIX/bin/copilot-language-server"' 'chmod +x "$COPILOT_SERVER_PREFIX/bin/copilot-language-server"' > "$CLITMP/bin/npm"; chmod +x "$CLITMP/bin/npm"; RUN() { PATH="$CLITMP/bin:$PATH" NPM=npm FAKE_NPM_LOG="$CLITMP/npm.log" COPILOT_SERVER_PREFIX="$CLITMP/prefix" COPILOT_SERVER_VERSION=9.8.7 "$CS" "$@"; }; echo ready
+$ CS=.local/bin/setup/emacs-copilot-server; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin"; printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" > "$FAKE_NPM_LOG"' 'pkg="$COPILOT_SERVER_PREFIX/lib/node_modules/@github/copilot-language-server"' 'mkdir -p "$pkg" "$COPILOT_SERVER_PREFIX/bin"' 'printf "{\"version\":\"%s\"}\n" "$COPILOT_SERVER_VERSION" > "$pkg/package.json"' 'printf "#!/usr/bin/env bash\necho %s\n" "$COPILOT_SERVER_VERSION" > "$COPILOT_SERVER_PREFIX/bin/copilot-language-server"' 'chmod +x "$COPILOT_SERVER_PREFIX/bin/copilot-language-server"' > "$CLITMP/bin/npm"; chmod +x "$CLITMP/bin/npm"; RUN() { PATH="$CLITMP/bin:$PATH" NPM=npm FAKE_NPM_LOG="$CLITMP/npm.log" COPILOT_SERVER_PREFIX="$CLITMP/prefix" COPILOT_SERVER_VERSION=9.8.7 "$CS" "$@"; }; echo ready
 ready
+$
+# setup helpers must not shadow the server name copilot.el resolves through PATH
+$ PATH="$PWD/.local/bin/setup:/usr/bin" command -v copilot-language-server >/dev/null; echo "rc=$?"
+rc=1
 $
 # check reports missing state without creating it
 $ out=$(RUN --check 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"; test ! -e "$CLITMP/prefix"; echo "missing=$?"
@@ -63,10 +67,10 @@ $ RUN apply
 $
 # missing npm and malformed actions fail clearly
 $ rm -rf "$CLITMP/prefix"; out=$(PATH=/usr/bin NPM=definitely-missing COPILOT_SERVER_PREFIX="$CLITMP/prefix" "$CS" apply 2>&1); rc=$?; printf '%s\n' "$out" | sed "s|$CLITMP|TMP|g"; echo "rc=$rc"
-copilot-language-server: npm not found — install the declared npm package first
+emacs-copilot-server: npm not found — install the declared npm package first
 rc=1
 $ $CS frobnicate 2>&1; echo "rc=$?"
-copilot-language-server: unknown action: frobnicate   (try: copilot-language-server -h)
+emacs-copilot-server: unknown action: frobnicate   (try: emacs-copilot-server -h)
 rc=1
 $ rm -rf "$CLITMP"; echo done
 done
