@@ -1116,7 +1116,7 @@ reinstalls) + an unchanged drift-report pair.
 
 ---
 
-### Story 2.41: libvirt harness adopts the shared `vm-harness-guest` glue
+### Story 2.41: libvirt harness adopts the shared `vm-harness-guest` glue ✅
 
 As the repo owner,
 I want the libvirt harness to run the same guest-side `bootstrap`/`check` file
@@ -1125,7 +1125,7 @@ So that guest-glue fixes land once instead of the two copies drifting — three
 PR #128 review fixes exist on the VMware path only, and the libvirt harness is
 the one producing the fresh-run evidence the epic is waiting on.
 
-Issue: [#132](https://github.com/amasover/dotfiles/issues/132) · Origin: Story
+Issue: [#132](https://github.com/amasover/dotfiles/issues/132) (closed, PR [#226](https://github.com/amasover/dotfiles/pull/226)) · Origin: Story
 2.36 (#119) extracted `.local/bin/setup/vm-harness-guest` from the libvirt
 harness's inline ssh strings, but the switchover needs Linux-side validation,
 so the duplication was deliberate and only recorded as a note on #119 — this
