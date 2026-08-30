@@ -49,7 +49,7 @@ render_toml() {
 }
 
 cmd_bootstrap() {
-    local class='' repo='' branch='' hardware=''
+    local class='' repo='' branch='' hardware='' current_branch
     while (($#)); do
         case $1 in
             --class)
@@ -92,11 +92,15 @@ cmd_bootstrap() {
     if yadm rev-parse --git-dir >/dev/null 2>&1; then
         echo "==> Refreshing the existing yadm checkout"
         yadm fetch --prune origin
-        if [[ -n "$branch" && "$(yadm rev-parse --abbrev-ref HEAD)" != "$branch" ]]; then
+        current_branch=$(yadm rev-parse --abbrev-ref HEAD)
+        if [[ -n "$branch" && "$current_branch" != "$branch" ]]; then
             echo "==> Switching the checkout to '$branch'"
             yadm checkout "$branch"
+            current_branch=$branch
         fi
-        yadm pull --ff-only
+        [[ -n "$current_branch" && "$current_branch" != HEAD ]] \
+            || die 'existing yadm checkout has no branch to fast-forward'
+        yadm merge --ff-only "origin/$current_branch"
     else
         yadm clone --no-bootstrap ${branch:+-b "$branch"} "$repo"
     fi
