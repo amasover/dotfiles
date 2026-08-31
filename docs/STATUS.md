@@ -23,12 +23,6 @@ Disposable handoff for active work. GitHub issues own durable detail; the
 
 ## In flight
 
-- **3.7 idle-hibernate regression** ([#233](https://github.com/amasover/dotfiles/issues/233)):
-  fullscreen-aware soft and uninhibited 90-minute hard workers are deployed.
-  Routine paging now uses a persistent encrypted-root swapfile; the resume
-  partition is empty and systemd reports hibernation available. Next: leave the
-  laptop idle for the real 90-minute boundary, then close the regression PR.
-
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   laptop and home-4K profiles now match current modesetting names; home split
   bars and workspace placement are live-verified. Story 5.5 already removed the

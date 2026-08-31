@@ -208,8 +208,8 @@ singleton launcher/two-worker i3 probes; live `lock.target`/`unlock.target` roun
 trip. The first live hibernate attempt exposed insufficient image headroom and
 returned `ENOSPC`. Regression #233 moved routine paging to a high-priority
 encrypted-root swapfile, emptied the resume partition, and reached
-`CanHibernate=yes`; the unattended 90-minute boundary remains the final live
-observation.
+`CanHibernate=yes`. The real 90-minute idle run then hibernated and resumed
+correctly on the live laptop.
 
 ---
 
