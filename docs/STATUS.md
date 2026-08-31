@@ -26,8 +26,9 @@ Disposable handoff for active work. GitHub issues own durable detail; the
 - **2.29 hibernate storage provisioning** ([#235](https://github.com/amasover/dotfiles/issues/235)):
   `hibernate-storage` now owns resume selection, routine swap sizing/priorities,
   fstab backup/convergence, and unsafe-layout refusal. All 40 rooted fixture
-  checks and the live read-only check pass. PR
-  [#236](https://github.com/amasover/dotfiles/pull/236) is open; next: review and
+  checks pass. The stricter rounded-RAM check now flags the current 31.3 GiB
+  resume partition below the required 32 GiB; future metal provisioning remains
+  in PR [#236](https://github.com/amasover/dotfiles/pull/236). Next: review and
   merge. Story 2.29's future metal generator consumes this storage contract.
 
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):

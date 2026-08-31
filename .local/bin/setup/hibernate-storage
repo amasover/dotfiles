@@ -201,7 +201,8 @@ inspect() {
     else
         ((resume_configured)) \
             || die "selected resume device is not exactly one active swap area"
-        signature=$(blkid -p -s TYPE -o value "$resume_device" 2>/dev/null || true)
+        signature=$(lsblk -n -o FSTYPE "$resume_device") \
+            || die "cannot identify inactive resume swap signature"
         [[ $signature == swap ]] \
             || die "inactive resume device does not contain a swap signature"
         resume_size_bytes=$(lsblk --bytes -n -o SIZE "$resume_device") \
@@ -242,8 +243,10 @@ inspect() {
             [[ $(stat -c '%u:%g' "$routine_path") == 0:0 ]] \
                 || die "/swapfile must be owned by root"
         fi
-        signature=$(blkid -p -s TYPE -o value "$routine_path" 2>/dev/null || true)
-        [[ $signature == swap ]] || die "/swapfile does not contain a swap signature"
+        if ((routine_active == 0)) && [[ $root != / || $EUID -eq 0 ]]; then
+            signature=$(blkid -p -s TYPE -o value "$routine_path" 2>/dev/null || true)
+            [[ $signature == swap ]] || die "/swapfile does not contain a swap signature"
+        fi
         routine_file_ok=1
     elif ((routine_active)); then
         die "active /swapfile is missing from the filesystem"

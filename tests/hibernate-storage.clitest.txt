@@ -5,7 +5,7 @@
 $ tool=.local/bin/setup/hibernate-storage; HTMP=$(mktemp -d); R=$HTMP/root; B=$HTMP/bin; TRACE=$HTMP/trace; mkdir -p "$B"; reset_fixture() { rm -rf "$R"; mkdir -p "$R/etc" "$R/proc" "$R/sys/power" "$R/dev/block" "$R/dev"; printf 'MemTotal:       33554432 kB\n' > "$R/proc/meminfo"; : > "$R/proc/cmdline"; printf '0:0\n' > "$R/sys/power/resume"; printf '99\n' > "$R/sys/power/resume_offset"; : > "$R/dev/root"; : > "$R/dev/resume"; ln -s ../resume "$R/dev/block/253:3"; printf 'Filename Type Size Used Priority\n%s partition 34603008 10485760 -1\n' "$R/dev/resume" > "$R/proc/swaps"; printf '/dev/resume none swap sw 0 0\n' > "$R/etc/fstab"; : > "$TRACE"; rm -f "$HTMP/resume-swapon-failed"; }; reset_fixture; echo ready
 ready
 $ printf '#!/bin/sh\ncase " $* " in\n  *" --fstab "*) [ "${HIBERNATE_STORAGE_FSTAB_RESUME:-1}" -eq 0 ] || echo "$HIBERNATE_STORAGE_ROOT/dev/resume swap sw" ;;\n  *" FSTYPE "*) echo "${HIBERNATE_STORAGE_FSTYPE:-ext4}" ;;\n  *" SOURCE "*) echo "$HIBERNATE_STORAGE_ROOT/dev/root" ;;\n  *" AVAIL "*) echo "${HIBERNATE_STORAGE_AVAIL:-214748364800}" ;;\n  *) exit 2 ;;\nesac\n' > "$B/findmnt"
-$ printf '#!/bin/sh\ncase " $* " in\n  *" MAJ:MIN "*) echo 253:3 ;;\n  *" SIZE "*) echo "${HIBERNATE_STORAGE_RESUME_BYTES:-35433480192}" ;;\n  *) printf "%%s\\n" ${HIBERNATE_STORAGE_LSBLK_TYPES:-lvm crypt part disk} ;;\nesac\n' > "$B/lsblk"
+$ printf '#!/bin/sh\ncase " $* " in\n  *" MAJ:MIN "*) echo 253:3 ;;\n  *" FSTYPE "*) echo swap ;;\n  *" SIZE "*) echo "${HIBERNATE_STORAGE_RESUME_BYTES:-35433480192}" ;;\n  *) printf "%%s\\n" ${HIBERNATE_STORAGE_LSBLK_TYPES:-lvm crypt part disk} ;;\nesac\n' > "$B/lsblk"
 $ printf '#!/bin/sh\nfor path do :; done\ntype=${HIBERNATE_STORAGE_BLKID_TYPE:-swap}\n[ "$type" = none ] || printf "%%s\\n" "$type"\n' > "$B/blkid"
 $ printf '#!/bin/sh\nprintf "fallocate %%s\\n" "$*" >> "$HIBERNATE_STORAGE_TRACE"\nif [ "${HIBERNATE_STORAGE_FAIL_FALLOCATE:-0}" -eq 1 ]; then /usr/bin/truncate -s 1M "$3"; exit 1; fi\nexec /usr/bin/truncate -s "$2" "$3"\n' > "$B/fallocate"
 $ printf '#!/bin/sh\nif [ "${HIBERNATE_STORAGE_FAIL_CHMOD:-0}" -eq 1 ]; then printf "chmod %%s\\n" "$*" >> "$HIBERNATE_STORAGE_TRACE"; exit 1; fi\nexec /usr/bin/chmod "$@"\n' > "$B/chmod"
@@ -44,7 +44,7 @@ $ tail -n 2 "$R/etc/fstab"
 $ cat "$R/sys/power/resume" "$R/sys/power/resume_offset"
 253:3
 0
-$ : > "$TRACE"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check; echo "rc=$?"; cat "$TRACE"
+$ : > "$TRACE"; HIBERNATE_STORAGE_BLKID_TYPE=none HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check; echo "rc=$?"; cat "$TRACE"
 hibernate-storage: converged — routine 48 GiB, resume reserved
 rc=0
 $ HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool apply; cat "$TRACE"
