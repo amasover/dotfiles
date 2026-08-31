@@ -129,10 +129,10 @@ hibernation image. This prevents ordinary swap occupancy from consuming the
 space needed to save RAM.
 
 During `archinstall`, create an ext4 root and exactly one swap partition or LV
-inside encrypted storage. Make the swap area at least as large as physical RAM,
-activate it, and persist it in fstab. LUKS containing LVM root plus swap LVs is
-the straightforward layout. An unencrypted swap partition can expose the full
-hibernation image and is rejected.
+inside encrypted storage. Round physical RAM up to whole GiB, make the swap area
+at least that large, activate it, and persist it in fstab. LUKS containing LVM
+root plus swap LVs is the straightforward layout. An unencrypted swap partition
+can expose the full hibernation image and is rejected.
 
 After first boot and yadm checkout:
 

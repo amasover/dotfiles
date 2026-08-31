@@ -6,8 +6,8 @@
 #   hibernate-storage apply     create/reconcile routine swap; requires root
 #
 # Contract: installer already created one encrypted, active swap partition at
-# least as large as physical RAM and persisted it in fstab. If the kernel has no
-# resume target yet, this module selects that unambiguous partition.
+# least as large as rounded physical RAM and persisted it in fstab. If the kernel
+# has no resume target yet, this module selects that unambiguous partition.
 # This module creates /swapfile inside encrypted ext4 root for routine paging,
 # sized to 1.5x rounded RAM and preferred at priority 100. The resume partition
 # stays active at priority -1 but empty, leaving room for the hibernation image.
@@ -21,6 +21,14 @@ die() {
     echo "hibernate-storage: $*" >&2
     exit 2
 }
+
+cleanup_path=
+cleanup_temporary_file() {
+    if [[ -n ${cleanup_path:-} ]]; then
+        rm -f -- "$cleanup_path" 2>/dev/null || true
+    fi
+}
+trap cleanup_temporary_file EXIT
 
 root=${HIBERNATE_STORAGE_ROOT:-/}
 [[ $root == /* && -d $root ]] || die "HIBERNATE_STORAGE_ROOT must be an absolute directory"
@@ -75,8 +83,9 @@ fstab_has_routine_swap() {
 }
 
 fstab_has_resume_swap() {
-    local source fstype options priority=-1
+    local source fstype options
     local -a rows=()
+    resume_fstab_priority=-1
     mapfile -t rows < <(
         findmnt --fstab --evaluate --noheadings \
             --output SOURCE,FSTYPE,OPTIONS --source "$resume_device" 2>/dev/null
@@ -85,9 +94,9 @@ fstab_has_resume_swap() {
     read -r source fstype options <<<"${rows[0]}"
     [[ -n $source && $fstype == swap ]] || return 1
     if [[ $options =~ (^|,)pri=(-?[0-9]+)(,|$) ]]; then
-        priority=${BASH_REMATCH[2]}
+        resume_fstab_priority=${BASH_REMATCH[2]}
     fi
-    ((priority < 100))
+    ((resume_fstab_priority < 100))
 }
 
 report_drift() {
@@ -105,8 +114,10 @@ report_drift() {
 }
 
 inspect() {
-    local meminfo resume_code root_fstype root_source
+    local meminfo resume_code resume_offset cmdline root_fstype root_source
     local resume_record routine_record expected_bytes actual_bytes mode swaps
+    local resume_size_bytes signature available required_bytes fstab
+    local total_swap_count routine_fstab_count source
     local -a candidates=()
 
     meminfo=$(rooted /proc/meminfo)
@@ -126,18 +137,42 @@ inspect() {
         || die "root filesystem is not backed by encrypted storage"
 
     resume_sysfs=$(rooted /sys/power/resume)
+    resume_offset_sysfs=$(rooted /sys/power/resume_offset)
     read -r resume_code <"$resume_sysfs" || die "cannot read kernel resume device"
+    read -r resume_offset <"$resume_offset_sysfs" || die "cannot read kernel resume offset"
     [[ $resume_code =~ ^[0-9]+:[0-9]+$ ]] \
         || die "kernel resume device is malformed"
+    [[ $resume_offset =~ ^[0-9]+$ ]] \
+        || die "kernel resume offset is malformed"
+
+    swaps=$(rooted /proc/swaps)
     resume_configured=1
+    resume_target_code=$resume_code
     if [[ $resume_code == 0:0 ]]; then
         resume_configured=0
-        swaps=$(rooted /proc/swaps)
+        cmdline=$(rooted /proc/cmdline)
+        [[ -r $cmdline ]] || die "cannot read kernel command line"
+        if awk '
+            {
+                for (i = 1; i <= NF; i++) {
+                    if ($i ~ /^resume(_offset)?=/) found = 1
+                }
+            }
+            END { exit !found }
+        ' "$cmdline"; then
+            die "kernel command line has resume policy but no resolved resume device"
+        fi
         mapfile -t candidates < <(awk 'NR > 1 && $2 == "partition" && $1 !~ /\/zram/ { print $1 }' "$swaps")
         ((${#candidates[@]} == 1)) \
             || die "unconfigured resume needs exactly one active swap partition"
         resume_device=${candidates[0]}
+        resume_target_code=$(lsblk -n -o MAJ:MIN "$resume_device") \
+            || die "cannot derive dedicated resume device number"
+        [[ $resume_target_code =~ ^[0-9]+:[0-9]+$ && $resume_target_code != 0:0 ]] \
+            || die "dedicated resume device number is malformed"
     else
+        ((resume_offset == 0)) \
+            || die "dedicated resume partition requires zero resume offset"
         resume_device=$(readlink -f "$(rooted "/dev/block/$resume_code")") \
             || die "cannot resolve kernel resume device"
     fi
@@ -148,19 +183,45 @@ inspect() {
     fi
     encrypted_storage "$resume_device" \
         || die "dedicated resume swap is not backed by encrypted storage"
-    resume_record=$(swap_record "$resume_device") \
-        || die "kernel resume device is not exactly one active swap area"
-    read -r resume_type resume_size_kib resume_used_kib resume_priority <<<"$resume_record"
-    [[ $resume_type == partition ]] \
-        || die "kernel resume device must be a dedicated swap partition"
-    ((resume_size_kib >= mem_kib)) \
-        || die "dedicated resume swap is smaller than physical memory"
-    ((resume_priority < 100)) \
-        || die "dedicated resume swap priority must stay below routine swap"
     fstab_has_resume_swap \
         || die "dedicated resume swap needs one persistent low-priority fstab entry"
 
+    resume_active=0
+    resume_used_kib=0
+    resume_priority=$resume_fstab_priority
+    if resume_record=$(swap_record "$resume_device" 2>/dev/null); then
+        resume_active=1
+        read -r resume_type resume_size_kib resume_used_kib resume_priority <<<"$resume_record"
+        [[ $resume_type == partition ]] \
+            || die "kernel resume device must be a dedicated swap partition"
+        [[ $resume_size_kib =~ ^[0-9]+$ && $resume_used_kib =~ ^[0-9]+$ && $resume_priority =~ ^-?[0-9]+$ ]] \
+            || die "kernel resume swap metadata is malformed"
+        ((resume_priority < 100)) \
+            || die "dedicated resume swap priority must stay below routine swap"
+    else
+        ((resume_configured)) \
+            || die "selected resume device is not exactly one active swap area"
+        signature=$(blkid -p -s TYPE -o value "$resume_device" 2>/dev/null || true)
+        [[ $signature == swap ]] \
+            || die "inactive resume device does not contain a swap signature"
+        resume_size_bytes=$(lsblk --bytes -n -o SIZE "$resume_device") \
+            || die "cannot read inactive resume swap size"
+        [[ $resume_size_bytes =~ ^[1-9][0-9]*$ ]] \
+            || die "inactive resume swap size is malformed"
+        resume_size_kib=$((resume_size_bytes / 1024))
+    fi
+    ((resume_size_kib >= ram_gib * 1048576)) \
+        || die "dedicated resume swap is smaller than rounded physical memory"
+
     routine_path=$(rooted /swapfile)
+    while read -r source _; do
+        [[ $source == Filename ]] && continue
+        if [[ $source == "$resume_device" || $source == "$routine_path" || $source =~ /zram[0-9]*$ ]]; then
+            continue
+        fi
+        die "conflicting active swap area: $source"
+    done <"$swaps"
+
     routine_active=0
     routine_priority=
     if routine_record=$(swap_record "$routine_path" 2>/dev/null); then
@@ -181,23 +242,42 @@ inspect() {
             [[ $(stat -c '%u:%g' "$routine_path") == 0:0 ]] \
                 || die "/swapfile must be owned by root"
         fi
+        signature=$(blkid -p -s TYPE -o value "$routine_path" 2>/dev/null || true)
+        [[ $signature == swap ]] || die "/swapfile does not contain a swap signature"
         routine_file_ok=1
     elif ((routine_active)); then
         die "active /swapfile is missing from the filesystem"
     fi
 
+    fstab=$(rooted /etc/fstab)
     if ! fstab_has_routine_swap; then
-        local fstab_count
-        fstab_count=$(awk '
+        routine_fstab_count=$(awk '
             /^[[:space:]]*#/ || NF == 0 { next }
             $1 == "/swapfile" { count++ }
             END { print count + 0 }
-        ' "$(rooted /etc/fstab)")
-        ((fstab_count == 0)) \
+        ' "$fstab")
+        ((routine_fstab_count == 0)) \
             || die "existing /swapfile fstab policy is unmanaged or conflicting"
         fstab_ok=0
     else
+        routine_fstab_count=1
         fstab_ok=1
+    fi
+    total_swap_count=$(awk '
+        /^[[:space:]]*#/ || NF == 0 { next }
+        $3 == "swap" && $1 !~ /^\/dev\/zram[0-9]+$/ { count++ }
+        END { print count + 0 }
+    ' "$fstab")
+    ((total_swap_count == routine_fstab_count + 1)) \
+        || die "existing fstab has conflicting non-zram swap policy"
+
+    if ((routine_file_ok == 0)); then
+        available=$(findmnt --bytes -n -o AVAIL --target "$root") \
+            || die "cannot read root free space"
+        [[ $available =~ ^[0-9]+$ ]] || die "root free space is malformed"
+        required_bytes=$((expected_bytes + 10 * 1073741824))
+        ((available >= required_bytes)) \
+            || die "root needs ${routine_gib} GiB for routine swap plus 10 GiB free"
     fi
 
     drift=()
@@ -208,7 +288,11 @@ inspect() {
     elif [[ $routine_priority != 100 ]]; then
         die "active /swapfile priority must be 100"
     fi
-    ((resume_used_kib == 0)) || drift+=("drain resume swap")
+    if ((!resume_active)); then
+        drift+=("activate dedicated resume swap")
+    elif ((resume_used_kib > 0)); then
+        drift+=("drain resume swap")
+    fi
     ((fstab_ok)) || drift+=("persist fstab")
 }
 
@@ -246,41 +330,45 @@ if [[ $root == / && $EUID -ne 0 ]]; then
     die "apply requires root; run: pkexec /usr/bin/bash $0 apply"
 fi
 if ((resume_configured == 0)); then
-    resume_code=$(lsblk -n -o MAJ:MIN "$resume_device") \
-        || die "cannot derive dedicated resume device number"
-    [[ $resume_code =~ ^[0-9]+:[0-9]+$ && $resume_code != 0:0 ]] \
-        || die "dedicated resume device number is malformed"
-    resume_offset_sysfs=$(rooted /sys/power/resume_offset)
-    [[ -e $resume_offset_sysfs ]] \
-        || die "kernel resume offset control is missing"
-    printf '%s\n' "$resume_code" >"$resume_sysfs"
     printf '0\n' >"$resume_offset_sysfs"
+    printf '%s\n' "$resume_target_code" >"$resume_sysfs"
     echo "hibernate-storage: selected dedicated resume swap"
 fi
 
 if ((routine_file_ok == 0)); then
-    available=$(findmnt --bytes -n -o AVAIL --target "$root") \
-        || die "cannot read root free space"
-    required=$((routine_gib * 1073741824 + 10 * 1073741824))
-    ((available >= required)) \
-        || die "root needs ${routine_gib} GiB for routine swap plus 10 GiB free"
-    fallocate --length "${routine_gib}G" "$routine_path"
-    chmod 600 "$routine_path"
-    if ! mkswap "$routine_path" >/dev/null; then
-        rm -f "$routine_path"
-        die "mkswap failed; removed incomplete /swapfile"
-    fi
+    cleanup_path=$(mktemp "${routine_path}.hibernate-storage.XXXXXX")
+    fallocate --length "${routine_gib}G" "$cleanup_path" \
+        || die "fallocate failed while creating routine swap"
+    chmod 600 "$cleanup_path" \
+        || die "chmod failed while creating routine swap"
+    mkswap "$cleanup_path" >/dev/null \
+        || die "mkswap failed while creating routine swap"
+    mv -- "$cleanup_path" "$routine_path" \
+        || die "cannot install completed routine swapfile"
+    cleanup_path=
     echo "hibernate-storage: created ${routine_gib} GiB routine swapfile"
 fi
 
 if ((routine_active == 0)); then
-    swapon --priority 100 "$routine_path"
+    swapon --priority 100 "$routine_path" \
+        || die "cannot activate routine swapfile"
     echo "hibernate-storage: activated routine swap at priority 100"
 fi
 
-if ((resume_used_kib > 0)); then
-    swapoff "$resume_device"
-    swapon --priority -1 "$resume_device"
+if ((!resume_active)); then
+    swapon --priority "$resume_fstab_priority" "$resume_device" \
+        || die "cannot reactivate dedicated resume swap; rerun apply after correcting swapon"
+    echo "hibernate-storage: reactivated dedicated resume swap"
+elif ((resume_used_kib > 0)); then
+    previous_resume_priority=$resume_priority
+    swapoff "$resume_device" \
+        || die "cannot drain dedicated resume swap"
+    if ! swapon --priority "$resume_fstab_priority" "$resume_device"; then
+        if swapon --priority "$previous_resume_priority" "$resume_device"; then
+            die "cannot apply persistent resume priority; restored active resume swap"
+        fi
+        die "cannot reactivate dedicated resume swap; rerun apply after correcting swapon"
+    fi
     echo "hibernate-storage: drained dedicated resume swap"
 fi
 
@@ -289,12 +377,13 @@ if ((fstab_ok == 0)); then
     backup_dir=$(rooted "/var/backups/dotfiles/hibernate-storage/$(date -u +%Y%m%dT%H%M%SZ)")
     install -d -m 700 "$backup_dir"
     install -m 600 "$fstab" "$backup_dir/fstab"
-    tmp=$(mktemp "${fstab}.XXXXXX")
-    cat "$fstab" >"$tmp"
-    printf '\n# Managed by dotfiles hibernate-storage (#235).\n/swapfile none swap sw,pri=100 0 0\n' >>"$tmp"
-    chown --reference="$fstab" "$tmp"
-    chmod --reference="$fstab" "$tmp"
-    mv "$tmp" "$fstab"
+    cleanup_path=$(mktemp "${fstab}.XXXXXX")
+    cat "$fstab" >"$cleanup_path"
+    printf '\n# Managed by dotfiles hibernate-storage (#235).\n/swapfile none swap sw,pri=100 0 0\n' >>"$cleanup_path"
+    chown --reference="$fstab" "$cleanup_path"
+    chmod --reference="$fstab" "$cleanup_path"
+    mv "$cleanup_path" "$fstab"
+    cleanup_path=
     sync
     echo "hibernate-storage: persisted fstab policy"
 fi
