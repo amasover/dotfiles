@@ -4,11 +4,12 @@ set -euo pipefail
 
 tools=$HOME/.local/bin/tools
 runtime_dir=${XDG_RUNTIME_DIR:-/tmp}
-if [[ ${1-} != --locked ]]; then
-    exec flock --close --nonblock --conflict-exit-code 0 \
-        "$runtime_dir/dotfiles-idle-lock.lock" "$0" --locked
-fi
-shift
+(($# == 0)) || {
+    echo "usage: idle-lock" >&2
+    exit 2
+}
+exec 9>"$runtime_dir/dotfiles-idle-lock.lock"
+flock --nonblock 9 || exit 0
 
 pids=()
 
@@ -28,12 +29,12 @@ xidlehook \
     --not-when-fullscreen \
     --timer 300 "$tools/lock" "" \
     --timer 600 "xset dpms force off" "" \
-    --timer 900 "$tools/hibernate on-battery" "" &
+    --timer 900 "$tools/hibernate on-battery" "" 9>&- &
 pids+=("$!")
 
 xidlehook \
     --detect-sleep \
-    --timer 5400 "$tools/hibernate on-laptop" "" &
+    --timer 5400 "$tools/hibernate on-laptop" "" 9>&- &
 pids+=("$!")
 
 wait -n "${pids[@]}"

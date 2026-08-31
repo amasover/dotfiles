@@ -3,19 +3,22 @@
 #
 # Run from the repo root: clitest tests/idle-lock.clitest.txt
 
-$ idle=.local/bin/tools/idle-lock; hib=.local/bin/tools/hibernate; lock=.local/bin/tools/lock; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin" "$CLITMP/runtime" "$CLITMP/xidlehook"; echo ok
+$ idle=.local/bin/tools/idle-lock; hib=.local/bin/tools/hibernate; lock=.local/bin/tools/lock; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin" "$CLITMP/runtime" "$CLITMP/xidlehook" "$CLITMP/home/.local/bin/tools"; wait_for_file() { file=$1; i=0; while [ ! -s "$file" ] && [ "$i" -lt 100 ]; do sleep 0.02; i=$((i + 1)); done; [ -s "$file" ]; }; workers_stopped() { for pid do kill -0 "$pid" 2>/dev/null && return 1; done; return 0; }; echo ok
 ok
-$ printf '#!/bin/sh\ncase " $* " in\n  *" --not-when-fullscreen "*) name=soft ;;\n  *) name=hard ;;\nesac\nprintf "%%s\\n" "$@" > "$XIDLEHOOK_LOG_DIR/$name"\nfor fd in /proc/$$/fd/*; do\n  [ "$(readlink "$fd")" != "$XDG_RUNTIME_DIR/dotfiles-idle-lock.lock" ] || : > "$XIDLEHOOK_LOG_DIR/$name.lock-inherited"\ndone\nexec sleep 10\n' > "$CLITMP/bin/xidlehook"
+$ printf '#!/bin/sh\ncase " $* " in\n  *" --not-when-fullscreen "*) name=soft ;;\n  *) name=hard ;;\nesac\nprintf "%%s\\n" "$@" > "$XIDLEHOOK_LOG_DIR/$name"\nprintf "%%s\\n" "$$" > "$XIDLEHOOK_LOG_DIR/$name.pid"\n[ -z "${XIDLEHOOK_START_LOG:-}" ] || printf "%%s %%s\\n" "$name" "$$" >> "$XIDLEHOOK_START_LOG"\nfor fd in /proc/$$/fd/*; do\n  [ "$(readlink "$fd")" != "$XDG_RUNTIME_DIR/dotfiles-idle-lock.lock" ] || : > "$XIDLEHOOK_LOG_DIR/$name.lock-inherited"\ndone\nif [ "${XIDLEHOOK_EXERCISE:-0}" -eq 1 ]; then\n  if [ "$name" = soft ] && [ "${XIDLEHOOK_FULLSCREEN:-0}" -eq 1 ]; then\n    : > "$XIDLEHOOK_LOG_DIR/soft-inhibited"\n  else\n    command=\n    while [ "$#" -gt 0 ]; do\n      if [ "$1" = --timer ]; then command=$3; shift 4; else shift; fi\n    done\n    [ -z "$command" ] || /bin/sh -c "$command"\n  fi\nfi\nexec sleep 30\n' > "$CLITMP/bin/xidlehook"
 $ printf '#!/bin/sh\nprintf "%%s\\n" "$*"\n' > "$CLITMP/bin/systemctl"
+$ printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$HIBERNATE_CALLBACK_LOG"\n' > "$CLITMP/home/.local/bin/tools/hibernate"
 $ printf '#!/bin/sh\n[ ! -e "$1" ] || { echo "screenshot target already exists" >&2; exit 1; }\n: > "$1"\n' > "$CLITMP/bin/scrot"
 $ printf '#!/bin/sh\nexit 0\n' > "$CLITMP/bin/magick"
 $ printf '#!/bin/sh\nprintf "%%s\\n" "$*"\n' > "$CLITMP/bin/i3lock"
-$ chmod +x "$CLITMP/bin/"*
+$ chmod +x "$CLITMP/bin/"* "$CLITMP/home/.local/bin/tools/hibernate"
 $
-idle-lock runs a fullscreen-aware soft chain for lock, DPMS, and battery
-hibernate plus an uninhibited hard chain for laptop hibernation at 90 minutes:
 
-$ XIDLEHOOK_LOG_DIR="$CLITMP/xidlehook" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle & launcher=$!; i=0; while { [ ! -s "$CLITMP/xidlehook/soft" ] || [ ! -s "$CLITMP/xidlehook/hard" ]; } && [ "$i" -lt 50 ]; do sleep 0.02; i=$((i + 1)); done; kill "$launcher" 2>/dev/null || :; wait "$launcher" 2>/dev/null || :; for name in soft hard; do [ -s "$CLITMP/xidlehook/$name" ] && echo "$name-started"; done
+idle-lock runs a fullscreen-aware soft chain and an uninhibited 90-minute hard
+chain, closes the singleton lock in both workers, and tears both down on TERM:
+
+$ XIDLEHOOK_LOG_DIR="$CLITMP/xidlehook" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle & launcher=$!; wait_for_file "$CLITMP/xidlehook/soft.pid"; wait_for_file "$CLITMP/xidlehook/hard.pid"; soft_pid=$(cat "$CLITMP/xidlehook/soft.pid"); hard_pid=$(cat "$CLITMP/xidlehook/hard.pid"); kill "$launcher"; wait "$launcher"; workers_stopped "$soft_pid" "$hard_pid" && echo workers-stopped; for name in soft hard; do [ -s "$CLITMP/xidlehook/$name" ] && echo "$name-started"; done
+workers-stopped
 soft-started
 hard-started
 $ echo soft; cat "$CLITMP/xidlehook/soft"; echo hard; cat "$CLITMP/xidlehook/hard"
@@ -40,20 +43,34 @@ hard
 5400
 /fixture/.local/bin/tools/hibernate on-laptop
 
-$
-policy workers cannot leak the singleton lock into timer descendants:
-
 $ find "$CLITMP/xidlehook" -name '*.lock-inherited' -print
 $
 
+the old re-entry argument cannot bypass the singleton:
 
-the runtime lock keeps one launcher with exactly two policy workers across i3
-reloads and restarts:
+$ XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle --locked 2>&1; echo "rc=$?"
+usage: idle-lock
+rc=2
+$
 
-$ printf '#!/bin/sh\nprintf "start\\n" >> "$XIDLEHOOK_LOG"\nsleep 2\n' > "$CLITMP/bin/xidlehook"; chmod +x "$CLITMP/bin/xidlehook"
-$ : > "$CLITMP/starts"; XIDLEHOOK_LOG="$CLITMP/starts" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle & first=$!; sleep 0.1; XIDLEHOOK_LOG="$CLITMP/starts" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle; wait "$first"; cat "$CLITMP/starts"
-start
-start
+accelerated policy modeling suppresses soft callbacks under fullscreen while
+executing only the hard worker's stubbed hibernate callback:
+
+$ rm -f "$CLITMP/xidlehook/"*; : > "$CLITMP/hibernate-callbacks"; XIDLEHOOK_EXERCISE=1 XIDLEHOOK_FULLSCREEN=1 HIBERNATE_CALLBACK_LOG="$CLITMP/hibernate-callbacks" XIDLEHOOK_LOG_DIR="$CLITMP/xidlehook" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME="$CLITMP/home" PATH="$CLITMP/bin:$PATH" $idle & launcher=$!; wait_for_file "$CLITMP/hibernate-callbacks"; wait_for_file "$CLITMP/xidlehook/soft.pid"; wait_for_file "$CLITMP/xidlehook/hard.pid"; i=0; while [ ! -e "$CLITMP/xidlehook/soft-inhibited" ] && [ "$i" -lt 100 ]; do sleep 0.02; i=$((i + 1)); done; soft_pid=$(cat "$CLITMP/xidlehook/soft.pid"); hard_pid=$(cat "$CLITMP/xidlehook/hard.pid"); kill "$launcher"; wait "$launcher"; [ -e "$CLITMP/xidlehook/soft-inhibited" ] && echo soft-inhibited; cat "$CLITMP/hibernate-callbacks"; workers_stopped "$soft_pid" "$hard_pid" && echo workers-stopped
+soft-inhibited
+on-laptop
+workers-stopped
+$
+
+the runtime lock rejects a competing launcher, then admits one replacement only
+after the first supervisor and both workers are gone:
+
+$ rm -f "$CLITMP/xidlehook/"*; : > "$CLITMP/starts"; XIDLEHOOK_START_LOG="$CLITMP/starts" XIDLEHOOK_LOG_DIR="$CLITMP/xidlehook" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle & first=$!; wait_for_file "$CLITMP/xidlehook/soft.pid"; wait_for_file "$CLITMP/xidlehook/hard.pid"; first_soft=$(cat "$CLITMP/xidlehook/soft.pid"); first_hard=$(cat "$CLITMP/xidlehook/hard.pid"); XIDLEHOOK_START_LOG="$CLITMP/starts" XIDLEHOOK_LOG_DIR="$CLITMP/xidlehook" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle; echo "contender-rc=$?"; echo "starts-before=$(wc -l < "$CLITMP/starts")"; kill "$first"; wait "$first"; workers_stopped "$first_soft" "$first_hard" && echo first-stopped; rm -f "$CLITMP/xidlehook/"*.pid; XIDLEHOOK_START_LOG="$CLITMP/starts" XIDLEHOOK_LOG_DIR="$CLITMP/xidlehook" XDG_RUNTIME_DIR="$CLITMP/runtime" HOME=/fixture PATH="$CLITMP/bin:$PATH" $idle & replacement=$!; wait_for_file "$CLITMP/xidlehook/soft.pid"; wait_for_file "$CLITMP/xidlehook/hard.pid"; replacement_soft=$(cat "$CLITMP/xidlehook/soft.pid"); replacement_hard=$(cat "$CLITMP/xidlehook/hard.pid"); echo "starts-after=$(wc -l < "$CLITMP/starts")"; kill "$replacement"; wait "$replacement"; workers_stopped "$replacement_soft" "$replacement_hard" && echo replacement-stopped
+contender-rc=0
+starts-before=2
+first-stopped
+starts-after=4
+replacement-stopped
 $
 
 

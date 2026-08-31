@@ -202,7 +202,7 @@ implementation are retired.
 - Given logind starts `lock.target`, tracked `locker.service` locks through the same helper and transitions to `unlock.target` after authentication
 - Given battery fixtures and command stubs, 30/90-minute hibernation selection is deterministic and no fixture can reach real `systemctl hibernate`
 
-**Evidence artifact:** `tests/idle-lock.clitest.txt` (34/34); clean shellcheck,
+**Evidence artifact:** `tests/idle-lock.clitest.txt` (36/36); clean shellcheck,
 shfmt, syntax, and systemd-unit checks; accelerated live blank/lock/DPMS tests;
 singleton launcher/two-worker i3 probes; live `lock.target`/`unlock.target` round
 trip. The first live hibernate attempt exposed insufficient image headroom and
