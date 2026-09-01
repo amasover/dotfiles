@@ -15,6 +15,8 @@ for its autopsy; history via `git log -- .local/bin/setup/install`).
 
 1. Arch installed — `archinstall` minimal profile is fine. Network up, user created,
    sudo working. No desktop profile needed: the class decides that later.
+   Hibernating bare metal must use the encrypted storage contract below; the
+   generic installer swap toggle or zram alone is insufficient.
 2. ```bash
    sudo pacman -S --needed git base-devel yadm
    yadm clone https://github.com/amasover/dotfiles.git
@@ -119,6 +121,46 @@ Each concrete class selects exactly one hardware adapter and one inbox. To add a
 machine profile, add its guarded template branch, adapter, and inbox; set
 `yadm config local.class <class>`, then run `yadm alt`. Bootstrap enables
 NetworkManager for every class after package reconcile.
+
+## Bare-metal hibernation storage
+
+A hibernating workstation uses separate storage for routine paging and the
+hibernation image. This prevents ordinary swap occupancy from consuming the
+space needed to save RAM.
+
+During `archinstall`, create an ext4 root and exactly one swap partition or LV
+inside encrypted storage. Round physical RAM up to whole GiB, make the swap area
+at least that large, activate it, and persist it in fstab. LUKS containing LVM
+root plus swap LVs is the straightforward layout. An unencrypted swap partition
+can expose the full hibernation image and is rejected.
+
+After first boot and yadm checkout:
+
+1. Run the read-only preflight:
+   ```bash
+   ~/.local/bin/setup/hibernate-storage --check
+   ```
+2. Apply through one attended root authorization:
+   ```bash
+   pkexec /usr/bin/bash ~/.local/bin/setup/hibernate-storage apply
+   ```
+   The module selects the only active encrypted swap partition when the kernel
+   has no resume target yet. It creates `/swapfile` inside encrypted root at 1.5
+   times rounded RAM, activates it at priority 100, drains the lower-priority
+   resume partition, and atomically adds fstab policy after backing up the old
+   file under `/var/backups/dotfiles/hibernate-storage/`. It refuses ambiguous,
+   unencrypted, undersized, non-ext4, or low-disk-space layouts before mutation.
+3. Run `refind-config adopt` for an unmanaged first install, or
+   `refind-config apply` afterward. It derives `resume=UUID=...` from the resume
+   device selected above; no disk identifier enters this repo.
+4. Reboot, then require both checks before the first attended hibernate test:
+   ```bash
+   ~/.local/bin/setup/hibernate-storage --check
+   refind-config --check
+   busctl call org.freedesktop.login1 /org/freedesktop/login1 \
+     org.freedesktop.login1.Manager CanHibernate
+   ```
+   The final command must return `s "yes"`.
 
 ## rEFInd metal boot configuration
 
