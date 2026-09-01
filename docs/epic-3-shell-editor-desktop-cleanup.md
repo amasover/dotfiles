@@ -178,12 +178,14 @@ As the repo owner,
 I want xidlehook to start automatically at boot,
 So that idle-lock / screen-off works without starting it by hand.
 
-Decision (2026-08-29): i3 owns one `xidlehook` process through an
-`exec_always` launcher guarded by a runtime `flock`, so initial startup and i3
-restarts are covered without duplicates. X blanks at 3 minutes; xidlehook locks
-at 5, explicitly powers the panel off at 15, hibernates a discharging laptop at
-30, and hibernates any still-idle laptop at 90. Fullscreen postpones the chain;
-background audio does not. Renewed activity resets it.
+Decision (2026-08-29, corrected by regression [#233](https://github.com/amasover/dotfiles/issues/233)):
+i3 owns one `flock`-guarded launcher supervising two `xidlehook` workers, so
+initial startup and i3 restarts converge without duplicate worker sets. X blanks
+at 3 minutes. A fullscreen-aware soft worker locks at 5, explicitly powers the
+panel off at 15, and hibernates a discharging laptop at 30. A separate,
+uninhibited hard worker hibernates any still-idle laptop at 90, including while
+a fullscreen window exists. Background audio does not inhibit either worker;
+renewed activity resets both.
 
 `systemd-lock-handler` continues to translate logind events into `lock.target`;
 a tracked `locker.service` now routes that target through the same portable
@@ -193,18 +195,21 @@ implementation are retired.
 
 **Acceptance criteria:**
 
-- Given initial i3 startup or an in-place restart, exactly one `xidlehook` process runs with the documented timer chain
-- Given i3 reloads repeatedly, the runtime lock prevents duplicate processes
-- Given 3/5/15-minute X and xidlehook policy, blanking, authentication lock, and explicit DPMS power-off each occur at their boundary
+- Given initial i3 startup or an in-place restart, exactly one launcher supervises the documented soft and hard `xidlehook` workers
+- Given i3 reloads repeatedly, the runtime lock prevents duplicate worker sets and cannot leak into timer descendants
+- Given 3/5/15-minute X and soft-worker policy, blanking, authentication lock, and explicit DPMS power-off each occur at their boundary
+- Given any fullscreen X window, the soft worker is inhibited while the independent 90-minute hard worker remains eligible
 - Given logind starts `lock.target`, tracked `locker.service` locks through the same helper and transitions to `unlock.target` after authentication
 - Given battery fixtures and command stubs, 30/90-minute hibernation selection is deterministic and no fixture can reach real `systemctl hibernate`
 
-**Evidence artifact:** `tests/idle-lock.clitest.txt` (32/32); clean shellcheck,
+**Evidence artifact:** `tests/idle-lock.clitest.txt` (36/36); clean shellcheck,
 shfmt, syntax, and systemd-unit checks; accelerated live blank/lock/DPMS tests;
-one-process i3 restart/reload probes; live `lock.target`/`unlock.target` round trip.
-The existing manual hibernate path remains, but a live hibernate attempt during
-validation was not counted: current swap occupancy left insufficient image
-headroom and the kernel returned `ENOSPC` before thawing the session.
+singleton launcher/two-worker i3 probes; live `lock.target`/`unlock.target` round
+trip. The first live hibernate attempt exposed insufficient image headroom and
+returned `ENOSPC`. Regression #233 moved routine paging to a high-priority
+encrypted-root swapfile, emptied the resume partition, and reached
+`CanHibernate=yes`. The real 90-minute idle run then hibernated and resumed
+correctly on the live laptop.
 
 ---
 

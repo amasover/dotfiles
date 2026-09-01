@@ -384,6 +384,6 @@ exec --no-startup-id sh ~/.local/bin/tools/move-mail.sh
 
 # Idle policy: .xinitrc supplies blank and fallback DPMS timeouts; idle-lock owns
 # authentication, explicit DPMS power-off, and hibernation. exec_always covers
-# i3 restarts; the launcher's runtime lock prevents duplicate xidlehook processes.
+# i3 restarts; the launcher's runtime lock prevents duplicate policy worker sets.
 exec_always --no-startup-id ~/.local/bin/tools/idle-lock
 exec_always --no-startup-id flashfocus
