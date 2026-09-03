@@ -1327,16 +1327,33 @@ repo yet at 3c, nothing installed to upgrade). The hold machinery
 (`held_install_file`, `defer_pkg`, `die_hold`) moved above 3c — definition
 order is execution order; the 6a sync loop shares it unchanged.
 
+**Pre-transaction safety closeout (2026-09-03):** the live workstation exposed
+a second failure at the same veto boundary. Pacman runs hooks alphabetically;
+the unprefixed gate ran after `60-mkinitcpio-remove.hook` and
+`71-dkms-remove.hook`, so an RPC hold aborted after the current kernel/initramfs
+images and EVDI module had been removed, before their post-transaction
+restoration. The tracked hook is therefore named
+`00-chaotic-quarantine-gate.hook`, and bootstrap removes the obsolete
+unprefixed symlink while installing that replacement. Every quarantine veto
+now precedes destructive pre-transaction hooks; successful kernel/DKMS
+transactions retain their normal remove-then-rebuild lifecycle.
+
 **Acceptance criteria:**
 
 - Given an unattended run where the chaotic gate holds an upgrade of an installed package (age), when 3c runs, then the upgrade is deferred (`DEFERRED [age]` + deferred.tsv + drift-report bucket), the rest of the transaction completes, and the run continues
 - Given any other hold at 3c (identity, rpc, or an age hold on a package not installed), then the run dies with the same remedy text as before
 - Given a 3c failure with no hold recorded, then the run dies pointing at the pacman output (no silent retry loop)
 - Given the test contract, then the hold classifier ships with clitest coverage (`--syu-hold-action` seam) and the attended path is unchanged
+- Given a transaction that would trigger both the quarantine gate and destructive pre-transaction hooks, when quarantine vetoes it, then the `00-` gate runs first and no boot image or DKMS module is removed
+- Given an existing machine still has the unprefixed gate symlink, when bootstrap converges it, then the obsolete hook is removed and exactly one `00-` gate remains
 
 **Evidence artifact:** an unattended run log where 3c logs the gate's HOLD
 line followed by `DEFERRED [age]` and a completed system sync in the same
-phase, with the aged version still installed afterwards.
+phase, with the aged version still installed afterwards; plus the workstation
+recovery from missing current boot images, two broken DKMS registrations, and
+a missing current EVDI module to restored kernel/initramfs artifacts, clean
+`dkms status`, and a live `00-` gate symlink that sorts before Arch's removal
+hooks.
 
 ---
 

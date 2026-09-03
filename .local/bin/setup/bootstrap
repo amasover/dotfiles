@@ -599,17 +599,23 @@ fi
 # Chaotic-AUR auto-builds AUR packages as signed repo binaries — declared AUR
 # packages it carries then install without local builds. It inherits the AUR's
 # trust model wholesale, so its packages stay quarantine-gated: the
-# chaotic-quarantine-gate alpm hook (installed here, BEFORE the repo goes
-# live) applies the same trust ladder to every chaotic-sourced target. The
-# repo section sits after the official ones, so core/extra always win.
+# 00-chaotic-quarantine-gate alpm hook is installed before the repo goes live
+# and sorts before destructive pre-transaction hooks such as initramfs or DKMS
+# removal. It applies the same trust ladder to every chaotic-sourced target.
+# Repo section sits after the official ones, so core/extra always win.
 say "chaotic-aur repo"
-gate_src="$HOME/.config/dotfiles/pacman-hooks/chaotic-quarantine-gate.hook"
-gate_dst="/etc/pacman.d/hooks/chaotic-quarantine-gate.hook"
+gate_src="$HOME/.config/dotfiles/pacman-hooks/00-chaotic-quarantine-gate.hook"
+gate_dst="/etc/pacman.d/hooks/00-chaotic-quarantine-gate.hook"
+gate_old="/etc/pacman.d/hooks/chaotic-quarantine-gate.hook"
 if [[ $CHECK -eq 1 ]]; then
-    echo "  would: symlink the chaotic gate hook, lsign key 3056513887B78AEB,"
-    echo "         install chaotic-keyring + chaotic-mirrorlist, append [chaotic-aur]"
-    echo "         to /etc/pacman.conf, pacman -Sy"
+    echo "  would: remove the obsolete unprefixed gate hook, symlink its 00-prefixed"
+    echo "         replacement, lsign key 3056513887B78AEB, install chaotic-keyring +"
+    echo "         chaotic-mirrorlist, append [chaotic-aur] to /etc/pacman.conf, pacman -Sy"
 else
+    if [[ -e "$gate_old" || -L "$gate_old" ]]; then
+        sudo rm -f "$gate_old"
+        echo "  obsolete gate hook removed: $gate_old"
+    fi
     if [[ "$(readlink "$gate_dst" 2>/dev/null)" != "$gate_src" ]]; then
         sudo mkdir -p /etc/pacman.d/hooks
         sudo ln -sfT "$gate_src" "$gate_dst"

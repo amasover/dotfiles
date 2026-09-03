@@ -3,10 +3,13 @@
 # so yay's AUR-side events never fire for them; PreTransaction + AbortOnFail
 # catches every path (metapac sync, yay -S, raw pacman) and cancels the whole
 # transaction on a hold, before anything installs.
+# Filename's 00 prefix is functional: alpm runs hooks alphabetically, so this
+# veto happens before destructive pre-transaction hooks such as initramfs or
+# DKMS removal.
 #
 # Tracked here; installed as a symlink (content stays current with yadm pulls):
-#   sudo ln -sfT ~/.config/dotfiles/pacman-hooks/chaotic-quarantine-gate.hook \
-#       /etc/pacman.d/hooks/chaotic-quarantine-gate.hook
+#   sudo ln -sfT ~/.config/dotfiles/pacman-hooks/00-chaotic-quarantine-gate.hook \
+#       /etc/pacman.d/hooks/00-chaotic-quarantine-gate.hook
 # Bootstrap's chaotic-aur step does this on a fresh machine. Exec must be an
 # absolute path (alpm expands nothing), hence the literal home below.
 

@@ -139,7 +139,7 @@ fresh-run evidence for several open stories: 2.19 [#70](https://github.com/amaso
 2.21 [#73](https://github.com/amasover/dotfiles/issues/73), 2.26 [#83](https://github.com/amasover/dotfiles/issues/83),
 2.27 [#87](https://github.com/amasover/dotfiles/issues/87), 2.32 [#100](https://github.com/amasover/dotfiles/issues/100),
 2.33 [#103](https://github.com/amasover/dotfiles/issues/103), 2.34 [#107](https://github.com/amasover/dotfiles/issues/107),
-2.38 [#124](https://github.com/amasover/dotfiles/issues/124), and 2.45 [#144](https://github.com/amasover/dotfiles/issues/144).
+and 2.38 [#124](https://github.com/amasover/dotfiles/issues/124).
 Story 2.31 [#98](https://github.com/amasover/dotfiles/issues/98) additionally needs a
 deliberate interrupt/resume run. Record each issue's exact evidence from the shared log
 set; do not assume one green run automatically satisfies every criterion.

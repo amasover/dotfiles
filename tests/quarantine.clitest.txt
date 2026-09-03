@@ -2,13 +2,37 @@ Quarantine tooling shell-level tests (clitest — see tests/vm-harness.clitest.t
 header and knowledge/reference/clitest-shell-tests.md for format notes).
 
 Run from the repo root:   clitest tests/quarantine.clitest.txt
-Covers Stories 2.32/2.33/2.35/2.38 (#100/#103/#112/#124): the metapac-declared
+Covers Stories 2.32/2.33/2.35/2.38/2.45
+(#100/#103/#112/#124/#144): the metapac-declared
 parser, the aur-quarantine preflight CLI surface, the policy's version
 rendering, the bootstrap seams — provider-substitution probe (stubbed pacman),
-pre-flight verdict bucketing, the 2.38 step-outcome classifier — plus the
-known-broken CLI (broken/unbroken/broken-status/broken-list, offline via
---at + AUR_KNOWN_BROKEN_FILE) and the filtered sync-config staging.
+pre-flight verdict bucketing, the 2.38 step-outcome classifier, quarantine-hook
+ordering before destructive DKMS pre-hooks, the known-broken CLI
+(broken/unbroken/broken-status/broken-list, offline via --at +
+AUR_KNOWN_BROKEN_FILE), and filtered sync-config staging.
 Network-dependent behavior (live RPC verdicts) is deliberately untested here.
+
+--- chaotic gate vetoes before destructive DKMS pre-transaction hooks ---
+
+Pacman runs hooks alphabetically. A failed quarantine check must abort before
+`60-mkinitcpio-remove.hook` or `71-dkms-remove.hook`; an unprefixed gate runs
+too late.
+
+$ printf '%s\n' .config/dotfiles/pacman-hooks/*chaotic-quarantine-gate.hook | sed 's|.*/||'
+00-chaotic-quarantine-gate.hook
+$
+
+$ printf '%s\n' .config/dotfiles/pacman-hooks/*chaotic-quarantine-gate.hook 60-mkinitcpio-remove.hook 71-dkms-remove.hook | sed 's|.*/||' | LC_ALL=C sort | sed -n '1p'
+00-chaotic-quarantine-gate.hook
+$
+
+$ grep -c '^gate_dst="/etc/pacman.d/hooks/00-chaotic-quarantine-gate.hook"$' .local/bin/setup/bootstrap
+1
+$ grep -c '^gate_old="/etc/pacman.d/hooks/chaotic-quarantine-gate.hook"$' .local/bin/setup/bootstrap
+1
+$ grep -Fc '        sudo rm -f "$gate_old"' .local/bin/setup/bootstrap
+1
+$
 
 --- metapac-declared: hostname_groups -> group files -> sorted union ---
 
