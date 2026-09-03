@@ -66,13 +66,11 @@ Post-inventory arrivals and dual-listed packages got a primary group:
 
 ## Gotchas for future machines
 
-- **polybar**: the machine's only polybar is `polybar-wireguard-git` (provides
-  `polybar`); groups declare the real name. It is the bar **plus** Aaron's VPN
-  indicator — it shows VPN connectivity in the bottom bar on the work
-  machine and may serve as the VPN-status indicator on other machines. It lives in
-  `desktop` (not `work`) because it is also the bar itself. A fresh `metapac sync`
-  builds this AUR package, not repo polybar (see
-  [pacman-provides note](../knowledge/reference/pacman-provides-and-binary-ownership.md)).
+- **polybar**: `desktop` declares official-repo `polybar`. The VPN indicator is
+  the standard `internal/network` module watching `tun0`; click actions invoke
+  the separate `vpn` helper, so no fork-only WireGuard behavior is used. The
+  old AUR fork was retired after a `jsoncpp` soname upgrade left its unchanged
+  binary unable to start; official Polybar upgrades with repository ABI changes.
 - **Node/npm ownership:** project-selected Node versions remain nvm-managed. The
   `editor` group declares official-repo `npm` and `pyright`; their pacman dependencies
   supply system `nodejs`. `setup/emacs-copilot-server` explicitly uses the system
