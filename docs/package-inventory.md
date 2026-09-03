@@ -121,7 +121,7 @@ Questions below before manifests are split. Native = official repos; **bold** = 
   `editorconfig-core-c` `autopep8` **visual-studio-code-bin** **nord-vim** **omnisharp-roslyn-bin**
 - **desktop** — Xorg (`xorg-server` `xorg-xinit` `xorg-server-xephyr` `xorg-appres`
   `xorg-xev` `xorg-xfd` `xorg-xkill`) · WM/bar/launcher (`i3-wm` `i3lock` `polybar`
-  `rofi` `dunst` `conky` **polybar-wireguard-git** **siji-git** **flashfocus**) ·
+  `rofi` `dunst` `conky` **siji-git** **flashfocus**) ·
   session/util (`feh` `redshift` `parcellite` `lxappearance` `lxqt-policykit`
   `network-manager-applet` `arandr` `autorandr` `xbindkeys` `xclip` `scrot` `kwallet5`
   `gpick` `thunar` `tumbler` `alacritty` `ibus-chewing` **xidlehook** **colorpicker**
