@@ -4,4 +4,5 @@
 # never share an inbox across machines (see docs/decision-bootstrap-architecture.md).
 [arch]
 packages = [
+  "obs-studio",
 ]
