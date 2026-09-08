@@ -1,10 +1,10 @@
 # metapac group: desktop — Xorg/i3 session, fonts, themes, and session utilities
 # Membership source: docs/package-inventory.md; adopted in Story 2.8.
-# polybar-wireguard-git is the machine's only polybar (provides "polybar") — declare the
-# real name, not the alias (knowledge/reference/pacman-provides-and-binary-ownership.md).
-# Aaron uses its indicator to show VPN connectivity in the bottom bar, and may reuse it
-# on other machines for VPN status — it stays in desktop (not work) because it is also
-# the bar itself.
+# polybar-wireguard-git's ephemeral-interface patch is load-bearing: module/vpn
+# watches tun0 but must stay alive while that interface is absent to render the
+# disconnected label and connect action. Official Polybar disables the module at
+# launch. Declare the real fork name; rebuild it after repository library ABI
+# changes.
 # bluez/bluez-utils/bluetui: post-inventory arrivals, placed here as session hardware (2.8 call).
 # colorpicker: build-rot relic (2017 GTK, no longer compiles) — machine-local on the
 # workstation; gpick (declared here) is the live alternative (2.7 VM finding).
