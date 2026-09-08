@@ -1,9 +1,10 @@
 # metapac group: desktop — Xorg/i3 session, fonts, themes, and session utilities
 # Membership source: docs/package-inventory.md; adopted in Story 2.8.
-# Official polybar owns the bars. The theme's VPN indicator is a generic
-# internal/network module watching tun0; its click actions invoke the VPN helper,
-# and no fork-only WireGuard behavior is used. Keeping the bar in the official
-# repo makes dependency ABI upgrades atomic instead of leaving an AUR build stale.
+# polybar-wireguard-git's ephemeral-interface patch is load-bearing: module/vpn
+# watches tun0 but must stay alive while that interface is absent to render the
+# disconnected label and connect action. Official Polybar disables the module at
+# launch. Declare the real fork name; rebuild it after repository library ABI
+# changes.
 # bluez/bluez-utils/bluetui: post-inventory arrivals, placed here as session hardware (2.8 call).
 # colorpicker: build-rot relic (2017 GTK, no longer compiles) — machine-local on the
 # workstation; gpick (declared here) is the live alternative (2.7 VM finding).
@@ -48,7 +49,7 @@ packages = [
   "papirus-icon-theme",
   "parcellite",
   "perl-anyevent-i3",
-  "polybar",
+  "polybar-wireguard-git",
   "redshift",
   "rofi",
   "scrot",

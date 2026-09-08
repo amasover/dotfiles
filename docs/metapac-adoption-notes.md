@@ -66,11 +66,12 @@ Post-inventory arrivals and dual-listed packages got a primary group:
 
 ## Gotchas for future machines
 
-- **polybar**: `desktop` declares official-repo `polybar`. The VPN indicator is
-  the standard `internal/network` module watching `tun0`; click actions invoke
-  the separate `vpn` helper, so no fork-only WireGuard behavior is used. The
-  old AUR fork was retired after a `jsoncpp` soname upgrade left its unchanged
-  binary unable to start; official Polybar upgrades with repository ABI changes.
+- **polybar**: `desktop` declares `polybar-wireguard-git`. Its
+  `ephemeral-interfaces` patch keeps the `internal/network` VPN module alive
+  while `tun0` is absent, which preserves the disconnected label and connect
+  action. Official Polybar 3.7.2 was tried on 2026-09-03 and disabled the module
+  at launch. The helper has no direct fork dependency, but this UI behavior
+  does; rebuild the AUR package after repository library soname changes.
 - **Node/npm ownership:** project-selected Node versions remain nvm-managed. The
   `editor` group declares official-repo `npm` and `pyright`; their pacman dependencies
   supply system `nodejs`. `setup/emacs-copilot-server` explicitly uses the system
