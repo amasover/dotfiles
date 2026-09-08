@@ -71,7 +71,8 @@ Post-inventory arrivals and dual-listed packages got a primary group:
   while `tun0` is absent, which preserves the disconnected label and connect
   action. Official Polybar 3.7.2 was tried on 2026-09-03 and disabled the module
   at launch. The helper has no direct fork dependency, but this UI behavior
-  does; rebuild the AUR package after repository library soname changes.
+  does; rebuild the AUR package after repository library soname changes. See
+  [the source trace](../knowledge/reference/polybar-ephemeral-interfaces.md).
 - **Node/npm ownership:** project-selected Node versions remain nvm-managed. The
   `editor` group declares official-repo `npm` and `pyright`; their pacman dependencies
   supply system `nodejs`. `setup/emacs-copilot-server` explicitly uses the system
