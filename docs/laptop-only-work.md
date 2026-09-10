@@ -170,8 +170,8 @@ follow-up issue before implementation because the original issue is closed.
 
 ## Explicitly not current-laptop work
 
-- Story 2.29's first consumer is the Windows-hosted daily VM; spare-laptop metal install
-  is later.
+- Story 2.29 provisions a different, blank laptop. Generator development may happen
+  here, but this current workstation is explicitly never the install target.
 - Story 2.44 Secure Boot targets fresh provisioning; current workstation is explicitly
   out of scope.
 - CI, vendored-package watches, nord-vim packaging, and metapac's `--needed`

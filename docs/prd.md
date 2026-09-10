@@ -110,8 +110,8 @@ done when both hold:
 1. **A daily-driver rebuild succeeds** — a machine bootstrapped from nothing but this
    repo and the encrypted archive, then actually used daily, passing the
    [daily-drivable acceptance checklist](./runbook-fresh-machine-bootstrap.md). The
-   first target is a VM under VMware Workstation on the Windows personal machine;
-   bare metal (spare laptop) is a later variant.
+   first milestone target is a VM under VMware Workstation on the Windows personal
+   machine. Story 2.29's metal target is a different, blank laptop—not this workstation.
 2. **The work machine completes its Story 1.8 recovery steps** after the history rewrite.
 
 After that, the repo operates as a continuously converging workstation platform —

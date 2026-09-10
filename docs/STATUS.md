@@ -23,13 +23,15 @@ Disposable handoff for active work. GitHub issues own durable detail; the
 
 ## In flight
 
-- **2.29 hibernate storage provisioning** ([#235](https://github.com/amasover/dotfiles/issues/235)):
-  `hibernate-storage` now owns resume selection, routine swap sizing/priorities,
-  fstab backup/convergence, and unsafe-layout refusal. All 40 rooted fixture
-  checks pass. The stricter rounded-RAM check now flags the current 31.3 GiB
-  resume partition below the required 32 GiB; future metal provisioning remains
-  in PR [#236](https://github.com/amasover/dotfiles/pull/236). Next: review and
-  merge. Story 2.29's future metal generator consumes this storage contract.
+- **2.29 fresh-laptop provisioning** ([#95](https://github.com/amasover/dotfiles/issues/95)):
+  active on `story/2.29-metal-provisioning`. Shared generator covers QEMU, VMware,
+  and an attended metal target for a different, blank laptop—never this workstation.
+  Metal emits rEFInd plus root/resume LVs inside one LUKS container, keeps credentials
+  out of its seed, and refuses target mismatches before exact typed wipe confirmation.
+  Focused tests are 42/42; cached Archinstall 4.4-1 parses the generated LVM/LUKS
+  schema; full suite is green (606 clitest, 154 pytest, 9 ERT, both AUR policy
+  suites). Next: target-laptop install and attended boot/hibernate evidence; local
+  lint lacks only `actionlint`.
 
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   laptop and home-4K profiles now match current modesetting names; home split

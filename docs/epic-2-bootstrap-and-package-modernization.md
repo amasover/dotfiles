@@ -647,32 +647,45 @@ Issue: [#89](https://github.com/amasover/dotfiles/issues/89) (closed, PR #93) ·
 ### Story 2.29: Scripted metal provisioning — partitions, disk encryption, bootloader
 
 As the repo owner,
-I want the pre-bootstrap provisioning of a metal machine (partitions, LUKS disk
+I want a fresh laptop's pre-bootstrap provisioning (partitions, LUKS disk
 encryption, bootloader, user) driven by a tracked, parameterized recipe the official
 Arch ISO can consume,
-So that a bare-metal install starts from the same declarative recipe philosophy as
+So that the new machine starts from the same declarative recipe philosophy as
 everything else, instead of hand-typed disk commands at an ISO prompt.
 
-Issue: [#95](https://github.com/amasover/dotfiles/issues/95) · The vm-harness already proves the pattern: cloud-init on the official ISO drives unattended `archinstall` from a generated seed (Story 2.7). **Primary consumer (amended 2026-07-10, [decision-daily-driver-vm.md](./decision-daily-driver-vm.md)): the daily-driver VM on the Windows machine** — same recipe, LUKS root inside the guest; the spare-laptop metal run (months out) is the later variant and inherits it.
+Issue: [#95](https://github.com/amasover/dotfiles/issues/95). **Target amended
+2026-09-10:** this story provisions a different, blank laptop. It never repartitions
+or reinstalls the current workstation. QEMU and VMware remain regression consumers of
+the shared seed generator; Story 2.37 separately owns the daily-VM graduation path.
+
+The shared `.local/bin/setup/vm-harness-seed` now has explicit `qemu`, `vmware`, and
+`metal` targets. Metal emits an Archinstall 4.4 recipe with a 1 GiB ESP, one LUKS
+container, an ext4 root LV, and one resume LV equal to rounded physical RAM. It disables
+zram, activates the resume LV at low priority before `genfstab`, and installs rEFInd.
+The generated seed contains no password: the target console verifies disk size, RAM,
+whole-disk/mount state, and an exact `WIPE <device>` phrase before prompting twice for
+the user and LUKS passwords. The transient credentials file is removed on every exit.
 
 Hibernate-storage follow-up [#235](https://github.com/amasover/dotfiles/issues/235)
-defines the metal-only storage seam: installer owns encrypted partition layout;
-post-install `hibernate-storage` owns swap sizing, priorities, resume selection,
-and fstab convergence.
+owns the post-install seam: `hibernate-storage` creates the 1.5x-RAM routine swapfile,
+drains the resume LV, and converges priorities/fstab. Archinstall's first-boot rEFInd
+files receive the Story 2.52 managed marker, so bootstrap can replace them through the
+normal backup-first `refind-config apply` path after the package-owned Nord theme lands.
 
 **Acceptance criteria:**
 
-- Given a machine booted from the official Arch ISO (VMware guest or metal), when the recipe runs, then a tracked, parameterized generator produces an archinstall config provisioning GPT partitions (ESP + LUKS-encrypted root sized from the disk), disk encryption, the boot path fitting the target (VM vs refind metal), a user, and sshd
-- Given a metal target intended to hibernate, when its disk recipe is generated, then exactly one swap partition/LV inside encrypted storage is at least as large as physical RAM and persists through fstab; generic zram or unencrypted swap does not satisfy the contract
-- Given that installed target first boots, when `hibernate-storage apply` runs, then it selects the unambiguous dedicated resume swap, creates a routine swapfile inside encrypted ext4 root at 1.5 times rounded RAM, drains the resume area, persists priority 100 for routine paging, and leaves the resume priority lower
-- Given secrets (LUKS passphrase, user password), when the seed is generated, then they are supplied at run time (prompt or env) and never land in tracked files; any generated seed containing them is destroyed after use
-- Given vm-harness's seed generation exists, when the generator is built, then shared logic is factored once (harness, daily-VM, metal as consumers) or the divergence is explicitly recorded with reasons
-- Given the daily-driver VM is the first real consumer, when the story lands, then its creation run is the primary evidence; the spare-laptop run later revalidates the metal variant
+- Given the different laptop booted from the official Arch ISO, when the metal recipe runs, then it provisions a GPT disk (ESP + LVM-on-LUKS), rEFInd, a user, NetworkManager, and sshd without touching the current workstation
+- Given target disk size and rounded RAM, then root fills the disk except the ESP/tail reserve, the encrypted resume LV is exactly rounded RAM, and root retains room for the future 1.5x-RAM routine swapfile plus 40 GiB workstation headroom
+- Given the install driver, then it refuses legacy-BIOS boot, a non-disk, mounted disk, disk-size mismatch, RAM mismatch, non-console invocation, or confirmation other than exact `WIPE <device>` before Archinstall can mutate storage
+- Given credentials, then the seed contains none; the attended target prompt writes a mode-0600 transient credentials file, never prints either secret, and removes the file on success, failure, or interruption
+- Given Archinstall completes, then its rEFInd policy and kernel-entry files are marked for the first backup-first repository reconcile; `hibernate-storage apply` followed by `refind-config apply` adds the live-derived resume identity without committing disk identifiers
+- Given existing VM harnesses, then both libvirt and VMware call the same generator and retain their unattended, unencrypted disposable-guest behavior
+- Given no second seed medium, then `--files-only` produces the same directly runnable recipe from a repo checkout on the Arch ISO without requiring `pycdlib`
 
-**Evidence artifact:** tracked generator + recipe, the daily-VM creation record, and (later) the metal run record.
-Hibernate-storage slice evidence: `tests/hibernate-storage.clitest.txt`, clean
-shell validation, and a converged read-only check against the live encrypted
-layout; destructive fresh-metal proof remains with Story 2.29.
+**Evidence artifact:** focused generator/credential/handoff tests; generated metal recipe
+and redacted smoke summary; later, the different laptop's attended install, first boot,
+hibernate, rEFInd, and reboot record. No operation against the current workstation's
+disk is part of this story.
 
 
 ---

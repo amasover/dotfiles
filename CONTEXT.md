@@ -133,10 +133,10 @@ _Avoid_: the project (open-ended), migration
 
 **Daily-driver rebuild**:
 The cleanup era's exit milestone: bootstrapping, from nothing but this repo and
-the encrypted archive, a machine that then gets used daily. The first target is
-a VM on the Windows personal machine; bare metal is a later, optional variant.
-_Avoid_: metal rebuild (first target is a VM), fresh install (any machine, incl.
-disposable harness VMs)
+the encrypted archive, a machine that then gets used daily. The first milestone target
+is a VM on the Windows personal machine. Story 2.29's destructive metal target is a
+different, blank laptop; the current workstation is never reinstalled by that story.
+_Avoid_: calling every fresh install the daily-driver rebuild
 
 **Steady state**:
 The operating mode after the cleanup era: a continuously converging workstation
