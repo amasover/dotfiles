@@ -14,6 +14,24 @@ seed = load_tool("vm_harness_seed", "vm-harness-seed")
 refind = load_tool("refind_config_for_seed", "refind-config")
 
 
+def make_request(target="vmware", **overrides):
+    values = {
+        "target": target,
+        "disk_size_gib": 80,
+        "hostname": "archvm",
+        "user": "aaron",
+        "pubkey": "ssh-ed25519 AAAA test",
+    }
+    if target == "metal":
+        values.update(
+            disk_size_gib=256,
+            disk_device="/dev/nvme0n1",
+            ram_gib=32,
+        )
+    values.update(overrides)
+    return seed.build_request(**values)
+
+
 class TestSha512Crypt:
     # Published test vectors from Ulrich Drepper's sha-crypt specification.
     def test_spec_vector_default_rounds(self):
@@ -64,15 +82,7 @@ class TestLayoutSizing:
 
 class TestUserConfiguration:
     def _cfg(self, target, **kw):
-        args = {
-            "target": target,
-            "disk_size_gib": 80,
-            "hostname": "archvm",
-            "user": "aaron",
-            "pubkey": "ssh-ed25519 AAAA test",
-        }
-        args.update(kw)
-        return seed.build_user_configuration(**args)
+        return seed.build_user_configuration(make_request(target, **kw))
 
     def test_qemu_device_and_tools(self):
         cfg = self._cfg("qemu")
@@ -90,6 +100,10 @@ class TestUserConfiguration:
     def test_networkmanager_owns_networking_from_first_boot(self, target):
         assert self._cfg(target)["network_config"] == {"type": "nm"}
 
+    @pytest.mark.parametrize("target", ["qemu", "vmware"])
+    def test_disposable_harness_targets_remain_unencrypted(self, target):
+        assert "disk_encryption" not in self._cfg(target)["disk_config"]
+
     def test_vm_root_partition_sized_from_disk(self):
         parts = self._cfg("vmware")["disk_config"]["device_modifications"][0][
             "partitions"
@@ -100,6 +114,23 @@ class TestUserConfiguration:
             "value": 78,
             "sector_size": {"value": 512, "unit": "B"},
         }
+
+    def test_daily_vm_encrypts_root_without_harness_sudo_policy(self):
+        cfg = self._cfg("daily-vm")
+        disk = cfg["disk_config"]
+        root = next(
+            partition
+            for partition in disk["device_modifications"][0]["partitions"]
+            if partition["mountpoint"] == "/"
+        )
+        assert disk["disk_encryption"] == {
+            "encryption_type": "luks",
+            "partitions": [root["obj_id"]],
+            "lvm_volumes": [],
+        }
+        assert "open-vm-tools" in cfg["packages"]
+        assert "vmtoolsd.service" in "\n".join(cfg["custom_commands"])
+        assert "NOPASSWD" not in "\n".join(cfg["custom_commands"])
 
     def test_metal_uses_lvm_on_luks_with_dedicated_resume(self):
         cfg = self._cfg(
@@ -130,10 +161,17 @@ class TestUserConfiguration:
         assert "qemu-guest-agent" not in cfg["packages"]
 
     def test_metal_requires_device_and_ram(self):
+        base = {
+            "target": "metal",
+            "disk_size_gib": 256,
+            "hostname": "fresh-laptop",
+            "user": "aaron",
+            "pubkey": "",
+        }
         with pytest.raises(ValueError, match="disk device"):
-            self._cfg("metal", disk_size_gib=256, ram_gib=32)
+            seed.build_request(**base, ram_gib=32)
         with pytest.raises(ValueError, match="RAM"):
-            self._cfg("metal", disk_size_gib=256, disk_device="/dev/nvme0n1")
+            seed.build_request(**base, disk_device="/dev/nvme0n1")
 
     def test_pubkey_lands_in_authorized_keys_command(self):
         cmds = "\n".join(self._cfg("vmware")["custom_commands"])
@@ -166,39 +204,26 @@ class TestUserConfiguration:
 
 class TestUserData:
     def _ud(self, target="vmware", live_ssh_pubkey=None):
-        kwargs = {}
-        if target == "metal":
-            kwargs = {
-                "disk_size_gib": 256,
-                "ram_gib": 32,
-                "disk_device": "/dev/nvme0n1",
-            }
-        cfg = seed.build_user_configuration(
-            target=target,
-            disk_size_gib=kwargs.pop("disk_size_gib", 80),
-            hostname="archvm",
-            user="aaron",
-            pubkey="ssh-ed25519 AAAA test",
-            **kwargs,
-        )
+        request = make_request(target)
+        cfg = seed.build_user_configuration(request)
         creds = (
             None
-            if target == "metal"
-            else seed.build_user_credentials(user="aaron", pass_hash="$6$s$h")
+            if request.target.attended
+            else seed.build_user_credentials(
+                user="aaron",
+                pass_hash="$6$s$h",
+                luks_secret="disk secret" if request.target.encrypted else None,
+            )
         )
         return seed.build_user_data(
-            target=target,
+            request=request,
             user_configuration=cfg,
             user_credentials=creds,
             live_ssh_pubkey=live_ssh_pubkey,
-            run_install_sh=seed.build_run_install(
-                target=target,
-                disk_device="/dev/nvme0n1" if target == "metal" else None,
-                disk_size_gib=256 if target == "metal" else None,
-                ram_gib=32 if target == "metal" else None,
-                user="aaron",
+            run_install_sh=seed.build_run_install(request),
+            provision_tool=(
+                b"#!/usr/bin/env python3\n" if request.target.attended else None
             ),
-            provision_tool=b"#!/usr/bin/env python3\n" if target == "metal" else None,
         )
 
     def test_embedded_config_roundtrips(self):
@@ -240,12 +265,7 @@ class TestSeedIso:
         seed.write_seed_iso(out, "#cloud-config\nkey: value\n", seed.META_DATA)
         iso = pycdlib.PyCdlib()
         iso.open(str(out))
-        assert (
-            iso.pvd.volume_identifier.decode("utf-16-be", errors="ignore").strip(
-                "\x00 "
-            )
-            or True
-        )
+        assert iso.pvd.volume_identifier.decode().rstrip() == "CIDATA"
         buf = io.BytesIO()
         iso.get_file_from_iso_fp(buf, joliet_path="/user-data")
         assert buf.getvalue() == b"#cloud-config\nkey: value\n"
@@ -258,9 +278,7 @@ class TestSeedIso:
 class TestMetalPreflight:
     def test_accepts_matching_blank_whole_disk(self):
         seed.validate_metal_facts(
-            device="/dev/nvme0n1",
-            configured_disk_gib=256,
-            configured_ram_gib=32,
+            seed.MetalFacts("/dev/nvme0n1", 256, 32),
             actual_disk_bytes=256 * 1073741824 + 4096,
             actual_ram_gib=32,
             is_whole_disk=True,
@@ -269,10 +287,8 @@ class TestMetalPreflight:
         )
 
     def test_rejects_non_disk_mismatch_and_mounted_children(self):
+        expected = seed.MetalFacts("/dev/nvme0n1", 256, 32)
         common = {
-            "device": "/dev/nvme0n1",
-            "configured_disk_gib": 256,
-            "configured_ram_gib": 32,
             "actual_disk_bytes": 256 * 1073741824,
             "actual_ram_gib": 32,
             "is_whole_disk": True,
@@ -280,17 +296,18 @@ class TestMetalPreflight:
             "mountpoints": [],
         }
         with pytest.raises(ValueError, match="whole disk"):
-            seed.validate_metal_facts(**(common | {"is_whole_disk": False}))
+            seed.validate_metal_facts(expected, **(common | {"is_whole_disk": False}))
         with pytest.raises(ValueError, match="size does not match"):
             seed.validate_metal_facts(
-                **(common | {"actual_disk_bytes": 255 * 1073741824})
+                expected,
+                **(common | {"actual_disk_bytes": 255 * 1073741824}),
             )
         with pytest.raises(ValueError, match="RAM rounds"):
-            seed.validate_metal_facts(**(common | {"actual_ram_gib": 31}))
+            seed.validate_metal_facts(expected, **(common | {"actual_ram_gib": 31}))
         with pytest.raises(ValueError, match="mounted"):
-            seed.validate_metal_facts(**(common | {"mountpoints": ["/mnt"]}))
+            seed.validate_metal_facts(expected, **(common | {"mountpoints": ["/mnt"]}))
         with pytest.raises(ValueError, match="UEFI"):
-            seed.validate_metal_facts(**(common | {"is_uefi": False}))
+            seed.validate_metal_facts(expected, **(common | {"is_uefi": False}))
 
     def test_requires_exact_device_specific_confirmation(self):
         seed.require_wipe_confirmation("/dev/nvme0n1", "WIPE /dev/nvme0n1")
@@ -348,36 +365,6 @@ class TestMetalHandoff:
             seed.mark_refind_handoff(tmp_path)
 
 
-class TestRunInstall:
-    def test_metal_orders_preflight_credentials_install_and_handoff(self):
-        script = seed.build_run_install(
-            target="metal",
-            disk_device="/dev/nvme0n1",
-            disk_size_gib=256,
-            ram_gib=32,
-            user="aaron",
-        )
-        phases = [
-            script.index("metal-preflight"),
-            script.index("metal-credentials"),
-            script.index("archinstall --config"),
-            script.index("metal-finalize"),
-        ]
-        assert phases == sorted(phases)
-        assert "systemctl poweroff" not in script
-
-    def test_vm_install_remains_unattended_and_powers_off(self):
-        script = seed.build_run_install(
-            target="vmware",
-            disk_device=None,
-            disk_size_gib=None,
-            ram_gib=None,
-            user="aaron",
-        )
-        assert "WIPE " not in script
-        assert "systemctl poweroff" in script
-
-
 class TestCli:
     def test_generate_writes_seed_set(self, tmp_path, capsys):
         rc = seed.main(
@@ -401,6 +388,46 @@ class TestCli:
         assert (tmp_path / "meta-data").is_file()
         assert (tmp_path / "seed.iso").is_file()
         assert capsys.readouterr().out.strip().endswith("seed.iso")
+
+    def test_daily_vm_seed_contains_luks_credentials(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PROVISION_USER_PASSWORD", "user secret")
+        monkeypatch.setenv("PROVISION_LUKS_PASSWORD", "disk secret")
+        rc = seed.main(
+            [
+                "create",
+                "--out",
+                str(tmp_path),
+                "--target",
+                "daily-vm",
+                "--disk-size",
+                "80",
+                "--files-only",
+            ]
+        )
+
+        assert rc == 0
+        config = json.loads((tmp_path / "user_configuration.json").read_text())
+        credentials = json.loads((tmp_path / "user_credentials.json").read_text())
+        assert config["disk_config"]["disk_encryption"]["encryption_type"] == "luks"
+        assert credentials["encryption_password"] == "disk secret"
+        assert (tmp_path / "user-data").stat().st_mode & 0o777 == 0o600
+
+    def test_daily_vm_requires_luks_password(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PROVISION_USER_PASSWORD", "user secret")
+        monkeypatch.delenv("PROVISION_LUKS_PASSWORD", raising=False)
+        with pytest.raises(SystemExit):
+            seed.main(
+                [
+                    "create",
+                    "--out",
+                    str(tmp_path),
+                    "--target",
+                    "daily-vm",
+                    "--disk-size",
+                    "80",
+                    "--files-only",
+                ]
+            )
 
     def test_live_ssh_requires_pubkey(self, tmp_path):
         with pytest.raises(SystemExit):

@@ -167,21 +167,29 @@ YADM instead.
 
 ## Handling false positives
 
-When a finding is a confirmed false positive, dismiss it durably and record why:
+When a finding is a confirmed false positive, dismiss it durably and record why.
 
-1. Get the fingerprint from a JSON report
+1. Prefer an inline `gitleaks:allow` annotation when the finding belongs to a
+   specific tracked source line and the source format permits comments. Include
+   the review date and reason on that line. Inline annotations survive line moves
+   and remain visible to both working-tree and staged-stdin scans:
+
+   ```python
+   "enc_password": password_hash,  # gitleaks:allow -- 2026-09-10: hash, not plaintext
+   ```
+
+2. Otherwise, get the fingerprint from a JSON report
    (`betterleaks dir . --redact --report-format json --report-path /tmp/bl.json`).
    Use a `dir`/`git` report, not hook output — `stdin` scans carry different
-   fingerprints.
-2. Add the fingerprint to `.gitleaksignore` at the repo root, with a comment
-   stating the reason and date:
+   fingerprints. Add it to `.gitleaksignore` with a dated comment explaining the
+   false positive:
 
    ```
    # 2026-06-23 — sample key in docs, not a real credential (Aaron)
    <fingerprint>
    ```
 
-Never dismiss a finding without a written reason. If it is unclear whether a
+Never suppress a finding without a written reason. If it is unclear whether a
 finding is real, treat it as real until proven otherwise and ask Aaron.
 
 **Testing the hook with a planted secret:** the default config allowlists

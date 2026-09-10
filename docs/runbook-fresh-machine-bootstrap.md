@@ -6,6 +6,11 @@ Script: [`.local/bin/setup/bootstrap`](../.local/bin/setup/bootstrap) (replaces 
 retired 2019 `setup/install` — see [bootstrap-inventory.md](./bootstrap-inventory.md)
 for its autopsy; history via `git log -- .local/bin/setup/install`).
 
+> **DAILY-VM FIRST:** Story 2.29's primary evidence remains a real encrypted
+> daily-driver creation run under VMware Workstation. The shared generator now
+> exposes that LUKS recipe as `--target daily-vm`; the attended metal path below
+> is the later hardware revalidation, not a replacement for the VM evidence.
+
 > **METAL SCOPE:** Story 2.29 erases one explicitly named whole disk on a
 > different, blank laptop. The current workstation is never its target. The generated
 > metal recipe does not start automatically and cannot proceed without matching disk,

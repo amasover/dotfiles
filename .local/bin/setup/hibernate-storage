@@ -286,12 +286,12 @@ inspect() {
     drift=()
     ((resume_configured)) || drift+=("select dedicated resume swap")
     ((routine_file_ok)) || drift+=("create ${routine_gib} GiB routine swapfile")
-    if ((!routine_active)); then
+    if ((routine_active == 0)); then
         drift+=("activate priority 100")
     elif [[ $routine_priority != 100 ]]; then
         die "active /swapfile priority must be 100"
     fi
-    if ((!resume_active)); then
+    if ((resume_active == 0)); then
         drift+=("activate dedicated resume swap")
     elif ((resume_used_kib > 0)); then
         drift+=("drain resume swap")
@@ -358,7 +358,7 @@ if ((routine_active == 0)); then
     echo "hibernate-storage: activated routine swap at priority 100"
 fi
 
-if ((!resume_active)); then
+if ((resume_active == 0)); then
     swapon --priority "$resume_fstab_priority" "$resume_device" \
         || die "cannot reactivate dedicated resume swap; rerun apply after correcting swapon"
     echo "hibernate-storage: reactivated dedicated resume swap"

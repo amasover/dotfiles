@@ -7,19 +7,14 @@
 [runbook-fresh-machine-bootstrap.md](./runbook-fresh-machine-bootstrap.md) (acceptance checklist) ·
 Story 2.29 (#95, provisioning recipe) · Story 2.30 (class + hardware split)
 
-**Story 2.29 scope amendment (2026-09-10):** its concrete metal target is a fresh
-installation on a different laptop, never a reinstall of the current workstation.
-The VMware daily-driver decision below remains; VM harnesses exercise the shared recipe
-seam, while the physical target owns Story 2.29's destructive install evidence.
-
 ## Decision
 
 The cleanup era ends on two conditions: (1) a **daily-driver rebuild** — bootstrapping,
 from nothing but this repo and the encrypted archive, a machine that then gets used
 daily — and (2) the work machine completing its Story 1.8 history-rewrite recovery
-steps. The first milestone target is **a VM under VMware Workstation on the Windows
-personal machine**; Story 2.29's different-laptop metal install is a separate,
-destructive consumer of the shared recipe.
+steps. The first rebuild target is **a VM under VMware Workstation on the Windows
+personal machine**, not bare metal; a spare-laptop metal run is a later, optional
+variant of the same recipe.
 
 Supporting choices, decided together:
 
@@ -41,9 +36,9 @@ Supporting choices, decided together:
   regardless). A second-tier secret set was rejected as permanent curation friction
   against an adversary who already owns the host. Precedent: the work machine already
   carries full secrets on hardware not fully controlled.
-- **LUKS inside rebuilt targets** protects disks at rest. Story 2.29 now delivers the
-  shared recipe through a fresh, different laptop; Story 2.37 applies the same storage
-  contract to the daily VM when its guarded graduation target is built.
+- **LUKS inside the guest** anyway: protects the VM disk file at rest (host theft,
+  host backups). Provisioned by the Story 2.29 recipe, whose primary consumer is now
+  this VM — metal inherits the recipe later.
 
 ## Why this is recorded
 
@@ -53,8 +48,7 @@ and each supporting choice beat concrete alternatives for stated reasons.
 
 ## Consequences
 
-- Story 2.29's destructive consumer is a different, blank laptop; the current
-  workstation is never its target.
+- Story 2.29's spec is amended: daily-VM first, metal later.
 - Epic 3 (shell/editor/desktop) deliberately follows the VM bring-up: living in the
   rebuilt environment turns classification archaeology into triage of observed friction.
 - The milestone bar is the runbook's daily-drivable acceptance checklist; nothing

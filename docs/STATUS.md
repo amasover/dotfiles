@@ -23,15 +23,13 @@ Disposable handoff for active work. GitHub issues own durable detail; the
 
 ## In flight
 
-- **2.29 fresh-laptop provisioning** ([#95](https://github.com/amasover/dotfiles/issues/95)):
-  active on `story/2.29-metal-provisioning`. Shared generator covers QEMU, VMware,
-  and an attended metal target for a different, blank laptop—never this workstation.
-  Metal emits rEFInd plus root/resume LVs inside one LUKS container, keeps credentials
-  out of its seed, and refuses target mismatches before exact typed wipe confirmation.
-  Focused tests are 42/42; cached Archinstall 4.4-1 parses the generated LVM/LUKS
-  schema; full suite is green (606 clitest, 154 pytest, 9 ERT, both AUR policy
-  suites). Next: target-laptop install and attended boot/hibernate evidence; local
-  lint lacks only `actionlint`.
+- **2.29 provisioning recipe** ([#95](https://github.com/amasover/dotfiles/issues/95)):
+  active on `story/2.29-metal-provisioning`. One generator now owns disposable
+  QEMU/VMware recipes, the LUKS-encrypted `daily-vm` recipe, and the attended
+  LVM-on-LUKS/rEFInd recipe for a different blank laptop—never this workstation.
+  Host-independent tests cover target selection, credentials, destructive preflight,
+  and cleanup. Next: the required Windows-host daily-VM creation record; the later
+  laptop run revalidates the metal path.
 
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   laptop and home-4K profiles now match current modesetting names; home split
