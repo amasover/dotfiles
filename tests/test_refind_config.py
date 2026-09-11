@@ -180,6 +180,15 @@ def test_live_cmdline_keeps_only_identity_options():
     ]
 
 
+def test_swap_file_resume_target_is_refused(tmp_path):
+    root = make_fixture(tmp_path, machine=False)
+    (root / "sys/power/resume").write_text("253:4\n")
+    (root / "sys/power/resume_offset").write_text("79427584\n")
+
+    with pytest.raises(refind.RefindError, match="points at a swap file"):
+        refind.resume_options(root)
+
+
 def test_policy_is_portable_and_keeps_dual_boot_scanning():
     policy = refind.repo_policy().read_text()
     assert not re.search(r"(?:PART)?UUID=|/dev/", policy)

@@ -129,10 +129,12 @@ hibernation image. This prevents ordinary swap occupancy from consuming the
 space needed to save RAM.
 
 During `archinstall`, create an ext4 root and exactly one swap partition or LV
-inside encrypted storage. Round physical RAM up to whole GiB, make the swap area
-at least that large, activate it, and persist it in fstab. LUKS containing LVM
-root plus swap LVs is the straightforward layout. An unencrypted swap partition
-can expose the full hibernation image and is rejected.
+inside encrypted storage. Make the swap area at least as large as `MemTotal`,
+activate it, and persist it in fstab. Whole-GiB rounding of physical RAM is a
+safe target; the image itself can never exceed `MemTotal`, so that is the size
+the module enforces. LUKS containing LVM root plus swap LVs is the
+straightforward layout. An unencrypted swap partition can expose the full
+hibernation image and is rejected.
 
 After first boot and yadm checkout:
 
@@ -150,9 +152,17 @@ After first boot and yadm checkout:
    resume partition, and atomically adds fstab policy after backing up the old
    file under `/var/backups/dotfiles/hibernate-storage/`. It refuses ambiguous,
    unencrypted, undersized, non-ext4, or low-disk-space layouts before mutation.
+
+   Without a `resume=` kernel option, systemd selects a hibernation location on
+   its own and takes the highest-priority swap area — `/swapfile` — which aims
+   the image at routine paging storage inside root. The module treats that state
+   as repairable drift and reprograms `/sys/power/resume` to the dedicated
+   partition at offset 0. Step 3 is what makes the selection survive reboot.
 3. Run `refind-config adopt` for an unmanaged first install, or
    `refind-config apply` afterward. It derives `resume=UUID=...` from the resume
-   device selected above; no disk identifier enters this repo.
+   device selected above; no disk identifier enters this repo. It refuses to
+   derive from a swap-file resume target rather than pinning routine paging
+   storage into boot config.
 4. Reboot, then require both checks before the first attended hibernate test:
    ```bash
    ~/.local/bin/setup/hibernate-storage --check

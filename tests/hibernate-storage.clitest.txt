@@ -5,7 +5,7 @@
 $ tool=.local/bin/setup/hibernate-storage; HTMP=$(mktemp -d); R=$HTMP/root; B=$HTMP/bin; TRACE=$HTMP/trace; mkdir -p "$B"; reset_fixture() { rm -rf "$R"; mkdir -p "$R/etc" "$R/proc" "$R/sys/power" "$R/dev/block" "$R/dev"; printf 'MemTotal:       33554432 kB\n' > "$R/proc/meminfo"; : > "$R/proc/cmdline"; printf '0:0\n' > "$R/sys/power/resume"; printf '99\n' > "$R/sys/power/resume_offset"; : > "$R/dev/root"; : > "$R/dev/resume"; ln -s ../resume "$R/dev/block/253:3"; printf 'Filename Type Size Used Priority\n%s partition 34603008 10485760 -1\n' "$R/dev/resume" > "$R/proc/swaps"; printf '/dev/resume none swap sw 0 0\n' > "$R/etc/fstab"; : > "$TRACE"; rm -f "$HTMP/resume-swapon-failed"; }; reset_fixture; echo ready
 ready
 $ printf '#!/bin/sh\ncase " $* " in\n  *" --fstab "*) [ "${HIBERNATE_STORAGE_FSTAB_RESUME:-1}" -eq 0 ] || echo "$HIBERNATE_STORAGE_ROOT/dev/resume swap sw" ;;\n  *" FSTYPE "*) echo "${HIBERNATE_STORAGE_FSTYPE:-ext4}" ;;\n  *" SOURCE "*) echo "$HIBERNATE_STORAGE_ROOT/dev/root" ;;\n  *" AVAIL "*) echo "${HIBERNATE_STORAGE_AVAIL:-214748364800}" ;;\n  *) exit 2 ;;\nesac\n' > "$B/findmnt"
-$ printf '#!/bin/sh\ncase " $* " in\n  *" MAJ:MIN "*) echo 253:3 ;;\n  *" FSTYPE "*) echo swap ;;\n  *" SIZE "*) echo "${HIBERNATE_STORAGE_RESUME_BYTES:-35433480192}" ;;\n  *) printf "%%s\\n" ${HIBERNATE_STORAGE_LSBLK_TYPES:-lvm crypt part disk} ;;\nesac\n' > "$B/lsblk"
+$ printf '#!/bin/sh\ncase " $* " in\n  *" MAJ:MIN "*) echo "253:3  " ;;\n  *" FSTYPE "*) echo swap ;;\n  *" SIZE "*) echo "${HIBERNATE_STORAGE_RESUME_BYTES:-35433480192}" ;;\n  *) printf "%%s\\n" ${HIBERNATE_STORAGE_LSBLK_TYPES:-lvm crypt part disk} ;;\nesac\n' > "$B/lsblk"
 $ printf '#!/bin/sh\nfor path do :; done\ntype=${HIBERNATE_STORAGE_BLKID_TYPE:-swap}\n[ "$type" = none ] || printf "%%s\\n" "$type"\n' > "$B/blkid"
 $ printf '#!/bin/sh\nprintf "fallocate %%s\\n" "$*" >> "$HIBERNATE_STORAGE_TRACE"\nif [ "${HIBERNATE_STORAGE_FAIL_FALLOCATE:-0}" -eq 1 ]; then /usr/bin/truncate -s 1M "$3"; exit 1; fi\nexec /usr/bin/truncate -s "$2" "$3"\n' > "$B/fallocate"
 $ printf '#!/bin/sh\nif [ "${HIBERNATE_STORAGE_FAIL_CHMOD:-0}" -eq 1 ]; then printf "chmod %%s\\n" "$*" >> "$HIBERNATE_STORAGE_TRACE"; exit 1; fi\nexec /usr/bin/chmod "$@"\n' > "$B/chmod"
@@ -51,6 +51,27 @@ $ HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $
 hibernate-storage: converged — routine 48 GiB, resume reserved
 $
 
+a swap file resume target is repairable drift, not an unsafe state:
+
+$ reset_fixture; printf '253:4\n' > "$R/sys/power/resume"; printf '79427584\n' > "$R/sys/power/resume_offset"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"; cat "$TRACE"
+hibernate-storage: drift — select dedicated resume swap; create 48 GiB routine swapfile; activate priority 100; drain resume swap; persist fstab
+rc=1
+$ HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool apply > /dev/null 2>&1; echo "rc=$?"; cat "$R/sys/power/resume" "$R/sys/power/resume_offset"
+rc=0
+253:3
+0
+$ reset_fixture; printf '253:4\n' > "$R/sys/power/resume"; printf '79427584\n' > "$R/sys/power/resume_offset"; printf 'root=/dev/mapper/root resume=UUID=stale resume_offset=79427584\n' > "$R/proc/cmdline"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"; cat "$TRACE"
+hibernate-storage: kernel command line pins a swap file resume target
+rc=2
+$
+
+a resume partition between MemTotal and rounded RAM stays usable:
+
+$ reset_fixture; printf 'MemTotal:       32532440 kB\n' > "$R/proc/meminfo"; /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$3=32821244} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
+hibernate-storage: drift — select dedicated resume swap; create 48 GiB routine swapfile; activate priority 100; drain resume swap; persist fstab
+rc=1
+$
+
 unsafe storage fails before any mutation:
 
 $ reset_fixture; HIBERNATE_STORAGE_FSTAB_RESUME=0 HIBERNATE_STORAGE_LSBLK_TYPES='lvm crypt part disk' HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
@@ -62,8 +83,8 @@ rc=2
 $ reset_fixture; /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$5=100} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
 hibernate-storage: dedicated resume swap priority must stay below routine swap
 rc=2
-$ reset_fixture; printf 'MemTotal:       33554433 kB\n' > "$R/proc/meminfo"; /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$3=33554433} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
-hibernate-storage: dedicated resume swap is smaller than rounded physical memory
+$ reset_fixture; /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$3=33554431} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
+hibernate-storage: dedicated resume swap is smaller than physical memory
 rc=2
 $ reset_fixture; HIBERNATE_STORAGE_AVAIL=53687091200 HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool apply 2>&1; echo "rc=$?"; cat "$R/sys/power/resume" "$R/sys/power/resume_offset"; cat "$TRACE"
 hibernate-storage: root needs 48 GiB for routine swap plus 10 GiB free
