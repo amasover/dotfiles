@@ -6,7 +6,7 @@
 #   hibernate-storage apply     create/reconcile routine swap; requires root
 #
 # Contract: installer already created one encrypted, active swap partition at
-# least as large as rounded physical RAM and persisted it in fstab. If the kernel
+# least as large as physical RAM and persisted it in fstab. If the kernel
 # has no resume target yet, this module selects that unambiguous partition.
 # This module creates /swapfile inside encrypted ext4 root for routine paging,
 # sized to 1.5x rounded RAM and preferred at priority 100. The resume partition
@@ -99,6 +99,38 @@ fstab_has_resume_swap() {
     ((resume_fstab_priority < 100))
 }
 
+cmdline_has_resume_policy() {
+    local cmdline
+    cmdline=$(rooted /proc/cmdline)
+    [[ -r $cmdline ]] || die "cannot read kernel command line"
+    awk '
+        {
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ /^resume(_offset)?=/) found = 1
+            }
+        }
+        END { exit !found }
+    ' "$cmdline"
+}
+
+# Aim the module at the one active swap partition. Callers clear resume_configured
+# so apply reprograms the kernel to that partition at offset 0.
+select_dedicated_resume_swap() {
+    local swaps=$1
+    local -a candidates=()
+
+    mapfile -t candidates < <(awk 'NR > 1 && $2 == "partition" && $1 !~ /\/zram/ { print $1 }' "$swaps")
+    ((${#candidates[@]} == 1)) \
+        || die "unconfigured resume needs exactly one active swap partition"
+    resume_device=${candidates[0]}
+    # lsblk pads MAJ:MIN to its header width even with --noheadings.
+    resume_target_code=$(lsblk -n -o MAJ:MIN "$resume_device") \
+        || die "cannot derive dedicated resume device number"
+    resume_target_code=${resume_target_code//[[:space:]]/}
+    [[ $resume_target_code =~ ^[0-9]+:[0-9]+$ && $resume_target_code != 0:0 ]] \
+        || die "dedicated resume device number is malformed"
+}
+
 report_drift() {
     local item first=1
     printf 'hibernate-storage: drift — '
@@ -114,11 +146,10 @@ report_drift() {
 }
 
 inspect() {
-    local meminfo resume_code resume_offset cmdline root_fstype root_source
+    local meminfo resume_code resume_offset root_fstype root_source
     local resume_record routine_record expected_bytes actual_bytes mode swaps
     local resume_size_bytes signature available required_bytes fstab
     local total_swap_count routine_fstab_count source
-    local -a candidates=()
 
     meminfo=$(rooted /proc/meminfo)
     mem_kib=$(awk '$1 == "MemTotal:" { print $2; found = 1 } END { if (!found) exit 1 }' "$meminfo") \
@@ -150,29 +181,20 @@ inspect() {
     resume_target_code=$resume_code
     if [[ $resume_code == 0:0 ]]; then
         resume_configured=0
-        cmdline=$(rooted /proc/cmdline)
-        [[ -r $cmdline ]] || die "cannot read kernel command line"
-        if awk '
-            {
-                for (i = 1; i <= NF; i++) {
-                    if ($i ~ /^resume(_offset)?=/) found = 1
-                }
-            }
-            END { exit !found }
-        ' "$cmdline"; then
+        if cmdline_has_resume_policy; then
             die "kernel command line has resume policy but no resolved resume device"
         fi
-        mapfile -t candidates < <(awk 'NR > 1 && $2 == "partition" && $1 !~ /\/zram/ { print $1 }' "$swaps")
-        ((${#candidates[@]} == 1)) \
-            || die "unconfigured resume needs exactly one active swap partition"
-        resume_device=${candidates[0]}
-        resume_target_code=$(lsblk -n -o MAJ:MIN "$resume_device") \
-            || die "cannot derive dedicated resume device number"
-        [[ $resume_target_code =~ ^[0-9]+:[0-9]+$ && $resume_target_code != 0:0 ]] \
-            || die "dedicated resume device number is malformed"
+        select_dedicated_resume_swap "$swaps"
+    elif ((resume_offset != 0)); then
+        # A non-zero offset resolves to a swap file. systemd selects one on its own
+        # whenever the kernel has no resume target, which silently retargets the
+        # hibernation image away from the reserved partition onto routine swap.
+        resume_configured=0
+        if cmdline_has_resume_policy; then
+            die "kernel command line pins a swap file resume target"
+        fi
+        select_dedicated_resume_swap "$swaps"
     else
-        ((resume_offset == 0)) \
-            || die "dedicated resume partition requires zero resume offset"
         resume_device=$(readlink -f "$(rooted "/dev/block/$resume_code")") \
             || die "cannot resolve kernel resume device"
     fi
@@ -211,8 +233,10 @@ inspect() {
             || die "inactive resume swap size is malformed"
         resume_size_kib=$((resume_size_bytes / 1024))
     fi
-    ((resume_size_kib >= ram_gib * 1048576)) \
-        || die "dedicated resume swap is smaller than rounded physical memory"
+    # The image cannot exceed MemTotal, so compare against it rather than the
+    # rounded figure used for sizing the routine swapfile.
+    ((resume_size_kib >= mem_kib)) \
+        || die "dedicated resume swap is smaller than physical memory"
 
     routine_path=$(rooted /swapfile)
     while read -r source _; do

@@ -764,9 +764,9 @@ round retains its SDK session instead of re-reading work.
 Issue: [#195](https://github.com/amasover/dotfiles/issues/195)
 
 Context: `omp-mode` selects provider-paired YAML overlays before OMP starts:
-Claude uses Fable `xhigh` with Haiku `low` workers; OpenAI uses Terra `xhigh`
-with Luna `low` workers. OMP's extension API can set an active primary model but
-has no supported session-scoped mutation for `modelRoles` or
+Claude uses Fable `xhigh` with Haiku `low` workers; GitHub Copilot uses Sol `max`
+with Luna `xhigh` workers; OpenAI uses Terra `xhigh` with Luna `low` workers.
+OMP's extension API has no supported session-scoped mutation for `modelRoles` or
 `task.agentModelOverrides`; retain the launcher rather than write global config
 from a plugin. Separately, the Pi adapter needs `x-session-affinity` on
 Meridian requests after a tool result; without it Meridian intentionally starts
@@ -780,8 +780,10 @@ an independent SDK session every round ([Meridian #820](https://github.com/rynfa
 - Given a Meridian tool round, then the first request is `lineage=new` and its
   tool-result continuation is `lineage=continuation` in proxy telemetry
 - Given `omp-mode claude`, then Fable at `xhigh` is primary and subsequent
-  `sonic`/`scout` workers use Haiku at `low`; given `omp-mode openai`, then
-  Terra at `xhigh` is primary and those workers use Luna at `low`
+  `sonic`/`scout` workers use Haiku at `low`; given `omp-mode copilot`, then Sol
+  at `max` is primary and those workers use Luna at `xhigh`; given
+  `omp-mode openai`, then Terra at `xhigh` is primary and those workers use Luna
+  at `low`
 - Given a later `/provider-mode` extension proposal, then it waits for an OMP
   session-scoped worker-routing API; it does not use private internals or write
   `~/.omp/agent/config.yml` at runtime

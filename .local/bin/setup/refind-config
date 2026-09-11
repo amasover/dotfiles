@@ -359,6 +359,17 @@ def resume_options(root: Path) -> list[str]:
         return []
     if not re.fullmatch(r"\d+:\d+", value):
         raise RefindError("/sys/power/resume is malformed")
+    offset_path = rooted(root, "/sys/power/resume_offset")
+    offset = offset_path.read_text().strip() if offset_path.is_file() else "0"
+    if not re.fullmatch(r"\d+", offset):
+        raise RefindError("/sys/power/resume_offset is malformed")
+    if offset != "0":
+        # A non-zero offset resolves to a swap file. systemd selects one on its own
+        # whenever the kernel has no resume target, so persisting it here would pin
+        # routine paging storage into boot config. hibernate-storage owns selection.
+        raise RefindError(
+            "/sys/power/resume points at a swap file; run hibernate-storage apply first"
+        )
     if root != Path("/"):
         raise RefindError(
             f"fixture with active resume must provide kernel_options in {MACHINE_PATH}"
@@ -379,15 +390,7 @@ def resume_options(root: Path) -> list[str]:
     uuids = {item.get("uuid") for item in matches if item.get("uuid")}
     if proc.returncode or len(uuids) != 1:
         raise RefindError("cannot derive one UUID for /sys/power/resume device")
-    options = [f"resume=UUID={uuids.pop()}"]
-    offset_path = rooted(root, "/sys/power/resume_offset")
-    if offset_path.is_file():
-        offset = offset_path.read_text().strip()
-        if not re.fullmatch(r"\d+", offset):
-            raise RefindError("/sys/power/resume_offset is malformed")
-        if offset != "0":
-            options.append(f"resume_offset={offset}")
-    return options
+    return [f"resume=UUID={uuids.pop()}"]
 
 
 def resolve_identity(root: Path, machine: dict) -> list[str]:

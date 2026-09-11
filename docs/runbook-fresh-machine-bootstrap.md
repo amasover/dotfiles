@@ -183,6 +183,8 @@ The Story 2.29 metal recipe creates one LUKS container holding an ext4 root LV a
 resume LV exactly equal to rounded physical RAM. It disables zram, activates the resume
 LV at priority -1 before Archinstall runs `genfstab`, and refuses a disk that cannot
 also hold the future 1.5x-RAM routine swapfile plus 40 GiB workstation headroom.
+Whole-GiB rounding of physical RAM is a safe target; the image itself can never exceed
+`MemTotal`, so that is the size the module enforces.
 
 After first boot and yadm checkout:
 
@@ -200,10 +202,18 @@ After first boot and yadm checkout:
    resume partition, and atomically adds fstab policy after backing up the old
    file under `/var/backups/dotfiles/hibernate-storage/`. It refuses ambiguous,
    unencrypted, undersized, non-ext4, or low-disk-space layouts before mutation.
+
+   Without a `resume=` kernel option, systemd selects a hibernation location on
+   its own and takes the highest-priority swap area — `/swapfile` — which aims
+   the image at routine paging storage inside root. The module treats that state
+   as repairable drift and reprograms `/sys/power/resume` to the dedicated
+   partition at offset 0. Step 3 is what makes the selection survive reboot.
 3. Run `refind-config apply`. Story 2.29 marks Archinstall's fresh rEFInd files as
    managed handoff inputs, so normal backup-first apply replaces them after the Nord
    package lands. It derives `resume=UUID=...` from the resume device selected above;
-   no disk identifier enters this repo. Use `adopt` only for an older unmanaged install.
+   no disk identifier enters this repo. It refuses to derive from a swap-file resume
+   target rather than pinning routine paging storage into boot config. Use `adopt`
+   only for an older unmanaged install.
 4. Reboot, then require both checks before the first attended hibernate test:
    ```bash
    ~/.local/bin/setup/hibernate-storage --check
