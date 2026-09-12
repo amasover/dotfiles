@@ -23,13 +23,12 @@ Disposable handoff for active work. GitHub issues own durable detail; the
 
 ## In flight
 
-- **2.29 hibernate storage provisioning** ([#235](https://github.com/amasover/dotfiles/issues/235)):
-  `hibernate-storage` now owns resume selection, routine swap sizing/priorities,
-  fstab backup/convergence, and unsafe-layout refusal. All 40 rooted fixture
-  checks pass. The stricter rounded-RAM check now flags the current 31.3 GiB
-  resume partition below the required 32 GiB; future metal provisioning remains
-  in PR [#236](https://github.com/amasover/dotfiles/pull/236). Next: review and
-  merge. Story 2.29's future metal generator consumes this storage contract.
+- **2.52 rEFInd follow-up** ([#230](https://github.com/amasover/dotfiles/issues/230)):
+  the first live `adopt` generated `also_scan_dirs +,@/arch` and the next reboot
+  had no Arch entry; the ESP was hand-corrected to `+,arch` from a rescue stick.
+  The branch fixes the generator and adds a machine-local `dual_boot` stanza.
+  Next: merge, then on the workstation write `/etc/dotfiles/refind.json` with the
+  Ubuntu entry, `refind-config apply`, and do the runbook's reboot validation.
 
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   laptop and home-4K profiles now match current modesetting names; home split
