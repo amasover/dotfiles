@@ -511,9 +511,14 @@ def resolve_identity(root: Path, machine: dict) -> list[str]:
     return validate_identity(identity, "derived live state")
 
 
+def mount_device(source: str) -> str:
+    # findmnt reports a bind mount as "/dev/x[/subdir]"; the device is the prefix.
+    return source.split("[", 1)[0]
+
+
 def partition_guid(source: str) -> str | None:
     """Partition GUID of a findmnt SOURCE (bind-mount suffix stripped), or None."""
-    device = source.split("[", 1)[0]
+    device = mount_device(source)
     proc = subprocess.run(
         ["/usr/bin/lsblk", "--noheadings", "--output", "PARTUUID", device],
         text=True,
@@ -530,7 +535,7 @@ def partition_guid(source: str) -> str | None:
 
 def boot_volume_root(source: str) -> Path:
     """Mount point of the boot volume's filesystem root (FSROOT "/")."""
-    device = source.split("[", 1)[0]
+    device = mount_device(source)
     proc = subprocess.run(
         ["/usr/bin/findmnt", "--json", "--output", "TARGET,FSROOT", "--source", device],
         text=True,
@@ -551,7 +556,8 @@ def boot_volume_root(source: str) -> Path:
     ]
     if proc.returncode or len(targets) != 1:
         raise RefindError(
-            "boot volume root is not mounted exactly once; cannot verify dual_boot paths"
+            "boot volume root is not mounted exactly once (need one mount of the"
+            " boot partition with FSROOT /); cannot verify dual_boot paths"
         )
     return Path(targets[0])
 
