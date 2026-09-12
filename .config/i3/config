@@ -92,6 +92,9 @@ bindsym $mod+d exec rofi -show drun
 # bindcode --release 133 exec rofi -show drun
 # bindsym $sup+c exec conky
 
+# emoji / unicode picker (Super+. matches Windows/GNOME)
+bindsym $sup+period exec --no-startup-id rofimoji
+
 
 # bindsym $mod+c exec zsh -c "rofi -show fb -modi fb:~/code/go/bin/dot"
 # bindsym $mod+c exec rofi --modi "DERP:dot" -show "DERP"
