@@ -172,6 +172,16 @@ After first boot and yadm checkout:
    ```
    The final command must return `s "yes"`.
 
+### Loaded hibernation hangs with zswap
+
+If storage and boot configuration pass but hibernation hangs under memory
+pressure with zswap populated, use the opt-in
+[hibernate-only shrinker workaround](../.config/dotfiles/hibernate/README.md).
+It pauses the proactive zswap shrinker for `systemd-hibernate.service` only,
+covering both idle timers and the i3 hibernate shortcut without disabling
+zswap or hibernation. Follow its attended verification and upstream-removal
+instructions; do not deploy it universally or modify another OS's swap.
+
 ## rEFInd metal boot configuration
 
 Story 2.52 ([#230](https://github.com/amasover/dotfiles/issues/230)) separates
