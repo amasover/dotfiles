@@ -1,0 +1,49 @@
+#!/usr/bin/sh
+# Work around hibernation reclaim hangs without disabling normal zswap use.
+# Retirement: /etc/systemd/system/systemd-hibernate.service.d/README.md
+set -eu
+umask 077
+# Rooted fixtures exercise transitions without touching host sysfs.
+root=${HIBERNATE_ZSWAP_ROOT:-/}
+case "$root" in /*) ;; *)
+    echo "hibernate-zswap: root must be absolute" >&2
+    exit 2
+    ;;
+esac
+root=${root%/}
+parameter=$root/sys/module/zswap/parameters/shrinker_enabled
+state=$root/run/hibernate-zswap-shrinker/previous
+case "${1-}" in
+    prepare)
+        read -r previous <"$parameter"
+        case "$previous" in Y | N | 0 | 1) ;; *)
+            echo "hibernate-zswap: invalid shrinker state" >&2
+            exit 1
+            ;;
+        esac
+        # Save before changing sysfs so ExecStopPost can also recover failed starts.
+        (
+            set -C
+            printf '%s\n' "$previous" >"$state"
+        )
+        printf 'N\n' >"$parameter"
+        echo "hibernate-zswap: paused proactive shrinker (previous=$previous); zswap remains enabled"
+        ;;
+    restore)
+        # ExecStopPost also runs when prepare failed before saving a value.
+        [ -e "$state" ] || exit 0
+        read -r previous <"$state"
+        case "$previous" in Y | N | 0 | 1) ;; *)
+            echo "hibernate-zswap: invalid saved state" >&2
+            exit 1
+            ;;
+        esac
+        printf '%s\n' "$previous" >"$parameter"
+        rm -- "$state"
+        echo "hibernate-zswap: restored proactive shrinker=$previous"
+        ;;
+    *)
+        echo "usage: hibernate-zswap-shrinker prepare|restore" >&2
+        exit 2
+        ;;
+esac
