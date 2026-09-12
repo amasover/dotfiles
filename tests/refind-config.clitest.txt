@@ -24,6 +24,34 @@ $ .local/bin/setup/refind-config --check apply --root "$R" >/dev/null 2>&1; echo
 rc=2
 $
 
+scan directory is volume-relative and never carries rEFInd's Btrfs "@" prefix:
+
+$ grep -c '@' "$R/efi/EFI/refind/dotfiles-machine.conf"; grep '^also_scan_dirs' "$R/efi/EFI/refind/dotfiles-machine.conf"
+0
+also_scan_dirs +,arch
+$
+
+dual_boot machine-local input adds one manual stanza and hides the sibling loader; removing it converges back:
+
+$ printf '%s\n' '{"esp":"/efi","boot_fsroot":"/arch","kernel_options":["cryptdevice=UUID=11111111-1111-1111-1111-111111111111:cryptroot","root=/dev/mapper/vg-root","resume=UUID=22222222-2222-2222-2222-222222222222"],"dual_boot":[{"title":"Other Linux","volume":"33333333-3333-3333-3333-333333333333","loader":"/other/vmlinuz","initrd":"/other/initrd.img","fallback_initrd":"/other/initrd.img.old","options":["root=/dev/mapper/vg-other"],"dont_scan_dirs":["EFI/other"]}]}' > "$R/etc/dotfiles/refind.json"; .local/bin/setup/refind-config --check --root "$R"; echo "rc=$?"
+rEFInd configuration: would reconcile dotfiles-machine.conf
+rc=1
+$ .local/bin/setup/refind-config apply --root "$R" | tail -1; grep -E '^(menuentry|    volume|    loader|    initrd|    options|        initrd|dont_scan_dirs)' "$R/efi/EFI/refind/dotfiles-machine.conf"
+rEFInd configuration: reconciled dotfiles-machine.conf
+menuentry "Other Linux" {
+    volume 33333333-3333-3333-3333-333333333333
+    loader /other/vmlinuz
+    initrd /other/initrd.img
+    options "root=/dev/mapper/vg-other rw add_efi_memmap"
+        initrd /other/initrd.img.old
+dont_scan_dirs +,EFI/other
+$ .local/bin/setup/refind-config audit --root "$R" | grep 'dual-boot'
+  dual-boot stanzas: 1 (Other Linux); volume derived, redacted
+$ printf '%s\n' '{"esp":"/efi","boot_fsroot":"/arch","kernel_options":["cryptdevice=UUID=11111111-1111-1111-1111-111111111111:cryptroot","root=/dev/mapper/vg-root","resume=UUID=22222222-2222-2222-2222-222222222222"]}' > "$R/etc/dotfiles/refind.json"; .local/bin/setup/refind-config apply --root "$R" | tail -1; grep -c -E 'menuentry|dont_scan_dirs' "$R/efi/EFI/refind/dotfiles-machine.conf"
+rEFInd configuration: reconciled dotfiles-machine.conf
+0
+$
+
 bootstrap routes rEFInd only to workstation and preserves drift semantics:
 
 $ export BOOTSTRAP_TEST_MODE=1; REFIND_HOME="$RTMP/home"; REFIND_STUB="$REFIND_HOME/.local/bin/setup/refind-config"; REFIND_TRACE="$RTMP/refind-trace"; mkdir -p "$(dirname "$REFIND_STUB")"; printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$REFIND_TRACE"' 'exit "${REFIND_RC:-0}"' > "$REFIND_STUB"; chmod +x "$REFIND_STUB"; echo ready

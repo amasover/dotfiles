@@ -237,6 +237,41 @@ placeholders, never tracked machine values:
 }
 ```
 
+The generated `dotfiles-machine.conf` names the kernel directory relative to the
+volume root (`also_scan_dirs +,arch`), so rEFInd scans it on every volume it can
+read and takes options from the `refind_linux.conf` beside the kernel. Never
+prefix it with `@`: rEFInd's default `@/boot` is the literal Btrfs `@` subvolume
+path, and `@/arch` silently drops Arch from the menu (see
+[knowledge/errors/refind-at-prefix-scan-dir-hides-kernel.md](../knowledge/errors/refind-at-prefix-scan-dir-hides-kernel.md)).
+
+**Dual boot (machine-local only).** A sibling OS whose kernels share the boot
+filesystem cannot be auto-scanned: rEFInd would synthesize `root=` from the boot
+partition. Add `dual_boot` to the same JSON on that machine only; machines without
+it get no stanza, so the tracked policy stays dual-boot-agnostic. Live mode derives
+`volume` from the `/boot` mount's partition GUID and verifies each path exists on
+the boot volume before writing; target roots must state `volume`. That verification
+needs the boot partition's own filesystem root mounted exactly once (for example
+under `/mnt/boot`, with its kernel directory bind-mounted at `/boot`); when only
+the bind mount exists, the reconciler refuses before writing. `options` takes
+identity tokens only (`root=` required); the generator appends the same
+`rw add_efi_memmap` it gives the Arch entries. `dont_scan_dirs` hides the
+sibling's own loader so the menu carries one entry.
+
+```json
+{
+  "dual_boot": [
+    {
+      "title": "Ubuntu",
+      "loader": "/ubuntu/vmlinuz",
+      "initrd": "/ubuntu/initrd.img",
+      "fallback_initrd": "/ubuntu/initrd.img.old",
+      "options": ["root=/dev/mapper/<vg>-<ubuntu-root>"],
+      "dont_scan_dirs": ["EFI/ubuntu"]
+    }
+  ]
+}
+```
+
 ### Attended adoption and validation
 
 Treat first ownership transfer and boot proof as one attended operation:

@@ -13,7 +13,18 @@ from conftest import load_tool
 refind = load_tool("refind_config", "refind-config")
 
 
-def make_fixture(tmp_path: Path, *, machine=True) -> Path:
+DUAL_BOOT_ENTRY = {
+    "title": "Other Linux",
+    "volume": "33333333-3333-3333-3333-333333333333",
+    "loader": "/other/vmlinuz",
+    "initrd": "/other/initrd.img",
+    "fallback_initrd": "/other/initrd.img.old",
+    "options": ["root=/dev/mapper/vg-other"],
+    "dont_scan_dirs": ["EFI/other"],
+}
+
+
+def make_fixture(tmp_path: Path, *, machine=True, dual_boot=False) -> Path:
     root = tmp_path / "root"
     for path in (
         "boot",
@@ -60,6 +71,8 @@ def make_fixture(tmp_path: Path, *, machine=True) -> Path:
                 "resume=UUID=22222222-2222-2222-2222-222222222222",
             ],
         }
+        if dual_boot:
+            config["dual_boot"] = [dict(DUAL_BOOT_ENTRY)]
         path = root / "etc/dotfiles/refind.json"
         path.parent.mkdir(parents=True)
         path.write_text(json.dumps(config))
@@ -94,7 +107,13 @@ def test_check_is_read_only_then_apply_converges_and_preserves_ubuntu(tmp_path, 
     machine = (root / "efi/EFI/refind/dotfiles-machine.conf").read_text()
     linux = (root / "boot/refind_linux.conf").read_text()
     assert policy == refind.repo_policy().read_text()
-    assert "also_scan_dirs +,@/arch" in machine
+    # Volume-relative scan directory. rEFInd's "@/boot" default is the literal
+    # Btrfs "@" subvolume path, so "@/arch" would scan a directory that never
+    # exists and drop Arch from the menu (live regression, 2026-09-11).
+    assert "also_scan_dirs +,arch\n" in machine
+    assert "@" not in machine
+    assert "menuentry" not in machine
+    assert "dont_scan_dirs" not in machine
     assert "resume=UUID=22222222-2222-2222-2222-222222222222" in linux
     assert "initrd=\\arch\\intel-ucode.img initrd=\\arch\\initramfs-%v.img" in linux
     assert "quiet" not in linux
@@ -426,3 +445,207 @@ def test_privileged_snapshot_executes_without_reopening_checkout(tmp_path):
     completed = subprocess.run(command, capture_output=True, check=False)
     assert completed.returncode == 1
     assert b"would reconcile" in completed.stdout
+
+
+def test_scan_directory_is_volume_relative_without_at_prefix():
+    assert b"also_scan_dirs +,arch\n" in refind.render_machine_config("/arch")
+    assert b"also_scan_dirs +,kernels/arch\n" in refind.render_machine_config(
+        "/kernels/arch"
+    )
+    assert b"also_scan_dirs" not in refind.render_machine_config("/")
+    assert b"@" not in refind.render_machine_config("/arch")
+
+
+def test_dual_boot_stanza_renders_only_from_machine_local_input(tmp_path, capsys):
+    root = make_fixture(tmp_path, dual_boot=True)
+
+    assert refind.main(["apply", "--root", str(root)]) == 0
+    assert refind.main(["--check", "--root", str(root)]) == 0
+    machine = (root / "efi/EFI/refind/dotfiles-machine.conf").read_text()
+    assert machine.endswith(
+        "also_scan_dirs +,arch\n"
+        "\n"
+        "# Dual-boot stanza from machine-local input; volume is the /boot partition.\n"
+        'menuentry "Other Linux" {\n'
+        "    volume 33333333-3333-3333-3333-333333333333\n"
+        "    loader /other/vmlinuz\n"
+        "    initrd /other/initrd.img\n"
+        '    options "root=/dev/mapper/vg-other rw add_efi_memmap"\n'
+        '    submenuentry "Boot using fallback initrd" {\n'
+        "        initrd /other/initrd.img.old\n"
+        "    }\n"
+        "}\n"
+        "\n"
+        "dont_scan_dirs +,EFI/other\n"
+    )
+    assert "Other Linux" not in (root / "boot/refind_linux.conf").read_text()
+
+    capsys.readouterr()
+    assert refind.main(["audit", "--root", str(root)]) == 0
+    output = capsys.readouterr().out
+    assert "dual-boot stanzas: 1 (Other Linux); volume derived, redacted" in output
+    assert "33333333-3333-3333-3333-333333333333" not in output
+    assert "vg-other" not in output
+
+    # Removing the machine-local entry removes the stanza again: machines
+    # without a sibling OS never carry one.
+    path = root / "etc/dotfiles/refind.json"
+    config = json.loads(path.read_text())
+    del config["dual_boot"]
+    path.write_text(json.dumps(config))
+    assert refind.main(["--check", "--root", str(root)]) == 1
+    assert refind.main(["apply", "--root", str(root)]) == 0
+    machine = (root / "efi/EFI/refind/dotfiles-machine.conf").read_text()
+    assert "menuentry" not in machine
+    assert "dont_scan_dirs" not in machine
+
+
+def test_dual_boot_volume_is_derived_live_and_explicit_for_targets():
+    entry = {key: value for key, value in DUAL_BOOT_ENTRY.items() if key != "volume"}
+
+    with pytest.raises(refind.RefindError, match="live volume is forbidden"):
+        refind.validate_dual_boot([dict(DUAL_BOOT_ENTRY)], True)
+    with pytest.raises(refind.RefindError, match="target root must provide volume"):
+        refind.validate_dual_boot([entry], False)
+    assert refind.validate_dual_boot([entry], True)[0]["title"] == "Other Linux"
+    lower = dict(DUAL_BOOT_ENTRY, volume=DUAL_BOOT_ENTRY["volume"].lower())
+    assert refind.validate_dual_boot([lower], False)[0]["volume"] == (
+        DUAL_BOOT_ENTRY["volume"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"title": 'Other" {'}, "title must be a short plain name"),
+        ({"loader": "other/vmlinuz"}, "must be an absolute file path"),
+        ({"initrd": "/other/../initrd.img"}, "must be an absolute file path"),
+        ({"fallback_initrd": "/other/init rd"}, "unsupported characters"),
+        ({"options": ["root=/dev/mapper/vg-other", "quiet"]}, "option key: quiet"),
+        ({"options": ["rd.lvm.lv=vg/other"]}, "exactly one root= option"),
+        ({"dont_scan_dirs": ["../EFI"]}, "relative directory path"),
+        ({"dont_scan_dirs": ["ESP:EFI/other"]}, "relative directory path"),
+        ({"volume": "not-a-guid"}, "volume must be a partition GUID"),
+        ({"icon": "os_other"}, "unknown keys: icon"),
+    ],
+)
+def test_dual_boot_rejects_unsafe_values_without_echoing_identity(
+    tmp_path, capsys, change, message
+):
+    root = make_fixture(tmp_path, dual_boot=True)
+    path = root / "etc/dotfiles/refind.json"
+    config = json.loads(path.read_text())
+    config["dual_boot"][0].update(change)
+    path.write_text(json.dumps(config))
+
+    assert refind.main(["--check", "--root", str(root)]) == 2
+    error = capsys.readouterr().err
+    assert message in error
+    assert "vg-other" not in error
+    assert not (root / "efi/EFI/refind/refind.conf").exists()
+
+
+def test_dual_boot_missing_required_key_fails_closed(tmp_path, capsys):
+    root = make_fixture(tmp_path, dual_boot=True)
+    path = root / "etc/dotfiles/refind.json"
+    config = json.loads(path.read_text())
+    del config["dual_boot"][0]["initrd"]
+    path.write_text(json.dumps(config))
+
+    assert refind.main(["--check", "--root", str(root)]) == 2
+    assert "missing keys: initrd" in capsys.readouterr().err
+
+
+def test_partition_guid_strips_bind_suffix_and_normalizes(monkeypatch):
+    observed = {}
+
+    def run(command, **_kwargs):
+        observed["command"] = command
+        return subprocess.CompletedProcess(
+            command, 0, "  33333333-3333-3333-3333-333333333333  \n", ""
+        )
+
+    monkeypatch.setattr(refind.subprocess, "run", run)
+    assert (
+        refind.partition_guid("/dev/example[/arch]")
+        == "33333333-3333-3333-3333-333333333333"
+    )
+    assert observed["command"][-1] == "/dev/example"
+
+    monkeypatch.setattr(
+        refind.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, "\n", ""),
+    )
+    assert refind.partition_guid("/dev/example") is None
+    monkeypatch.setattr(
+        refind.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, "not-a-guid\n", ""
+        ),
+    )
+    assert refind.partition_guid("/dev/example") is None
+
+
+def test_boot_volume_root_selects_the_filesystem_root_mount(monkeypatch):
+    def run(command, **_kwargs):
+        payload = {
+            "filesystems": [
+                {"target": "/mnt/boot", "fsroot": "/"},
+                {"target": "/boot", "fsroot": "/arch"},
+            ]
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    monkeypatch.setattr(refind.subprocess, "run", run)
+    assert refind.boot_volume_root("/dev/example[/arch]") == Path("/mnt/boot")
+
+    monkeypatch.setattr(
+        refind.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps({"filesystems": [{"target": "/boot", "fsroot": "/arch"}]}),
+            "",
+        ),
+    )
+    with pytest.raises(refind.RefindError, match="not mounted exactly once"):
+        refind.boot_volume_root("/dev/example[/arch]")
+
+
+def test_live_dual_boot_derives_volume_and_verifies_loader_paths(
+    tmp_path, monkeypatch
+):
+    volume_root = tmp_path / "mnt-boot"
+    (volume_root / "other").mkdir(parents=True)
+    (volume_root / "other/vmlinuz-1").write_bytes(b"kernel\n")
+    (volume_root / "other/vmlinuz").symlink_to("vmlinuz-1")
+    (volume_root / "other/initrd.img").write_bytes(b"initrd\n")
+    (volume_root / "other/initrd.img.old").write_bytes(b"old initrd\n")
+    monkeypatch.setattr(
+        refind,
+        "findmnt_record",
+        lambda target, fields: {"target": "/boot", "source": "/dev/example[/arch]"},
+    )
+    monkeypatch.setattr(
+        refind,
+        "partition_guid",
+        lambda source: "33333333-3333-3333-3333-333333333333",
+    )
+    monkeypatch.setattr(refind, "boot_volume_root", lambda source: volume_root)
+    entry = {key: value for key, value in DUAL_BOOT_ENTRY.items() if key != "volume"}
+    machine = {"dual_boot": refind.validate_dual_boot([entry], True)}
+
+    stanzas = refind.resolve_dual_boot(Path("/"), machine)
+    assert stanzas[0]["volume"] == "33333333-3333-3333-3333-333333333333"
+    assert "volume" not in machine["dual_boot"][0]
+
+    (volume_root / "other/initrd.img.old").unlink()
+    with pytest.raises(refind.RefindError, match="fallback_initrd is missing"):
+        refind.resolve_dual_boot(Path("/"), machine)
+
+    monkeypatch.setattr(refind, "partition_guid", lambda source: None)
+    with pytest.raises(refind.RefindError, match="cannot derive the boot volume"):
+        refind.resolve_dual_boot(Path("/"), machine)

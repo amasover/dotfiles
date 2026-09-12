@@ -16,8 +16,12 @@ reject symlinked operational paths.
 
 Optional machine-local input: /etc/dotfiles/refind.json below the selected root.
 Keys: esp (absolute mount path), boot_fsroot (absolute path inside its filesystem),
-and kernel_options (array of identity-bearing kernel tokens). Live mode derives
-identifiers from /proc/cmdline and /sys/power/resume; target roots require them.
+kernel_options (array of identity-bearing kernel tokens), and dual_boot (array of
+manual stanzas for other operating systems whose kernels share Arch's boot
+filesystem: title, loader, initrd, options, optional fallback_initrd and
+dont_scan_dirs). Live mode derives identifiers from /proc/cmdline,
+/sys/power/resume, and the /boot mount; target roots require kernel_options and
+each stanza's volume. Machines without dual_boot get no stanza.
 """
 
 from __future__ import annotations
@@ -41,7 +45,20 @@ MANAGED = "# Managed by dotfiles refind-config (Story 2.52, #230)."
 THEME_MARKER = ".dotfiles-refind-managed"
 ESP_CANDIDATES = ("/efi", "/boot/efi", "/boot")
 MACHINE_PATH = "/etc/dotfiles/refind.json"
-ALLOWED_MACHINE_KEYS = {"esp", "boot_fsroot", "kernel_options"}
+ALLOWED_MACHINE_KEYS = {"esp", "boot_fsroot", "kernel_options", "dual_boot"}
+DUAL_BOOT_KEYS = {
+    "title",
+    "loader",
+    "initrd",
+    "fallback_initrd",
+    "options",
+    "dont_scan_dirs",
+    "volume",
+}
+DUAL_BOOT_REQUIRED = {"title", "loader", "initrd", "options"}
+GUID_PATTERN = (
+    r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
+)
 ESP_FSTYPES = {"fat", "msdos", "vfat"}
 KERNEL_VERSION_STRINGS = (
     "linux-hardened",
@@ -158,7 +175,89 @@ def load_machine(root: Path) -> dict:
                 f"{MACHINE_PATH}: kernel_options must be an array of strings"
             )
         data["kernel_options"] = validate_identity(data["kernel_options"], MACHINE_PATH)
+    if "dual_boot" in data:
+        data["dual_boot"] = validate_dual_boot(data["dual_boot"], root == Path("/"))
     return data
+
+
+def validate_volume_path(value: object, label: str) -> str:
+    """An absolute file path inside the boot volume, as rEFInd will read it."""
+    if not isinstance(value, str):
+        raise RefindError(f"{label} must be a string")
+    pure = PurePosixPath(value)
+    if not pure.is_absolute() or ".." in pure.parts or len(pure.parts) < 2:
+        raise RefindError(f"{label} must be an absolute file path without '..'")
+    if value.endswith("/") or not re.fullmatch(r"/[A-Za-z0-9._+@/-]+", str(pure)):
+        raise RefindError(f"{label} contains unsupported characters")
+    return str(pure)
+
+
+def validate_scan_dir(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise RefindError(f"{label} must be a string")
+    stripped = value.strip("/")
+    if not stripped or not re.fullmatch(
+        r"[A-Za-z0-9._+-]+(?:/[A-Za-z0-9._+-]+)*", stripped
+    ):
+        raise RefindError(f"{label} must be a relative directory path")
+    if ".." in stripped.split("/"):
+        raise RefindError(f"{label} must be a relative directory path")
+    return stripped
+
+
+def validate_dual_boot(value: object, live: bool) -> list[dict]:
+    """Validate manual stanzas for sibling operating systems on the boot volume.
+
+    Live mode derives the volume from the /boot mount and forbids it as input;
+    target roots have no live mount, so they must state it.
+    """
+    if not isinstance(value, list):
+        raise RefindError(f"{MACHINE_PATH}: dual_boot must be an array of objects")
+    stanzas: list[dict] = []
+    for index, entry in enumerate(value):
+        label = f"{MACHINE_PATH}: dual_boot[{index}]"
+        if not isinstance(entry, dict):
+            raise RefindError(f"{label} must be an object")
+        unknown = sorted(set(entry) - DUAL_BOOT_KEYS)
+        if unknown:
+            raise RefindError(f"{label}: unknown keys: {', '.join(unknown)}")
+        missing = sorted(DUAL_BOOT_REQUIRED - set(entry))
+        if missing:
+            raise RefindError(f"{label}: missing keys: {', '.join(missing)}")
+        title = entry["title"]
+        if not isinstance(title, str) or not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9 ._+-]{0,63}", title
+        ):
+            raise RefindError(f"{label}: title must be a short plain name")
+        clean: dict = {"title": title}
+        for key in ("loader", "initrd", "fallback_initrd"):
+            if key in entry:
+                clean[key] = validate_volume_path(entry[key], f"{label}.{key}")
+        options = entry["options"]
+        if not isinstance(options, list) or not all(
+            isinstance(item, str) for item in options
+        ):
+            raise RefindError(f"{label}.options must be an array of strings")
+        clean["options"] = validate_identity(options, f"{label}.options")
+        dirs = entry.get("dont_scan_dirs", [])
+        if not isinstance(dirs, list):
+            raise RefindError(f"{label}.dont_scan_dirs must be an array of strings")
+        clean["dont_scan_dirs"] = [
+            validate_scan_dir(item, f"{label}.dont_scan_dirs") for item in dirs
+        ]
+        if "volume" in entry:
+            if live:
+                raise RefindError(
+                    f"{label}: live volume is forbidden; it is derived from the /boot mount"
+                )
+            volume = entry["volume"]
+            if not isinstance(volume, str) or not re.fullmatch(GUID_PATTERN, volume):
+                raise RefindError(f"{label}: volume must be a partition GUID")
+            clean["volume"] = volume.upper()
+        elif not live:
+            raise RefindError(f"{label}: target root must provide volume")
+        stanzas.append(clean)
+    return stanzas
 
 
 def same_directory(left: Path, right: Path) -> bool:
@@ -412,12 +511,82 @@ def resolve_identity(root: Path, machine: dict) -> list[str]:
     return validate_identity(identity, "derived live state")
 
 
+def mount_device(source: str) -> str:
+    # findmnt reports a bind mount as "/dev/x[/subdir]"; the device is the prefix.
+    return source.split("[", 1)[0]
+
+
+def partition_guid(source: str) -> str | None:
+    """Partition GUID of a findmnt SOURCE (bind-mount suffix stripped), or None."""
+    device = mount_device(source)
+    proc = subprocess.run(
+        ["/usr/bin/lsblk", "--noheadings", "--output", "PARTUUID", device],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    identifiers = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    if proc.returncode or len(identifiers) != 1:
+        return None
+    if not re.fullmatch(GUID_PATTERN, identifiers[0]):
+        return None
+    return identifiers[0].upper()
+
+
+def boot_volume_root(source: str) -> Path:
+    """Mount point of the boot volume's filesystem root (FSROOT "/")."""
+    device = mount_device(source)
+    proc = subprocess.run(
+        ["/usr/bin/findmnt", "--json", "--output", "TARGET,FSROOT", "--source", device],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    try:
+        records = json.loads(proc.stdout).get("filesystems", [])
+    except (AttributeError, json.JSONDecodeError) as exc:
+        raise RefindError("cannot parse boot volume mounts") from exc
+    targets = [
+        item["target"]
+        for item in records
+        if isinstance(item, dict)
+        and item.get("fsroot") == "/"
+        and isinstance(item.get("target"), str)
+        and item["target"]
+    ]
+    if proc.returncode or len(targets) != 1:
+        raise RefindError(
+            "boot volume root is not mounted exactly once (need one mount of the"
+            " boot partition with FSROOT /); cannot verify dual_boot paths"
+        )
+    return Path(targets[0])
+
+
+def resolve_dual_boot(root: Path, machine: dict) -> list[dict]:
+    stanzas = [dict(item) for item in machine.get("dual_boot", [])]
+    if not stanzas or root != Path("/"):
+        return stanzas
+    record = findmnt_record("/boot", ("TARGET", "SOURCE"))
+    volume = partition_guid(record["source"])
+    if volume is None:
+        raise RefindError("cannot derive the boot volume partition GUID for dual_boot")
+    volume_root = boot_volume_root(record["source"])
+    for stanza in stanzas:
+        for key in ("loader", "initrd", "fallback_initrd"):
+            if key in stanza and not (volume_root / stanza[key].lstrip("/")).is_file():
+                raise RefindError(
+                    f"dual_boot {key} is missing on the boot volume: {stanza[key]}"
+                )
+        stanza["volume"] = volume
+    return stanzas
+
+
 def uefi_path(boot_fsroot: str, filename: str) -> str:
     parts = [part for part in PurePosixPath(boot_fsroot).parts if part != "/"]
     return "\\" + "\\".join([*parts, filename])
 
 
-def render_machine_config(boot_fsroot: str) -> bytes:
+def render_machine_config(boot_fsroot: str, stanzas: list[dict] | None = None) -> bytes:
     lines = [
         MANAGED,
         "# Generated from boot mount metadata; never edit or commit this file.",
@@ -427,7 +596,37 @@ def render_machine_config(boot_fsroot: str) -> bytes:
             "# Kernel directory is the filesystem root; default scanning covers it."
         )
     else:
-        lines.append(f"also_scan_dirs +,@{boot_fsroot}")
+        # Volume-relative, scanned on every volume rEFInd can read. Never prefix
+        # it with "@": rEFInd's default "@/boot" is the literal Btrfs "@"
+        # subvolume path, not the rEFInd volume.
+        lines.append(f"also_scan_dirs +,{boot_fsroot.strip('/')}")
+    hidden: list[str] = []
+    for stanza in stanzas or []:
+        lines.extend(
+            [
+                "",
+                "# Dual-boot stanza from machine-local input; volume is the /boot partition.",
+                f'menuentry "{stanza["title"]}" {{',
+                f"    volume {stanza['volume']}",
+                f"    loader {stanza['loader']}",
+                f"    initrd {stanza['initrd']}",
+                f'    options "{" ".join(stanza["options"])} rw add_efi_memmap"',
+            ]
+        )
+        if "fallback_initrd" in stanza:
+            lines.extend(
+                [
+                    '    submenuentry "Boot using fallback initrd" {',
+                    f"        initrd {stanza['fallback_initrd']}",
+                    "    }",
+                ]
+            )
+        lines.append("}")
+        for item in stanza.get("dont_scan_dirs", []):
+            if item not in hidden:
+                hidden.append(item)
+    if hidden:
+        lines.extend(["", f"dont_scan_dirs +,{','.join(hidden)}"])
     return ("\n".join(lines) + "\n").encode()
 
 
@@ -582,6 +781,7 @@ def build_state(root: Path, action: str, policy_content: bytes | None = None) ->
     kernel_versions = required_boot_artifacts(root)
     boot_fsroot = discover_boot_fsroot(root, machine)
     identity = resolve_identity(root, machine)
+    stanzas = resolve_dual_boot(root, machine)
     policy = load_policy(policy_content)
     theme, theme_owner = load_theme(root)
     refind_dir = esp / "EFI/refind"
@@ -590,7 +790,7 @@ def build_state(root: Path, action: str, policy_content: bytes | None = None) ->
         (
             "dotfiles-machine.conf",
             refind_dir / "dotfiles-machine.conf",
-            render_machine_config(boot_fsroot),
+            render_machine_config(boot_fsroot, stanzas),
         ),
         (
             "refind_linux.conf",
@@ -606,6 +806,7 @@ def build_state(root: Path, action: str, policy_content: bytes | None = None) ->
         "esp_mount": esp_mount,
         "boot_fsroot": boot_fsroot,
         "identity": identity,
+        "dual_boot": stanzas,
         "kernel_versions": kernel_versions,
         "files": files,
         "theme": theme,
@@ -858,19 +1059,10 @@ def verify_active_refind_esp(root: Path, mount: dict[str, str]) -> None:
         r"\\EFI\\refind\\refind_x64\.efi", entry, re.IGNORECASE
     ):
         raise RefindError("active firmware entry is not the selected rEFInd ESP")
-    source = mount["source"].split("[", 1)[0]
-    proc = subprocess.run(
-        ["/usr/bin/lsblk", "--noheadings", "--output", "PARTUUID", source],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    identifiers = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-    if proc.returncode or len(identifiers) != 1:
+    identifier = partition_guid(mount["source"])
+    if identifier is None:
         raise RefindError("cannot bind selected ESP to firmware partition")
-    if not re.search(
-        rf"HD\([^,]+,GPT,{re.escape(identifiers[0])},", entry, re.IGNORECASE
-    ):
+    if not re.search(rf"HD\([^,]+,GPT,{re.escape(identifier)},", entry, re.IGNORECASE):
         raise RefindError(
             "active firmware entry does not use the selected ESP partition"
         )
@@ -949,6 +1141,12 @@ def audit(root: Path) -> int:
     )
     print(
         f"  refind_linux.conf: sha256={short_hash(rooted(root, '/boot/refind_linux.conf'))}"
+    )
+    stanzas = resolve_dual_boot(root, machine)
+    titles = ", ".join(stanza["title"] for stanza in stanzas)
+    print(
+        f"  dual-boot stanzas: {len(stanzas)}"
+        + (f" ({titles}); volume derived, redacted" if stanzas else "")
     )
     ubuntu_shim = esp / "EFI/ubuntu/shimx64.efi"
     ubuntu_mok = esp / "EFI/ubuntu/mmx64.efi"
