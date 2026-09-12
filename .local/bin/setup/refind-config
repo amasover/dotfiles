@@ -43,6 +43,11 @@ from pathlib import Path, PurePosixPath
 
 MANAGED = "# Managed by dotfiles refind-config (Story 2.52, #230)."
 THEME_MARKER = ".dotfiles-refind-managed"
+# Nord's monochrome OS logos stay out of the managed theme copy, so rEFInd falls
+# back to the stock logos refind-install placed in EFI/refind/icons. Function,
+# tool, volume, and arrow icons still come from the theme.
+OS_LOGO_PREFIX = "os_"
+STOCK_ICONS = "EFI/refind/icons"
 ESP_CANDIDATES = ("/efi", "/boot/efi", "/boot")
 MACHINE_PATH = "/etc/dotfiles/refind.json"
 ALLOWED_MACHINE_KEYS = {"esp", "boot_fsroot", "kernel_options", "dual_boot"}
@@ -733,8 +738,26 @@ def load_theme(root: Path) -> tuple[dict[str, bytes], str]:
         detail = ", ".join(missing or ["icons/*.png"])
         raise RefindError(f"package-owned Nord theme incomplete: {detail}")
     files = {name: (source / name).read_bytes() for name in required}
-    files.update({f"icons/{path.name}": path.read_bytes() for path in icons})
+    files.update(
+        {
+            f"icons/{path.name}": path.read_bytes()
+            for path in icons
+            if not path.name.startswith(OS_LOGO_PREFIX)
+        }
+    )
     return files, owner
+
+
+def stock_icons_present(esp: Path) -> bool:
+    return regular_file(esp / STOCK_ICONS / "os_unknown.png")
+
+
+def require_stock_icons(esp: Path) -> None:
+    """The theme copy omits OS logos, so the refind-install icon set must exist."""
+    if not stock_icons_present(esp):
+        raise RefindError(
+            f"stock rEFInd icons missing on the ESP: {STOCK_ICONS} (run refind-install)"
+        )
 
 
 def is_managed_file(path: Path) -> bool:
@@ -778,6 +801,7 @@ def build_state(root: Path, action: str, policy_content: bytes | None = None) ->
     writable = action in {"apply", "adopt"}
     esp_logical, esp, esp_mount = discover_esp(root, machine, writable)
     verify_active_refind_esp(root, esp_mount)
+    require_stock_icons(esp)
     kernel_versions = required_boot_artifacts(root)
     boot_fsroot = discover_boot_fsroot(root, machine)
     identity = resolve_identity(root, machine)
@@ -1119,7 +1143,8 @@ def audit(root: Path) -> int:
     owner = theme_source_owner(root) or "unverified"
     installed_theme = refind_dir / "themes/nord/theme.conf"
     print(
-        f"  Nord source owner: {owner}; installed: {'yes' if installed_theme.is_file() else 'no'}"
+        f"  Nord source owner: {owner}; installed: {'yes' if installed_theme.is_file() else 'no'}; "
+        f"stock OS logos: {'present' if stock_icons_present(esp) else 'missing'}"
     )
     print(f"  boot directory: /boot; filesystem root: {boot_fsroot}")
     boot = rooted(root, "/boot")

@@ -197,6 +197,15 @@ portable boot policy from machine identifiers:
   Intel microcode precedes the kernel-matched `initramfs-%v.img`.
 - `/usr/share/refind/themes/nord` remains package-owned. The reconciler verifies that
   ownership, copies only boot-time theme assets, and marks the ESP copy as managed.
+  It leaves Nord's `icons/os_*.png` out of that copy, so rEFInd falls back to the
+  stock logos `refind-install` placed in `EFI/refind/icons` (the colored Arch and
+  Ubuntu marks) while function, tool, and volume icons stay Nord. The policy sets
+  a twelve-entry `showtools` line after the theme include: the first five
+  (shell, about, shutdown, reboot, firmware) are the visible row, and the rest
+  overwrite leftover default slots, because rEFInd 0.14.2 does not clear the
+  default tool list when a shorter line is parsed and would double-render the
+  same four tools. Padding entries render only when their tool file exists. A
+  missing `EFI/refind/icons` fails `--check`, `apply`, and `adopt` closed.
 - The reconciler touches only `EFI/refind/**` and `/boot/refind_linux.conf`. It never
   edits NVRAM, installs a firmware entry, removes another loader, or reboots.
 

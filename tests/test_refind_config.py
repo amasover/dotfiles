@@ -35,12 +35,14 @@ def make_fixture(tmp_path: Path, *, machine=True, dual_boot=False) -> Path:
         "proc",
         "sys/power",
         "usr/share/refind/themes/nord/icons",
+        "efi/EFI/refind/icons",
         "run/refind-config",
     ):
         (root / path).mkdir(parents=True, exist_ok=True)
     for name in ("vmlinuz-linux", "initramfs-linux.img", "intel-ucode.img"):
         (root / "boot" / name).write_bytes((name + "\n").encode())
     (root / "efi/EFI/refind/refind_x64.efi").write_bytes(b"refind binary\n")
+    (root / "efi/EFI/refind/icons/os_unknown.png").write_bytes(b"stock unknown icon\n")
     (root / "etc/os-release").write_text("ID=arch\n")
     (root / "efi/EFI/ubuntu/shimx64.efi").write_bytes(b"ubuntu shim\n")
     (root / "efi/EFI/ubuntu/mmx64.efi").write_bytes(b"ubuntu mok manager\n")
@@ -54,6 +56,7 @@ def make_fixture(tmp_path: Path, *, machine=True, dual_boot=False) -> Path:
     source = root / "usr/share/refind/themes/nord"
     for name in ("theme.conf", "bg.png", "selection_big.png", "selection_small.png"):
         (source / name).write_bytes(("theme " + name + "\n").encode())
+    (source / "icons/func_shutdown.png").write_bytes(b"nord shutdown icon\n")
     (source / "icons/os_arch.png").write_bytes(b"arch icon\n")
     (source / "icons/os_ubuntu.png").write_bytes(b"ubuntu icon\n")
     (root / "run/refind-config/efibootmgr.txt").write_text(
@@ -220,6 +223,18 @@ def test_policy_is_portable_and_keeps_dual_boot_scanning():
     assert "include dotfiles-machine.conf" in policy
     assert "include themes/nord/theme.conf" in policy
     assert "dont_scan" not in policy
+    # Appearance overrides must follow the theme include: rEFInd keeps the last
+    # value of a repeated token, and Nord sets its own showtools. The list must
+    # cover every default tool slot: rEFInd 0.14.2 does not reset the array, so
+    # leftover defaults double-render about/shutdown/reboot/firmware.
+    assert (
+        "showtools shell,about,shutdown,reboot,firmware,"
+        "memtest,gdisk,gptsync,apple_recovery,windows_recovery,netboot,mok_tool" in policy
+    )
+    assert policy.index("include themes/nord/theme.conf") < policy.index("showtools")
+    assert (
+        sum(1 for line in policy.splitlines() if line.startswith("showtools")) == 1
+    )
 
 
 def test_audit_redacts_identifiers_and_records_boot_paths(tmp_path, capsys):
@@ -312,6 +327,35 @@ def test_matching_unmanaged_theme_still_requires_adopt(tmp_path, capsys):
     assert refind.main(["apply", "--root", str(root)]) == 2
     assert "unmanaged destination: Nord theme" in capsys.readouterr().err
     assert not (destination / refind.THEME_MARKER).exists()
+
+
+def test_managed_theme_yields_os_logos_to_stock_icons(tmp_path, capsys):
+    root = make_fixture(tmp_path)
+    assert refind.main(["apply", "--root", str(root)]) == 0
+    theme = root / "efi/EFI/refind/themes/nord"
+    assert (theme / "icons/func_shutdown.png").read_bytes() == b"nord shutdown icon\n"
+    assert not (theme / "icons/os_arch.png").exists()
+    assert not (theme / "icons/os_ubuntu.png").exists()
+    stock = root / "efi/EFI/refind/icons/os_unknown.png"
+    assert stock.read_bytes() == b"stock unknown icon\n"
+    capsys.readouterr()
+
+    # An older managed copy that still carries Nord's monochrome logos is drift.
+    (theme / "icons/os_arch.png").write_bytes(b"arch icon\n")
+    assert refind.main(["--check", "--root", str(root)]) == 1
+    assert "would reconcile Nord theme" in capsys.readouterr().out
+    assert refind.main(["apply", "--root", str(root)]) == 0
+    assert not (theme / "icons/os_arch.png").exists()
+    assert refind.main(["--check", "--root", str(root)]) == 0
+
+
+def test_missing_stock_icons_fail_before_writes(tmp_path, capsys):
+    root = make_fixture(tmp_path)
+    (root / "efi/EFI/refind/icons/os_unknown.png").unlink()
+    assert refind.main(["apply", "--root", str(root)]) == 2
+    assert "stock rEFInd icons missing" in capsys.readouterr().err
+    assert not (root / "efi/EFI/refind/refind.conf").exists()
+    assert not (root / "var/backups/dotfiles/refind").exists()
 
 
 def test_symlinked_destination_fails_closed(tmp_path, capsys):
