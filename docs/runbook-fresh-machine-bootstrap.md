@@ -239,9 +239,13 @@ filesystem cannot be auto-scanned: rEFInd would synthesize `root=` from the boot
 partition. Add `dual_boot` to the same JSON on that machine only; machines without
 it get no stanza, so the tracked policy stays dual-boot-agnostic. Live mode derives
 `volume` from the `/boot` mount's partition GUID and verifies each path exists on
-the boot volume before writing; target roots must state `volume`. `options` takes
-identity tokens only (`root=` required); the generator appends `rw add_efi_memmap`.
-`dont_scan_dirs` hides the sibling's own loader so the menu carries one entry.
+the boot volume before writing; target roots must state `volume`. That verification
+needs the boot partition's own filesystem root mounted exactly once (for example
+under `/mnt/boot`, with its kernel directory bind-mounted at `/boot`); when only
+the bind mount exists, the reconciler refuses before writing. `options` takes
+identity tokens only (`root=` required); the generator appends the same
+`rw add_efi_memmap` it gives the Arch entries. `dont_scan_dirs` hides the
+sibling's own loader so the menu carries one entry.
 
 ```json
 {

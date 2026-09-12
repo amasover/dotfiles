@@ -28,8 +28,8 @@ Emit the directory relative to the volume root with no prefix:
 `also_scan_dirs +,arch`. rEFInd scans it on every volume it can read (the
 ext4 driver covers the boot partition) and reads options from the
 `refind_linux.conf` next to the kernel. `refind-config` renders it that way
-since PR for #230's follow-up; `tests/test_refind_config.py` asserts no `@`
-appears.
+since PR #242 (Story 2.52 follow-up, #230); `tests/test_refind_config.py`
+asserts no `@` appears.
 
 ## Lessons
 
@@ -42,3 +42,5 @@ appears.
   stanza: auto-scan cannot know their root device. `refind-config` generates
   one from the machine-local `dual_boot` input and derives the volume from the
   `/boot` mount.
+
+Related: [runbook-fresh-machine-bootstrap.md, rEFInd metal boot configuration](../../docs/runbook-fresh-machine-bootstrap.md#refind-metal-boot-configuration).
