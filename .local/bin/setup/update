@@ -147,9 +147,12 @@ antibody update
 source /usr/share/nvm/init-nvm.sh
 
 # nvm itself is pacman-owned; this updates the Node line pinned by ~/.nvmrc.
+# `nvm install` only creates `default` when none exists, so re-pin it here or
+# every new shell keeps activating whichever line was installed first.
 nvm_ver=$(<"${HOME}"/.nvmrc)
 echo $'\n\nUpdating nodejs to latest version on branch' "${nvm_ver}"
 nvm install "${nvm_ver}" --reinstall-packages-from=default
+nvm alias default "${nvm_ver}"
 
 echo $'\n\nUpdating npm...'
 npm install -g npm@latest
