@@ -16,6 +16,9 @@ done
 sudo -v
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 
+# first update mirrorlist
+update_pacman_mirrorlist
+
 # --- vendored packages (Story 2.46): pins, upstream watch, convergence ---
 # The steady-state applier (bootstrap 6d only covers fresh machines):
 #   1. ensure every vendored name is pinned in pacman's IgnorePkg;
