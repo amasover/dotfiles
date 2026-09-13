@@ -97,6 +97,63 @@ reconcile_refind_config() {
     fi
 }
 
+# Step 6f's body, kept as a function with a seam because the parts worth
+# testing — destination mapping, already-linked detection, check-mode output —
+# need neither a NAS nor the autofs package nor root. $2 prefixes the system
+# path so a test can point it at a scratch tree, as refind-config --root does.
+reconcile_nas_automounts() {
+    local mode=${1:-} root=${2:-}
+    [[ $mode == check || $mode == apply ]] \
+        || die "nas-automounts mode must be check or apply"
+    local src_root="$HOME/.config/dotfiles/autofs"
+    if [[ ! -d "$src_root" ]]; then
+        echo "  no automount maps on this machine — skipping (optional feature)"
+        return 0
+    fi
+    if ! command -v automount >/dev/null; then
+        echo "  maps present but autofs not installed — declare it in machine-local.toml"
+        return 0
+    fi
+    local src dst
+    for src in "$src_root"/master.d/* "$src_root"/maps/*; do
+        [[ -f "$src" ]] || continue # unmatched glob stays literal; no nullglob here
+        case "$src" in
+            */master.d/*) dst="$root/etc/autofs/auto.master.d/${src##*/}" ;;
+            *) dst="$root/etc/autofs/${src##*/}" ;;
+        esac
+        if [[ "$(readlink "$dst" 2>/dev/null)" == "$src" ]]; then
+            echo "  already linked: ${dst##*/}"
+        elif [[ $mode == check ]]; then
+            echo "  would: symlink $dst -> $src"
+        else
+            sudo mkdir -p "${dst%/*}"
+            sudo ln -sfT "$src" "$dst"
+            echo "  linked: ${dst##*/}"
+        fi
+    done
+    # The provisioner is untracked (it reads the password manager), so this step
+    # can ask it for state but cannot vouch for it. A check run must not die on
+    # one that doesn't understand --check; an apply run still fails loud, because
+    # a missing credentials file means every mount of that share fails later.
+    local cred_provisioner
+    for cred_provisioner in "$src_root"/creds/*; do
+        [[ -x "$cred_provisioner" ]] || continue
+        if [[ $mode == check ]]; then
+            "$cred_provisioner" --check \
+                || echo "  provisioner does not report --check state: ${cred_provisioner##*/}"
+        else
+            "$cred_provisioner"
+        fi
+    done
+    if systemctl is-enabled autofs >/dev/null 2>&1; then
+        echo "  autofs already enabled"
+    elif [[ $mode == check ]]; then
+        echo "  would: systemctl enable --now autofs"
+    else
+        sudo systemctl enable --now autofs
+    fi
+}
+
 # One provider-substitution probe (step 5c): -Spdd resolves just the named
 # target (no deps); a different name back means a repo package 'provides' the
 # declared one and the resolver would swap it in. Prints the provider, or
@@ -218,6 +275,11 @@ fi
 if [[ "${1:-}" == "--refind-config" ]]; then
     [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "refind-config seam is test-only"
     reconcile_refind_config "${2:-}" "${3:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--nas-automounts" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "nas-automounts seam is test-only"
+    reconcile_nas_automounts "${2:-}" "${3:-}"
     exit 0
 fi
 
@@ -1091,43 +1153,10 @@ fi
 # provisioned by the creds/ scripts and never tracked: mount.cifs runs as root
 # from the automount daemon, so no keyring or agent can serve them there.
 say "NAS automounts (optional)"
-autofs_src="$HOME/.config/dotfiles/autofs"
-if [[ ! -d "$autofs_src" ]]; then
-    echo "  no automount maps on this machine — skipping (optional feature)"
-elif ! command -v automount >/dev/null; then
-    echo "  maps present but autofs not installed — declare it in machine-local.toml"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_nas_automounts check
 else
-    for src in "$autofs_src"/master.d/* "$autofs_src"/maps/*; do
-        [[ -f "$src" ]] || continue
-        case "$src" in
-            */master.d/*) dst="/etc/autofs/auto.master.d/${src##*/}" ;;
-            *) dst="/etc/autofs/${src##*/}" ;;
-        esac
-        if [[ "$(readlink "$dst" 2>/dev/null)" == "$src" ]]; then
-            echo "  already linked: ${dst##*/}"
-        elif [[ $CHECK -eq 1 ]]; then
-            echo "  would: symlink $dst -> $src"
-        else
-            sudo mkdir -p "${dst%/*}"
-            sudo ln -sfT "$src" "$dst"
-            echo "  linked: ${dst##*/}"
-        fi
-    done
-    for prov in "$autofs_src"/creds/*; do
-        [[ -x "$prov" ]] || continue
-        if [[ $CHECK -eq 1 ]]; then
-            "$prov" --check
-        else
-            "$prov"
-        fi
-    done
-    if systemctl is-enabled autofs >/dev/null 2>&1; then
-        echo "  autofs already enabled"
-    elif [[ $CHECK -eq 1 ]]; then
-        echo "  would: systemctl enable --now autofs"
-    else
-        sudo systemctl enable --now autofs
-    fi
+    reconcile_nas_automounts apply
 fi
 
 # --- 7. AUR trust baseline (Story 2.10) ----------------------------------------

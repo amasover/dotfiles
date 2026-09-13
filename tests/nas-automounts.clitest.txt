@@ -1,0 +1,99 @@
+# NAS automount installation, bootstrap step 6f (Story 2.54, #249).
+# Run from repo root: clitest tests/nas-automounts.clitest.txt
+#
+# Host-independent by construction: HOME, the /etc prefix, and every privileged
+# or autofs-specific binary are redirected at a scratch tree, so this needs no
+# NAS, no autofs package, and no root.
+
+$ ATMP=$(mktemp -d); AHOME=$ATMP/home; AROOT=$ATMP/root; ABIN=$ATMP/bin; BARE=$ATMP/bare; SRC=$AHOME/.config/dotfiles/autofs; TRACE=$ATMP/systemctl-trace; CREDS=$ATMP/creds-written; export BOOTSTRAP_TEST_MODE=1 TRACE CREDS; mkdir -p "$AHOME" "$AROOT/etc" "$ABIN" "$BARE"; echo ready
+ready
+$ printf '%s\n' '#!/bin/sh' 'exec "$@"' > "$ABIN/sudo"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$ABIN/automount"; printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$TRACE"' 'case $1 in is-enabled) exit "${AUTOFS_ENABLED:-1}" ;; esac' > "$ABIN/systemctl"; chmod +x "$ABIN"/*; cp "$ABIN/sudo" "$ABIN/systemctl" "$BARE/"; ln -s "$(command -v bash)" "$BARE/bash"; echo stubs
+stubs
+$
+
+the seam refuses to run outside test mode, and rejects an unknown mode:
+
+$ HOME="$AHOME" PATH="$ABIN:$PATH" BOOTSTRAP_TEST_MODE=0 .local/bin/setup/bootstrap --nas-automounts check "$AROOT" 2>&1 | grep FATAL
+bootstrap: FATAL: nas-automounts seam is test-only
+$ HOME="$AHOME" PATH="$ABIN:$PATH" .local/bin/setup/bootstrap --nas-automounts bogus "$AROOT" 2>&1 | grep FATAL
+bootstrap: FATAL: nas-automounts mode must be check or apply
+$
+
+no map tree: the optional feature reports itself absent, writes nothing, fails nothing:
+
+$ HOME="$AHOME" PATH="$ABIN:$PATH" .local/bin/setup/bootstrap --nas-automounts check "$AROOT"; echo "rc=$?"; find "$AROOT/etc" -mindepth 1 | wc -l
+  no automount maps on this machine — skipping (optional feature)
+rc=0
+0
+$ mkdir -p "$SRC/master.d" "$SRC/maps" "$SRC/creds"; printf 'master entry\n' > "$SRC/master.d/nas.autofs"; printf 'map entry\n' > "$SRC/maps/auto.nas"; echo maps
+maps
+$
+
+maps present but the package is not: the step names the machine-local fix and still writes nothing:
+
+$ HOME="$AHOME" PATH="$BARE" .local/bin/setup/bootstrap --nas-automounts check "$AROOT"; echo "rc=$?"; find "$AROOT/etc" -mindepth 1 | wc -l
+  maps present but autofs not installed — declare it in machine-local.toml
+rc=0
+0
+$
+
+check mode prints both destinations — master.d entries land in auto.master.d — and creates nothing:
+
+$ HOME="$AHOME" PATH="$ABIN:$PATH" .local/bin/setup/bootstrap --nas-automounts check "$AROOT" | sed "s|$ATMP|T|g"; find "$AROOT/etc" -mindepth 1 | wc -l
+  would: symlink T/root/etc/autofs/auto.master.d/nas.autofs -> T/home/.config/dotfiles/autofs/master.d/nas.autofs
+  would: symlink T/root/etc/autofs/auto.nas -> T/home/.config/dotfiles/autofs/maps/auto.nas
+  would: systemctl enable --now autofs
+0
+$
+
+apply symlinks each map to its tracked source and enables the service:
+
+$ : > "$TRACE"; HOME="$AHOME" PATH="$ABIN:$PATH" .local/bin/setup/bootstrap --nas-automounts apply "$AROOT"; readlink "$AROOT/etc/autofs/auto.master.d/nas.autofs" | sed "s|$ATMP|T|"; readlink "$AROOT/etc/autofs/auto.nas" | sed "s|$ATMP|T|"; cat "$TRACE"
+  linked: nas.autofs
+  linked: auto.nas
+T/home/.config/dotfiles/autofs/master.d/nas.autofs
+T/home/.config/dotfiles/autofs/maps/auto.nas
+is-enabled autofs
+enable --now autofs
+$
+
+a second run reports every link already in place and re-enables nothing:
+
+$ : > "$TRACE"; HOME="$AHOME" PATH="$ABIN:$PATH" AUTOFS_ENABLED=0 .local/bin/setup/bootstrap --nas-automounts apply "$AROOT"; cat "$TRACE"
+  already linked: nas.autofs
+  already linked: auto.nas
+  autofs already enabled
+is-enabled autofs
+$
+
+check mode asks the credential provisioner for state without letting it write; apply runs it for real:
+
+$ printf '%s\n' '#!/bin/sh' 'if [ "$1" = --check ]; then echo "  credentials present"; exit 0; fi' 'echo written > "$CREDS"' > "$SRC/creds/nas-credentials"; chmod +x "$SRC/creds/nas-credentials"; HOME="$AHOME" PATH="$ABIN:$PATH" AUTOFS_ENABLED=0 .local/bin/setup/bootstrap --nas-automounts check "$AROOT"; test -e "$CREDS"; echo "creds-written=$?"
+  already linked: nas.autofs
+  already linked: auto.nas
+  credentials present
+  autofs already enabled
+creds-written=1
+$ HOME="$AHOME" PATH="$ABIN:$PATH" AUTOFS_ENABLED=0 .local/bin/setup/bootstrap --nas-automounts apply "$AROOT" > /dev/null; cat "$CREDS"
+written
+$
+
+a provisioner that does not understand --check degrades to a message instead of aborting the run:
+
+$ printf '%s\n' '#!/bin/sh' 'exit 2' > "$SRC/creds/nas-credentials"; HOME="$AHOME" PATH="$ABIN:$PATH" AUTOFS_ENABLED=0 .local/bin/setup/bootstrap --nas-automounts check "$AROOT"; echo "rc=$?"
+  already linked: nas.autofs
+  already linked: auto.nas
+  provisioner does not report --check state: nas-credentials
+  autofs already enabled
+rc=0
+$
+
+map directories that exist but are empty are not an error and write nothing:
+
+$ EHOME=$ATMP/empty-home; EROOT=$ATMP/empty-root; mkdir -p "$EHOME/.config/dotfiles/autofs/master.d" "$EHOME/.config/dotfiles/autofs/maps" "$EROOT/etc"; HOME="$EHOME" PATH="$ABIN:$PATH" .local/bin/setup/bootstrap --nas-automounts check "$EROOT"; echo "rc=$?"; find "$EROOT/etc" -mindepth 1 | wc -l
+  would: systemctl enable --now autofs
+rc=0
+0
+$ rm -rf "$ATMP"; echo done
+done
+$
