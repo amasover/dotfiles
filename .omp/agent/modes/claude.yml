@@ -1,11 +1,18 @@
-# Claude-primary mode: Fable handles deep diagnosis; Sonnet reviews at high effort.
-# Route mechanical verification and read-only lookup to Haiku.
+# Claude-primary mode: Fable 5.1 drives at high; Opus 5 reviews and runs general
+# tasks; Haiku handles read-only lookup. DeepSWE v1.1 measured Fable 5 rather
+# than 5.1 — Fable 5 high scores 69% at $9.18/task. Reviews and generic tasks
+# move off Sonnet 5, the weakest Anthropic config measured (48% at high, 54% at
+# max for $26.40), onto Opus 5: high reviews at 73% for $6.08, medium works
+# tasks at 69% for $3.29. Pinning `task` also keeps workers off the global
+# selection rather than inheriting it.
 modelRoles:
-  default: anthropic/claude-fable-5:xhigh
+  default: anthropic/claude-fable-5-1:high
+  task: anthropic/claude-opus-5:medium
   smol: anthropic/claude-haiku-4-5:low
-  slow: anthropic/claude-sonnet-5:high
+  slow: anthropic/claude-opus-5:high
 task:
   agentModelOverrides:
+    task: "@task"
     scout: "@smol"
     sonic: "@smol"
     reviewer: "@slow"

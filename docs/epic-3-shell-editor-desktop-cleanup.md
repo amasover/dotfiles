@@ -764,16 +764,26 @@ round retains its SDK session instead of re-reading work.
 Issue: [#195](https://github.com/amasover/dotfiles/issues/195)
 
 Context: `omp-mode` selects provider-paired YAML overlays before OMP starts:
-Claude uses Fable `xhigh`, Sonnet 5 `high` reviews, and Haiku `low` workers;
-GitHub Copilot uses Sol `max`, Sol `high` reviews, and Luna `xhigh` workers;
-OpenAI uses Astra `high`, Sol `high` reviews, and Luna `low` workers.
-The `openrouter` mode retains GLM 5.3 `max` for primary work, with MiniMax M3
-`medium` for general tasks, DeepSeek V4 Pro 0813 `high` for reviews, and DeepSeek
-V4 Flash 0731 `low` for mechanical workers. Explicit model IDs avoid floating
+Claude uses Fable 5.1 `high`, Opus 5 `high` reviews, Opus 5 `medium` tasks, and
+Haiku `low` workers; GitHub Copilot uses Sol `max`, Sol `high` reviews, Luna
+`max` tasks, and Luna `xhigh` workers; OpenAI uses Astra `xhigh`, Sol `high`
+reviews, Luna `max` tasks, and Luna `high` workers.
+The `openrouter` mode runs Gemini 3.8 Flash `high` for primary work, with GLM
+5.3 Flash `max` for general tasks, DeepSeek V4 Pro 0813 `max` for reviews, and
+GLM 5.3 Flash `low` for mechanical workers. Model/effort pairs follow DeepSWE
+v1.1 (113 original tasks, `mini-swe-agent` harness): Gemini 3.8 Flash `high`
+leads the board at 74% for $2.36 per task against GLM 5.3 `max` at 69% for
+$3.99; Astra peaks at `xhigh`, not `max`; Luna passes 2% of tasks at `low`
+against 44% at `high`; and Sonnet 5 `high` reviews at 48% where Opus 5 `high`
+reaches 73% for less money. Claude keeps Fable as primary by preference —
+DeepSWE measured Fable 5, not 5.1. Explicit model IDs avoid floating
 `latest` aliases; prices remain provider-controlled, not a spending cap.
-All modes set `modelRoles.slow` and route `reviewer` through `@slow`.
-OpenRouter also overrides `task` through `@task` so it does not inherit
-the global Anthropic worker selection. Other modes retain generic-task settings.
+All modes set `modelRoles.slow` and route `reviewer` through `@slow`, and all
+four now pin `modelRoles.task` and route `task` through `@task`. Without that
+pin every mode inherited the global `anthropic/claude-sonnet-5` worker, which
+both broke provider pairing — OpenAI and Copilot sessions billing generic
+subagents to Anthropic — and routed them to the weakest measured configuration
+on the board.
 OMP's extension API has no supported session-scoped mutation for `modelRoles` or
 `task.agentModelOverrides`; retain the launcher rather than write global config
 from a plugin. Separately, the Pi adapter needs `x-session-affinity` on
@@ -787,16 +797,21 @@ an independent SDK session every round ([Meridian #820](https://github.com/rynfa
   `x-session-affinity`; unmarked Anthropic requests are unchanged
 - Given a Meridian tool round, then the first request is `lineage=new` and its
   tool-result continuation is `lineage=continuation` in proxy telemetry
-- Given `omp-mode claude`, then Fable at `xhigh` is primary and subsequent
+- Given `omp-mode claude`, then Fable 5.1 at `high` is primary and subsequent
   `sonic`/`scout` workers use Haiku at `low`; given `omp-mode copilot`, then Sol
   at `max` is primary and those workers use Luna at `xhigh`; given
-  `omp-mode openai`, then Astra at `high` is primary and those workers use Luna
-  at `low`
-- Given any mode, then `reviewer` uses its explicit `@slow` selection rather
-  than relying on an unset role or the parent's active model
-- Given `omp-mode openrouter`, then GLM 5.3 at `max` is primary, MiniMax M3 at
-  `medium` handles generic `task` workers, DeepSeek V4 Pro 0813 at `high` reviews,
-  `sonic`/`scout` use DeepSeek V4 Flash 0731 at `low`
+  `omp-mode openai`, then Astra at `xhigh` is primary and those workers use Luna
+  at `high`
+- Given any mode, then `reviewer` uses its explicit `@slow` selection and `task`
+  its explicit `@task` selection, rather than relying on an unset role, the
+  parent's active model, or the global worker default
+- Given `omp-mode claude`, `copilot`, or `openai`, then a generic `task` worker
+  resolves to that mode's own provider and never to `anthropic/claude-sonnet-5`
+- Given `omp-mode claude`, then `reviewer` resolves to Opus 5 at `high` rather
+  than Sonnet 5
+- Given `omp-mode openrouter`, then Gemini 3.8 Flash at `high` is primary, GLM
+  5.3 Flash at `max` handles generic `task` workers, DeepSeek V4 Pro 0813 at
+  `max` reviews, `sonic`/`scout` use GLM 5.3 Flash at `low`
 - Given a later `/provider-mode` extension proposal, then it waits for an OMP
   session-scoped worker-routing API; it does not use private internals or write
   `~/.omp/agent/config.yml` at runtime

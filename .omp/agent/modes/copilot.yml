@@ -1,11 +1,16 @@
 # GitHub Copilot subscription mode: Sol handles primary work and reviews.
-# Luna handles mechanical verification and read-only lookup at high effort.
+# Luna handles general tasks at max, mechanical verification and read-only
+# lookup at xhigh. Sol max is its DeepSWE v1.1 peak (73%); generic tasks pin to
+# Luna max (67%) so they stay on the Copilot subscription instead of inheriting
+# the global Anthropic worker.
 modelRoles:
   default: github-copilot/gpt-5.6-sol:max
+  task: github-copilot/gpt-5.6-luna:max
   smol: github-copilot/gpt-5.6-luna:xhigh
   slow: github-copilot/gpt-5.6-sol:high
 task:
   agentModelOverrides:
+    task: "@task"
     scout: "@smol"
     sonic: "@smol"
     reviewer: "@slow"
