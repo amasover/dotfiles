@@ -1078,6 +1078,58 @@ else
     reconcile_refind_config apply "$class"
 fi
 
+# --- 6f. NAS automounts (optional) ---------------------------------------------
+# Opt-in, and inert for anyone who doesn't run a NAS: this step only acts when
+# a machine supplies BOTH halves, and no purpose group pulls it in.
+#   1. maps at ~/.config/dotfiles/autofs/{master.d,maps}/ — carried in the
+#      encrypted archive, so the mechanism here stays public while one person's
+#      hostnames/shares/credential-item do not. A fresh clone has no such dir.
+#   2. the autofs package — declared per machine (machine-local.toml), never in
+#      a shared group.
+# Symlinked, not copied, so content stays current with yadm pulls — safe at boot
+# because /home is part of / (no separate mount to wait for). Credentials are
+# provisioned by the creds/ scripts and never tracked: mount.cifs runs as root
+# from the automount daemon, so no keyring or agent can serve them there.
+say "NAS automounts (optional)"
+autofs_src="$HOME/.config/dotfiles/autofs"
+if [[ ! -d "$autofs_src" ]]; then
+    echo "  no automount maps on this machine — skipping (optional feature)"
+elif ! command -v automount >/dev/null; then
+    echo "  maps present but autofs not installed — declare it in machine-local.toml"
+else
+    for src in "$autofs_src"/master.d/* "$autofs_src"/maps/*; do
+        [[ -f "$src" ]] || continue
+        case "$src" in
+            */master.d/*) dst="/etc/autofs/auto.master.d/${src##*/}" ;;
+            *) dst="/etc/autofs/${src##*/}" ;;
+        esac
+        if [[ "$(readlink "$dst" 2>/dev/null)" == "$src" ]]; then
+            echo "  already linked: ${dst##*/}"
+        elif [[ $CHECK -eq 1 ]]; then
+            echo "  would: symlink $dst -> $src"
+        else
+            sudo mkdir -p "${dst%/*}"
+            sudo ln -sfT "$src" "$dst"
+            echo "  linked: ${dst##*/}"
+        fi
+    done
+    for prov in "$autofs_src"/creds/*; do
+        [[ -x "$prov" ]] || continue
+        if [[ $CHECK -eq 1 ]]; then
+            "$prov" --check
+        else
+            "$prov"
+        fi
+    done
+    if systemctl is-enabled autofs >/dev/null 2>&1; then
+        echo "  autofs already enabled"
+    elif [[ $CHECK -eq 1 ]]; then
+        echo "  would: systemctl enable --now autofs"
+    else
+        sudo systemctl enable --now autofs
+    fi
+fi
+
 # --- 7. AUR trust baseline (Story 2.10) ----------------------------------------
 # The portable baseline (maintainers.tsv + exempt.txt) rides the encrypted
 # archive: step 1's decrypt restores this machine's trust state *before* the
