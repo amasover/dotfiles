@@ -204,4 +204,18 @@ $ rm -rf "$T"; echo done
 done
 $
 
+--- generated install drivers stay shell-syntax-clean ---
+
+The drivers are generated at run time, so the tracked-script lint never sees
+them. This pins the emitted shell syntax on both the unattended and attended
+variants; `sh -n` runs wherever clitest runs.
+
+$ T=$(mktemp -d); .local/bin/setup/vm-harness-seed create --files-only --target vmware --out "$T/vm" --disk-size 22 --password throwaway >/dev/null && .local/bin/setup/vm-harness-seed create --files-only --target metal --out "$T/metal" --disk-device /dev/nvme0n1 --disk-size 256 --ram-gib 32 >/dev/null && sh -n "$T/vm/run-install.sh" && sh -n "$T/metal/run-install.sh" && echo syntax-ok
+syntax-ok
+$
+
+$ rm -rf "$T"; echo done
+done
+$
+
 End of tests.

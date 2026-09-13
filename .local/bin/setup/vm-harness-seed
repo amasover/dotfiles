@@ -389,6 +389,11 @@ def _authorized_keys_command(user: str, pubkey: str) -> str:
     )
 
 
+def _validate_username(user: str) -> None:
+    if not re.fullmatch(r"[a-z_][a-z0-9_-]*", user):
+        raise ValueError("user must be a portable Linux account name")
+
+
 def build_request(
     *,
     target: str,
@@ -403,8 +408,7 @@ def build_request(
         target_spec = TARGETS[target]
     except KeyError as exc:
         raise ValueError(f"unknown provisioning target: {target}") from exc
-    if not re.fullmatch(r"[a-z_][a-z0-9_-]*", user):
-        raise ValueError("user must be a portable Linux account name")
+    _validate_username(user)
 
     metal = None
     if target_spec.attended:
@@ -768,8 +772,7 @@ def _atomic_write_text(path: Path, content: str, mode: int) -> None:
 
 def write_metal_credentials(path: Path, user: str, prompt_fn=None) -> None:
     """Prompt on target console and atomically write Archinstall credentials."""
-    if not re.fullmatch(r"[a-z_][a-z0-9_-]*", user):
-        raise ValueError("user must be a portable Linux account name")
+    _validate_username(user)
     if path.is_symlink():
         raise ValueError("credentials destination must not be a symlink")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -915,7 +918,7 @@ def _create_seed(args, parser: argparse.ArgumentParser) -> int:
         ram_gib=args.ram_gib,
     )
     user_password = args.password or os.environ.get("PROVISION_USER_PASSWORD")
-    luks_password = args.luks_password or os.environ.get("PROVISION_LUKS_PASSWORD")
+    luks_password = os.environ.get("PROVISION_LUKS_PASSWORD")
     if args.pass_hash is not None and user_password is not None:
         parser.error(
             "--pass-hash cannot be combined with a user password environment value"
@@ -937,8 +940,7 @@ def _create_seed(args, parser: argparse.ArgumentParser) -> int:
             )
         if request.target.encrypted and luks_password is None:
             parser.error(
-                f"{request.target.name} create requires --luks-password "
-                "or PROVISION_LUKS_PASSWORD"
+                f"{request.target.name} create requires PROVISION_LUKS_PASSWORD"
             )
         if not request.target.encrypted and luks_password is not None:
             parser.error(
@@ -1027,10 +1029,6 @@ def _parser() -> argparse.ArgumentParser:
         "--password", help="VM user password (or PROVISION_USER_PASSWORD)"
     )
     password.add_argument("--pass-hash", help="pre-computed VM sha512-crypt hash")
-    create.add_argument(
-        "--luks-password",
-        help="encrypted VM passphrase (or PROVISION_LUKS_PASSWORD)",
-    )
     create.add_argument("--pubkey", default="")
     create.add_argument(
         "--files-only",

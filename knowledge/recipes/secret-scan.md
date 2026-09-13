@@ -208,6 +208,10 @@ run — re-verify on the next convenient occasion.
 | 2026-06-23 | Full history | `gitleaks git . --redact --no-banner` | 1002 | No leaks found |
 | 2026-08-09 | Working tree | `betterleaks dir . --redact --no-banner` (1.7.1, Windows clone) | n/a | No leaks found |
 
-No findings, so no false-positive dismissals were needed and no `.gitleaksignore`
-file exists yet. Re-run the working-tree and staged scans before each commit
-batch and record notable results in the PR description.
+The reviewed false positives so far are archinstall schema-field names in
+the seed generator (`pass_hash`/`enc_password` variable references, first
+flagged 2026-08-22); they carry dated inline `gitleaks:allow` annotations at
+their source lines, and `.gitleaksignore` exists only as a comment-only
+policy stub holding no fingerprints. Re-run the working-tree and staged
+scans before each commit batch and record notable results in the PR
+description.
