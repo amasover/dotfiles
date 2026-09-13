@@ -11,7 +11,7 @@ import subprocess
 import pytest
 from conftest import load_tool
 
-seed = load_tool("vm_harness_seed", "vm-harness-seed")
+seed = load_tool("provision_seed", "provision-seed")
 refind = load_tool("refind_config_for_seed", "refind-config")
 
 

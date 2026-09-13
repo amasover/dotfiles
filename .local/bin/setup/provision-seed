@@ -1009,7 +1009,7 @@ def _create_seed(args, parser: argparse.ArgumentParser) -> int:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="vm-harness-seed", description=__doc__)
+    parser = argparse.ArgumentParser(prog="provision-seed", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
 
     create = commands.add_parser("create", help="write recipe files and CIDATA seed")

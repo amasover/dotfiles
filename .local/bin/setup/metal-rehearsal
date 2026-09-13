@@ -1,0 +1,732 @@
+#!/usr/bin/env python3
+"""Rehearse the attended metal install, handoff, and hibernate on user-owned QEMU.
+
+Local integration gate for provision-seed, refind-config, and hibernate-storage.
+No host elevation, libvirt, guest prompt bypass, or full bootstrap is involved.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import pty
+import re
+import secrets
+import select
+import shlex
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tarfile
+import termios
+import threading
+import time
+import tty
+from collections import deque
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+CACHE = Path.home() / ".cache/bootstrap-harness"
+ARTIFACT_ROOT = CACHE / "metal-rehearsal"
+STAGES = (
+    ("host-preflight", 900),
+    ("prepare", 180),
+    ("installer-boot", 180),
+    ("install", 1800),
+    ("first-boot", 240),
+    ("handoff", 1200),
+    ("reboot-proof", 300),
+    ("hibernate-proof", 360),
+    ("teardown", 120),
+)
+ANSI_ESCAPE = re.compile(
+    rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-2A-Z]|[=>])"
+)
+
+
+class RehearsalError(RuntimeError):
+    pass
+
+
+def interrupted(signum, _frame):
+    raise RehearsalError(f"interrupted by signal {signum}")
+
+
+class PromptBuffer:
+    """Consume only through a matched prompt; preserve fragmented and future input."""
+
+    def __init__(self):
+        self.data = b""
+
+    def feed(self, data):
+        # Leave incomplete escapes buffered until the next read completes them.
+        self.data = ANSI_ESCAPE.sub(b"", self.data + data)
+
+    def match(self, patterns):
+        matches = [
+            (m.start(), i, m)
+            for i, pattern in enumerate(patterns)
+            if (m := re.search(pattern, self.data)) is not None
+        ]
+        if not matches:
+            # Bound noise, but retain enough context for every supported prompt.
+            self.data = self.data[-65536:]
+            return None
+        _, index, match = min(matches, key=lambda item: (item[0], item[1]))
+        self.data = self.data[match.end() :]
+        return index, match
+
+
+class Expect:
+    def __init__(self, fd, deadline, log=None):
+        self.fd = fd
+        self.deadline = deadline
+        self.log = log
+        self.buffer = PromptBuffer()
+
+    def send(self, text):
+        data = text.encode()
+        while data:
+            count = os.write(self.fd, data)
+            data = data[count:]
+
+    def expect(self, *patterns, timeout=120):
+        end = min(self.deadline(), time.monotonic() + timeout)
+        while True:
+            result = self.buffer.match(patterns)
+            if result is not None:
+                return result
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                raise RehearsalError(f"timeout waiting for {patterns!r}")
+            if not select.select([self.fd], [], [], remaining)[0]:
+                continue
+            try:
+                chunk = os.read(self.fd, 65536)
+            except OSError as exc:
+                raise RehearsalError("terminal closed before expected prompt") from exc
+            if not chunk:
+                raise RehearsalError("terminal closed before expected prompt")
+            if self.log:
+                self.log.write(chunk)
+                self.log.flush()
+            self.buffer.feed(chunk)
+
+
+def retained_artifacts(passed, keep):
+    return not passed or keep
+
+
+def destroy(path):
+    """Only remove a completed harness-owned run, never an arbitrary path."""
+    path = Path(path)
+    if path.is_symlink() or path.resolve().parent != ARTIFACT_ROOT.resolve():
+        raise RehearsalError(f"not a rehearsal directory: {path}")
+    marker = path / "run.json"
+    if not marker.is_file():
+        raise RehearsalError(f"missing rehearsal ownership marker: {path}")
+    metadata = json.loads(marker.read_text())
+    if metadata.get("tool") != "metal-rehearsal":
+        raise RehearsalError(f"not owned by metal-rehearsal: {path}")
+    # An advisory lock survives stale metadata but prevents deleting a live run.
+    import fcntl
+
+    with marker.open() as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RehearsalError("rehearsal is still running") from exc
+        shutil.rmtree(path)
+    print(f"Destroyed {path}")
+
+
+class Rehearsal:
+    def __init__(self, keep=False):
+        self.keep = keep
+        self.root = Path(__file__).resolve().parents[3]
+        self.path = None
+        self.stage = "host-preflight"
+        self.deadline = time.monotonic()
+        self.vm = None
+        self.serial = None
+        self.monitor = None
+        self.server = None
+        self.logs = []
+        self.user_password = secrets.token_hex(12)
+        self.luks_password = secrets.token_hex(12)
+        self.ssh = None
+        self.ssh_fd = None
+        self.lock = None
+
+    def remaining(self):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise RehearsalError("stage deadline exceeded")
+        return remaining
+
+    def command(self, args, **kwargs):
+        return subprocess.run(args, check=True, timeout=self.remaining(), **kwargs)
+
+    def log(self, name):
+        handle = (self.path / name).open("ab", buffering=0)
+        self.logs.append(handle)
+        return handle
+
+    def pause(self, seconds):
+        if self.remaining() < seconds:
+            raise RehearsalError("stage deadline exceeded")
+        time.sleep(seconds)
+
+    def host_preflight(self):
+        for name in ("qemu-system-x86_64", "qemu-img", "bsdtar", "ssh", "git"):
+            if not shutil.which(name):
+                raise RehearsalError(f"missing host command: {name}")
+        if not os.access("/dev/kvm", os.R_OK | os.W_OK):
+            raise RehearsalError("/dev/kvm must be readable and writable")
+        firmware = Path("/usr/share/edk2/x64")
+        self.code = firmware / "OVMF_CODE.4m.fd"
+        self.vars = firmware / "OVMF_VARS.4m.fd"
+        if not self.code.is_file() or not self.vars.is_file():
+            raise RehearsalError(
+                f"install edk2-ovmf: missing firmware under {firmware}"
+            )
+        ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+        if shutil.disk_usage(ARTIFACT_ROOT).free < 10 * 1024**3:
+            raise RehearsalError("need at least 10 GiB free under artifact root")
+        self.iso = CACHE / "archlinux-x86_64.iso"
+        sums = CACHE / "sha256sums.txt"
+        if not self.iso.is_file() or not sums.is_file():
+            self.command([str(self.root / ".local/bin/setup/vm-harness"), "fetch"])
+        expected = next(
+            (
+                parts[0]
+                for line in sums.read_text().splitlines()
+                if len(parts := line.split()) == 2
+                and parts[1].lstrip("*") == self.iso.name
+            ),
+            None,
+        )
+        with self.iso.open("rb") as handle:
+            actual = hashlib.file_digest(handle, "sha256").hexdigest()
+        if expected != actual:
+            raise RehearsalError("cached ISO sha256 mismatch; run vm-harness fetch")
+        print(f"ISO sha256 verified: {actual}", flush=True)
+
+    def prepare(self):
+        import fcntl
+
+        stamp = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(3)
+        self.path = ARTIFACT_ROOT / stamp
+        self.path.mkdir(mode=0o700)
+        self.lock = (self.path / "run.json").open("w+")
+        fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        json.dump({"tool": "metal-rehearsal", "pid": os.getpid()}, self.lock)
+        self.lock.flush()
+        print(f"Artifacts: {self.path}", flush=True)
+        self.command(
+            ["qemu-img", "create", "-f", "qcow2", str(self.path / "disk.qcow2"), "63G"]
+        )
+        shutil.copyfile(self.vars, self.path / "OVMF_VARS.fd")
+        entries = self.command(
+            ["bsdtar", "-tf", str(self.iso)], capture_output=True, text=True
+        ).stdout.splitlines()
+        entry = next((p for p in entries if re.search(r"/01-.*\.conf$", p)), None)
+        if entry is None:
+            raise RehearsalError("ISO has no default loader entry")
+        config = self.command(
+            ["bsdtar", "-xOf", str(self.iso), entry], capture_output=True, text=True
+        ).stdout
+        fields = [
+            parts
+            for line in config.splitlines()
+            if len(parts := line.split(maxsplit=1)) == 2
+            and parts[0] in {"linux", "initrd", "options"}
+        ]
+        kernel = next((value for key, value in fields if key == "linux"), None)
+        self.boot_options = next(
+            (value for key, value in fields if key == "options"), None
+        )
+        uuid = next(
+            (Path(p).stem for p in entries if re.fullmatch(r"boot/[^/]+\.uuid", p)),
+            None,
+        )
+        if (
+            not kernel
+            or not self.boot_options
+            or not uuid
+            or not any(k == "initrd" for k, _ in fields)
+        ):
+            raise RehearsalError("ISO is missing kernel, initrd, options, or boot UUID")
+        if f"archisosearchuuid={uuid}" not in self.boot_options.split():
+            raise RehearsalError("ISO loader search UUID does not match boot/*.uuid")
+        for filename, members in (
+            ("vmlinuz", [kernel]),
+            ("initrd.img", [v for k, v in fields if k == "initrd"]),
+        ):
+            with (self.path / filename).open("wb") as output:
+                for member in members:
+                    self.command(
+                        ["bsdtar", "-xOf", str(self.iso), member.lstrip("/")],
+                        stdout=output,
+                    )
+        public = self.path / "http"
+        public.mkdir()
+        paths = self.command(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=self.root,
+            capture_output=True,
+        ).stdout.split(b"\0")
+        with tarfile.open(public / "tree.tar.gz", "w:gz") as archive:
+            for raw in sorted(set(paths)):
+                if not raw:
+                    continue
+                relative = os.fsdecode(raw)
+                source = self.root / relative
+                if source.exists() or source.is_symlink():
+                    archive.add(source, arcname=relative, recursive=False)
+        self.server = ThreadingHTTPServer(
+            ("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(public))
+        )
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.url = f"http://10.0.2.2:{self.server.server_port}/tree.tar.gz"
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            self.port = sock.getsockname()[1]
+
+    def launch(self, installer=False):
+        args = [
+            "qemu-system-x86_64",
+            "-machine",
+            "q35,accel=kvm",
+            "-cpu",
+            "host",
+            "-m",
+            "8192",
+            "-smp",
+            "4",
+            "-display",
+            "none",
+            "-no-reboot",
+            "-drive",
+            f"if=pflash,format=raw,readonly=on,file={self.code}",
+            "-drive",
+            f"if=pflash,format=raw,file={self.path / 'OVMF_VARS.fd'}",
+            "-drive",
+            f"if=virtio,format=qcow2,file={self.path / 'disk.qcow2'}",
+            "-netdev",
+            f"user,id=net0,hostfwd=tcp:127.0.0.1:{self.port}-:22",
+            "-device",
+            "virtio-net-pci,netdev=net0",
+            "-monitor",
+            "stdio",
+        ]
+        if installer:
+            args += [
+                "-serial",
+                "pty",
+                "-cdrom",
+                str(self.iso),
+                "-kernel",
+                str(self.path / "vmlinuz"),
+                "-initrd",
+                str(self.path / "initrd.img"),
+                "-append",
+                self.boot_options + " console=ttyS0 systemd.mask=reflector.service",
+            ]
+        else:
+            args += ["-serial", f"file:{self.path / (self.stage + '-serial.log')}"]
+        self.vm = subprocess.Popen(
+            args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            pass_fds=(self.lock.fileno(),),
+        )
+        self.monitor = Expect(self.vm.stdout.fileno(), lambda: self.deadline)
+        if installer:
+            _, match = self.monitor.expect(
+                rb"char device redirected to (/dev/pts/\d+)", timeout=30
+            )
+            fd = os.open(match.group(1).decode(), os.O_RDWR | os.O_NOCTTY)
+            tty.setraw(fd)
+            self.serial = Expect(
+                fd, lambda: self.deadline, self.log("installer-serial.log")
+            )
+        self.monitor.expect(rb"\(qemu\) ", timeout=30)
+
+    def monitor_command(self, command):
+        self.vm.stdin.write((command + "\n").encode())
+        self.vm.stdin.flush()
+        self.monitor.expect(rb"\(qemu\) ", timeout=30)
+
+    def installer_boot(self):
+        self.launch(installer=True)
+        self.serial.expect(rb"login: ", timeout=150)
+        self.serial.send("root\n")
+        self.serial.expect(rb"root@archiso[^\r\n]*# ?", timeout=30)
+        # Disable zsh spelling correction as its own line: zle is still
+        # settling right after the first prompt, and a command joined to the
+        # login line gets its first characters echoed garbled.
+        self.serial.send("unsetopt correct\n")
+        self.serial.expect(rb"root@archiso[^\r\n]*# ?", timeout=30)
+
+    def install(self):
+        self.serial.send(
+            "mkdir -p /run/dotfiles; "
+            f"curl -f {shlex.quote(self.url)} -o /run/tree.tar.gz && "
+            "tar -xzf /run/tree.tar.gz -C /run/dotfiles && "
+            "/run/dotfiles/.local/bin/setup/install-on-metal /dev/vda --hostname metal-test\n"
+        )
+        prompts = (
+            (rb"Type WIPE /dev/vda to continue: ", "WIPE /dev/vda"),
+            (rb"User password: ", self.user_password),
+            (rb"Confirm user password: ", self.user_password),
+            (rb"Disk encryption password: ", self.luks_password),
+            (rb"Confirm disk encryption password: ", self.luks_password),
+        )
+        for prompt, answer in prompts:
+            self.serial.expect(prompt, timeout=120)
+            self.serial.send(answer + "\n")
+        index, _ = self.serial.expect(
+            rb"archinstall failed rc=\d+",
+            rb"metal-provision: install complete",
+            timeout=1700,
+        )
+        if index == 0:
+            raise RehearsalError("archinstall failed; see installer serial log")
+        self.serial.send("systemctl poweroff\n")
+        # Keep draining the serial pty until shutdown so QEMU cannot block on it.
+        try:
+            self.serial.expect(rb"reboot: Power down", timeout=90)
+        except RehearsalError:
+            if self.vm.poll() is None:
+                raise
+        self.wait_vm()
+        os.close(self.serial.fd)
+        self.serial = None
+
+    def wait_vm(self):
+        rc = self.vm.wait(timeout=self.remaining())
+        self.vm.stdin.close()
+        self.vm.stdout.close()
+        self.vm = None
+        if rc:
+            raise RehearsalError(f"QEMU exited rc={rc}")
+
+    def unlock(self):
+        self.launch()
+        self.pause(8)
+        screenshot = self.path / (self.stage + "-menu.ppm")
+        self.monitor_command(f"screendump {screenshot}")
+        if not screenshot.is_file():
+            raise RehearsalError("QEMU failed to save menu screendump")
+        self.pause(37)
+        for character in self.luks_password:
+            self.monitor_command(f"sendkey {character}")
+            self.pause(0.08)
+        self.monitor_command("sendkey ret")
+        while True:
+            self.remaining()
+            if self.vm.poll() is not None:
+                raise RehearsalError("QEMU exited before SSH became ready")
+            try:
+                with socket.create_connection(
+                    ("127.0.0.1", self.port), timeout=2
+                ) as sock:
+                    sock.settimeout(2)
+                    if sock.recv(64).startswith(b"SSH-"):
+                        break
+            except OSError:
+                pass
+            self.pause(2)
+
+    def login(self):
+        master, slave = pty.openpty()
+        settings = termios.tcgetattr(slave)
+        settings[3] &= ~termios.ECHO
+        termios.tcsetattr(slave, termios.TCSANOW, settings)
+        # Acquire a controlling terminal after exec, not in preexec_fn: the HTTP
+        # server already has a thread, so Python work between fork/exec is unsafe.
+        self.ssh = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import fcntl, os, sys, termios; "
+                    "fcntl.ioctl(0, termios.TIOCSCTTY, 0); os.execvp(sys.argv[1], sys.argv[1:])"
+                ),
+                "ssh",
+                "-tt",
+                "-p",
+                str(self.port),
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+                "-o",
+                f"UserKnownHostsFile={self.path / 'known_hosts'}",
+                "-o",
+                "PubkeyAuthentication=no",
+                "-o",
+                "PreferredAuthentications=password",
+                "-o",
+                "NumberOfPasswordPrompts=1",
+                "-o",
+                "ConnectTimeout=10",
+                "aaron@127.0.0.1",
+                "sudo -p 'REHEARSAL-SUDO: ' -i",
+            ],
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            start_new_session=True,
+        )
+        os.close(slave)
+        self.ssh_fd = master
+        self.shell = Expect(
+            master, lambda: self.deadline, self.log(self.stage + "-ssh.log")
+        )
+        self.shell.expect(rb"[Pp]assword: ")
+        self.shell.send(self.user_password + "\n")
+        self.shell.expect(rb"REHEARSAL-SUDO: ")
+        self.shell.send(self.user_password + "\n")
+        self.shell.expect(rb"root@metal-test[^\r\n]*# ?")
+        self.shell.send("stty -echo; export PS1='REHEARSAL# '; export TERM=dumb\n")
+        self.shell.expect(rb"REHEARSAL# ")
+        self.guest("id -u | grep -qx 0", "root-login")
+
+    def guest(self, command, label):
+        token = "RC-" + secrets.token_hex(6)
+        # Run in a subshell: failure cannot kill the interactive shell or skip RC.
+        self.shell.send(f"( set -e; {command}\n); printf '\\n{token}=%s\\n' \"$?\"\n")
+        _, match = self.shell.expect(
+            token.encode() + rb"=(\d+)\r?\n", timeout=self.remaining()
+        )
+        rc = int(match.group(1))
+        print(f"  {label}: RC={rc}", flush=True)
+        if rc:
+            raise RehearsalError(f"{label} failed rc={rc}")
+
+    def close_ssh(self):
+        if self.ssh is not None:
+            if self.ssh.poll() is None:
+                self.ssh.terminate()
+            try:
+                self.ssh.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.ssh.kill()
+                self.ssh.wait()
+            self.ssh = None
+        if self.ssh_fd is not None:
+            os.close(self.ssh_fd)
+            self.ssh_fd = None
+
+    def first_boot(self):
+        self.unlock()
+        self.login()
+
+    def handoff(self):
+        print(
+            "  Guest prerequisites: stand-in for bootstrap step 9 (not full bootstrap)",
+            flush=True,
+        )
+        self.guest(
+            "pacman -Syu --needed --noconfirm intel-ucode python polkit",
+            "guest-prerequisites",
+        )
+        self.guest(
+            "runuser -u aaron -- sh -c 'cd /home/aaron; git clone https://aur.archlinux.org/refind-theme-nord.git; "
+            "cd refind-theme-nord; makepkg --noconfirm'\n"
+            "pacman -U --noconfirm /home/aaron/refind-theme-nord/*.pkg.tar.zst",
+            "nord-package",
+        )
+        self.guest(
+            f"mkdir -p /root/dotfiles; curl -f {shlex.quote(self.url)} -o /root/tree.tar.gz; "
+            "tar -xzf /root/tree.tar.gz -C /root/dotfiles",
+            "working-tree-transfer",
+        )
+        for command in (
+            "refind-config audit",
+            "refind-config apply",
+            "refind-config --check",
+            "hibernate-storage apply",
+            "hibernate-storage --check",
+            "refind-config apply",
+        ):
+            self.guest("/root/dotfiles/.local/bin/setup/" + command, command)
+        self.guest(
+            "grep -q 'resume=UUID=' /boot/refind_linux.conf; "
+            'awk \'NR>1 {n++; if ($1=="/swapfile" && $2=="file" && $5==100) r++; '
+            'if ($2=="partition" && $4==0 && $5==-1) h++} END {exit !(n==2 && r==1 && h==1)}\' /proc/swaps',
+            "swap-layout-and-resume-option",
+        )
+
+    def reboot_proof(self):
+        self.guest(
+            "cat /proc/sys/kernel/random/boot_id > /root/pre-reboot-id; systemctl reboot",
+            "reboot-request",
+        )
+        self.close_ssh()
+        self.wait_vm()
+        self.unlock()
+        self.login()
+        self.guest(
+            'test "$(cat /root/pre-reboot-id)" != "$(cat /proc/sys/kernel/random/boot_id)"; '
+            "grep -q 'resume=UUID=' /proc/cmdline",
+            "reboot-and-kernel-resume",
+        )
+        for command in ("refind-config --check", "hibernate-storage --check"):
+            self.guest("/root/dotfiles/.local/bin/setup/" + command, command)
+        self.guest(
+            "busctl call org.freedesktop.login1 /org/freedesktop/login1 "
+            "org.freedesktop.login1.Manager CanHibernate | grep -qx 's \"yes\"'",
+            "CanHibernate=yes",
+        )
+
+    def hibernate_proof(self):
+        marker = secrets.token_hex(24)
+        self.guest(
+            f"printf '%s' {marker} > /dev/shm/metal-rehearsal; "
+            "cat /proc/sys/kernel/random/boot_id > /root/pre-hibernate-id; "
+            "systemctl hibernate",
+            "hibernate-request",
+        )
+        self.close_ssh()
+        self.wait_vm()
+        self.unlock()
+        self.login()
+        self.guest(
+            f'test "$(cat /dev/shm/metal-rehearsal)" = {marker}; '
+            'test "$(cat /root/pre-hibernate-id)" = "$(cat /proc/sys/kernel/random/boot_id)"; '
+            "journalctl -b -k --no-pager | grep -qi 'PM: hibernation: hibernation exit'",
+            "resumed-session",
+        )
+
+    def teardown(self):
+        # No RC marker after poweroff: systemd tears the SSH session down
+        # before the marker can return, so expecting it always hits EOF.
+        # QEMU exiting within the stage deadline is the success signal.
+        try:
+            self.shell.send("systemctl poweroff\n")
+        except OSError:
+            pass  # a dead session cannot deliver it; wait_vm reports the timeout
+        self.close_ssh()
+        self.wait_vm()
+
+    def finish(self, passed):
+        self.close_ssh()
+        if self.vm is not None:
+            self.vm.terminate()
+            try:
+                self.vm.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.vm.kill()
+                self.vm.wait()
+        if self.serial is not None:
+            os.close(self.serial.fd)
+        if self.server:
+            self.server.shutdown()
+            self.server.server_close()
+        for handle in self.logs:
+            handle.close()
+        if not self.path:
+            print(f"Artifact root: {ARTIFACT_ROOT} (no guest created)", flush=True)
+            return
+        if retained_artifacts(passed, self.keep):
+            credentials = self.path / "credentials.json"
+            with os.fdopen(
+                os.open(credentials, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
+            ) as handle:
+                json.dump(
+                    {
+                        "user": "aaron",
+                        "user_password": self.user_password,
+                        "luks_password": self.luks_password,
+                    },
+                    handle,
+                )
+            if not passed:
+                serial_logs = sorted(
+                    (p for p in self.path.glob("*-serial.log") if p.stat().st_size),
+                    key=lambda p: p.stat().st_mtime,
+                )
+                if serial_logs:
+                    newest = serial_logs[-1]
+                    print(
+                        f"--- last 40 serial lines ({newest.name}) ---", file=sys.stderr
+                    )
+                    with newest.open(errors="replace") as handle:
+                        print("".join(deque(handle, maxlen=40)), file=sys.stderr)
+                ssh_logs = sorted(
+                    (p for p in self.path.glob("*-ssh.log") if p.stat().st_size),
+                    key=lambda p: p.stat().st_mtime,
+                )
+                if ssh_logs:
+                    newest = ssh_logs[-1]
+                    print(f"--- last 40 SSH lines ({newest.name}) ---", file=sys.stderr)
+                    with newest.open(errors="replace") as handle:
+                        print("".join(deque(handle, maxlen=40)), file=sys.stderr)
+            print(f"Kept artifacts: {self.path}", flush=True)
+        if self.lock:
+            self.lock.close()
+        if not retained_artifacts(passed, self.keep):
+            destroy(self.path)
+
+    def run(self):
+        passed = False
+        try:
+            for stage, timeout in STAGES:
+                self.stage = stage
+                self.deadline = time.monotonic() + timeout
+                print(f"==> {stage} (timeout {timeout}s)", flush=True)
+                getattr(self, stage.replace("-", "_"))()
+                print(f"=== {stage} PASS", flush=True)
+            passed = True
+            return 0
+        except (
+            RehearsalError,
+            OSError,
+            ValueError,
+            subprocess.SubprocessError,
+            KeyboardInterrupt,
+        ) as exc:
+            print(
+                f"metal-rehearsal: FAIL stage={self.stage}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            return 1
+        finally:
+            self.finish(passed)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    run = commands.add_parser(
+        "run", help="install, boot, reconcile, reboot, hibernate, resume"
+    )
+    run.add_argument(
+        "--keep",
+        action="store_true",
+        help="keep artifacts and throwaway credentials even on pass",
+    )
+    remove = commands.add_parser(
+        "destroy", help="remove one retained, inactive rehearsal directory"
+    )
+    remove.add_argument("path", type=Path)
+    args = parser.parse_args(argv)
+    if args.command == "run":
+        return Rehearsal(args.keep).run()
+    try:
+        destroy(args.path)
+    except (RehearsalError, OSError, ValueError) as exc:
+        parser.exit(1, f"metal-rehearsal: {exc}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, interrupted)
+    signal.signal(signal.SIGHUP, interrupted)
+    sys.exit(main())

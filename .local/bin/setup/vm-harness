@@ -100,7 +100,7 @@ RUN_STAMP=$(date +%Y%m%d-%H%M%S)                                       # one sta
 RESUME_HEADER=""                                                       # set by a resuming `up`; run_phase logs it once
 DISPLAY_TOOL="$HOME/.local/bin/tools/vm-harness-display"
 GUEST_TOOL="${BASH_SOURCE[0]%/*}/vm-harness-guest"
-SEED_TOOL="${BASH_SOURCE[0]%/*}/vm-harness-seed"
+SEED_TOOL="${BASH_SOURCE[0]%/*}/provision-seed"
 DISPLAY_MODE=plain # resolved at dispatch: bar | compact | plain
 PHASES_STATUS=""   # cmd_up breadcrumb for the display: name:done|current|pending,...
 
@@ -251,7 +251,7 @@ write_seed() {
         args+=(--pubkey "$host_pubkey")
     fi
     "$SEED_TOOL" "${args[@]}" >/dev/null \
-        || die "vm-harness-seed failed"
+        || die "provision-seed failed"
 }
 
 cmd_create() {
