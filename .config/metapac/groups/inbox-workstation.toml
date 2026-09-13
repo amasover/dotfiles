@@ -7,4 +7,6 @@ packages = [
   "obs-studio",
   "forgejo-cli",
   "rofimoji",
+  "paseo-bin",
+  "autofs",
 ]
