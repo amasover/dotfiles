@@ -1673,9 +1673,8 @@ machine — or a person — that has no NAS is completely unaffected.
 
 Issue: [#249](https://github.com/amasover/dotfiles/issues/249) (closed, PR #250) ·
 Origin: 2026-09-13, writing a planning document to a network share needed a
-durable mount. `fstab` was
-rejected outright: an unreachable server there hangs boots, file managers, and any
-`df`. The step is deliberately two-gated because this repo is meant to be reusable by
+durable mount. `fstab` was rejected outright: an unreachable server there hangs
+boots, file managers, and any `df`. The step is deliberately two-gated because this repo is meant to be reusable by
 someone who does not run a NAS.
 
 The mechanism is public; the site specifics are not. Map files live under the encrypted
