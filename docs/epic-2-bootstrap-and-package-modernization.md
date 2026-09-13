@@ -1700,10 +1700,14 @@ secret has one home and rotation is one command.
 - Given an unreachable server, when a path is read, then the access fails with an I/O error rather than hanging the caller, and no access means no network attempt at all
 - Given the public repository, when the diff is reviewed, then it contains no hostname, share name, local IP, credential, or password-manager item identifier
 
-**Evidence artifact:** live workstation verification — cold automount trigger, read,
-write and delete on the real share; provisioner round-trip after deleting its output;
-`bash -n` and `shellcheck -S error` clean on the bootstrap script; encrypt-manifest glob
-expansion confirmed to match every tracked map.
+**Evidence artifact:** `tests/nas-automounts.clitest.txt` covers the step through its
+`--nas-automounts` seam with a scratch `HOME`, a scratch `/etc` prefix, and stub
+`automount`/`systemctl`/`sudo`, so CI exercises both gates, both destination shapes,
+idempotence, check-mode inertness, and the provisioner contract without a NAS or root.
+The share itself cannot be faked, so that half stays a live check: workstation
+verification — cold automount trigger, read, write and delete on the real share;
+provisioner round-trip after deleting its output; encrypt-manifest glob expansion
+confirmed to match every tracked map.
 
 ---
 
