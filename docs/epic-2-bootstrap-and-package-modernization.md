@@ -1663,6 +1663,54 @@ transcript (redacted) recorded on #247.
 
 ---
 
+### Story 2.54: Optional NAS automounts via autofs ✅
+
+As the repo owner,
+I want on-demand network shares mounted from tracked maps by an opt-in bootstrap
+step,
+So that a rebuilt machine reaches its NAS without hand-written `/etc` files, and a
+machine — or a person — that has no NAS is completely unaffected.
+
+Issue: [#249](https://github.com/amasover/dotfiles/issues/249) (closed, PR #250) ·
+Origin: 2026-09-13, writing a planning document to a network share needed a
+durable mount. `fstab` was rejected outright: an unreachable server there hangs
+boots, file managers, and any `df`. The step is deliberately two-gated because this repo is meant to be reusable by
+someone who does not run a NAS.
+
+The mechanism is public; the site specifics are not. Map files live under the encrypted
+`.config/dotfiles/autofs/` tree, so no hostname, share name, address, or credential
+identifier reaches tracked plaintext, while the step that installs them does. The
+package is declared machine-locally rather than in any purpose group — `autofs` has
+also left the official repos and is AUR-only, which no shared group should force.
+
+Credentials are provisioned, never tracked. `mount.cifs` runs as root from the
+automount daemon, with no user session and no D-Bus, so neither a keyring nor an agent
+can serve a password there; `cifscreds` is per-session and dies on reboot. A 0600
+credentials file on the LUKS-encrypted root is therefore the only workable mount-time
+source, and a provisioner script regenerates it from the local password manager so the
+secret has one home and rotation is one command.
+
+**Acceptance criteria:**
+
+- Given a machine with no `.config/dotfiles/autofs/` tree, when bootstrap runs, then the step reports that the optional feature is absent, writes nothing under `/etc`, and does not fail the run
+- Given maps present but no `automount` binary, when bootstrap runs, then the step names the machine-local declaration as the fix and makes no changes
+- Given both halves present, when bootstrap runs, then each tracked map is symlinked (not copied) into `/etc/autofs`, the service is enabled, and a second run reports every link as already in place
+- Given `--check`, when bootstrap runs, then the step prints the symlinks and provisioner state it would produce and touches neither `/etc` nor the credentials file
+- Given a configured share, when a path under the automount root is read, then it mounts on demand and unmounts after its idle timeout, so an untouched share holds no connection
+- Given an unreachable server, when a path is read, then the access fails with an I/O error rather than hanging the caller, and no access means no network attempt at all
+- Given the public repository, when the diff is reviewed, then it contains no hostname, share name, local IP, credential, or password-manager item identifier
+
+**Evidence artifact:** `tests/nas-automounts.clitest.txt` covers the step through its
+`--nas-automounts` seam with a scratch `HOME`, a scratch `/etc` prefix, and stub
+`automount`/`systemctl`/`sudo`, so CI exercises both gates, both destination shapes,
+idempotence, check-mode inertness, and the provisioner contract without a NAS or root.
+The share itself cannot be faked, so that half stays a live check: workstation
+verification — cold automount trigger, read, write and delete on the real share;
+provisioner round-trip after deleting its output; encrypt-manifest glob expansion
+confirmed to match every tracked map.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

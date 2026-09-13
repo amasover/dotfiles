@@ -3,3 +3,6 @@
 .config/Code/User/settings.json
 .local/state/aur-quarantine/maintainers.tsv
 .local/state/aur-quarantine/exempt.txt
+# NAS automount specifics (hostname, share, 1Password item id). The mechanism
+# — bootstrap step 6f — is public; only these stay out of the public repo.
+.config/dotfiles/autofs/**
