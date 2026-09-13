@@ -48,7 +48,9 @@ artifacts land, and when to run it.
 ## Rehearsal stages
 
 Each stage is a named failure point with its own timeout. On failure: stage name,
-last 40 serial lines, artifact path.
+the last 40 lines of the newest serial and SSH logs — each channel named even when
+it captured nothing, so a pre-launch failure reads as empty rather than silent —
+and the artifact path.
 
 1. **host-preflight**: `qemu-system-x86_64`, `qemu-img`, `bsdtar`, writable
    `/dev/kvm`, OVMF code and vars, 10 GiB free under the artifact root, cached ISO
@@ -83,9 +85,11 @@ last 40 serial lines, artifact path.
 
 - Throwaway credentials are random per run; retained runs store them mode 0600
   in the mode-0700 artifact directory so the disk can still be unlocked.
-- `install-on-metal` uses ISO-available Python and standard-library code. It
-  prints floor disk GiB and ceiling RAM GiB, creates the recipe under `/run`,
-  and execs the unchanged attended driver.
+- `install-on-metal` is Python rather than POSIX sh: `hardware_facts` is a pure
+  function returning floor disk GiB and ceiling RAM GiB, so the rounding is
+  unit-tested host-side through `conftest.load_tool` with no ISO in the loop.
+  It uses only ISO-available standard library, prints the derived facts, creates
+  the recipe under `/run`, and execs the unchanged attended driver.
 - The prompt matcher handles fragmented ANSI/OSC terminal controls as well as
   fragmented prompts. A real PTY credential exchange tests the generator's
   attended protocol without a VM or confirmation bypass.

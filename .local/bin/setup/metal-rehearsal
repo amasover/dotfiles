@@ -6,6 +6,7 @@ No host elevation, libvirt, guest prompt bypass, or full bootstrap is involved.
 """
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -132,8 +133,6 @@ def destroy(path):
     if metadata.get("tool") != "metal-rehearsal":
         raise RehearsalError(f"not owned by metal-rehearsal: {path}")
     # An advisory lock survives stale metadata but prevents deleting a live run.
-    import fcntl
-
     with marker.open() as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -216,8 +215,6 @@ class Rehearsal:
         print(f"ISO sha256 verified: {actual}", flush=True)
 
     def prepare(self):
-        import fcntl
-
         stamp = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(3)
         self.path = ARTIFACT_ROOT / stamp
         self.path.mkdir(mode=0o700)
@@ -522,9 +519,16 @@ class Rehearsal:
             os.close(self.ssh_fd)
             self.ssh_fd = None
 
-    def first_boot(self):
+    def unlock_and_login(self):
         self.unlock()
         self.login()
+
+    def run_setup(self, *commands):
+        for command in commands:
+            self.guest("/root/dotfiles/.local/bin/setup/" + command, command)
+
+    def first_boot(self):
+        self.unlock_and_login()
 
     def handoff(self):
         print(
@@ -546,15 +550,14 @@ class Rehearsal:
             "tar -xzf /root/tree.tar.gz -C /root/dotfiles",
             "working-tree-transfer",
         )
-        for command in (
+        self.run_setup(
             "refind-config audit",
             "refind-config apply",
             "refind-config --check",
             "hibernate-storage apply",
             "hibernate-storage --check",
             "refind-config apply",
-        ):
-            self.guest("/root/dotfiles/.local/bin/setup/" + command, command)
+        )
         self.guest(
             "grep -q 'resume=UUID=' /boot/refind_linux.conf; "
             'awk \'NR>1 {n++; if ($1=="/swapfile" && $2=="file" && $5==100) r++; '
@@ -569,15 +572,13 @@ class Rehearsal:
         )
         self.close_ssh()
         self.wait_vm()
-        self.unlock()
-        self.login()
+        self.unlock_and_login()
         self.guest(
             'test "$(cat /root/pre-reboot-id)" != "$(cat /proc/sys/kernel/random/boot_id)"; '
             "grep -q 'resume=UUID=' /proc/cmdline",
             "reboot-and-kernel-resume",
         )
-        for command in ("refind-config --check", "hibernate-storage --check"):
-            self.guest("/root/dotfiles/.local/bin/setup/" + command, command)
+        self.run_setup("refind-config --check", "hibernate-storage --check")
         self.guest(
             "busctl call org.freedesktop.login1 /org/freedesktop/login1 "
             "org.freedesktop.login1.Manager CanHibernate | grep -qx 's \"yes\"'",
@@ -594,8 +595,7 @@ class Rehearsal:
         )
         self.close_ssh()
         self.wait_vm()
-        self.unlock()
-        self.login()
+        self.unlock_and_login()
         self.guest(
             f'test "$(cat /dev/shm/metal-rehearsal)" = {marker}; '
             'test "$(cat /root/pre-hibernate-id)" = "$(cat /proc/sys/kernel/random/boot_id)"; '
@@ -613,6 +613,20 @@ class Rehearsal:
             pass  # a dead session cannot deliver it; wait_vm reports the timeout
         self.close_ssh()
         self.wait_vm()
+
+    def print_tail(self, pattern, label):
+        """Name the channel even when it captured nothing: silence reads as a bug."""
+        logs = sorted(
+            (p for p in self.path.glob(pattern) if p.stat().st_size),
+            key=lambda p: p.stat().st_mtime,
+        )
+        if not logs:
+            print(f"--- no {label} output captured ---", file=sys.stderr)
+            return
+        newest = logs[-1]
+        print(f"--- last 40 {label} lines ({newest.name}) ---", file=sys.stderr)
+        with newest.open(errors="replace") as handle:
+            print("".join(deque(handle, maxlen=40)), file=sys.stderr)
 
     def finish(self, passed):
         self.close_ssh()
@@ -647,26 +661,8 @@ class Rehearsal:
                     handle,
                 )
             if not passed:
-                serial_logs = sorted(
-                    (p for p in self.path.glob("*-serial.log") if p.stat().st_size),
-                    key=lambda p: p.stat().st_mtime,
-                )
-                if serial_logs:
-                    newest = serial_logs[-1]
-                    print(
-                        f"--- last 40 serial lines ({newest.name}) ---", file=sys.stderr
-                    )
-                    with newest.open(errors="replace") as handle:
-                        print("".join(deque(handle, maxlen=40)), file=sys.stderr)
-                ssh_logs = sorted(
-                    (p for p in self.path.glob("*-ssh.log") if p.stat().st_size),
-                    key=lambda p: p.stat().st_mtime,
-                )
-                if ssh_logs:
-                    newest = ssh_logs[-1]
-                    print(f"--- last 40 SSH lines ({newest.name}) ---", file=sys.stderr)
-                    with newest.open(errors="replace") as handle:
-                        print("".join(deque(handle, maxlen=40)), file=sys.stderr)
+                self.print_tail("*-serial.log", "serial")
+                self.print_tail("*-ssh.log", "SSH")
             print(f"Kept artifacts: {self.path}", flush=True)
         if self.lock:
             self.lock.close()

@@ -212,6 +212,35 @@ def test_finish_retains_recoverable_disk_only_when_required(
         assert json.loads(credentials.read_text())["luks_password"] == run.luks_password
 
 
+def test_failure_prints_the_newest_serial_tail(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "artifacts"
+    monkeypatch.setattr(rehearsal, "ARTIFACT_ROOT", root)
+    run = rehearsal.Rehearsal()
+    run.path = owned_run(root)
+    (run.path / "installer-serial.log").write_text("stale\n")
+    (run.path / "install-serial.log").write_text(
+        "".join(f"line {n}\n" for n in range(60))
+    )
+    os.utime(run.path / "installer-serial.log", (1, 1))
+    run.finish(False)
+    err = capsys.readouterr().err
+    assert "install-serial.log" in err
+    assert "line 59" in err
+    assert "line 19" not in err
+    assert "stale" not in err
+
+
+def test_failure_before_the_guest_launches_names_the_absent_serial_channel(
+    tmp_path, monkeypatch, capsys
+):
+    root = tmp_path / "artifacts"
+    monkeypatch.setattr(rehearsal, "ARTIFACT_ROOT", root)
+    run = rehearsal.Rehearsal()
+    run.path = owned_run(root)
+    run.finish(False)
+    assert "no serial output captured" in capsys.readouterr().err
+
+
 def test_install_failure_stops_before_boot_and_reports_stage(
     tmp_path, monkeypatch, capsys
 ):

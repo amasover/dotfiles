@@ -95,8 +95,9 @@ flag or environment override. No host root authorization is used.
 5. Power off and delete the run artifacts unless `--keep` was supplied.
 
 Every stage has a deadline. A failure exits nonzero, names the stage, prints the
-last 40 serial lines (and SSH output when available), and retains its directory
-under `~/.cache/bootstrap-harness/metal-rehearsal/<timestamp>/`, never `/tmp`.
+last 40 serial and SSH lines — a channel that captured nothing is named as empty,
+so a pre-launch failure never reads as silence — and retains its directory under
+`~/.cache/bootstrap-harness/metal-rehearsal/<timestamp>/`, never `/tmp`.
 Retained runs include mode-0600 throwaway credentials for unlocking the disk.
 Do not publish that file or raw guest logs; use the host-side stage/RC transcript
 with local paths redacted for issue evidence.
