@@ -1,9 +1,17 @@
-# OpenAI-primary mode: Terra remains primary; route mechanical verification
-# and read-only lookup to low-effort Luna.
+# OpenAI-primary mode: Astra is primary; Sol reviews; Luna runs general tasks
+# and lookup. Astra peaks at xhigh on DeepSWE v1.1 (74%, $6.52) — max costs
+# twice as much and scores lower. Luna handles lookup at high, not low: low
+# effort passes 2% of tasks, high passes 44% at $0.78. Generic tasks pin to
+# Luna max (67%, $3.03) so they stay on OpenAI instead of inheriting the global
+# Anthropic worker.
 modelRoles:
-  default: openai-codex/gpt-5.6-terra:xhigh
-  smol: openai-codex/gpt-5.6-luna:low
+  default: openai-codex/gpt-6-astra:xhigh
+  task: openai-codex/gpt-5.6-luna:max
+  smol: openai-codex/gpt-5.6-luna:high
+  slow: openai-codex/gpt-5.6-sol:high
 task:
   agentModelOverrides:
+    task: "@task"
     scout: "@smol"
     sonic: "@smol"
+    reviewer: "@slow"
