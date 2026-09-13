@@ -440,7 +440,6 @@ def build_user_configuration(request: ProvisioningRequest) -> dict:
             request.metal.disk_size_gib,
             request.metal.ram_gib,
         )
-        custom_commands.append(f"swapon --priority -1 /dev/{METAL_VG}/resume")
     else:
         if target.device is None:
             raise ValueError(f"{target.name} has no disk device")
@@ -785,31 +784,100 @@ def write_metal_credentials(path: Path, user: str, prompt_fn=None) -> None:
     _atomic_write_text(path, json.dumps(payload, indent=2) + "\n", 0o600)
 
 
-def mark_refind_handoff(root: Path) -> None:
-    """Authorize first-boot refind-config replacement of Archinstall outputs."""
+def finalize_metal(root: Path) -> None:
+    """Persist resume swap and authorize first-boot rEFInd reconciliation."""
     root = root.resolve()
     if root == Path("/"):
         raise ValueError("metal finalization requires an offline target root")
     if not root.is_dir():
         raise ValueError(f"target root does not exist: {root}")
 
+    fstab = root / "etc/fstab"
+    mkinitcpio = root / "etc/mkinitcpio.conf"
     paths = [
+        fstab,
+        mkinitcpio,
         root / "boot/EFI/refind/refind.conf",
         root / "boot/refind_linux.conf",
     ]
+    theme = root / "boot/EFI/refind/themes/nord"
+    theme_marker = theme / ".dotfiles-refind-managed"
+    for path in (*paths, theme_marker):
+        current = path
+        while current != root:
+            if current.is_symlink():
+                raise ValueError(f"metal handoff destination is a symlink: {current}")
+            current = current.parent
+    if theme.exists() and (
+        not theme_marker.is_file() or theme_marker.read_text() != REFIND_MANAGED + "\n"
+    ):
+        raise ValueError("metal handoff refuses an unmanaged Nord theme")
     contents: dict[Path, str] = {}
     for path in paths:
-        if path.is_symlink():
-            raise ValueError(f"rEFInd handoff destination is a symlink: {path}")
         if not path.is_file():
-            raise ValueError(f"rEFInd handoff destination is missing: {path}")
+            raise ValueError(f"metal handoff destination is missing: {path}")
         contents[path] = path.read_text()
 
+    # Archinstall's genfstab -f /mnt omits swap outside that path, even when
+    # activated by a custom command. Persist the recipe's stable LV name after
+    # genfstab instead; do not activate target swap in the installer host.
+    resume_entry = f"/dev/{METAL_VG}/resume none swap sw,pri=-1 0 0"
+    swap_entries = [
+        fields
+        for line in contents[fstab].splitlines()
+        if (fields := line.split())
+        and not fields[0].startswith("#")
+        and len(fields) >= 3
+        and fields[2] == "swap"
+    ]
+    if swap_entries and swap_entries != [resume_entry.split()]:
+        raise ValueError("metal handoff fstab has conflicting swap entries")
+    if not swap_entries:
+        contents[fstab] = contents[fstab].rstrip("\n") + "\n\n" + resume_entry + "\n"
+
+    # Archinstall's udev/LVM-on-LUKS recipe does not add a resume hook.
+    # Keep its generated hooks, but resume before any filesystem checks.
+    matches = list(
+        re.finditer(r"(?m)^HOOKS=\(([^\n()]*)\)[ \t]*$", contents[mkinitcpio])
+    )
+    if len(matches) != 1:
+        raise ValueError("metal handoff requires one literal mkinitcpio HOOKS array")
+    match = matches[0]
+    hooks = shlex.split(match[1])
+    if (
+        not all(re.fullmatch(r"[a-zA-Z0-9_-]+", hook) for hook in hooks)
+        or not {"encrypt", "lvm2", "filesystems"}.issubset(hooks)
+        or not hooks.index("encrypt") < hooks.index("lvm2") < hooks.index("filesystems")
+    ):
+        raise ValueError("metal handoff requires encrypt/lvm2 before filesystems")
+    hooks = [hook for hook in hooks if hook != "resume"]
+    hooks.insert(hooks.index("filesystems"), "resume")
+    contents[mkinitcpio] = (
+        contents[mkinitcpio][: match.start()]
+        + f"HOOKS=({' '.join(hooks)})"
+        + contents[mkinitcpio][match.end() :]
+    )
+
     for path, content in contents.items():
-        if content.startswith(REFIND_MANAGED + "\n"):
-            continue
-        mode = path.stat().st_mode & 0o777
-        _atomic_write_text(path, REFIND_MANAGED + "\n" + content, mode)
+        if path not in (fstab, mkinitcpio):
+            if content.startswith(REFIND_MANAGED + "\n"):
+                continue
+            content = REFIND_MANAGED + "\n" + content
+        if path.read_text() != content:
+            mode = path.stat().st_mode & 0o777
+            _atomic_write_text(path, content, mode)
+
+    # Always rebuild: a previous attempt may have persisted HOOKS but failed here.
+    result = subprocess.run(["arch-chroot", str(root), "mkinitcpio", "-P"], check=False)
+    if result.returncode:
+        raise ValueError("metal handoff could not rebuild the target initramfs")
+
+    # The package hook copies Nord onto the ESP before bootstrap reconciles it.
+    # Reserve ownership while the fresh target has no theme; never adopt an
+    # existing unmarked directory. The package's copy preserves this marker.
+    theme.mkdir(parents=True, exist_ok=True)
+    if not theme_marker.exists():
+        _atomic_write_text(theme_marker, REFIND_MANAGED + "\n", 0o644)
 
 
 def write_seed_iso(out_iso: Path, user_data: str, meta_data: str) -> None:
@@ -983,7 +1051,7 @@ def _parser() -> argparse.ArgumentParser:
 
     finalize = commands.add_parser(
         "metal-finalize",
-        help="mark fresh rEFInd files for repository takeover",
+        help="persist resume swap and mark fresh rEFInd files for repository takeover",
     )
     finalize.add_argument("--root", required=True)
 
@@ -1010,8 +1078,8 @@ def main(argv: list[str] | None = None) -> int:
             _metal_preflight(MetalFacts(args.device, args.disk_size, args.ram_gib))
             return 0
         if args.command == "metal-finalize":
-            mark_refind_handoff(Path(args.root))
-            print("metal-provision: rEFInd handoff marked for first bootstrap")
+            finalize_metal(Path(args.root))
+            print("metal-provision: resume swap persisted; rEFInd handoff marked")
             return 0
     except ValueError as exc:
         parser.error(str(exc))

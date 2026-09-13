@@ -291,9 +291,13 @@ def findmnt_record(target: str, fields: tuple[str, ...]) -> dict[str, str]:
         records = payload.get("filesystems", [])
     except (AttributeError, json.JSONDecodeError) as exc:
         raise RefindError(f"cannot parse mount metadata for {target}") from exc
-    if proc.returncode or not isinstance(records, list) or len(records) != 1:
+    if proc.returncode or not isinstance(records, list) or not records:
         raise RefindError(f"cannot derive one active mount for {target}")
     record = records[0]
+    # Nord's package hook can mount an already-mounted ESP again. Identical
+    # metadata still identifies one filesystem; conflicting overmounts do not.
+    if any(other != record for other in records[1:]):
+        raise RefindError(f"cannot derive one active mount for {target}")
     if not isinstance(record, dict):
         raise RefindError(f"cannot parse mount metadata for {target}")
     result = {field.lower(): record.get(field.lower()) for field in fields}

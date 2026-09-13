@@ -6,6 +6,7 @@ No VMware, libvirt, block-device mutation, or network access.
 import base64
 import io
 import json
+import subprocess
 
 import pytest
 from conftest import load_tool
@@ -156,7 +157,7 @@ class TestUserConfiguration:
             ("root", "ext4", 222, "/"),
             ("resume", "linux-swap", 32, None),
         ]
-        assert "swapon --priority -1 /dev/dotfiles/resume" in cfg["custom_commands"]
+        assert "swapon" not in "\n".join(cfg["custom_commands"])
         assert "open-vm-tools" not in cfg["packages"]
         assert "qemu-guest-agent" not in cfg["packages"]
 
@@ -337,32 +338,145 @@ class TestMetalCredentials:
         assert not path.exists()
 
 
+@pytest.fixture
+def metal_target(tmp_path, monkeypatch):
+    (tmp_path / "etc").mkdir()
+    (tmp_path / "etc/fstab").write_text("/dev/dotfiles/root / ext4 defaults 0 1\n")
+    (tmp_path / "etc/mkinitcpio.conf").write_text(
+        "HOOKS=(base udev encrypt lvm2 block filesystems fsck)\n"
+    )
+    # Building an initramfs requires the installed target; exercised in the VM.
+    run = subprocess.run
+
+    def target_run(command, **kwargs):
+        if command[0] == "arch-chroot":
+            return subprocess.CompletedProcess(command, 0)
+        return run(command, **kwargs)
+
+    monkeypatch.setattr(seed.subprocess, "run", target_run)
+    refind_dir = tmp_path / "boot/EFI/refind"
+    refind_dir.mkdir(parents=True)
+    (refind_dir / "refind.conf").write_text("timeout 20\n")
+    (tmp_path / "boot/refind_linux.conf").write_text(
+        '"Arch Linux" "root=/dev/dotfiles/root"\n'
+    )
+    return tmp_path
+
+
+class TestMetalResumePersistence:
+    def test_resume_runs_after_unlock_before_filesystem_checks(self, metal_target):
+        seed.finalize_metal(metal_target)
+        seed.finalize_metal(metal_target)
+        result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                'source "$1"; printf "%s\\n" "${HOOKS[@]}"',
+                "bash",
+                str(metal_target / "etc/mkinitcpio.conf"),
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        hooks = result.stdout.splitlines()
+        assert hooks.count("resume") == 1
+        assert hooks.index("encrypt") < hooks.index("lvm2") < hooks.index("resume")
+        assert hooks.index("resume") < hooks.index("filesystems") < hooks.index("fsck")
+
+    def test_finalization_persists_one_low_priority_swap_across_retries(
+        self, metal_target
+    ):
+        args = ["metal-finalize", "--root", str(metal_target)]
+        seed.main(args)
+        seed.main(args)
+        result = subprocess.run(
+            [
+                "findmnt",
+                "--fstab",
+                "--tab-file",
+                str(metal_target / "etc/fstab"),
+                "--types",
+                "swap",
+                "--noheadings",
+                "--output",
+                "SOURCE,OPTIONS",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0
+        assert [line.split() for line in result.stdout.splitlines()] == [
+            ["/dev/dotfiles/resume", "sw,pri=-1"]
+        ]
+        assert (
+            (metal_target / "etc/fstab")
+            .read_text()
+            .startswith("/dev/dotfiles/root / ext4 defaults 0 1\n")
+        )
+
+    def test_conflicting_swap_refuses_before_marking_boot_files(self, metal_target):
+        fstab = metal_target / "etc/fstab"
+        original = fstab.read_text() + "/dev/other none swap sw 0 0\n"
+        fstab.write_text(original)
+        with pytest.raises(SystemExit):
+            seed.main(["metal-finalize", "--root", str(metal_target)])
+        assert fstab.read_text() == original
+        assert (
+            metal_target / "boot/EFI/refind/refind.conf"
+        ).read_text() == "timeout 20\n"
+
+
 class TestMetalHandoff:
     def test_handoff_marker_matches_refind_reconciler(self):
         assert seed.REFIND_MANAGED == refind.MANAGED
 
-    def test_marks_archinstall_refind_files_for_first_boot_reconcile(self, tmp_path):
-        refind = tmp_path / "boot/EFI/refind/refind.conf"
-        linux = tmp_path / "boot/refind_linux.conf"
-        refind.parent.mkdir(parents=True)
-        refind.write_text("timeout 20\n")
-        linux.write_text('"Arch Linux" "root=/dev/dotfiles/root"\n')
+    def test_marks_archinstall_refind_files_for_first_boot_reconcile(
+        self, metal_target
+    ):
+        refind = metal_target / "boot/EFI/refind/refind.conf"
+        linux = metal_target / "boot/refind_linux.conf"
 
-        seed.mark_refind_handoff(tmp_path)
-        seed.mark_refind_handoff(tmp_path)
+        seed.finalize_metal(metal_target)
+        seed.finalize_metal(metal_target)
 
         for path in (refind, linux):
             assert path.read_text().startswith(seed.REFIND_MANAGED + "\n")
             assert path.read_text().count(seed.REFIND_MANAGED) == 1
 
-    def test_refuses_symlinked_refind_destination(self, tmp_path):
-        refind_dir = tmp_path / "boot/EFI/refind"
-        refind_dir.mkdir(parents=True)
-        (tmp_path / "boot/refind_linux.conf").write_text("entry\n")
-        (tmp_path / "outside").write_text("timeout 20\n")
-        (refind_dir / "refind.conf").symlink_to(tmp_path / "outside")
+    def test_package_theme_copy_is_reconcilable_without_adoption(self, metal_target):
+        seed.finalize_metal(metal_target)
+        theme = metal_target / "boot/EFI/refind/themes/nord"
+        theme.mkdir(parents=True, exist_ok=True)
+        (theme / "theme.conf").write_text("package theme\n")
+        state = {
+            "root": metal_target,
+            "files": [],
+            "theme_dir": theme,
+            "theme": {"theme.conf": b"tracked theme\n"},
+        }
+        refind.preflight(state, adopt=False)
+        assert refind.drift_items(state) == ["Nord theme"]
+
+    def test_existing_unmanaged_theme_is_not_authorized(self, metal_target):
+        theme = metal_target / "boot/EFI/refind/themes/nord"
+        theme.mkdir(parents=True)
+        (theme / "theme.conf").write_text("someone else's theme\n")
+        fstab = metal_target / "etc/fstab"
+        original = fstab.read_bytes()
+        with pytest.raises(ValueError, match="unmanaged Nord theme"):
+            seed.finalize_metal(metal_target)
+        assert fstab.read_bytes() == original
+        assert not (theme / refind.THEME_MARKER).exists()
+
+    def test_refuses_symlinked_refind_destination(self, metal_target):
+        refind = metal_target / "boot/EFI/refind/refind.conf"
+        refind.unlink()
+        (metal_target / "outside").write_text("timeout 20\n")
+        refind.symlink_to(metal_target / "outside")
         with pytest.raises(ValueError, match="symlink"):
-            seed.mark_refind_handoff(tmp_path)
+            seed.finalize_metal(metal_target)
 
 
 class TestCli:

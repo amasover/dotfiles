@@ -180,11 +180,15 @@ hibernation image. This prevents ordinary swap occupancy from consuming the
 space needed to save RAM.
 
 The Story 2.29 metal recipe creates one LUKS container holding an ext4 root LV and one
-resume LV exactly equal to rounded physical RAM. It disables zram, activates the resume
-LV at priority -1 before Archinstall runs `genfstab`, and refuses a disk that cannot
-also hold the future 1.5x-RAM routine swapfile plus 40 GiB workstation headroom.
-Whole-GiB rounding of physical RAM is a safe target; the image itself can never exceed
-`MemTotal`, so that is the size the module enforces.
+resume LV exactly equal to rounded physical RAM. It disables zram and refuses a disk
+that cannot also hold the future 1.5x-RAM routine swapfile plus 40 GiB workstation
+headroom. Archinstall's filtered `genfstab` never records swap outside the target, so
+the driver's `metal-finalize` step persists the resume LV in the target fstab at
+priority -1, inserts the `resume` initramfs hook after `lvm2` and before
+`filesystems`, and rebuilds the initramfs in the target chroot. Without that hook the
+kernel boots but never restores a hibernation image. Whole-GiB rounding of physical
+RAM is a safe target; the image itself can never exceed `MemTotal`, so that is the
+size the module enforces.
 
 After first boot and yadm checkout:
 
@@ -294,12 +298,17 @@ artifacts, or an incomplete/unowned Nord package. No reboot is automatic.
 
 Live derivation is the default and rejects machine-local kernel overrides. Story 2.29
 uses that path deliberately: Archinstall 4.4 installs the first-boot rEFInd binary and
-kernel entry, then the provisioner marks only those two fresh files with Story 2.52's
-managed marker. After first boot, bootstrap's ordinary `refind-config apply` derives
-crypt/root identity from the running kernel and installs tracked policy plus the
-package-owned Nord assets. After `hibernate-storage apply` selects the resume LV, the
-second `refind-config apply` adds its live-derived UUID. The current workstation's boot
-files and identifiers are neither read nor copied.
+kernel entry, then `metal-finalize` marks those two fresh files with Story 2.52's
+managed marker and reserves the empty `EFI/refind/themes/nord` directory with the
+reconciler's ownership marker. The `refind-theme-nord` package hook copies its assets
+into that directory (and mounts the already-mounted ESP a second time; the reconciler
+accepts identical duplicate mount records) before bootstrap runs, so the first
+`refind-config apply` reconciles the theme without `adopt`. An existing unmarked theme
+directory stops finalization. After first boot, bootstrap's ordinary
+`refind-config apply` derives crypt/root identity from the running kernel and installs
+tracked policy plus the package-owned Nord assets. After `hibernate-storage apply`
+selects the resume LV, the second `refind-config apply` adds its live-derived UUID.
+The current workstation's boot files and identifiers are neither read nor copied.
 
 Other offline provisioners may still use untracked, root-owned
 `/etc/dotfiles/refind.json` with `--root`; target roots never borrow the installer
@@ -347,7 +356,8 @@ Treat first policy reconciliation and boot proof as one attended operation:
 1. Run `audit`; confirm active FAT ESP, rEFInd firmware entry, package-owned Nord
    source, and Arch kernel/initramfs pairs.
 2. Run `apply`; require its backup path and then `rEFInd configuration: converged` from
-   `--check`. Story 2.29's handoff marker means no first-install `adopt` is needed.
+   `--check`. Story 2.29's handoff markers (config files and theme directory) mean no
+   first-install `adopt` is needed.
 3. Complete `hibernate-storage apply`, run `refind-config apply` again, and require both
    read-only checks to converge.
 4. Reboot once; inspect the intended Arch entry and Nord theme, then boot Arch.
