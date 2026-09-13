@@ -1621,6 +1621,12 @@ generator for fresh metal provisioning; no parallel hand-maintained path.
 - Story 2.29's metal recipe consumes the same source/generator
 - Attended validation proves a converged check, intended menu/theme, successful Arch boot, and preserved alternate boot path after reboot
 
+Amendment (2026-09-12, after the first adopt lost the Arch entry): the generated
+scan directory is volume-relative with no `@` prefix, and a sibling OS on the
+same boot filesystem is a manual stanza generated from machine-local `dual_boot`
+input, with the volume derived from the `/boot` mount. Machines without that
+input carry no stanza. The prior hand-written PARTUUID stanzas are retired.
+
 **Evidence artifact:** tracked policy/template + fixture-tested reconciler;
 redacted before/after checksums and drift; backup location; firmware entry
 summary; attended reboot/menu/boot validation.

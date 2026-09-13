@@ -1,11 +1,11 @@
 # rEFInd fixture reconciliation and bootstrap routing (Story 2.52, #230).
 # Run from repo root: clitest tests/refind-config.clitest.txt
 
-$ ROOT=$PWD; RTMP=$(mktemp -d); R=$RTMP/root; mkdir -p "$R/boot" "$R/efi/EFI/refind" "$R/efi/EFI/ubuntu" "$R/efi/EFI/BOOT" "$R/etc/dotfiles" "$R/usr/share/refind/themes/nord/icons"; printf 'ID=arch\n' > "$R/etc/os-release"; echo ready
+$ ROOT=$PWD; RTMP=$(mktemp -d); R=$RTMP/root; mkdir -p "$R/boot" "$R/efi/EFI/refind/icons" "$R/efi/EFI/ubuntu" "$R/efi/EFI/BOOT" "$R/etc/dotfiles" "$R/usr/share/refind/themes/nord/icons"; printf 'ID=arch\n' > "$R/etc/os-release"; echo ready
 ready
-$ for name in vmlinuz-linux initramfs-linux.img intel-ucode.img; do printf '%s\n' "$name" > "$R/boot/$name"; done; printf 'refind binary\n' > "$R/efi/EFI/refind/refind_x64.efi"; printf 'ubuntu shim\n' > "$R/efi/EFI/ubuntu/shimx64.efi"; printf 'mok manager\n' > "$R/efi/EFI/ubuntu/mmx64.efi"; printf 'fallback\n' > "$R/efi/EFI/BOOT/BOOTX64.EFI"; echo artifacts
+$ for name in vmlinuz-linux initramfs-linux.img intel-ucode.img; do printf '%s\n' "$name" > "$R/boot/$name"; done; printf 'refind binary\n' > "$R/efi/EFI/refind/refind_x64.efi"; printf 'stock unknown icon\n' > "$R/efi/EFI/refind/icons/os_unknown.png"; printf 'ubuntu shim\n' > "$R/efi/EFI/ubuntu/shimx64.efi"; printf 'mok manager\n' > "$R/efi/EFI/ubuntu/mmx64.efi"; printf 'fallback\n' > "$R/efi/EFI/BOOT/BOOTX64.EFI"; echo artifacts
 artifacts
-$ for name in theme.conf bg.png selection_big.png selection_small.png; do printf 'theme %s\n' "$name" > "$R/usr/share/refind/themes/nord/$name"; done; printf 'arch icon\n' > "$R/usr/share/refind/themes/nord/icons/os_arch.png"; printf '%s\n' '{"esp":"/efi","boot_fsroot":"/arch","kernel_options":["cryptdevice=UUID=11111111-1111-1111-1111-111111111111:cryptroot","root=/dev/mapper/vg-root","resume=UUID=22222222-2222-2222-2222-222222222222"]}' > "$R/etc/dotfiles/refind.json"; echo configured
+$ for name in theme.conf bg.png selection_big.png selection_small.png; do printf 'theme %s\n' "$name" > "$R/usr/share/refind/themes/nord/$name"; done; printf 'nord shutdown icon\n' > "$R/usr/share/refind/themes/nord/icons/func_shutdown.png"; printf 'arch icon\n' > "$R/usr/share/refind/themes/nord/icons/os_arch.png"; printf '%s\n' '{"esp":"/efi","boot_fsroot":"/arch","kernel_options":["cryptdevice=UUID=11111111-1111-1111-1111-111111111111:cryptroot","root=/dev/mapper/vg-root","resume=UUID=22222222-2222-2222-2222-222222222222"]}' > "$R/etc/dotfiles/refind.json"; echo configured
 configured
 $
 
@@ -22,6 +22,34 @@ rEFInd configuration: converged
 rc=0
 $ .local/bin/setup/refind-config --check apply --root "$R" >/dev/null 2>&1; echo "rc=$?"
 rc=2
+$
+
+scan directory is volume-relative and never carries rEFInd's Btrfs "@" prefix:
+
+$ grep -c '@' "$R/efi/EFI/refind/dotfiles-machine.conf"; grep '^also_scan_dirs' "$R/efi/EFI/refind/dotfiles-machine.conf"
+0
+also_scan_dirs +,arch
+$
+
+dual_boot machine-local input adds one manual stanza and hides the sibling loader; removing it converges back:
+
+$ printf '%s\n' '{"esp":"/efi","boot_fsroot":"/arch","kernel_options":["cryptdevice=UUID=11111111-1111-1111-1111-111111111111:cryptroot","root=/dev/mapper/vg-root","resume=UUID=22222222-2222-2222-2222-222222222222"],"dual_boot":[{"title":"Other Linux","volume":"33333333-3333-3333-3333-333333333333","loader":"/other/vmlinuz","initrd":"/other/initrd.img","fallback_initrd":"/other/initrd.img.old","options":["root=/dev/mapper/vg-other"],"dont_scan_dirs":["EFI/other"]}]}' > "$R/etc/dotfiles/refind.json"; .local/bin/setup/refind-config --check --root "$R"; echo "rc=$?"
+rEFInd configuration: would reconcile dotfiles-machine.conf
+rc=1
+$ .local/bin/setup/refind-config apply --root "$R" | tail -1; grep -E '^(menuentry|    volume|    loader|    initrd|    options|        initrd|dont_scan_dirs)' "$R/efi/EFI/refind/dotfiles-machine.conf"
+rEFInd configuration: reconciled dotfiles-machine.conf
+menuentry "Other Linux" {
+    volume 33333333-3333-3333-3333-333333333333
+    loader /other/vmlinuz
+    initrd /other/initrd.img
+    options "root=/dev/mapper/vg-other rw add_efi_memmap"
+        initrd /other/initrd.img.old
+dont_scan_dirs +,EFI/other
+$ .local/bin/setup/refind-config audit --root "$R" | grep 'dual-boot'
+  dual-boot stanzas: 1 (Other Linux); volume derived, redacted
+$ printf '%s\n' '{"esp":"/efi","boot_fsroot":"/arch","kernel_options":["cryptdevice=UUID=11111111-1111-1111-1111-111111111111:cryptroot","root=/dev/mapper/vg-root","resume=UUID=22222222-2222-2222-2222-222222222222"]}' > "$R/etc/dotfiles/refind.json"; .local/bin/setup/refind-config apply --root "$R" | tail -1; grep -c -E 'menuentry|dont_scan_dirs' "$R/efi/EFI/refind/dotfiles-machine.conf"
+rEFInd configuration: reconciled dotfiles-machine.conf
+0
 $
 
 bootstrap routes rEFInd only to workstation and preserves drift semantics:

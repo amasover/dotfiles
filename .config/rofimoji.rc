@@ -1,0 +1,7 @@
+# rofimoji defaults Alt+p (insert via clipboard) and Alt+n (type numerically)
+# collide with this machine's rofi bindings kb-mode-previous / kb-mode-next
+# (.config/rofi/config.rasi), which makes rofi refuse the binding at startup.
+# Remaining rofimoji defaults are free here: Alt+c copy, Alt+t type,
+# Alt+u type codepoint, Alt+i copy codepoint.
+keybinding-clipboard=Alt+v
+keybinding-type-numerical=Alt+x

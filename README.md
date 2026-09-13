@@ -20,6 +20,40 @@ A keyboard based desktop environment that features:
 - Automatic installation & setup.
 - A full featured i3wm desktop environment.
 
+🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧
+
+🚧 Under Construction 🚧
+
+🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧
+
+A note about this repo:
+
+If you've stumbled upon this...I forked this repo several years ago from my friend and coworker Patrick. He did a fantastic job with it! I think of it as dotfiles + the kitchen sink, almost a "distro" based on Arch.
+
+I think it's a really nice, functional, and beautiful local Linux workstation. I was cutting my teeth in DevOps when I started using it, so I love the approach of treating your local machine with DevOps principles (cattle, not pets).
+
+Now I've used this setup for years. I accumulated many tweaks and changes compared to Patrick's original version (though the bones are the same). Since I forked the repo, Patrick switched many scripts to Ansible, which I think is great! For whatever reason, maybe comfort or simplicity, I stuck with the original bash scripts and decided to modify and improve them. Someday I may switch as well, but for now I'm enjoying the bash approach.
+
+Recently LLMs + coding agents have caused many changes in our industry. For example, many talented professionals are unfortunately out of work, and perhaps soon it will be my turn. In the meantime, having these coding agents at my disposal provided me with motivation to revive this repo. I have been working to include and improve some tweaks that had remained stagnant. I also built functionality that I'd wanted for a long time such as:
+
+* Bootstrap scripts for Linux and Windows VMs (QEMU / VMWare)
+* Bootstrap on bare metal, automate the full install process
+* Better package management with unique packages per machine (metapac)
+* Defense against malicious AUR takeovers
+* Many fixes for small bugs and issues that had been bothering me
+
+For now this repo includes a lot of personal / opinionated choices. My primary goal is that things be functional and useful to myself. A secondary goal is that maybe someday it could be useful to others, but I feel I have more to do. (Also I'm hoping that if I can vibe-code an Arch based distro well enough someone might give me a $3m grant.....kidding, kidding 😜).
+
+The above is a very long-winded way of saying, things are under construction here, and the docs are probably not (yet) up-to-date.
+
+-Aaron
+
+🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧
+
+🚧 Under Construction 🚧
+
+🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧
+
 # Installation
 
 This project uses [YADM](https://thelocehiliosan.github.io/yadm/), a dotfile manager that employs git. With YADM you can start with a new repo, or clone an existing repo. Both approachs are explained in depth on the YADM website's [getting started](https://thelocehiliosan.github.io/yadm/docs/getting_started) section. 

@@ -223,6 +223,16 @@ After first boot and yadm checkout:
    ```
    The final command must return `s "yes"`.
 
+### Loaded hibernation hangs with zswap
+
+If storage and boot configuration pass but hibernation hangs under memory
+pressure with zswap populated, use the opt-in
+[hibernate-only shrinker workaround](../.config/dotfiles/hibernate/README.md).
+It pauses the proactive zswap shrinker for `systemd-hibernate.service` only,
+covering both idle timers and the i3 hibernate shortcut without disabling
+zswap or hibernation. Follow its attended verification and upstream-removal
+instructions; do not deploy it universally or modify another OS's swap.
+
 ## rEFInd metal boot configuration
 
 Story 2.52 ([#230](https://github.com/amasover/dotfiles/issues/230)) separates
@@ -238,8 +248,31 @@ portable boot policy from machine identifiers:
   Intel microcode precedes the kernel-matched `initramfs-%v.img`.
 - `/usr/share/refind/themes/nord` remains package-owned. The reconciler verifies that
   ownership, copies only boot-time theme assets, and marks the ESP copy as managed.
+  It leaves Nord's `icons/os_*.png` out of that copy, so rEFInd falls back to the
+  stock logos `refind-install` placed in `EFI/refind/icons` (the colored Arch and
+  Ubuntu marks) while function, tool, and volume icons stay Nord. The policy sets
+  a twelve-entry `showtools` line after the theme include: the first five
+  (shell, about, shutdown, reboot, firmware) are the visible row, and the rest
+  overwrite leftover default slots, because rEFInd 0.14.2 does not clear the
+  default tool list when a shorter line is parsed and would double-render the
+  same four tools. Padding entries render only when their tool file exists. A
+  missing `EFI/refind/icons` fails `--check`, `apply`, and `adopt` closed.
 - The reconciler touches only `EFI/refind/**` and `/boot/refind_linux.conf`. It never
   edits NVRAM, installs a firmware entry, removes another loader, or reboots.
+
+**Loader follow-up.** Stock rEFInd went dormant after 0.14.2 (Nov 2023), and both
+live bugs this runbook records (`also_scan_dirs @` prefix, `showtools` not
+clearing the default tool array) are fossils of that. If upstream still shows no
+active development roughly 2-3 years on, or a concrete need arrives it cannot
+serve (shim ≥15.3 SBAT chaining, newer filesystem drivers, future kernel
+quirks), switch to [rEFInd Plus](https://github.com/RefindPlusRepo/RefindPlus):
+an actively maintained fork (roughly quarterly releases) that fixes the
+`showtools` class and embeds the SBAT section for Secure Boot, available as the
+unsigned AUR binary `refindplus-bin`. It speaks the same `refind.conf`
+vocabulary, including the twelve-entry `showtools` line above. The swap is a
+scoped PR: replace the binary, extend `theme_source_owner` to accept the Plus
+package, re-verify its `EFI/refind/icons` and driver layout, and re-run the
+OVMF/QEMU preview and suites before the attended reboot.
 
 Production modes all re-exec through `pkexec`; read-only modes need elevation because
 the ESP is normally mounted root-only:
@@ -271,6 +304,41 @@ files and identifiers are neither read nor copied.
 Other offline provisioners may still use untracked, root-owned
 `/etc/dotfiles/refind.json` with `--root`; target roots never borrow the installer
 host's `/proc/cmdline` or `/boot` metadata.
+
+The generated `dotfiles-machine.conf` names the kernel directory relative to the
+volume root (`also_scan_dirs +,arch`), so rEFInd scans it on every volume it can
+read and takes options from the `refind_linux.conf` beside the kernel. Never
+prefix it with `@`: rEFInd's default `@/boot` is the literal Btrfs `@` subvolume
+path, and `@/arch` silently drops Arch from the menu (see
+[knowledge/errors/refind-at-prefix-scan-dir-hides-kernel.md](../knowledge/errors/refind-at-prefix-scan-dir-hides-kernel.md)).
+
+**Dual boot (machine-local only).** A sibling OS whose kernels share the boot
+filesystem cannot be auto-scanned: rEFInd would synthesize `root=` from the boot
+partition. Add `dual_boot` to the same JSON on that machine only; machines without
+it get no stanza, so the tracked policy stays dual-boot-agnostic. Live mode derives
+`volume` from the `/boot` mount's partition GUID and verifies each path exists on
+the boot volume before writing; target roots must state `volume`. That verification
+needs the boot partition's own filesystem root mounted exactly once (for example
+under `/mnt/boot`, with its kernel directory bind-mounted at `/boot`); when only
+the bind mount exists, the reconciler refuses before writing. `options` takes
+identity tokens only (`root=` required); the generator appends the same
+`rw add_efi_memmap` it gives the Arch entries. `dont_scan_dirs` hides the
+sibling's own loader so the menu carries one entry.
+
+```json
+{
+  "dual_boot": [
+    {
+      "title": "Ubuntu",
+      "loader": "/ubuntu/vmlinuz",
+      "initrd": "/ubuntu/initrd.img",
+      "fallback_initrd": "/ubuntu/initrd.img.old",
+      "options": ["root=/dev/mapper/<vg>-<ubuntu-root>"],
+      "dont_scan_dirs": ["EFI/ubuntu"]
+    }
+  ]
+}
+```
 
 ### Attended fresh-laptop validation
 
