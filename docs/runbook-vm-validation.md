@@ -5,6 +5,12 @@ Harness: [`.local/bin/setup/vm-harness`](../.local/bin/setup/vm-harness). Valida
 [`setup/bootstrap`](../.local/bin/setup/bootstrap) and the metapac groups in a
 disposable VM before anything is trusted on metal (Story 2.10 gates metal runs).
 
+The attended encrypted-metal path has a separate local gate:
+[`metal-rehearsal run`](./runbook-fresh-machine-bootstrap.md#rehearse-the-metal-path-in-a-vm).
+It proves installation, rEFInd/storage handoff, reboot, and actual hibernate/resume
+from the host working tree. Run it before pushing changes to `provision-seed`,
+`refind-config`, or `hibernate-storage`; it is not part of GitHub Validate.
+
 ## The loop
 
 ```bash
@@ -78,7 +84,7 @@ archinstall's TUI errors show on the virt-manager console.
 ## How the pieces fit
 
 - **Unattended install:** both disposable VM harnesses call the shared
-  `setup/vm-harness-seed create` interface with the `qemu` or `vmware` target;
+  `setup/provision-seed create` interface with the `qemu` or `vmware` target;
   no inline Archinstall recipe remains. Recent official archisos consume its
   NoCloud seed, which writes `user_configuration.json`/`user_credentials.json`
   and runs `archinstall --silent` through a transient `systemd-run` unit.

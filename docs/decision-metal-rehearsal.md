@@ -1,8 +1,8 @@
 # Decision: metal rehearsal harness, `install-on-metal`, `provision-seed`
 
 Story: [2.53](./epic-2-bootstrap-and-package-modernization.md#story-253-metal-rehearsal-harness-install-on-metal-front-door-provision-seed-rename)
-([#247](https://github.com/amasover/dotfiles/issues/247)). Grilled 2026-09-12; build
-starts after [#240](https://github.com/amasover/dotfiles/pull/240) merges.
+([#247](https://github.com/amasover/dotfiles/issues/247)). Grilled 2026-09-12;
+[#240](https://github.com/amasover/dotfiles/pull/240) merged 2026-09-13.
 
 ## Why
 
@@ -28,7 +28,7 @@ driving. That proof needs to be one command with an exit code.
 | 8 | Rehearsal command | `.local/bin/setup/metal-rehearsal`, Python. Subcommands `run` and `destroy`. Python for pty/select expect, monitor control, and a prompt matcher unit-tested through `conftest.load_tool`. |
 | 9 | Artifacts | `~/.cache/bootstrap-harness/metal-rehearsal/<timestamp>/`: qcow2, OVMF vars, serial logs, screendumps. Deleted on pass; kept on failure with the stage name and path printed; `--keep` overrides. Never under `/tmp` (tmpfs). |
 | 10 | CI | Local integration test, not a GitHub job: 15 minutes, a 1.2 GB ISO, package and AUR downloads, nested KVM on hosted runners. Exit 0 pass, nonzero with the failing stage. Run before pushing changes to `provision-seed`, `refind-config`, or `hibernate-storage`. A `workflow_dispatch` job may come later; never in Validate. |
-| 11 | Packaging | One PR branched from `story/2.29-metal-provisioning` after #240 merges, targeting `main`: three new files, the six rename call sites, runbook edits, and the rehearsal evidence. |
+| 11 | Packaging | One PR branched from `main` after #240 merges, targeting `main`: three new files, generator/caller renames, runbook edits, and the rehearsal evidence. |
 
 ## Files
 
@@ -36,11 +36,10 @@ New: `.local/bin/setup/metal-rehearsal`, `.local/bin/setup/install-on-metal`
 (runs on the Arch ISO, so only ISO-available tools), `tests/test_metal_rehearsal.py`
 (prompt matcher, stage sequencing, artifact policy; no QEMU).
 
-Rename call sites for `vm-harness-seed`: `vm-harness` (`SEED_TOOL`),
+Generator callers now use `provision-seed`: `vm-harness` (`SEED_TOOL`),
 `vm-harness-vmware.ps1` (`$SeedTool`), `runbook-fresh-machine-bootstrap.md`,
 `runbook-vm-validation.md`, `tests/vm-harness.clitest.txt`,
-`tests/test_vm_harness_seed.py` (`load_tool`; rename to `test_provision_seed.py`),
-and argparse `prog`.
+`tests/test_provision_seed.py` (`load_tool`), `.gitattributes`, and argparse `prog`.
 
 Runbook edits: the USB section shrinks to clone plus `install-on-metal`; a new
 "Rehearse the metal path in a VM" subsection states what pass means, where
@@ -49,7 +48,9 @@ artifacts land, and when to run it.
 ## Rehearsal stages
 
 Each stage is a named failure point with its own timeout. On failure: stage name,
-last 40 serial lines, artifact path.
+the last 40 lines of the newest serial and SSH logs — each channel named even when
+it captured nothing, so a pre-launch failure reads as empty rather than silent —
+and the artifact path.
 
 1. **host-preflight**: `qemu-system-x86_64`, `qemu-img`, `bsdtar`, writable
    `/dev/kvm`, OVMF code and vars, 10 GiB free under the artifact root, cached ISO
@@ -80,12 +81,17 @@ last 40 serial lines, artifact path.
    journal shows the hibernation exit.
 9. **teardown**: poweroff; delete artifacts on pass unless `--keep`.
 
-## Deferred to build time
+## Implementation details
 
-- Throwaway credentials are random per run; on failure they are written mode 0600
-  into the artifact directory so the kept disk can still be unlocked.
-- `install-on-metal` language: POSIX sh keeps it trivially readable; Python is
-  also on the ISO.
-- The serial prompt strings are owned by `run-install.sh` and
-  `provision-seed metal-credentials`; the matcher tests pin them so a wording
-  change fails the unit test before a VM run does.
+- Throwaway credentials are random per run; retained runs store them mode 0600
+  in the mode-0700 artifact directory so the disk can still be unlocked.
+- `install-on-metal` is Python rather than POSIX sh: `hardware_facts` is a pure
+  function returning floor disk GiB and ceiling RAM GiB, so the rounding is
+  unit-tested host-side through `conftest.load_tool` with no ISO in the loop.
+  It uses only ISO-available standard library, prints the derived facts, creates
+  the recipe under `/run`, and execs the unchanged attended driver.
+- The prompt matcher handles fragmented ANSI/OSC terminal controls as well as
+  fragmented prompts. A real PTY credential exchange tests the generator's
+  attended protocol without a VM or confirmation bypass.
+- A lock prevents `destroy` from removing a live run. QEMU inherits that lock
+  so an interrupted host parent cannot make its active disk look disposable.

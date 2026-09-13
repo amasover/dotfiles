@@ -1,0 +1,15 @@
+# OpenRouter mode: overflow driver for when subscription limits are spent.
+# Model choices follow DeepSWE v1.1 (113 tasks, mini-swe-agent harness).
+# Gemini 3.8 Flash leads the board outright; GLM 5.3 Flash runs general tasks
+# and lookup; DeepSeek V4 Pro reviews from a different model family.
+modelRoles:
+  default: openrouter/google/gemini-3.8-flash:high
+  task: openrouter/z-ai/glm-5.3-flash:max
+  slow: openrouter/deepseek/deepseek-v4-pro-0813:max
+  smol: openrouter/z-ai/glm-5.3-flash:low
+task:
+  agentModelOverrides:
+    task: "@task"
+    reviewer: "@slow"
+    scout: "@smol"
+    sonic: "@smol"
