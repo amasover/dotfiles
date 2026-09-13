@@ -197,8 +197,31 @@ portable boot policy from machine identifiers:
   Intel microcode precedes the kernel-matched `initramfs-%v.img`.
 - `/usr/share/refind/themes/nord` remains package-owned. The reconciler verifies that
   ownership, copies only boot-time theme assets, and marks the ESP copy as managed.
+  It leaves Nord's `icons/os_*.png` out of that copy, so rEFInd falls back to the
+  stock logos `refind-install` placed in `EFI/refind/icons` (the colored Arch and
+  Ubuntu marks) while function, tool, and volume icons stay Nord. The policy sets
+  a twelve-entry `showtools` line after the theme include: the first five
+  (shell, about, shutdown, reboot, firmware) are the visible row, and the rest
+  overwrite leftover default slots, because rEFInd 0.14.2 does not clear the
+  default tool list when a shorter line is parsed and would double-render the
+  same four tools. Padding entries render only when their tool file exists. A
+  missing `EFI/refind/icons` fails `--check`, `apply`, and `adopt` closed.
 - The reconciler touches only `EFI/refind/**` and `/boot/refind_linux.conf`. It never
   edits NVRAM, installs a firmware entry, removes another loader, or reboots.
+
+**Loader follow-up.** Stock rEFInd went dormant after 0.14.2 (Nov 2023), and both
+live bugs this runbook records (`also_scan_dirs @` prefix, `showtools` not
+clearing the default tool array) are fossils of that. If upstream still shows no
+active development roughly 2-3 years on, or a concrete need arrives it cannot
+serve (shim ≥15.3 SBAT chaining, newer filesystem drivers, future kernel
+quirks), switch to [rEFInd Plus](https://github.com/RefindPlusRepo/RefindPlus):
+an actively maintained fork (roughly quarterly releases) that fixes the
+`showtools` class and embeds the SBAT section for Secure Boot, available as the
+unsigned AUR binary `refindplus-bin`. It speaks the same `refind.conf`
+vocabulary, including the twelve-entry `showtools` line above. The swap is a
+scoped PR: replace the binary, extend `theme_source_owner` to accept the Plus
+package, re-verify its `EFI/refind/icons` and driver layout, and re-run the
+OVMF/QEMU preview and suites before the attended reboot.
 
 Production modes all re-exec through `pkexec`; read-only modes need elevation because
 the ESP is normally mounted root-only:
