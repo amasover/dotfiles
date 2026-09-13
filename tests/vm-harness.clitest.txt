@@ -158,4 +158,64 @@ $ rm -rf "$T"; echo done
 done
 $
 
+--- vm-harness: create forwards the shared seed-generator contract ---
+
+The real harness runs with a stubbed Python interpreter and libvirt client. The
+trace verifies the Bash-owned argument construction without touching libvirt.
+
+$ H=$PWD/.local/bin/setup/vm-harness; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home/.cache/bootstrap-harness"; : > "$T/home/.cache/bootstrap-harness/archlinux-x86_64.iso"; printf '%s\n' '#!/bin/sh' 'case "$*" in *dominfo*) exit 1 ;; *"vol-path --pool default arch-harness-archiso.iso"*) echo /cached/iso ;; esac' 'exit 0' > "$T/bin/virsh"; printf '%s\n' '#!/bin/sh' 'shift' 'printf "%s\n" "$@" > "$TRACE"' 'while [ "$#" -gt 0 ]; do' '  if [ "$1" = --out ]; then out=$2; break; fi' '  shift' 'done' 'mkdir -p "$out"' ': > "$out/seed.iso"' > "$T/bin/python3"; chmod +x "$T/bin/virsh" "$T/bin/python3"; echo ready
+ready
+$
+
+$ TRACE="$T/trace" PATH="$T/bin:$PATH" HOME="$T/home" XDG_STATE_HOME="$T/state" VM_HARNESS_DIR="$T/work" "$H" create >/dev/null; echo "rc=$?"; sed "s|$T|TMP|g" "$T/trace"
+rc=0
+create
+--out
+TMP/work/seed
+--target
+qemu
+--disk-size
+80
+--password
+vm
+--hostname
+archvm
+--user
+aaron
+$
+
+$ mkdir -p "$T/home/.ssh"; printf '%s\n' 'ssh-ed25519 AAAATEST harness@test' > "$T/home/.ssh/id_test.pub"; TRACE="$T/trace" PATH="$T/bin:$PATH" HOME="$T/home" XDG_STATE_HOME="$T/state" VM_HARNESS_DIR="$T/work" "$H" create >/dev/null; tail -n 2 "$T/trace"
+--pubkey
+ssh-ed25519 AAAATEST harness@test
+$
+
+$ rm -rf "$T"; echo done
+done
+$
+
+--- generated metal installer: signal after credential creation removes secrets ---
+
+$ T=$(mktemp -d); .local/bin/setup/vm-harness-seed create --files-only --target metal --out "$T" --disk-device /dev/nvme0n1 --disk-size 256 --ram-gib 32 >/dev/null; printf '%s\n' '#!/bin/sh' 'case "$1" in' '  metal-preflight) exit 0 ;;' '  metal-credentials) printf secret > "$3"; kill -HUP "$PPID"; exit 0 ;;' '  *) exit 99 ;;' 'esac' > "$T/provision-seed"; chmod +x "$T/provision-seed"; "$T/run-install.sh" >/dev/null 2>&1; rc=$?; echo "rc=$rc"; if [ -e "$T/user_credentials.json" ]; then echo credentials=present; else echo credentials=removed; fi
+rc=129
+credentials=removed
+$
+
+$ rm -rf "$T"; echo done
+done
+$
+
+--- generated install drivers stay shell-syntax-clean ---
+
+The drivers are generated at run time, so the tracked-script lint never sees
+them. This pins the emitted shell syntax on both the unattended and attended
+variants; `sh -n` runs wherever clitest runs.
+
+$ T=$(mktemp -d); .local/bin/setup/vm-harness-seed create --files-only --target vmware --out "$T/vm" --disk-size 22 --password throwaway >/dev/null && .local/bin/setup/vm-harness-seed create --files-only --target metal --out "$T/metal" --disk-device /dev/nvme0n1 --disk-size 256 --ram-gib 32 >/dev/null && sh -n "$T/vm/run-install.sh" && sh -n "$T/metal/run-install.sh" && echo syntax-ok
+syntax-ok
+$
+
+$ rm -rf "$T"; echo done
+done
+$
+
 End of tests.

@@ -167,21 +167,29 @@ YADM instead.
 
 ## Handling false positives
 
-When a finding is a confirmed false positive, dismiss it durably and record why:
+When a finding is a confirmed false positive, dismiss it durably and record why.
 
-1. Get the fingerprint from a JSON report
+1. Prefer an inline `gitleaks:allow` annotation when the finding belongs to a
+   specific tracked source line and the source format permits comments. Include
+   the review date and reason on that line. Inline annotations survive line moves
+   and remain visible to both working-tree and staged-stdin scans:
+
+   ```python
+   "enc_password": password_hash,  # gitleaks:allow -- 2026-09-10: hash, not plaintext
+   ```
+
+2. Otherwise, get the fingerprint from a JSON report
    (`betterleaks dir . --redact --report-format json --report-path /tmp/bl.json`).
    Use a `dir`/`git` report, not hook output — `stdin` scans carry different
-   fingerprints.
-2. Add the fingerprint to `.gitleaksignore` at the repo root, with a comment
-   stating the reason and date:
+   fingerprints. Add it to `.gitleaksignore` with a dated comment explaining the
+   false positive:
 
    ```
    # 2026-06-23 — sample key in docs, not a real credential (Aaron)
    <fingerprint>
    ```
 
-Never dismiss a finding without a written reason. If it is unclear whether a
+Never suppress a finding without a written reason. If it is unclear whether a
 finding is real, treat it as real until proven otherwise and ask Aaron.
 
 **Testing the hook with a planted secret:** the default config allowlists
@@ -200,6 +208,10 @@ run — re-verify on the next convenient occasion.
 | 2026-06-23 | Full history | `gitleaks git . --redact --no-banner` | 1002 | No leaks found |
 | 2026-08-09 | Working tree | `betterleaks dir . --redact --no-banner` (1.7.1, Windows clone) | n/a | No leaks found |
 
-No findings, so no false-positive dismissals were needed and no `.gitleaksignore`
-file exists yet. Re-run the working-tree and staged scans before each commit
-batch and record notable results in the PR description.
+The reviewed false positives so far are archinstall schema-field names in
+the seed generator (`pass_hash`/`enc_password` variable references, first
+flagged 2026-08-22); they carry dated inline `gitleaks:allow` annotations at
+their source lines, and `.gitleaksignore` exists only as a comment-only
+policy stub holding no fingerprints. Re-run the working-tree and staged
+scans before each commit batch and record notable results in the PR
+description.

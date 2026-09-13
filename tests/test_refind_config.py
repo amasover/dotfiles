@@ -295,6 +295,33 @@ def test_esp_mount_must_be_exact_fat_and_writable():
         )
 
 
+def test_repeated_identical_esp_mounts_remain_usable(monkeypatch):
+    record = {
+        "target": "/boot",
+        "source": "/dev/vda1",
+        "fstype": "vfat",
+        "options": "rw",
+    }
+    payload = {"filesystems": [record, record.copy()]}
+    monkeypatch.setattr(
+        refind.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps(payload),
+            "",
+        ),
+    )
+    assert (
+        refind.esp_mount_record(Path("/"), "/boot", writable=True)["source"]
+        == "/dev/vda1"
+    )
+    payload["filesystems"][1]["source"] = "/dev/other"
+    with pytest.raises(refind.RefindError, match="one active mount"):
+        refind.esp_mount_record(Path("/"), "/boot", writable=True)
+
+
 def test_target_root_requires_explicit_boot_identity(tmp_path, capsys):
     root = make_fixture(tmp_path, machine=False)
 

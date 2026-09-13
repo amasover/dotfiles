@@ -19,7 +19,7 @@
 #
 # Subcommands:
 #   fetch      download + sha256-verify the latest Arch ISO into the local cache
-#   seed       generate the cloud-init NoCloud seed (vm-harness-seed, hypervisor
+#   seed       generate the cloud-init NoCloud seed (vm-harness-seed target
 #              vmware: NVMe device path, open-vm-tools, live-ISO ssh for exec)
 #   create     VM directory: fresh seed, growable NVMe disk (vdiskmanager),
 #              .vmx via vm-harness-vmx (UEFI, serial-to-file, NAT). Dies if the
@@ -401,7 +401,7 @@ function New-Seed {
     Say 'Generating cloud-init seed (fresh answers each time)'
     if (Test-Path $SeedDir) { Remove-Item -Recurse -Force $SeedDir }
     $pk = Get-HostPubkey
-    $seedArgs = @('--out', $SeedDir, '--hypervisor', 'vmware',
+    $seedArgs = @('create', '--out', $SeedDir, '--target', 'vmware',
                   '--disk-size', $DiskGib, '--password', $VmPass, '--user', $VmUser)
     if ($pk) { $seedArgs += @('--pubkey', $pk, '--live-ssh') }
     & $Python $SeedTool @seedArgs

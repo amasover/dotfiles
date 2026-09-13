@@ -1,42 +1,134 @@
 #!/usr/bin/env python3
-"""vm-harness-seed — cloud-init NoCloud seed generator for the vm-harness family.
+"""Build Archinstall recipes and NoCloud seeds for VM and metal targets.
 
-Builds the seed that drives an unattended archinstall on the official Arch ISO:
-user_configuration.json + user_credentials.json (archinstall RELEASE dialect —
-see the schema-skew runbook note), run-install.sh (the guest-side install
-driver), cloud-init user-data/meta-data, and the seed ISO (volid CIDATA).
+``create`` writes the release-dialect Archinstall configuration, install driver,
+cloud-init files, and CIDATA ISO. The QEMU and VMware harness targets remain
+unattended and use throwaway credentials. The ``daily-vm`` target shares VMware
+hardware defaults but emits a LUKS-encrypted root without harness-only sudo or
+serial policy. The metal target is an attended whole-disk install for a different
+laptop: its seed contains no passwords, never starts installation automatically,
+and requires console confirmation before erasing the named disk.
 
-Extracted from the bash vm-harness's write_seed() as the host-neutral seam
-(Story 2.36, #119) so the libvirt harness, the VMware Workstation harness, and
-eventually the Story 2.29 provisioning recipe consume one generator instead of
-forking it. Differences from the bash original are per-hypervisor parameters,
-not behavior: disk device path, guest-tools package, and optional sshd in the
-live ISO (the VMware harness's exec channel — libvirt uses the qemu agent).
-
-Pure logic lives in functions; only main() touches the filesystem. Tests:
-tests/test_vm_harness_seed.py (pytest, no VMware/libvirt/network).
+Pure recipe logic stays here so both harnesses, the daily VM, and metal consume
+one module.
+Archinstall schema: release 4.4 / configuration version 2.8.6; see the schema
+skew record in docs/runbook-vm-validation.md.
 """
 
 import argparse
 import base64
+import getpass
 import hashlib
 import json
+import os
+import re
 import secrets
+import shlex
+import stat
+import subprocess
 import sys
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
-HYPERVISORS = {
-    # device: where the disk appears in the guest; tools: guest-tools package;
-    # services: tools services to enable (qemu-guest-agent's unit is
-    # udev-activated by its virtio port, so nothing to enable there).
-    "qemu": {"device": "/dev/vda", "tools": "qemu-guest-agent", "services": []},
-    # vmtoolsd ships disabled; without it nothing VMware-side runs in the
-    # guest — resolution autofit, timesync, host commands (Story 5.4).
-    "vmware": {"device": "/dev/nvme0n1", "tools": "open-vm-tools",
-               "services": ["vmtoolsd.service"]},
+
+@dataclass(frozen=True)
+class TargetSpec:
+    name: str
+    device: str | None
+    packages: tuple[str, ...]
+    services: tuple[str, ...]
+    bootloader: str
+    swap_enabled: bool
+    encrypted: bool
+    attended: bool
+    harness: bool
+
+
+@dataclass(frozen=True)
+class MetalFacts:
+    device: str
+    disk_size_gib: int
+    ram_gib: int
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"/dev/[A-Za-z0-9._+:-]+", self.device):
+            raise ValueError(
+                "metal disk device must be one canonical whole-disk /dev path"
+            )
+        if self.disk_size_gib <= 0:
+            raise ValueError("metal disk size must be a positive whole GiB value")
+        if self.ram_gib <= 0:
+            raise ValueError("metal RAM size must be a positive whole GiB value")
+
+
+@dataclass(frozen=True)
+class ProvisioningRequest:
+    target: TargetSpec
+    disk_size_gib: int
+    hostname: str
+    user: str
+    pubkey: str
+    metal: MetalFacts | None = None
+
+
+TARGETS = {
+    "qemu": TargetSpec(
+        name="qemu",
+        device="/dev/vda",
+        packages=("qemu-guest-agent",),
+        services=(),
+        bootloader="Systemd-boot",
+        swap_enabled=True,
+        encrypted=False,
+        attended=False,
+        harness=True,
+    ),
+    "vmware": TargetSpec(
+        name="vmware",
+        device="/dev/nvme0n1",
+        packages=("open-vm-tools",),
+        services=("vmtoolsd.service",),
+        bootloader="Systemd-boot",
+        swap_enabled=True,
+        encrypted=False,
+        attended=False,
+        harness=True,
+    ),
+    "daily-vm": TargetSpec(
+        name="daily-vm",
+        device="/dev/nvme0n1",
+        packages=("open-vm-tools",),
+        services=("vmtoolsd.service",),
+        bootloader="Systemd-boot",
+        swap_enabled=True,
+        encrypted=True,
+        attended=False,
+        harness=False,
+    ),
+    "metal": TargetSpec(
+        name="metal",
+        device=None,
+        packages=("lvm2",),
+        services=(),
+        bootloader="Refind",
+        swap_enabled=False,
+        encrypted=True,
+        attended=True,
+        harness=False,
+    ),
 }
 
-ARCHINSTALL_VERSION = "2.8.6"  # the RELEASE dialect the ISO ships (runbook: schema skew)
+ARCHINSTALL_VERSION = "2.8.6"
+REFIND_MANAGED = "# Managed by dotfiles refind-config (Story 2.52, #230)."
+ESP_OBJ_ID = "11111111-1111-1111-1111-111111111111"
+DATA_OBJ_ID = "22222222-2222-2222-2222-222222222222"
+ROOT_LV_OBJ_ID = "33333333-3333-3333-3333-333333333333"
+RESUME_LV_OBJ_ID = "44444444-4444-4444-4444-444444444444"
+METAL_VG = "dotfiles"
+MIN_POST_SWAP_ROOT_GIB = 40
+LVM_METADATA_HEADROOM_GIB = 1
+META_DATA = "instance-id: bootstrap-provision\nlocal-hostname: archiso\n"
 
 # --- sha512-crypt ($6$) -----------------------------------------------------
 # Python 3.13 removed the crypt module, and archinstall's creds schema wants
@@ -87,10 +179,26 @@ def sha512_crypt(password: str, salt: str | None = None, rounds: int = 5000) -> 
         c = hashlib.sha512(block).digest()
 
     order = [
-        (0, 21, 42), (22, 43, 1), (44, 2, 23), (3, 24, 45), (25, 46, 4),
-        (47, 5, 26), (6, 27, 48), (28, 49, 7), (50, 8, 29), (9, 30, 51),
-        (31, 52, 10), (53, 11, 32), (12, 33, 54), (34, 55, 13), (56, 14, 35),
-        (15, 36, 57), (37, 58, 16), (59, 17, 38), (18, 39, 60), (40, 61, 19),
+        (0, 21, 42),
+        (22, 43, 1),
+        (44, 2, 23),
+        (3, 24, 45),
+        (25, 46, 4),
+        (47, 5, 26),
+        (6, 27, 48),
+        (28, 49, 7),
+        (50, 8, 29),
+        (9, 30, 51),
+        (31, 52, 10),
+        (53, 11, 32),
+        (12, 33, 54),
+        (34, 55, 13),
+        (56, 14, 35),
+        (15, 36, 57),
+        (37, 58, 16),
+        (59, 17, 38),
+        (18, 39, 60),
+        (40, 61, 19),
         (62, 20, 41),
     ]
     enc = "".join(_b64_from_24bit(c[x], c[y], c[z], 4) for x, y, z in order)
@@ -102,105 +210,461 @@ def sha512_crypt(password: str, salt: str | None = None, rounds: int = 5000) -> 
 # --- archinstall config -----------------------------------------------------
 
 
-def root_gib(disk_size_gib: int) -> int:
-    """Root fills the disk (Story 2.27): ESP takes the first GiB, 1 GiB tail slack."""
-    r = disk_size_gib - 2
-    if r < 20:
-        raise ValueError(f"disk too small ({disk_size_gib}G) — need >= 22G")
-    return r
-
-
-def build_user_configuration(
-    *, hypervisor: str, disk_size_gib: int, hostname: str, user: str, pubkey: str
-) -> dict:
-    hv = HYPERVISORS[hypervisor]
-    device = hv["device"]
-    custom_commands = [
-        "systemctl enable sshd",
-        *[f"systemctl enable {s}" for s in hv["services"]],
-        # Serial console on every boot: kernel messages land in the serial log,
-        # and the getty gives a login even when ssh is down.
-        "sed -i 's|^options |options console=tty0 console=ttyS0 |' /boot/loader/entries/*.conf",
-        "systemctl enable serial-getty@ttyS0.service",
-        f"chsh -s /usr/bin/zsh {user} || true",
-        f"echo '{user} ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/90-harness",
-    ]
-    if pubkey:
-        custom_commands.append(
-            f"install -d -m 700 /home/{user}/.ssh && echo '{pubkey}' > /home/{user}/.ssh/authorized_keys"
-            f" && chmod 600 /home/{user}/.ssh/authorized_keys && chown -R {user}: /home/{user}/.ssh"
-        )
+def _size(value: int, unit: str = "GiB") -> dict:
     return {
-        "version": ARCHINSTALL_VERSION,
-        "archinstall-language": "English",
-        "bootloader_config": {"bootloader": "Systemd-boot", "uki": False, "removable": False},
-        "hostname": hostname,
-        "kernels": ["linux"],
-        "locale_config": {"kb_layout": "us", "sys_enc": "UTF-8", "sys_lang": "en_US"},
-        "network_config": {"type": "nm"},
-        "ntp": True,
-        "packages": ["git", "base-devel", "yadm", "openssh", "zsh", hv["tools"]],
-        "swap": {"enabled": True},
-        "timezone": "UTC",
-        "disk_config": {
-            "config_type": "default_layout",
-            "device_modifications": [
+        "unit": unit,
+        "value": value,
+        "sector_size": {"value": 512, "unit": "B"},
+    }
+
+
+def root_gib(disk_size_gib: int) -> int:
+    """Usable disk after the 1 GiB ESP and 1 GiB GPT/tail reserve."""
+    value = disk_size_gib - 2
+    if value < 20:
+        raise ValueError(f"disk too small ({disk_size_gib}G) — need >= 22G")
+    return value
+
+
+def metal_layout_gib(disk_size_gib: int, ram_gib: int) -> tuple[int, int, int]:
+    """Return root LV, resume LV, and future routine-swap sizes.
+
+    The resume LV equals rounded physical RAM. ``hibernate-storage`` later
+    creates the 1.5x routine swapfile inside root and requires another 10 GiB
+    free. Forty GiB after that swapfile keeps the full workstation reconcile
+    and package caches from repeating the old 38 GiB ENOSPC failure.
+    """
+    if ram_gib <= 0:
+        raise ValueError("metal RAM size must be a positive whole GiB value")
+    available = root_gib(disk_size_gib)
+    routine = (ram_gib * 3 + 1) // 2
+    root = available - ram_gib
+    required_inside_root = routine + MIN_POST_SWAP_ROOT_GIB + LVM_METADATA_HEADROOM_GIB
+    minimum = 2 + ram_gib + required_inside_root
+    if root < required_inside_root:
+        raise ValueError(
+            f"disk too small for {ram_gib} GiB RAM ({disk_size_gib}G) — "
+            f"metal hibernation layout needs >= {minimum}G"
+        )
+    return root, ram_gib, routine
+
+
+def _partition(
+    *,
+    obj_id: str,
+    start_mib: int,
+    size: dict,
+    fs_type: str,
+    mountpoint: str | None,
+    flags: list[str],
+) -> dict:
+    return {
+        "obj_id": obj_id,
+        "status": "create",
+        "type": "primary",
+        "dev_path": None,
+        "start": _size(start_mib, "MiB"),
+        "size": size,
+        "fs_type": fs_type,
+        "flags": flags,
+        "btrfs": [],
+        "mount_options": [],
+        "mountpoint": mountpoint,
+    }
+
+
+def _disk_encryption(encryption_type: str) -> dict:
+    return {
+        "encryption_type": encryption_type,
+        "partitions": [DATA_OBJ_ID],
+        "lvm_volumes": [],
+    }
+
+
+def _vm_disk_config(device: str, disk_size_gib: int, *, encrypted: bool) -> dict:
+    config = {
+        "config_type": "default_layout",
+        "device_modifications": [
+            {
+                "device": device,
+                "wipe": True,
+                "partitions": [
+                    _partition(
+                        obj_id=ESP_OBJ_ID,
+                        start_mib=1,
+                        size=_size(1023, "MiB"),
+                        fs_type="fat32",
+                        mountpoint="/boot",
+                        flags=["boot", "esp"],
+                    ),
+                    _partition(
+                        obj_id=DATA_OBJ_ID,
+                        start_mib=1024,
+                        size=_size(root_gib(disk_size_gib)),
+                        fs_type="ext4",
+                        mountpoint="/",
+                        flags=[],
+                    ),
+                ],
+            }
+        ],
+    }
+    if encrypted:
+        config["disk_encryption"] = _disk_encryption("luks")
+    return config
+
+
+def _metal_disk_config(device: str, disk_size_gib: int, ram_gib: int) -> dict:
+    root_size, resume_size, _ = metal_layout_gib(disk_size_gib, ram_gib)
+    data_partition = _partition(
+        obj_id=DATA_OBJ_ID,
+        start_mib=1024,
+        size=_size(root_gib(disk_size_gib)),
+        fs_type="ext4",
+        mountpoint=None,
+        flags=[],
+    )
+    return {
+        "config_type": "default_layout",
+        "device_modifications": [
+            {
+                "device": device,
+                "wipe": True,
+                "partitions": [
+                    _partition(
+                        obj_id=ESP_OBJ_ID,
+                        start_mib=1,
+                        size=_size(1023, "MiB"),
+                        fs_type="fat32",
+                        mountpoint="/boot",
+                        flags=["boot", "esp"],
+                    ),
+                    data_partition,
+                ],
+            }
+        ],
+        "lvm_config": {
+            "config_type": "default",
+            "vol_groups": [
                 {
-                    "device": device,
-                    "wipe": True,
-                    "partitions": [
+                    "name": METAL_VG,
+                    "lvm_pvs": [DATA_OBJ_ID],
+                    "volumes": [
                         {
-                            "obj_id": "11111111-1111-1111-1111-111111111111",
-                            "status": "create", "type": "primary", "dev_path": None,
-                            "start": {"unit": "MiB", "value": 1,
-                                      "sector_size": {"value": 512, "unit": "B"}},
-                            "size": {"unit": "MiB", "value": 1023,
-                                     "sector_size": {"value": 512, "unit": "B"}},
-                            "fs_type": "fat32", "flags": ["boot", "esp"], "btrfs": [],
-                            "mount_options": [], "mountpoint": "/boot",
+                            "obj_id": ROOT_LV_OBJ_ID,
+                            "status": "create",
+                            "name": "root",
+                            "fs_type": "ext4",
+                            "length": _size(root_size),
+                            "mountpoint": "/",
+                            "mount_options": [],
+                            "btrfs": [],
                         },
                         {
-                            "obj_id": "22222222-2222-2222-2222-222222222222",
-                            "status": "create", "type": "primary", "dev_path": None,
-                            "start": {"unit": "MiB", "value": 1024,
-                                      "sector_size": {"value": 512, "unit": "B"}},
-                            "size": {"unit": "GiB", "value": root_gib(disk_size_gib),
-                                     "sector_size": {"value": 512, "unit": "B"}},
-                            "fs_type": "ext4", "flags": [], "btrfs": [],
-                            "mount_options": [], "mountpoint": "/",
+                            "obj_id": RESUME_LV_OBJ_ID,
+                            "status": "create",
+                            "name": "resume",
+                            "fs_type": "linux-swap",
+                            "length": _size(resume_size),
+                            "mountpoint": None,
+                            "mount_options": [],
+                            "btrfs": [],
                         },
                     ],
                 }
             ],
         },
+        "disk_encryption": _disk_encryption("lvm_on_luks"),
+    }
+
+
+def _authorized_keys_command(user: str, pubkey: str) -> str:
+    quoted_user = shlex.quote(user)
+    quoted_key = shlex.quote(pubkey)
+    return (
+        f"install -d -m 700 /home/{quoted_user}/.ssh && "
+        f"printf '%s\\n' {quoted_key} > /home/{quoted_user}/.ssh/authorized_keys && "
+        f"chmod 600 /home/{quoted_user}/.ssh/authorized_keys && "
+        f"chown -R {quoted_user}: /home/{quoted_user}/.ssh"
+    )
+
+
+def _validate_username(user: str) -> None:
+    if not re.fullmatch(r"[a-z_][a-z0-9_-]*", user):
+        raise ValueError("user must be a portable Linux account name")
+
+
+def build_request(
+    *,
+    target: str,
+    disk_size_gib: int,
+    hostname: str,
+    user: str,
+    pubkey: str,
+    disk_device: str | None = None,
+    ram_gib: int | None = None,
+) -> ProvisioningRequest:
+    try:
+        target_spec = TARGETS[target]
+    except KeyError as exc:
+        raise ValueError(f"unknown provisioning target: {target}") from exc
+    _validate_username(user)
+
+    metal = None
+    if target_spec.attended:
+        if not disk_device:
+            raise ValueError("metal disk device is required")
+        if ram_gib is None:
+            raise ValueError("metal RAM size is required")
+        metal = MetalFacts(disk_device, disk_size_gib, ram_gib)
+    elif disk_device is not None or ram_gib is not None:
+        raise ValueError(f"{target} does not accept metal disk or RAM facts")
+
+    return ProvisioningRequest(
+        target=target_spec,
+        disk_size_gib=disk_size_gib,
+        hostname=hostname,
+        user=user,
+        pubkey=pubkey,
+        metal=metal,
+    )
+
+
+def build_user_configuration(request: ProvisioningRequest) -> dict:
+    target = request.target
+    packages = ["git", "base-devel", "yadm", "openssh", "zsh", *target.packages]
+    custom_commands = [
+        "systemctl enable sshd",
+        *[f"systemctl enable {service}" for service in target.services],
+    ]
+
+    if request.metal is not None:
+        disk_config = _metal_disk_config(
+            request.metal.device,
+            request.metal.disk_size_gib,
+            request.metal.ram_gib,
+        )
+    else:
+        if target.device is None:
+            raise ValueError(f"{target.name} has no disk device")
+        disk_config = _vm_disk_config(
+            target.device,
+            request.disk_size_gib,
+            encrypted=target.encrypted,
+        )
+
+    if target.harness:
+        custom_commands.extend(
+            [
+                (
+                    "sed -i 's|^options |options console=tty0 console=ttyS0 |' "
+                    "/boot/loader/entries/*.conf"
+                ),
+                "systemctl enable serial-getty@ttyS0.service",
+                f"chsh -s /usr/bin/zsh {shlex.quote(request.user)} || true",
+                (
+                    f"printf '%s\n' "
+                    f"{shlex.quote(f'{request.user} ALL=(ALL) NOPASSWD: ALL')} "
+                    "> /etc/sudoers.d/90-harness"
+                ),
+            ]
+        )
+
+    if request.pubkey:
+        custom_commands.append(_authorized_keys_command(request.user, request.pubkey))
+
+    return {
+        "version": ARCHINSTALL_VERSION,
+        "archinstall-language": "English",
+        "bootloader_config": {
+            "bootloader": target.bootloader,
+            "uki": False,
+            "removable": False,
+        },
+        "hostname": request.hostname,
+        "kernels": ["linux"],
+        "locale_config": {
+            "kb_layout": "us",
+            "sys_enc": "UTF-8",
+            "sys_lang": "en_US",
+        },
+        "network_config": {"type": "nm"},
+        "ntp": True,
+        "packages": packages,
+        "swap": {"enabled": target.swap_enabled},
+        "timezone": "UTC",
+        "disk_config": disk_config,
         "custom_commands": custom_commands,
     }
 
 
-def build_user_credentials(*, user: str, pass_hash: str) -> dict:
-    return {
-        "root_enc_password": pass_hash,
-        "users": [{"username": user, "enc_password": pass_hash, "sudo": True}],
+def build_user_credentials(
+    *, user: str, pass_hash: str, luks_secret: str | None = None
+) -> dict:
+    user_entry = {
+        "username": user,
+        "enc_password": pass_hash,  # gitleaks:allow -- 2026-09-10: hash, not plaintext
+        "sudo": True,
     }
+    credentials = {
+        "root_enc_password": pass_hash,  # gitleaks:allow -- 2026-09-10: hash only
+        "users": [user_entry],
+    }
+    if luks_secret is not None:
+        credentials["encryption_password"] = luks_secret
+    return credentials
 
 
-RUN_INSTALL_SH = """#!/bin/sh
+def validate_metal_facts(
+    expected: MetalFacts,
+    *,
+    actual_disk_bytes: int,
+    actual_ram_gib: int,
+    is_whole_disk: bool,
+    is_uefi: bool,
+    mountpoints: list[str],
+) -> None:
+    """Fail closed before the attended install can reach Archinstall."""
+    if not is_uefi:
+        raise ValueError("target must boot the Arch ISO in UEFI mode")
+    if not is_whole_disk:
+        raise ValueError(f"target is not a whole disk: {expected.device}")
+    minimum_bytes = expected.disk_size_gib * 1073741824
+    maximum_bytes = (expected.disk_size_gib + 1) * 1073741824
+    if not minimum_bytes <= actual_disk_bytes < maximum_bytes:
+        raise ValueError(
+            f"target size does not match configured {expected.disk_size_gib} GiB"
+        )
+    if actual_ram_gib != expected.ram_gib:
+        raise ValueError(
+            f"target RAM rounds to {actual_ram_gib} GiB, "
+            f"recipe expects {expected.ram_gib} GiB"
+        )
+    if any(value.strip() for value in mountpoints):
+        raise ValueError("target disk or one of its children is mounted")
+
+
+def require_wipe_confirmation(device: str, answer: str) -> None:
+    if answer != f"WIPE {device}":
+        raise ValueError("confirmation did not match")
+
+
+def _command_output(command: list[str]) -> str:
+    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    if result.returncode:
+        raise ValueError(f"target inspection failed: {command[0]}")
+    return result.stdout.strip()
+
+
+def _metal_preflight(expected: MetalFacts) -> None:
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        raise ValueError("an attended console or ssh -t session is required")
+    try:
+        is_block = stat.S_ISBLK(Path(expected.device).stat().st_mode)
+    except OSError as exc:
+        raise ValueError(f"cannot inspect target device: {expected.device}") from exc
+    is_whole_disk = (
+        is_block
+        and _command_output(["/usr/bin/lsblk", "-dnro", "TYPE", expected.device])
+        == "disk"
+    )
+    try:
+        actual_disk_bytes = int(
+            _command_output(["/usr/bin/blockdev", "--getsize64", expected.device])
+        )
+    except ValueError as exc:
+        raise ValueError("target disk size is malformed") from exc
+    try:
+        meminfo = Path("/proc/meminfo").read_text()
+    except OSError as exc:
+        raise ValueError("cannot read physical RAM from /proc/meminfo") from exc
+    mem_match = re.search(r"^MemTotal:\s+(\d+)\s+kB$", meminfo, re.MULTILINE)
+    if not mem_match:
+        raise ValueError("cannot read physical RAM from /proc/meminfo")
+    actual_ram_gib = (int(mem_match.group(1)) + 1048575) // 1048576
+    mountpoints = _command_output(
+        ["/usr/bin/lsblk", "-nrpo", "MOUNTPOINT", expected.device]
+    ).splitlines()
+    validate_metal_facts(
+        expected,
+        actual_disk_bytes=actual_disk_bytes,
+        actual_ram_gib=actual_ram_gib,
+        is_whole_disk=is_whole_disk,
+        is_uefi=Path("/sys/firmware/efi").is_dir(),
+        mountpoints=mountpoints,
+    )
+
+    print("This fresh-laptop recipe destroys every partition on:")
+    print(
+        _command_output(
+            [
+                "/usr/bin/lsblk",
+                "-dno",
+                "PATH,SIZE,MODEL,SERIAL",
+                expected.device,
+            ]
+        )
+    )
+    confirmation = f"WIPE {expected.device}"
+    require_wipe_confirmation(
+        expected.device,
+        input(f"Type {confirmation} to continue: "),
+    )
+
+
+def build_run_install(request: ProvisioningRequest) -> str:
+    if not request.target.attended:
+        return """#!/bin/sh
 exec > /dev/ttyS0 2>&1
 echo HARNESS-RUNCMD-START
-# --skip-ntp: archinstall's own time-sync wait — a VM guest's clock is the
-# host's via the RTC, and timesyncd may never sync in the NAT guest anyway.
-# The config's "ntp": true still enables NTP on the installed system.
 archinstall --config /root/user_configuration.json \\
-            --creds  /root/user_credentials.json --silent --skip-ntp
+            --creds /root/user_credentials.json --silent --skip-ntp
 rc=$?
 echo "HARNESS-ARCHINSTALL-EXIT:$rc"
 [ "$rc" -ne 0 ] && tail -n 80 /var/log/archinstall/install.log
-# Safe to power off from here: this script runs as its own transient unit,
-# detached from cloud-init, which finished long ago.
 systemctl poweroff
 """
 
-META_DATA = "instance-id: bootstrap-harness\nlocal-hostname: archiso\n"
+    if request.metal is None:
+        raise ValueError("attended install requires metal target facts")
+    device = shlex.quote(request.metal.device)
+    quoted_user = shlex.quote(request.user)
+    return f"""#!/bin/sh
+set -eu
+
+base=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+cleanup_credentials() {{
+    rm -f "$base/user_credentials.json" "$base"/.user_credentials.json.*
+}}
+trap cleanup_credentials EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+cleanup_credentials
+
+"$base/provision-seed" metal-preflight \\
+    --device {device} --disk-size {request.metal.disk_size_gib} \\
+    --ram-gib {request.metal.ram_gib}
+
+"$base/provision-seed" metal-credentials \\
+    --out "$base/user_credentials.json" --user {quoted_user}
+
+set +e
+archinstall --config "$base/user_configuration.json" \\
+            --creds "$base/user_credentials.json" --silent --skip-ntp
+rc=$?
+set -e
+if [ "$rc" -ne 0 ]; then
+    echo "metal-provision: archinstall failed rc=$rc" >&2
+    tail -n 80 /var/log/archinstall/install.log >&2 || true
+    exit "$rc"
+fi
+
+"$base/provision-seed" metal-finalize --root /mnt
+cleanup_credentials
+trap - EXIT HUP INT TERM
+echo "metal-provision: install complete; remove install media, then reboot"
+"""
 
 
 def _b64(data: bytes) -> str:
@@ -208,50 +672,219 @@ def _b64(data: bytes) -> str:
 
 
 def build_user_data(
-    *, user_configuration: dict, user_credentials: dict, live_ssh_pubkey: str | None
+    *,
+    request: ProvisioningRequest,
+    user_configuration: dict,
+    user_credentials: dict | None,
+    live_ssh_pubkey: str | None,
+    run_install_sh: str,
+    provision_tool: bytes | None = None,
 ) -> str:
-    """Cloud-init user-data. runcmd launches the install driver as its OWN
-    transient unit (systemd-run) so cloud-init finishes in seconds and the
-    driver can power off without racing cloud-init's teardown (see the bash
-    harness's write_seed for the full history).
-
-    live_ssh_pubkey additionally opens root ssh in the LIVE ISO — the VMware
-    harness's exec/debug channel (no qemu agent there). The libvirt harness
-    passes None and keeps using the agent.
-    """
-    files = [
-        ("/root/user_configuration.json",
-         _b64(json.dumps(user_configuration, indent=2).encode()), None),
-        ("/root/user_credentials.json",
-         _b64(json.dumps(user_credentials, indent=2).encode()), None),
-        ("/root/run-install.sh", _b64(RUN_INSTALL_SH.encode()), "0755"),
+    """Build cloud-init data; attended targets never start the wipe."""
+    files: list[tuple[str, bytes, str | None]] = [
+        (
+            "/root/user_configuration.json",
+            json.dumps(user_configuration, indent=2).encode(),
+            "0600",
+        ),
+        ("/root/run-install.sh", run_install_sh.encode(), "0755"),
     ]
+    if user_credentials is not None:
+        files.insert(
+            1,
+            (
+                "/root/user_credentials.json",
+                json.dumps(user_credentials, indent=2).encode(),
+                "0600",
+            ),
+        )
+    if provision_tool is not None:
+        files.append(("/root/provision-seed", provision_tool, "0755"))
+
     lines = ["#cloud-config", "write_files:"]
-    for path, content, perm in files:
-        lines += [f"  - path: {path}", "    encoding: b64", f"    content: {content}"]
-        if perm:
-            lines.append(f"    permissions: '{perm}'")
-    if live_ssh_pubkey:
+    for path, data, permissions in files:
         lines += [
-            "ssh_authorized_keys:",
-            f"  - {live_ssh_pubkey}",
+            f"  - path: {path}",
+            "    encoding: b64",
+            f"    content: {_b64(data)}",
         ]
+        if permissions:
+            lines.append(f"    permissions: '{permissions}'")
+    if live_ssh_pubkey:
+        lines += ["ssh_authorized_keys:", f"  - {live_ssh_pubkey}"]
+
+    marker = (
+        "PROVISION-CLOUDINIT-UP" if request.target.attended else "HARNESS-CLOUDINIT-UP"
+    )
     lines += [
         "bootcmd:",
-        "  - [sh, -c, 'echo HARNESS-CLOUDINIT-UP > /dev/ttyS0']",
+        f"  - [sh, -c, 'echo {marker} > /dev/ttyS0']",
         "runcmd:",
     ]
     if live_ssh_pubkey:
         lines.append("  - [systemctl, start, sshd]")
-    lines.append(
-        "  - [systemd-run, --collect, --unit=harness-install, sh, /root/run-install.sh]"
-    )
+    if request.target.attended:
+        lines.append(
+            "  - [sh, -c, 'echo Run /root/run-install.sh from a "
+            "target-laptop console > /dev/tty1']"
+        )
+    else:
+        lines.append(
+            "  - [systemd-run, --collect, --unit=harness-install, "
+            "sh, /root/run-install.sh]"
+        )
     return "\n".join(lines) + "\n"
 
 
+def _prompt_confirmed(label: str, prompt_fn=None) -> str:
+    prompt_fn = prompt_fn or getpass.getpass
+    first = prompt_fn(f"{label}: ")
+    if not first:
+        raise ValueError(f"{label} cannot be empty")
+    second = prompt_fn(f"Confirm {label.lower()}: ")
+    if first != second:
+        raise ValueError(f"{label} confirmation does not match")
+    return first
+
+
+def _atomic_write_text(path: Path, content: str, mode: int) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            os.chmod(temporary, mode)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def write_metal_credentials(path: Path, user: str, prompt_fn=None) -> None:
+    """Prompt on target console and atomically write Archinstall credentials."""
+    _validate_username(user)
+    if path.is_symlink():
+        raise ValueError("credentials destination must not be a symlink")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    user_password = _prompt_confirmed("User password", prompt_fn)
+    luks_secret = _prompt_confirmed("Disk encryption password", prompt_fn)
+    payload = build_user_credentials(
+        user=user,
+        pass_hash=sha512_crypt(user_password),
+        luks_secret=luks_secret,
+    )
+
+    _atomic_write_text(path, json.dumps(payload, indent=2) + "\n", 0o600)
+
+
+def finalize_metal(root: Path) -> None:
+    """Persist resume swap and authorize first-boot rEFInd reconciliation."""
+    root = root.resolve()
+    if root == Path("/"):
+        raise ValueError("metal finalization requires an offline target root")
+    if not root.is_dir():
+        raise ValueError(f"target root does not exist: {root}")
+
+    fstab = root / "etc/fstab"
+    mkinitcpio = root / "etc/mkinitcpio.conf"
+    paths = [
+        fstab,
+        mkinitcpio,
+        root / "boot/EFI/refind/refind.conf",
+        root / "boot/refind_linux.conf",
+    ]
+    theme = root / "boot/EFI/refind/themes/nord"
+    theme_marker = theme / ".dotfiles-refind-managed"
+    for path in (*paths, theme_marker):
+        current = path
+        while current != root:
+            if current.is_symlink():
+                raise ValueError(f"metal handoff destination is a symlink: {current}")
+            current = current.parent
+    if theme.exists() and (
+        not theme_marker.is_file() or theme_marker.read_text() != REFIND_MANAGED + "\n"
+    ):
+        raise ValueError("metal handoff refuses an unmanaged Nord theme")
+    contents: dict[Path, str] = {}
+    for path in paths:
+        if not path.is_file():
+            raise ValueError(f"metal handoff destination is missing: {path}")
+        contents[path] = path.read_text()
+
+    # Archinstall's genfstab -f /mnt omits swap outside that path, even when
+    # activated by a custom command. Persist the recipe's stable LV name after
+    # genfstab instead; do not activate target swap in the installer host.
+    resume_entry = f"/dev/{METAL_VG}/resume none swap sw,pri=-1 0 0"
+    swap_entries = [
+        fields
+        for line in contents[fstab].splitlines()
+        if (fields := line.split())
+        and not fields[0].startswith("#")
+        and len(fields) >= 3
+        and fields[2] == "swap"
+    ]
+    if swap_entries and swap_entries != [resume_entry.split()]:
+        raise ValueError("metal handoff fstab has conflicting swap entries")
+    if not swap_entries:
+        contents[fstab] = contents[fstab].rstrip("\n") + "\n\n" + resume_entry + "\n"
+
+    # Archinstall's udev/LVM-on-LUKS recipe does not add a resume hook.
+    # Keep its generated hooks, but resume before any filesystem checks.
+    matches = list(
+        re.finditer(r"(?m)^HOOKS=\(([^\n()]*)\)[ \t]*$", contents[mkinitcpio])
+    )
+    if len(matches) != 1:
+        raise ValueError("metal handoff requires one literal mkinitcpio HOOKS array")
+    match = matches[0]
+    hooks = shlex.split(match[1])
+    if (
+        not all(re.fullmatch(r"[a-zA-Z0-9_-]+", hook) for hook in hooks)
+        or not {"encrypt", "lvm2", "filesystems"}.issubset(hooks)
+        or not hooks.index("encrypt") < hooks.index("lvm2") < hooks.index("filesystems")
+    ):
+        raise ValueError("metal handoff requires encrypt/lvm2 before filesystems")
+    hooks = [hook for hook in hooks if hook != "resume"]
+    hooks.insert(hooks.index("filesystems"), "resume")
+    contents[mkinitcpio] = (
+        contents[mkinitcpio][: match.start()]
+        + f"HOOKS=({' '.join(hooks)})"
+        + contents[mkinitcpio][match.end() :]
+    )
+
+    for path, content in contents.items():
+        if path not in (fstab, mkinitcpio):
+            if content.startswith(REFIND_MANAGED + "\n"):
+                continue
+            content = REFIND_MANAGED + "\n" + content
+        if path.read_text() != content:
+            mode = path.stat().st_mode & 0o777
+            _atomic_write_text(path, content, mode)
+
+    # Always rebuild: a previous attempt may have persisted HOOKS but failed here.
+    result = subprocess.run(["arch-chroot", str(root), "mkinitcpio", "-P"], check=False)
+    if result.returncode:
+        raise ValueError("metal handoff could not rebuild the target initramfs")
+
+    # The package hook copies Nord onto the ESP before bootstrap reconciles it.
+    # Reserve ownership while the fresh target has no theme; never adopt an
+    # existing unmarked directory. The package's copy preserves this marker.
+    theme.mkdir(parents=True, exist_ok=True)
+    if not theme_marker.exists():
+        _atomic_write_text(theme_marker, REFIND_MANAGED + "\n", 0o644)
+
+
 def write_seed_iso(out_iso: Path, user_data: str, meta_data: str) -> None:
-    """NoCloud seed ISO: volid CIDATA, Joliet + Rock Ridge (matches the bash
-    harness's xorrisofs invocation; cloud-init finds the volume by label)."""
+    """Write a CIDATA ISO with Joliet and Rock Ridge names."""
     import pycdlib
 
     iso = pycdlib.PyCdlib()
@@ -259,50 +892,196 @@ def write_seed_iso(out_iso: Path, user_data: str, meta_data: str) -> None:
     for name, content in (("user-data", user_data), ("meta-data", meta_data)):
         data = content.encode()
         iso.add_fp(
-            __import__("io").BytesIO(data), len(data),
+            __import__("io").BytesIO(data),
+            len(data),
             iso_path=f"/{name.replace('-', '').upper()}.;1",
-            rr_name=name, joliet_path=f"/{name}",
+            rr_name=name,
+            joliet_path=f"/{name}",
         )
     iso.write(str(out_iso))
     iso.close()
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="vm-harness-seed", description=__doc__)
-    ap.add_argument("--out", required=True, help="output directory (created; existing files replaced)")
-    ap.add_argument("--hypervisor", required=True, choices=sorted(HYPERVISORS))
-    ap.add_argument("--disk-size", required=True, type=int, metavar="GIB")
-    ap.add_argument("--hostname", default="archvm")
-    ap.add_argument("--user", default="aaron")
-    group = ap.add_mutually_exclusive_group(required=True)
-    group.add_argument("--password", help="throwaway VM password (hashed with sha512-crypt)")
-    group.add_argument("--pass-hash", help="pre-computed crypt hash (deterministic runs)")
-    ap.add_argument("--pubkey", default="", help="host public key for the installed user's authorized_keys")
-    ap.add_argument("--live-ssh", action="store_true",
-                    help="also enable root ssh (with --pubkey) in the live ISO — the VMware exec channel")
-    args = ap.parse_args(argv)
-
+def _create_seed(args, parser: argparse.ArgumentParser) -> int:
+    if args.disk_size is None:
+        parser.error("create requires --disk-size")
     if args.live_ssh and not args.pubkey:
-        ap.error("--live-ssh requires --pubkey")
+        parser.error("--live-ssh requires --pubkey")
 
-    pass_hash = args.pass_hash or sha512_crypt(args.password)
-    cfg = build_user_configuration(
-        hypervisor=args.hypervisor, disk_size_gib=args.disk_size,
-        hostname=args.hostname, user=args.user, pubkey=args.pubkey,
+    request = build_request(
+        target=args.target,
+        disk_size_gib=args.disk_size,
+        hostname=args.hostname,
+        user=args.user,
+        pubkey=args.pubkey,
+        disk_device=args.disk_device,
+        ram_gib=args.ram_gib,
     )
-    creds = build_user_credentials(user=args.user, pass_hash=pass_hash)
+    user_password = args.password or os.environ.get("PROVISION_USER_PASSWORD")
+    luks_password = os.environ.get("PROVISION_LUKS_PASSWORD")
+    if args.pass_hash is not None and user_password is not None:
+        parser.error(
+            "--pass-hash cannot be combined with a user password environment value"
+        )
+
+    if request.target.attended:
+        if any(
+            value is not None
+            for value in (user_password, args.pass_hash, luks_password)
+        ):
+            parser.error(
+                "metal credentials are prompted on the target; never put them in the seed"
+            )
+        credentials = None
+    else:
+        if user_password is None and args.pass_hash is None:
+            parser.error(
+                "VM create requires --password, --pass-hash, or PROVISION_USER_PASSWORD"
+            )
+        if request.target.encrypted and luks_password is None:
+            parser.error(
+                f"{request.target.name} create requires PROVISION_LUKS_PASSWORD"
+            )
+        if not request.target.encrypted and luks_password is not None:
+            parser.error(
+                f"{request.target.name} is unencrypted and does not accept a LUKS password"
+            )
+        if args.pass_hash is not None:
+            password_hash = args.pass_hash
+        else:
+            if user_password is None:
+                raise AssertionError("validated VM user password is missing")
+            password_hash = sha512_crypt(user_password)
+        credentials = build_user_credentials(
+            user=request.user,
+            pass_hash=password_hash,
+            luks_secret=luks_password,
+        )
+
+    config = build_user_configuration(request)
+    run_install = build_run_install(request)
+    provision_tool = Path(__file__).read_bytes() if request.target.attended else None
     user_data = build_user_data(
-        user_configuration=cfg, user_credentials=creds,
-        live_ssh_pubkey=args.pubkey if args.live_ssh else None,
+        request=request,
+        user_configuration=config,
+        user_credentials=credentials,
+        live_ssh_pubkey=request.pubkey if args.live_ssh else None,
+        run_install_sh=run_install,
+        provision_tool=provision_tool,
     )
 
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "user-data").write_text(user_data, newline="\n")
+    if out.is_symlink():
+        parser.error("--out must not be a symlink")
+    out.mkdir(mode=0o700, parents=True, exist_ok=True)
+    out.chmod(0o700)
+    (out / "user_configuration.json").write_text(
+        json.dumps(config, indent=2) + "\n", newline="\n"
+    )
+    (out / "run-install.sh").write_text(run_install, newline="\n")
+    (out / "run-install.sh").chmod(0o755)
+    credentials_path = out / "user_credentials.json"
+    if credentials is None:
+        credentials_path.unlink(missing_ok=True)
+    else:
+        _atomic_write_text(
+            credentials_path,
+            json.dumps(credentials, indent=2) + "\n",
+            0o600,
+        )
+    tool_path = out / "provision-seed"
+    if provision_tool is None:
+        tool_path.unlink(missing_ok=True)
+    else:
+        tool_path.write_bytes(provision_tool)
+        tool_path.chmod(0o755)
+    _atomic_write_text(out / "user-data", user_data, 0o600)
     (out / "meta-data").write_text(META_DATA, newline="\n")
-    write_seed_iso(out / "seed.iso", user_data, META_DATA)
-    print(out / "seed.iso")
+    seed_iso = out / "seed.iso"
+    if args.files_only:
+        seed_iso.unlink(missing_ok=True)
+        print(out / "run-install.sh")
+    else:
+        write_seed_iso(seed_iso, user_data, META_DATA)
+        seed_iso.chmod(0o600)
+        print(seed_iso)
     return 0
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="vm-harness-seed", description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    create = commands.add_parser("create", help="write recipe files and CIDATA seed")
+    create.add_argument("--out", required=True, help="output directory")
+    create.add_argument("--target", required=True, choices=sorted(TARGETS))
+    create.add_argument("--disk-size", type=int, metavar="GIB")
+    create.add_argument(
+        "--disk-device", help="whole-disk /dev path; required for metal"
+    )
+    create.add_argument(
+        "--ram-gib", type=int, help="rounded physical RAM; required for metal"
+    )
+    create.add_argument("--hostname", default="archvm")
+    create.add_argument("--user", default="aaron")
+    password = create.add_mutually_exclusive_group()
+    password.add_argument(
+        "--password", help="VM user password (or PROVISION_USER_PASSWORD)"
+    )
+    password.add_argument("--pass-hash", help="pre-computed VM sha512-crypt hash")
+    create.add_argument("--pubkey", default="")
+    create.add_argument(
+        "--files-only",
+        action="store_true",
+        help="write directly runnable files without requiring pycdlib for a seed ISO",
+    )
+    create.add_argument(
+        "--live-ssh",
+        action="store_true",
+        help="enable root ssh with --pubkey in the live ISO",
+    )
+    credentials = commands.add_parser(
+        "metal-credentials",
+        help="prompt for transient credentials (invoked by metal run-install)",
+    )
+    credentials.add_argument("--out", required=True)
+    credentials.add_argument("--user", required=True)
+
+    finalize = commands.add_parser(
+        "metal-finalize",
+        help="persist resume swap and mark fresh rEFInd files for repository takeover",
+    )
+    finalize.add_argument("--root", required=True)
+
+    preflight = commands.add_parser(
+        "metal-preflight",
+        help="validate target facts and exact wipe confirmation",
+    )
+    preflight.add_argument("--device", required=True)
+    preflight.add_argument("--disk-size", required=True, type=int)
+    preflight.add_argument("--ram-gib", required=True, type=int)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _parser()
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "create":
+            return _create_seed(args, parser)
+        if args.command == "metal-credentials":
+            write_metal_credentials(Path(args.out), args.user)
+            return 0
+        if args.command == "metal-preflight":
+            _metal_preflight(MetalFacts(args.device, args.disk_size, args.ram_gib))
+            return 0
+        if args.command == "metal-finalize":
+            finalize_metal(Path(args.root))
+            print("metal-provision: resume swap persisted; rEFInd handoff marked")
+            return 0
+    except ValueError as exc:
+        parser.error(str(exc))
+    raise AssertionError(f"unhandled command: {args.command}")
 
 
 if __name__ == "__main__":

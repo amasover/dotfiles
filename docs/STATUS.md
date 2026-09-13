@@ -23,12 +23,13 @@ Disposable handoff for active work. GitHub issues own durable detail; the
 
 ## In flight
 
-- **2.52 rEFInd follow-up** ([#230](https://github.com/amasover/dotfiles/issues/230)):
-  the first live `adopt` generated `also_scan_dirs +,@/arch` and the next reboot
-  had no Arch entry; the ESP was hand-corrected to `+,arch` from a rescue stick.
-  The branch fixes the generator and adds a machine-local `dual_boot` stanza.
-  Next: merge, then on the workstation write `/etc/dotfiles/refind.json` with the
-  Ubuntu entry, `refind-config apply`, and do the runbook's reboot validation.
+- **2.29 provisioning recipe** ([#95](https://github.com/amasover/dotfiles/issues/95)):
+  active on `story/2.29-metal-provisioning`. One generator now owns disposable
+  QEMU/VMware recipes, the LUKS-encrypted `daily-vm` recipe, and the attended
+  LVM-on-LUKS/rEFInd recipe for a different blank laptop—never this workstation.
+  Host-independent tests cover target selection, credentials, destructive preflight,
+  and cleanup. Next: the required Windows-host daily-VM creation record; the later
+  laptop run revalidates the metal path.
 
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   laptop and home-4K profiles now match current modesetting names; home split

@@ -77,17 +77,24 @@ archinstall's TUI errors show on the virt-manager console.
 
 ## How the pieces fit
 
-- **Unattended install:** recent official archisos ship cloud-init; the seed ISO
-  (NoCloud) writes `user_configuration.json`/`user_credentials.json` and runs
-  `archinstall --silent` via `runcmd`, which launches the install driver as its
-  own transient unit (`systemd-run`) and returns at once: cloud-init finishes in
-  seconds, so systemd's "A start job is running for Cloud-init: Final Stage"
-  spinner stops spamming the serial stream for the whole install, and the driver
-  powers off with cloud-init already done (a poweroff from inside `runcmd` raced
-  cloud-init's teardown — every log ended in a harmless-but-scary
-  `BrokenPipeError` traceback). Systemd-boot, ext4
-  best-effort on `/dev/vda`, hostname `archvm`, sshd enabled, git/base-devel/yadm
-  preinstalled to skip bootstrap preconditions.
+- **Unattended install:** both disposable VM harnesses call the shared
+  `setup/vm-harness-seed create` interface with the `qemu` or `vmware` target;
+  no inline Archinstall recipe remains. Recent official archisos consume its
+  NoCloud seed, which writes `user_configuration.json`/`user_credentials.json`
+  and runs `archinstall --silent` through a transient `systemd-run` unit.
+  Cloud-init finishes in seconds, so its spinner does not occupy the serial
+  stream for the whole install, and the driver powers off only afterward. Both
+  disposable targets keep Systemd-boot, zram, unencrypted ext4 root, sshd, and
+  git/base-devel/yadm. The `daily-vm` target shares VMware hardware defaults but
+  emits the LUKS-encrypted root required by Story 2.29 and omits harness-only
+  passwordless sudo and serial policy. Its real VMware creation run remains the
+  story's primary evidence. The `metal` target is deliberately attended,
+  LVM-on-LUKS, rEFInd-based, and never auto-started.
+  Supply the daily target's user and LUKS secrets at invocation through
+  `PROVISION_USER_PASSWORD` and `PROVISION_LUKS_PASSWORD`; do not place real
+  values in command arguments. The generator makes its output directory private
+  and writes the credential-bearing user-data and seed ISO mode 0600. The caller
+  must delete that output after installation.
 - **VM accommodations:** the seed's `custom_commands` set the login shell to zsh at
   install time (bootstrap's `chsh` step self-skips — `chsh` would password-prompt
   over ssh), and `bootstrap --unattended` skips secret decrypt by design — a
@@ -131,6 +138,13 @@ wrong one cost five iterations. Release-4.4 facts, all verified the hard way:
   (`null` crashes), no `Percent` size unit, **non-overlapping ranges** (1MiB + 1GiB
   ESP overlaps a root starting at 1GiB), and the ESP wants the **`esp` flag** —
   `boot` alone leaves bootctl unable to detect the ESP after pacstrap.
+- Metal LVM-on-LUKS nests `disk_encryption` inside `disk_config`, references the
+  encrypted PV by its `obj_id`, models the resume LV as `linux-swap`, and puts the
+  plaintext LUKS passphrase only in the transient credentials file. These fields were
+  checked against the cached ISO's exact `archinstall 4.4-1` package, not master docs.
+- The `daily-vm` target uses direct partition LUKS: `disk_encryption` references
+  the root partition's `obj_id`, and `user_credentials.json` supplies its runtime
+  `encryption_password`.
 - **Failure visibility:** archinstall's late-stage errors print via its TUI to the
   VGA console — invisible on serial even with stdout/stderr redirected. The seed's
   `runcmd` therefore emits `HARNESS-RUNCMD-START` / `HARNESS-ARCHINSTALL-EXIT:<rc>`

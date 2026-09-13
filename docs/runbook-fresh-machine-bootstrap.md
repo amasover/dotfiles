@@ -6,23 +6,74 @@ Script: [`.local/bin/setup/bootstrap`](../.local/bin/setup/bootstrap) (replaces 
 retired 2019 `setup/install` — see [bootstrap-inventory.md](./bootstrap-inventory.md)
 for its autopsy; history via `git log -- .local/bin/setup/install`).
 
-> **METAL GATE:** until Story 2.10 ([#50](https://github.com/amasover/dotfiles/issues/50))
-> lands, run this only in disposable VMs (Story 2.7 harness). The script warns and
-> requires typing `metal` on real hardware. Reason: fresh installs pull the whole AUR
-> set with no install-time gating yet.
+> **DAILY-VM FIRST:** Story 2.29's primary evidence remains a real encrypted
+> daily-driver creation run under VMware Workstation. The shared generator now
+> exposes that LUKS recipe as `--target daily-vm`; the attended metal path below
+> is the later hardware revalidation, not a replacement for the VM evidence.
 
-## Preconditions (manual, once)
+> **METAL SCOPE:** Story 2.29 erases one explicitly named whole disk on a
+> different, blank laptop. The current workstation is never its target. The generated
+> metal recipe does not start automatically and cannot proceed without matching disk,
+> RAM, mount-state, console, and typed-wipe checks.
 
-1. Arch installed — `archinstall` minimal profile is fine. Network up, user created,
-   sudo working. No desktop profile needed: the class decides that later.
-   Hibernating bare metal must use the encrypted storage contract below; the
-   generic installer swap toggle or zram alone is insufficient.
-2. ```bash
-   sudo pacman -S --needed git base-devel yadm
-   yadm clone https://github.com/amasover/dotfiles.git
-   ```
-   `yadm clone` may report checkout conflicts on a non-pristine home; resolve, then
-   continue. Templates render on checkout, but the profile guard re-renders anyway.
+## Provision the different laptop from the Arch ISO
+
+Boot the official Arch ISO in UEFI mode, bring up networking, then work from its root
+shell. Identify the target from live hardware; never copy the current workstation's
+device name or partition sizes:
+
+```bash
+device=/dev/nvme0n1                 # replace after inspecting lsblk
+lsblk -d -o PATH,SIZE,MODEL,SERIAL
+disk_gib=$(( $(blockdev --getsize64 "$device") / 1073741824 ))
+ram_gib=$(awk '/^MemTotal:/ {print int(($2 + 1048575) / 1048576)}' /proc/meminfo)
+printf 'device=%s disk=%sGiB ram=%sGiB\n' "$device" "$disk_gib" "$ram_gib"
+```
+
+Fetch this repository into the ISO's tmpfs and generate directly runnable files. This
+path needs no second seed medium and no `pycdlib`:
+
+```bash
+pacman -Sy --needed git
+git clone https://github.com/amasover/dotfiles.git /run/dotfiles
+/run/dotfiles/.local/bin/setup/vm-harness-seed create \
+  --files-only \
+  --target metal \
+  --out /run/metal-provision \
+  --disk-device "$device" \
+  --disk-size "$disk_gib" \
+  --ram-gib "$ram_gib" \
+  --hostname new-laptop \
+  --user aaron
+python -m json.tool /run/metal-provision/user_configuration.json
+/run/metal-provision/run-install.sh
+```
+
+The driver requires UEFI mode, then rechecks that the path is a whole, unmounted disk
+whose size and rounded RAM match the recipe. It requires exact `WIPE <device>` input
+before prompting twice for the user password and LUKS password. Secrets exist only in
+a mode-0600 file in the ISO's tmpfs; the driver removes it on success, failure, or
+interruption. Archinstall creates the 1 GiB ESP, LVM-on-LUKS root/resume layout,
+NetworkManager, user, sshd, and rEFInd.
+
+To prepare CIDATA media elsewhere instead, omit `--files-only` on a machine with
+`pycdlib`; attach the resulting `seed.iso` beside the Arch ISO. Cloud-init writes the
+same files but deliberately does not launch `/root/run-install.sh` on metal.
+
+## Bootstrap preconditions
+
+After the provisioned laptop first boots, network, Git, `base-devel`, and YADM are
+already present. Clone and select the concrete class before bootstrap:
+
+```bash
+yadm clone https://github.com/amasover/dotfiles.git
+yadm config local.class workstation  # current tracked physical adapter: Intel laptop
+yadm alt
+```
+
+The class must match the new laptop's hardware. The only physical adapter currently
+tracked is `workstation`/`hardware-intel-laptop`; add another class before provisioning
+different hardware. Resolve any checkout conflict before continuing.
 
 ## Run
 
@@ -113,7 +164,7 @@ All classes include the same 15 purpose groups from
 
 | Class | Intended machine | Added groups |
 | --- | --- | --- |
-| `workstation` | Current physical Intel laptop | `work`, `hardware-intel-laptop`, `inbox-workstation` |
+| `workstation` | Managed physical Intel laptop | `work`, `hardware-intel-laptop`, `inbox-workstation` |
 | `daily-vm` | Windows-hosted VMware daily driver | `guest-vmware`, `inbox-daily-vm` |
 | `qemu-harness` | Disposable libvirt validation guest | `guest-qemu`, `inbox-qemu-harness` |
 
@@ -128,13 +179,16 @@ A hibernating workstation uses separate storage for routine paging and the
 hibernation image. This prevents ordinary swap occupancy from consuming the
 space needed to save RAM.
 
-During `archinstall`, create an ext4 root and exactly one swap partition or LV
-inside encrypted storage. Make the swap area at least as large as `MemTotal`,
-activate it, and persist it in fstab. Whole-GiB rounding of physical RAM is a
-safe target; the image itself can never exceed `MemTotal`, so that is the size
-the module enforces. LUKS containing LVM root plus swap LVs is the
-straightforward layout. An unencrypted swap partition can expose the full
-hibernation image and is rejected.
+The Story 2.29 metal recipe creates one LUKS container holding an ext4 root LV and one
+resume LV exactly equal to rounded physical RAM. It disables zram and refuses a disk
+that cannot also hold the future 1.5x-RAM routine swapfile plus 40 GiB workstation
+headroom. Archinstall's filtered `genfstab` never records swap outside the target, so
+the driver's `metal-finalize` step persists the resume LV in the target fstab at
+priority -1, inserts the `resume` initramfs hook after `lvm2` and before
+`filesystems`, and rebuilds the initramfs in the target chroot. Without that hook the
+kernel boots but never restores a hibernation image. Whole-GiB rounding of physical
+RAM is a safe target; the image itself can never exceed `MemTotal`, so that is the
+size the module enforces.
 
 After first boot and yadm checkout:
 
@@ -158,11 +212,12 @@ After first boot and yadm checkout:
    the image at routine paging storage inside root. The module treats that state
    as repairable drift and reprograms `/sys/power/resume` to the dedicated
    partition at offset 0. Step 3 is what makes the selection survive reboot.
-3. Run `refind-config adopt` for an unmanaged first install, or
-   `refind-config apply` afterward. It derives `resume=UUID=...` from the resume
-   device selected above; no disk identifier enters this repo. It refuses to
-   derive from a swap-file resume target rather than pinning routine paging
-   storage into boot config.
+3. Run `refind-config apply`. Story 2.29 marks Archinstall's fresh rEFInd files as
+   managed handoff inputs, so normal backup-first apply replaces them after the Nord
+   package lands. It derives `resume=UUID=...` from the resume device selected above;
+   no disk identifier enters this repo. It refuses to derive from a swap-file resume
+   target rather than pinning routine paging storage into boot config. Use `adopt`
+   only for an older unmanaged install.
 4. Reboot, then require both checks before the first attended hibernate test:
    ```bash
    ~/.local/bin/setup/hibernate-storage --check
@@ -241,24 +296,23 @@ never selects it. Normal apply fails before writing for unmanaged destinations,
 symlinked paths, a missing or inactive ESP mount, missing kernel-matched boot
 artifacts, or an incomplete/unowned Nord package. No reboot is automatic.
 
-Live derivation is the default and rejects machine-local kernel overrides. A
-provisioner must write untracked, root-owned `/etc/dotfiles/refind.json` under its
-target root before invoking the same reconciler through `--root`; target roots do
-not borrow the installer host's `/proc/cmdline` or `/boot` mount metadata. Operational
-paths below the target root must be real directories, not symlinks. Values below are
-placeholders, never tracked machine values:
+Live derivation is the default and rejects machine-local kernel overrides. Story 2.29
+uses that path deliberately: Archinstall 4.4 installs the first-boot rEFInd binary and
+kernel entry, then `metal-finalize` marks those two fresh files with Story 2.52's
+managed marker and reserves the empty `EFI/refind/themes/nord` directory with the
+reconciler's ownership marker. The `refind-theme-nord` package hook copies its assets
+into that directory (and mounts the already-mounted ESP a second time; the reconciler
+accepts identical duplicate mount records) before bootstrap runs, so the first
+`refind-config apply` reconciles the theme without `adopt`. An existing unmarked theme
+directory stops finalization. After first boot, bootstrap's ordinary
+`refind-config apply` derives crypt/root identity from the running kernel and installs
+tracked policy plus the package-owned Nord assets. After `hibernate-storage apply`
+selects the resume LV, the second `refind-config apply` adds its live-derived UUID.
+The current workstation's boot files and identifiers are neither read nor copied.
 
-```json
-{
-  "esp": "/efi",
-  "boot_fsroot": "/arch",
-  "kernel_options": [
-    "cryptdevice=UUID=<luks-uuid>:cryptroot",
-    "root=/dev/mapper/<vg>-root",
-    "resume=UUID=<swap-uuid>"
-  ]
-}
-```
+Other offline provisioners may still use untracked, root-owned
+`/etc/dotfiles/refind.json` with `--root`; target roots never borrow the installer
+host's `/proc/cmdline` or `/boot` metadata.
 
 The generated `dotfiles-machine.conf` names the kernel directory relative to the
 volume root (`also_scan_dirs +,arch`), so rEFInd scans it on every volume it can
@@ -295,18 +349,22 @@ sibling's own loader so the menu carries one entry.
 }
 ```
 
-### Attended adoption and validation
+### Attended fresh-laptop validation
 
-Treat first ownership transfer and boot proof as one attended operation:
+Treat first policy reconciliation and boot proof as one attended operation:
 
 1. Run `audit`; confirm active FAT ESP, rEFInd firmware entry, package-owned Nord
-   source, Arch kernel/initramfs pairs, and all three Ubuntu preservation paths.
-2. Compare redacted hashes, then run explicit `adopt` once for unmanaged files.
-3. Run `--check`; require `rEFInd configuration: converged`.
-4. Reboot once; inspect intended Arch entry and Nord theme, then boot Arch.
-5. Separately boot Ubuntu through its firmware entry and return to Arch.
-6. Record redacted checksums, backup path, and boot results on issue #230 or its PR;
-   execution evidence and pending status do not belong in this durable runbook.
+   source, and Arch kernel/initramfs pairs.
+2. Run `apply`; require its backup path and then `rEFInd configuration: converged` from
+   `--check`. Story 2.29's handoff markers (config files and theme directory) mean no
+   first-install `adopt` is needed.
+3. Complete `hibernate-storage apply`, run `refind-config apply` again, and require both
+   read-only checks to converge.
+4. Reboot once; inspect the intended Arch entry and Nord theme, then boot Arch.
+5. Record redacted checksums, backup paths, storage checks, and boot result on #95.
+
+Existing-machine adoption, including the current workstation's Ubuntu preservation
+proof, remains issue #230 and is not part of Story 2.29.
 
 ## Daily-drivable acceptance (the cleanup-era milestone bar)
 
