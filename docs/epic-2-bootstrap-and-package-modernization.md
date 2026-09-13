@@ -1633,6 +1633,36 @@ summary; attended reboot/menu/boot validation.
 
 ---
 
+### Story 2.53: Metal rehearsal harness, install-on-metal front door, provision-seed rename
+
+As the repo owner,
+I want the attended metal recipe rehearsed end to end in a throwaway VM by one
+command with an exit code, and the USB session reduced to one front-door command,
+So that changes to the recipe, the rEFInd reconciler, or hibernation storage are
+proven before they reach a real laptop, without a 40-minute manual console session.
+
+Issue: [#247](https://github.com/amasover/dotfiles/issues/247) · Decisions:
+[decision-metal-rehearsal.md](./decision-metal-rehearsal.md) · Origin: the
+2026-09-12 VM run of Story 2.29's recipe (PR #240) found four handoff blockers the
+unit suites could not see: unpersisted resume swap, missing `resume` initramfs
+hook, duplicate ESP mount records from the Nord package hook, and an unmanaged
+theme copy. Starts after #240 merges; one PR against `main`.
+
+**Acceptance criteria:**
+
+- Given the host working tree, when `metal-rehearsal run` executes, then a raw user-owned QEMU/OVMF guest installs from that tree through the unchanged attended driver, with `WIPE`, user, and LUKS prompts answered host-side over the serial pty and no bypass flag in guest-side code
+- Given the installed guest, when the rehearsal continues, then it performs the runbook's attended handoff (`refind-config`, `hibernate-storage`), reboots, requires both checks converged and `CanHibernate` `yes`, hibernates, relaunches, and asserts the resumed session
+- Given any stage fails, when the command exits, then it is nonzero, names the stage, prints the serial tail, and keeps the artifacts; a pass deletes them unless `--keep`
+- Given the Arch ISO on a blank laptop, when `install-on-metal <device> --hostname <name>` runs, then disk size and RAM are derived from live hardware and the existing `run-install.sh` preflight, typed wipe, and finalize steps run unchanged
+- Given the shared recipe generator, when the story lands, then it is named `provision-seed`, every caller (libvirt harness, VMware harness, runbooks, clitest, pytest) uses the new name, and `--target` semantics are unchanged
+- Given the rehearsal's cost (ISO, package and AUR downloads, nested KVM), when CI is considered, then it stays a documented local gate for changes to `provision-seed`, `refind-config`, and `hibernate-storage`, not a GitHub Validate step
+
+**Evidence artifact:** tracked `metal-rehearsal` and `install-on-metal` with
+host-independent tests; runbook rehearsal subsection; one passing rehearsal
+transcript (redacted) recorded on #247.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
