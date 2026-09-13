@@ -31,6 +31,14 @@ Disposable handoff for active work. GitHub issues own durable detail; the
   and cleanup. Next: the required Windows-host daily-VM creation record; the later
   laptop run revalidates the metal path.
 
+- **2.53 metal rehearsal harness** ([#247](https://github.com/amasover/dotfiles/issues/247)):
+  `metal-rehearsal run` now proves the attended metal path end to end in
+  user-owned QEMU from the working tree — install, rEFInd/storage handoff,
+  reboot, real hibernate/resume — with stage exit codes and retained
+  artifacts. `install-on-metal` is the one-command USB front door, and the
+  generator is renamed `provision-seed`. Next: land the PR; the laptop run
+  then revalidates the metal path.
+
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   laptop and home-4K profiles now match current modesetting names; home split
   bars and workspace placement are live-verified. Story 5.5 already removed the

@@ -195,7 +195,7 @@ $
 
 --- generated metal installer: signal after credential creation removes secrets ---
 
-$ T=$(mktemp -d); .local/bin/setup/vm-harness-seed create --files-only --target metal --out "$T" --disk-device /dev/nvme0n1 --disk-size 256 --ram-gib 32 >/dev/null; printf '%s\n' '#!/bin/sh' 'case "$1" in' '  metal-preflight) exit 0 ;;' '  metal-credentials) printf secret > "$3"; kill -HUP "$PPID"; exit 0 ;;' '  *) exit 99 ;;' 'esac' > "$T/provision-seed"; chmod +x "$T/provision-seed"; "$T/run-install.sh" >/dev/null 2>&1; rc=$?; echo "rc=$rc"; if [ -e "$T/user_credentials.json" ]; then echo credentials=present; else echo credentials=removed; fi
+$ T=$(mktemp -d); .local/bin/setup/provision-seed create --files-only --target metal --out "$T" --disk-device /dev/nvme0n1 --disk-size 256 --ram-gib 32 >/dev/null; printf '%s\n' '#!/bin/sh' 'case "$1" in' '  metal-preflight) exit 0 ;;' '  metal-credentials) printf secret > "$3"; kill -HUP "$PPID"; exit 0 ;;' '  *) exit 99 ;;' 'esac' > "$T/provision-seed"; chmod +x "$T/provision-seed"; "$T/run-install.sh" >/dev/null 2>&1; rc=$?; echo "rc=$rc"; if [ -e "$T/user_credentials.json" ]; then echo credentials=present; else echo credentials=removed; fi
 rc=129
 credentials=removed
 $
@@ -210,7 +210,7 @@ The drivers are generated at run time, so the tracked-script lint never sees
 them. This pins the emitted shell syntax on both the unattended and attended
 variants; `sh -n` runs wherever clitest runs.
 
-$ T=$(mktemp -d); .local/bin/setup/vm-harness-seed create --files-only --target vmware --out "$T/vm" --disk-size 22 --password throwaway >/dev/null && .local/bin/setup/vm-harness-seed create --files-only --target metal --out "$T/metal" --disk-device /dev/nvme0n1 --disk-size 256 --ram-gib 32 >/dev/null && sh -n "$T/vm/run-install.sh" && sh -n "$T/metal/run-install.sh" && echo syntax-ok
+$ T=$(mktemp -d); .local/bin/setup/provision-seed create --files-only --target vmware --out "$T/vm" --disk-size 22 --password throwaway >/dev/null && .local/bin/setup/provision-seed create --files-only --target metal --out "$T/metal" --disk-device /dev/nvme0n1 --disk-size 256 --ram-gib 32 >/dev/null && sh -n "$T/vm/run-install.sh" && sh -n "$T/metal/run-install.sh" && echo syntax-ok
 syntax-ok
 $
 

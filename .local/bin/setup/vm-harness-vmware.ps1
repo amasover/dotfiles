@@ -4,7 +4,7 @@
 # installs Arch unattended in a throwaway VMware Workstation VM, runs the repo
 # bootstrap inside it, and asserts the result. Same pipeline vocabulary and
 # logging contract as the bash harness; hypervisor plumbing differs. Thin
-# driver by design — logic lives in Python (vm-harness-seed / -vmx / -leases),
+# driver by design — logic lives in Python (provision-seed, vm-harness-vmx/-leases),
 # guest-side bash is shared with the libvirt harness.
 #
 # Flags (before the subcommand, same vocabulary as the bash harness):
@@ -19,7 +19,7 @@
 #
 # Subcommands:
 #   fetch      download + sha256-verify the latest Arch ISO into the local cache
-#   seed       generate the cloud-init NoCloud seed (vm-harness-seed target
+#   seed       generate the cloud-init NoCloud seed (provision-seed target
 #              vmware: NVMe device path, open-vm-tools, live-ISO ssh for exec)
 #   create     VM directory: fresh seed, growable NVMe disk (vdiskmanager),
 #              .vmx via vm-harness-vmx (UEFI, serial-to-file, NAT). Dies if the
@@ -115,7 +115,7 @@ $DiskVmdk = Join-Path $VmDir 'disk.vmdk'
 $SerialLog = Join-Path $VmDir 'install-serial.log'
 $RunStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $Python = 'C:\Python314\python.exe'
-$SeedTool = Join-Path $PSScriptRoot 'vm-harness-seed'
+$SeedTool = Join-Path $PSScriptRoot 'provision-seed'
 $VmxTool = Join-Path $PSScriptRoot 'vm-harness-vmx'
 $LeasesTool = Join-Path $PSScriptRoot 'vm-harness-leases'
 $GuestTool = Join-Path $PSScriptRoot 'vm-harness-guest'
@@ -405,7 +405,7 @@ function New-Seed {
                   '--disk-size', $DiskGib, '--password', $VmPass, '--user', $VmUser)
     if ($pk) { $seedArgs += @('--pubkey', $pk, '--live-ssh') }
     & $Python $SeedTool @seedArgs
-    if ($LASTEXITCODE -ne 0) { throw "vm-harness-seed failed (rc=$LASTEXITCODE)" }
+    if ($LASTEXITCODE -ne 0) { throw "provision-seed failed (rc=$LASTEXITCODE)" }
 }
 
 function Get-GuestIp {

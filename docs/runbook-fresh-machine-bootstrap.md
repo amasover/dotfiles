@@ -25,28 +25,16 @@ device name or partition sizes:
 ```bash
 device=/dev/nvme0n1                 # replace after inspecting lsblk
 lsblk -d -o PATH,SIZE,MODEL,SERIAL
-disk_gib=$(( $(blockdev --getsize64 "$device") / 1073741824 ))
-ram_gib=$(awk '/^MemTotal:/ {print int(($2 + 1048575) / 1048576)}' /proc/meminfo)
-printf 'device=%s disk=%sGiB ram=%sGiB\n' "$device" "$disk_gib" "$ram_gib"
 ```
 
-Fetch this repository into the ISO's tmpfs and generate directly runnable files. This
-path needs no second seed medium and no `pycdlib`:
+Fetch this repository into the ISO's tmpfs, then run the attended front door. It
+prints disk GiB and rounded RAM derived from live hardware; no second seed medium
+or `pycdlib` is needed:
 
 ```bash
 pacman -Sy --needed git
 git clone https://github.com/amasover/dotfiles.git /run/dotfiles
-/run/dotfiles/.local/bin/setup/vm-harness-seed create \
-  --files-only \
-  --target metal \
-  --out /run/metal-provision \
-  --disk-device "$device" \
-  --disk-size "$disk_gib" \
-  --ram-gib "$ram_gib" \
-  --hostname new-laptop \
-  --user aaron
-python -m json.tool /run/metal-provision/user_configuration.json
-/run/metal-provision/run-install.sh
+/run/dotfiles/.local/bin/setup/install-on-metal "$device" --hostname new-laptop
 ```
 
 The driver requires UEFI mode, then rechecks that the path is a whole, unmounted disk
@@ -56,9 +44,67 @@ a mode-0600 file in the ISO's tmpfs; the driver removes it on success, failure, 
 interruption. Archinstall creates the 1 GiB ESP, LVM-on-LUKS root/resume layout,
 NetworkManager, user, sshd, and rEFInd.
 
-To prepare CIDATA media elsewhere instead, omit `--files-only` on a machine with
-`pycdlib`; attach the resulting `seed.iso` beside the Arch ISO. Cloud-init writes the
+The default user is `aaron`; pass `--user <name>` to choose another. The front door
+calls `provision-seed create --files-only --target metal` and executes the generated
+driver without changing its preflight, prompts, or finalize steps.
+
+To prepare CIDATA media elsewhere instead, use `provision-seed create --target metal`
+with explicit disk/RAM facts and omit `--files-only` on a machine with `pycdlib`;
+attach the resulting `seed.iso` beside the Arch ISO. Cloud-init writes the
 same files but deliberately does not launch `/root/run-install.sh` on metal.
+
+### Rehearse the metal path in a VM
+
+Before pushing changes to `provision-seed`, `refind-config`, or `hibernate-storage`,
+run the attended path against the host working tree, including uncommitted edits
+and non-ignored new files:
+
+```bash
+.local/bin/setup/metal-rehearsal run
+# Keep the successful disk, credentials, logs, and menu images for inspection:
+.local/bin/setup/metal-rehearsal run --keep
+# Remove one retained run after inspection (refuses an active or unrelated path):
+.local/bin/setup/metal-rehearsal destroy ~/.cache/bootstrap-harness/metal-rehearsal/<timestamp>
+```
+
+Host prerequisites: `qemu-system-x86_64`, `qemu-img`, `bsdtar`, `ssh`, `git`,
+read/write access to `/dev/kvm`, and the `edk2-ovmf` 4 MiB firmware under
+`/usr/share/edk2/x64`. The guest uses 8 GiB RAM, four vCPUs, and a 63 GiB sparse
+qcow2. Preflight requires at least 10 GiB free under the artifact root; the
+installed system and its 12 GiB routine swapfile consume more as the run proceeds.
+The ISO is SHA-256 checked against `vm-harness fetch`'s cache on every run; fetch
+runs if either the ISO or checksum file is missing.
+
+This is raw, user-owned QEMU/OVMF, not libvirt. HTTP transfer and the SSH forward
+bind only to localhost. The harness answers `WIPE /dev/vda`, user passwords, and
+LUKS passwords over the guest's serial PTY; the installed recipe has no bypass
+flag or environment override. No host root authorization is used.
+
+**Pass means exit 0 after all of these checks:**
+
+1. Install from the working tree through `install-on-metal` and the unchanged
+   attended driver; finalize, power off, boot through rEFInd, unlock, and log in.
+2. As a labelled stand-in for bootstrap step 9, install `intel-ucode`, `python`,
+   `polkit`, and an AUR `makepkg` build of `refind-theme-nord`. Run `refind-config`
+   audit/apply/check, `hibernate-storage` apply/check, and a second rEFInd apply.
+   Require the separate routine/resume swap layout and generated `resume=UUID=`.
+3. Reboot, require a new boot ID, the live `resume=UUID=` kernel option, both
+   checks converged, and `CanHibernate` equal to `yes`.
+4. Hibernate, wait for QEMU to exit, relaunch, unlock, and require the same boot ID,
+   a surviving `/dev/shm` marker, and the kernel journal's hibernation-exit record.
+5. Power off and delete the run artifacts unless `--keep` was supplied.
+
+Every stage has a deadline. A failure exits nonzero, names the stage, prints the
+last 40 serial and SSH lines — a channel that captured nothing is named as empty,
+so a pre-launch failure never reads as silence — and retains its directory under
+`~/.cache/bootstrap-harness/metal-rehearsal/<timestamp>/`, never `/tmp`.
+Retained runs include mode-0600 throwaway credentials for unlocking the disk.
+Do not publish that file or raw guest logs; use the host-side stage/RC transcript
+with local paths redacted for issue evidence.
+
+This is a **local integration gate**, not a GitHub Validate step. It downloads an
+ISO and packages, builds an AUR package, and exercises KVM and real hibernation;
+it deliberately does not run the full workstation bootstrap.
 
 ## Bootstrap preconditions
 
