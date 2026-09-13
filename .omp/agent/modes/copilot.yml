@@ -1,9 +1,11 @@
-# GitHub Copilot subscription mode: Sol handles primary work; Luna handles
-# mechanical verification and read-only lookup at high reasoning effort.
+# GitHub Copilot subscription mode: Sol handles primary work and reviews.
+# Luna handles mechanical verification and read-only lookup at high effort.
 modelRoles:
   default: github-copilot/gpt-5.6-sol:max
   smol: github-copilot/gpt-5.6-luna:xhigh
+  slow: github-copilot/gpt-5.6-sol:high
 task:
   agentModelOverrides:
     scout: "@smol"
     sonic: "@smol"
+    reviewer: "@slow"

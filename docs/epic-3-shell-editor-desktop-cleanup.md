@@ -764,8 +764,16 @@ round retains its SDK session instead of re-reading work.
 Issue: [#195](https://github.com/amasover/dotfiles/issues/195)
 
 Context: `omp-mode` selects provider-paired YAML overlays before OMP starts:
-Claude uses Fable `xhigh` with Haiku `low` workers; GitHub Copilot uses Sol `max`
-with Luna `xhigh` workers; OpenAI uses Terra `xhigh` with Luna `low` workers.
+Claude uses Fable `xhigh`, Sonnet 5 `high` reviews, and Haiku `low` workers;
+GitHub Copilot uses Sol `max`, Sol `high` reviews, and Luna `xhigh` workers;
+OpenAI uses Astra `high`, Sol `high` reviews, and Luna `low` workers.
+The `openrouter` mode retains GLM 5.3 `max` for primary work, with MiniMax M3
+`medium` for general tasks, DeepSeek V4 Pro 0813 `high` for reviews, and DeepSeek
+V4 Flash 0731 `low` for mechanical workers. Explicit model IDs avoid floating
+`latest` aliases; prices remain provider-controlled, not a spending cap.
+All modes set `modelRoles.slow` and route `reviewer` through `@slow`.
+OpenRouter also overrides `task` through `@task` so it does not inherit
+the global Anthropic worker selection. Other modes retain generic-task settings.
 OMP's extension API has no supported session-scoped mutation for `modelRoles` or
 `task.agentModelOverrides`; retain the launcher rather than write global config
 from a plugin. Separately, the Pi adapter needs `x-session-affinity` on
@@ -782,14 +790,19 @@ an independent SDK session every round ([Meridian #820](https://github.com/rynfa
 - Given `omp-mode claude`, then Fable at `xhigh` is primary and subsequent
   `sonic`/`scout` workers use Haiku at `low`; given `omp-mode copilot`, then Sol
   at `max` is primary and those workers use Luna at `xhigh`; given
-  `omp-mode openai`, then Terra at `xhigh` is primary and those workers use Luna
+  `omp-mode openai`, then Astra at `high` is primary and those workers use Luna
   at `low`
+- Given any mode, then `reviewer` uses its explicit `@slow` selection rather
+  than relying on an unset role or the parent's active model
+- Given `omp-mode openrouter`, then GLM 5.3 at `max` is primary, MiniMax M3 at
+  `medium` handles generic `task` workers, DeepSeek V4 Pro 0813 at `high` reviews,
+  `sonic`/`scout` use DeepSeek V4 Flash 0731 at `low`
 - Given a later `/provider-mode` extension proposal, then it waits for an OMP
   session-scoped worker-routing API; it does not use private internals or write
   `~/.omp/agent/config.yml` at runtime
 
 **Evidence artifact:** extension/header contract test, a real Meridian
-`lineage=new` → `lineage=continuation` tool-round trace, and both mode
+`lineage=new` → `lineage=continuation` tool-round trace, and all four mode
 configuration outputs.
 
 ---

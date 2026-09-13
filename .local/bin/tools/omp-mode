@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# Start OMP with a provider-paired primary/smol model configuration.
+# Start OMP with provider-paired primary, review, and mechanical-worker models.
 set -euo pipefail
 
 case "${1:-}" in
-    claude | copilot | openai)
+    claude | copilot | openai | openrouter)
         mode=$1
         shift
         ;;
     -h | --help | "")
         cat <<'EOF'
-Usage: omp-mode <claude|copilot|openai> [omp arguments...]
+Usage: omp-mode <claude|copilot|openai|openrouter> [omp arguments...]
 
-  claude   Fable xhigh primary; Haiku low mechanical subagents
-  copilot  Sol max primary; Luna xhigh mechanical subagents
-  openai   Terra xhigh primary; Luna low mechanical subagents
+  claude   Fable xhigh primary; Sonnet 5 high reviews; Haiku low mechanical subagents
+  copilot  Sol max primary; Sol high reviews; Luna xhigh mechanical subagents
+  openai   Astra high primary; Sol high reviews; Luna low mechanical subagents
+  openrouter  GLM 5.3 max primary; MiniMax M3 medium tasks;
+              DeepSeek V4 Pro 0813 high reviews; V4 Flash 0731 low mechanical subagents
 EOF
         exit 0
         ;;
@@ -25,7 +27,7 @@ esac
 
 mode_config="$HOME/.omp/agent/modes/$mode.yml"
 # PI_CONFIG_FILES applies to every OMP command, including `omp config`, unlike
-# the root --config flag. Put the selected mode last: it must pair primary and
-# cheap-worker provider even when a caller has another overlay.
+# the root --config flag. Put the selected mode last: primary, review, and cheap
+# worker models must stay provider-paired even when a caller has another overlay.
 export PI_CONFIG_FILES="${PI_CONFIG_FILES:+$PI_CONFIG_FILES:}$mode_config"
 exec /usr/bin/omp "$@"

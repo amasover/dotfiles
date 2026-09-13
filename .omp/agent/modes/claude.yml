@@ -1,9 +1,11 @@
-# Claude-primary mode: keep deep diagnosis on Fable; route mechanical
-# verification and read-only lookup to Haiku.
+# Claude-primary mode: Fable handles deep diagnosis; Sonnet reviews at high effort.
+# Route mechanical verification and read-only lookup to Haiku.
 modelRoles:
   default: anthropic/claude-fable-5:xhigh
   smol: anthropic/claude-haiku-4-5:low
+  slow: anthropic/claude-sonnet-5:high
 task:
   agentModelOverrides:
     scout: "@smol"
     sonic: "@smol"
+    reviewer: "@slow"

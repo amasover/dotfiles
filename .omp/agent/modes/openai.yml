@@ -1,9 +1,11 @@
-# OpenAI-primary mode: Terra remains primary; route mechanical verification
-# and read-only lookup to low-effort Luna.
+# OpenAI-primary mode: Astra is primary; Sol reviews at high effort.
+# Route mechanical verification and read-only lookup to low-effort Luna.
 modelRoles:
-  default: openai-codex/gpt-5.6-terra:xhigh
+  default: openai-codex/gpt-6-astra:high
   smol: openai-codex/gpt-5.6-luna:low
+  slow: openai-codex/gpt-5.6-sol:high
 task:
   agentModelOverrides:
     scout: "@smol"
     sonic: "@smol"
+    reviewer: "@slow"
