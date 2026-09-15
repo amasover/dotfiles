@@ -1711,6 +1711,171 @@ confirmed to match every tracked map.
 
 ---
 
+### Story 2.55: One self-contained metal install medium
+
+As the repo owner,
+I want one command to bake this repository into a copy of the official Arch ISO,
+So that provisioning a laptop takes one USB stick and no network in the live
+environment, instead of a second CIDATA drive plus a `git clone` that only works
+if the install medium gets online first.
+
+Issue: not yet filed · Origin: 2026-09-15, preparing an install onto an external
+USB SSD. The seed-as-second-drive shape is a poor fit for metal, and the metal
+front door already sidesteps it: `install-on-metal` calls `provision-seed create
+--files-only` and never reads a CIDATA volume at all. What it does depend on is
+`pacman -Sy git` and a clone from GitHub, so the current one-stick path silently
+requires working networking in the ISO.
+
+Scope follows that observation. The payload worth carrying is the repository, not
+the cloud-init seed: on metal the seed is only a file-delivery mechanism for the
+files the repo already contains, and cloud-init is deliberately inert there. The
+VM targets keep the CIDATA second drive unchanged — a second virtual drive costs
+nothing, and Story 2.53 proved that path. This story removes the second drive and
+the network dependency from metal; it does not make metal unattended.
+
+The mechanism is a boot-record-preserving remaster, not partition surgery.
+Measured against the cached 2026-07 image: `xorriso -boot_image any replay`
+reproduces the hybrid MBR (same disk identifier), both El Torito images (BIOS
+`isolinux.bin` and UEFI), the irregular three-entry GPT, the `ARCH_202607` volume
+id, and the primary-descriptor timestamps that `archisosearchuuid` resolves the
+live root by — in under three seconds, because it copies the session rather than
+repacking the squashfs. The obvious alternative, `dd` plus a CIDATA partition
+appended in the stick's free space, is rejected: the stock image carries a hybrid
+MBR over a GPT whose entry array xorriso reports as overlapping, and `sgdisk -p`
+refuses it outright with `Invalid partition data!`. Hand-patching a table that
+standard tooling cannot parse is not a foundation for a medium that has one job.
+
+The builder belongs beside `provision-seed`, not inside it. Story 2.53 fixed that
+tool as a recipe printer with no hypervisor or medium plumbing, and baking an
+image is medium plumbing.
+
+A remastered image cannot be checked against the published `sha256sums.txt`, so
+the trust boundary moves to the input: verify the official ISO before use and
+record its checksum in the output.
+
+**Acceptance criteria:**
+
+- Given the official ISO and its `sha256sums.txt`, when the builder runs, then it verifies the source image first and refuses to build from an unverified, missing, or locally modified one, recording the accepted source checksum in the output
+- Given a verified source, when the builder emits the image, then an automated comparison proves the hybrid MBR identifier, both El Torito entries, the GPT, the volume id, and the `archisosearchuuid` timestamps are unchanged from the source, rather than trusting a single successful boot
+- Given the produced image booted in UEFI mode with no network configured, when the operator follows the runbook, then this repository is present on the medium and `install-on-metal <device> --hostname <name>` runs from it unchanged, with its preflight, typed wipe, prompts, and finalize steps untouched
+- Given the payload, when the image is built, then it carries tracked repository content only — no encrypted-tree plaintext, no machine-local package declarations, no credentials, no untracked working-tree files — and the builder fails closed rather than including them silently
+- Given `--device`, when the builder writes the image to a stick directly, then it applies the same whole-disk and unmounted checks and the same exact typed `WIPE <device>` confirmation as the metal driver, takes root through `pkexec` rather than `sudo`, and offers no bypass flag; writing to a plain `.iso` path requires no elevation at all
+- Given the VM harness targets, when this story lands, then their CIDATA second-drive seed path, `provision-seed --target` semantics, and `--files-only` behavior are unchanged
+- Given a change to the builder, when the local gate runs, then `metal-rehearsal` boots the produced image instead of the stock ISO with guest networking disabled, so the offline path is proven end to end rather than assumed
+
+**Evidence artifact:** tracked builder with host-independent tests that assert
+boot-record, volume-id, and timestamp preservation against a small synthetic
+hybrid image built inside the test, never the 1.5 GiB release image, plus payload
+hygiene and the refusal paths; a runbook section replacing the clone-and-network
+USB steps; one rehearsal transcript booting the built image with networking
+disabled.
+
+---
+
+### Story 2.56: Metal installer moves to pacstrap
+
+As the repo owner,
+I want the metal install path to build its system with `pacstrap` instead of
+Archinstall,
+So that the layout, bootloader placement, and initramfs are set directly rather than
+repaired afterwards, and a second install shape does not lengthen a repair pass.
+
+Issue: not yet filed · Decisions:
+[decision-portable-install.md](./decision-portable-install.md) · Origin: the
+2026-09-15 grilling of the portable-SSD request. Nearly every portable requirement
+was awkward to express through Archinstall and direct to express without it, and
+`finalize_metal` already exists only to repair Archinstall's output — the
+unpersisted resume swap, the missing `resume` hook, the unmarked theme copy.
+
+The three disposable VM targets keep Archinstall, where unattended throwaway
+installs are what it is good at. `install-on-metal` absorbs the installer and the
+already metal-namespaced subcommands; `provision-seed` returns to the pure recipe
+printer Story 2.53 defined. Two fixes land here rather than later because their
+blast radius is the existing fixed shape: the target mounts at a private path, and
+the volume group name stops being a constant.
+
+**Acceptance criteria:**
+
+- Given the same device, hostname and user, when `install-on-metal` runs from the Arch ISO, then it produces the same partition layout, LUKS/LVM structure, rEFInd installation and first-boot behavior as the Archinstall recipe it replaces, with the attended preflight, typed `WIPE <device>` confirmation and password prompts unchanged
+- Given the installer, when it mounts the target, then it uses a private path it owns and never `/mnt`, so a booted host's existing `/mnt` mounts are untouched and `genfstab` sees only target mounts
+- Given `--hostname`, when the volume group is created, then its name derives from that hostname, so two disks built by this recipe can coexist in one machine without an ambiguous activation by name
+- Given the metal path leaves `provision-seed`, when the story lands, then that tool retains only the qemu, vmware and daily-vm targets with `--target` and `--files-only` semantics unchanged, and `metal-preflight`, `metal-credentials` and `metal-finalize` live in `install-on-metal` with their tests
+- Given no Archinstall dependency remains on the metal path, when the install medium is considered, then `archinstall` stays available on the stock Arch ISO as a manual escape hatch and nothing is added to preserve it
+
+**Evidence artifact:** host-independent tests for layout computation, preflight
+refusals, and the hostname-to-volume-group derivation; one passing
+`metal-rehearsal run` transcript showing the fixed path unchanged end to end —
+install, rEFInd/storage handoff, reboot, both checks converged, real hibernate and
+resume.
+
+---
+
+### Story 2.57: Portable install shape
+
+As the repo owner,
+I want `install-on-metal` to produce a persistent Arch system on removable media
+that boots on any UEFI x86_64 machine,
+So that I can carry one encrypted drive between machines instead of provisioning
+each machine separately.
+
+Issue: not yet filed · Decisions:
+[decision-portable-install.md](./decision-portable-install.md) · Origin: 2026-09-15,
+installing to an external USB SSD. Depends on Story 2.56. The install is performed
+by booting the Story 2.55 medium with the target attached, so no destructive
+installer runs on a live workstation in this story.
+
+Install-time portability only: the guarantee is that the drive reaches a login
+prompt on arbitrary UEFI hardware. Fitting the chassis it happens to run on —
+graphics, microcode, power — stays the machine class's job (Story 2.30) and is
+deliberately out of scope here.
+
+**Acceptance criteria:**
+
+- Given a portable install, when rEFInd is installed, then it lives at `EFI/BOOT/BOOTX64.EFI` per the ArchWiki removable-medium guide, with its configuration in that same directory, so the configuration the repository manages is the one that actually boots
+- Given a portable install, when the bootloader is installed, then no firmware boot entry is created on the installing machine, and the produced drive boots a machine whose firmware holds no entry for it
+- Given a portable install, when the initramfs is built, then `autodetect` is absent from `mkinitcpio.conf` before the first image is generated, so the image carries storage and keyboard drivers for machines it has never seen and the LUKS passphrase can be typed on an unfamiliar keyboard
+- Given a portable install, when the layout is computed, then the resume volume is sized to a declared ceiling rather than the installing host's memory, and the preflight RAM check accepts any host at or below that ceiling instead of requiring equality
+- Given a machine with more memory than the ceiling, when bootstrap runs, then `hibernate-storage` reports hibernation unavailable and continues rather than failing the run
+- Given a portable install, when `refind-config` runs on it, then it discovers the ESP by `EFI/BOOT/BOOTX64.EFI`, reconciles the Nord theme and boot policy there, and binds the ESP to the disk the running root is on rather than to a firmware entry
+- Given a fixed install, when this story lands, then its `EFI/refind` layout, firmware-entry binding and hibernation sizing are unchanged
+
+**Evidence artifact:** a `metal-rehearsal` portable mode that installs under one
+machine profile then boots the same disk under a different emulated storage
+controller with a freshly created OVMF vars file holding no boot entries;
+host-independent tests for the ceiling check, the HOOKS array, and `refind-config`'s
+portable discovery and same-disk binding; one transcript of the produced drive
+booting this workstation through its existing rEFInd menu.
+
+---
+
+### Story 2.58: Install from a booted workstation
+
+As the repo owner,
+I want `install-on-metal` to run from a booted Arch system rather than only from an
+installer medium,
+So that building a portable drive does not require rebooting the machine I am
+working on.
+
+Issue: not yet filed · Decisions:
+[decision-portable-install.md](./decision-portable-install.md) · Origin: 2026-09-15,
+the original request. Sequenced last because pointing a whole-disk installer at a
+daily driver is the riskiest capability in this design, and here it lands against a
+baseline already proven by Stories 2.56 and 2.57.
+
+**Acceptance criteria:**
+
+- Given a booted Arch workstation, when `install-on-metal` runs against an external device, then the install completes and every existing preflight refusal still holds: UEFI required, whole unmounted disk, exact typed `WIPE <device>`, and no bypass flag anywhere
+- Given the installing workstation, when the install completes or fails at any stage, then nothing outside the target device is modified — no firmware boot entry, no change to the host's mounts, no `/mnt` participation — proven by a byte-comparison of firmware variables across the run
+- Given the host's own root disk is named by mistake, when preflight runs, then it refuses because that disk or one of its children is mounted, and the refusal is covered by a test
+- Given required tooling is absent from the booted host, when the command runs, then it names the missing package and exits before prompting for any password
+
+**Evidence artifact:** a `metal-rehearsal` mode performing a host-side install inside
+the guest and byte-comparing the guest's OVMF vars file across the run; preflight
+refusal tests for a mounted target and for missing tooling; one live transcript of
+the external SSD built from this workstation and booted.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

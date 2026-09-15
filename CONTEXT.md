@@ -78,6 +78,23 @@ The one-time sequence that takes a fresh OS install to a working workstation by 
 the reconcile loop for the first time.
 _Avoid_: install script (the dead 2019 artifact), setup
 
+**Portable install**:
+An Arch base install on removable media, guaranteed to reach a login prompt on any
+UEFI x86_64 machine. The guarantee stops at booting; fitting the chassis it happens
+to be running on (graphics, microcode, power) stays the machine class's job.
+_Avoid_: removable install, USB install, live system (it is persistent, not live)
+
+**Fixed install**:
+An Arch base install bound to one machine's internal disk, free to depend on that
+machine's firmware boot entry and on hardware detected while installing.
+_Avoid_: metal install (both kinds are metal), internal install
+
+**Resume ceiling**:
+The largest physical memory a portable install can hibernate on, reserved when the
+install is built and held empty thereafter. A machine with more memory than the
+ceiling cannot hibernate the install.
+_Avoid_: RAM ceiling, max RAM, swap reservation
+
 **Harness target**:
 A named VM a validation harness manages through its pipeline. Two kinds: a
 *disposable* target (throwaway fresh installs proving bootstrap changes; destroyed
