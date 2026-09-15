@@ -1801,12 +1801,14 @@ the volume group name stops being a constant.
 - Given `--hostname`, when the volume group is created, then its name derives from that hostname, so two disks built by this recipe can coexist in one machine without an ambiguous activation by name
 - Given the metal path leaves `provision-seed`, when the story lands, then that tool retains only the qemu, vmware and daily-vm targets with `--target` and `--files-only` semantics unchanged, and `metal-preflight`, `metal-credentials` and `metal-finalize` live in `install-on-metal` with their tests
 - Given no Archinstall dependency remains on the metal path, when the install medium is considered, then `archinstall` stays available on the stock Arch ISO as a manual escape hatch and nothing is added to preserve it
+- Given `metal-rehearsal` greps the driver's own echo strings for success and failure, when the driver is rewritten, then it keeps emitting `metal-provision: install complete` and an equivalent failure line, so the harness diff is one pattern pair rather than a rewritten stage
+- Given tests that assert the Archinstall JSON dialect for the metal target, when the story lands, then they are deleted and replaced by assertions about the layout the installer actually creates, rather than re-pinned to a new config shape
 
 **Evidence artifact:** host-independent tests for layout computation, preflight
 refusals, and the hostname-to-volume-group derivation; one passing
-`metal-rehearsal run` transcript showing the fixed path unchanged end to end —
-install, rEFInd/storage handoff, reboot, both checks converged, real hibernate and
-resume.
+`metal-rehearsal run` transcript showing the fixed path end to end — install,
+rEFInd/storage handoff, reboot, both checks converged, real hibernate and resume —
+with the harness changed only in its installer sentinel.
 
 ---
 
@@ -1833,6 +1835,7 @@ deliberately out of scope here.
 
 - Given a portable install, when rEFInd is installed, then it lives at `EFI/BOOT/BOOTX64.EFI` per the ArchWiki removable-medium guide, with its configuration in that same directory, so the configuration the repository manages is the one that actually boots
 - Given a portable install, when the bootloader is installed, then no firmware boot entry is created on the installing machine, and the produced drive boots a machine whose firmware holds no entry for it
+- Given `refind-install --usedefault` suppresses both the firmware entry and `refind_linux.conf` generation, when the install completes, then the installer has written `refind_linux.conf` itself, so `metal-finalize` finds every destination it requires
 - Given a portable install, when the initramfs is built, then `autodetect` is absent from `mkinitcpio.conf` before the first image is generated, so the image carries storage and keyboard drivers for machines it has never seen and the LUKS passphrase can be typed on an unfamiliar keyboard
 - Given a portable install, when the layout is computed, then the resume volume is sized to a declared ceiling rather than the installing host's memory, and the preflight RAM check accepts any host at or below that ceiling instead of requiring equality
 - Given a machine with more memory than the ceiling, when bootstrap runs, then `hibernate-storage` reports hibernation unavailable and continues rather than failing the run

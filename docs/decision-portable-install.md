@@ -33,10 +33,10 @@ recorded here, and sequenced first.
 | 4 | Tool structure | `install-on-metal` absorbs the installer and the `metal-preflight`, `metal-credentials`, and `metal-finalize` subcommands, which are already metal-namespaced and used by nothing else. `provision-seed` returns to being a pure Archinstall recipe printer for the three VM targets — the role Story 2.53 defined for it, which a destructive block-device installer inside it would contradict. The driver embeds `install-on-metal` rather than `provision-seed`; metal tests move with the code. |
 | 5 | Selecting portable | A flag on `install-on-metal`, not a `provision-seed --target`. The target registry is an Archinstall construct; once metal leaves that tool, there is no registry for it to be a member of. |
 | 6 | Target mountpoint | The installer mounts the target at a private path it chooses, never `/mnt`. On a booted workstation `/mnt` may already carry the machine's own boot filesystem, its ESP, and an autofs automount root, so it is not available to an installer running from a live host. With `pacstrap` this is a direct choice rather than a flag threaded through three layers. |
-| 7 | rEFInd layout | rEFInd lives at `EFI/BOOT` on portable installs, installed with `refind-install --usedefault` per the [ArchWiki removable-medium guide](https://wiki.archlinux.org/title/Install_Arch_Linux_on_a_removable_medium). Dual placement was considered and rejected on that evidence: rEFInd reads its configuration from its own directory, so a managed `EFI/refind/refind.conf` would sit inert while `refind-config` reported convergence — silent divergence between what is managed and what boots. |
+| 7 | rEFInd layout | rEFInd lives at `EFI/BOOT` on portable installs, installed with `refind-install --usedefault <esp-device>` per the [ArchWiki removable-medium guide](https://wiki.archlinux.org/title/Install_Arch_Linux_on_a_removable_medium). Dual placement was considered and rejected on that evidence: rEFInd reads its configuration from its own directory, so a managed `EFI/refind/refind.conf` would sit inert while `refind-config` reported convergence — silent divergence between what is managed and what boots. Verified against `refind` 0.14.2-3: `--usedefault` takes the ESP *device* and mounts it itself, and is mutually exclusive with `--root` (`refind-install:190-193`), so the installer must not reach for a chroot-style invocation. `--alldrivers` is available only under `--usedefault` and is deliberately not used: the recipe mounts the ESP at `/boot`, so rEFInd reads the kernel from FAT with no filesystem driver. |
 | 8 | Boot-menu ownership | `refind-config` learns the portable layout rather than skipping portable installs: ESP discovery by `EFI/BOOT/BOOTX64.EFI`, relocated `STOCK_ICONS` and `refind_dir`, adjusted `BACKUP_PATHS`. The portable install keeps the Nord theme and boot policy instead of becoming the one machine that permanently drifts. Standardising *every* metal install on `EFI/BOOT` was rejected: `refind-config` manages this workstation's live menu, so adopting it would drag a boot-loader migration of the daily driver along with it. |
 | 9 | ESP-to-boot safety check | For portable installs, `verify_active_refind_esp`'s firmware-entry binding is replaced by a same-disk binding — the ESP must sit on the disk the running root is on. The original check fails both ways on removable media: booted on a foreign machine the loader path is `\EFI\Boot\BootX64.efi`, and booted here through the internal rEFInd the partition GUID is the internal ESP's. The safety property is preserved in a machine-independent form, not deleted. |
-| 10 | NVRAM | Never written by a portable install: `refind-install --no-nvram`. This matches the repo's existing stance recorded in `.config/dotfiles/refind/refind.conf` — "firmware entries stay outside this file; `refind-config` never edits NVRAM". That file's `scanfor internal,external,optical,manual` plus `scan_all_linux_kernels true` already make a portable disk appear in this workstation's existing menu unaided, so no entry is needed for local use either. |
+| 10 | NVRAM | Never written by a portable install. There is no `--no-nvram` flag and none is needed: `refind-install` calls `AddBootEntry` only when the target directory is neither `EFI/BOOT` nor `EFI/Microsoft/Boot` (`refind-install:1476-1479`), so `--usedefault` abstains structurally rather than by opt-in. The same branch also suppresses `GenerateRefindLinuxConf`, so the installer must write `refind_linux.conf` itself — `finalize_metal` requires that file to exist and raises "metal handoff destination is missing" without it. This matches the repo's existing stance recorded in `.config/dotfiles/refind/refind.conf` — "firmware entries stay outside this file; `refind-config` never edits NVRAM". That file's `scanfor internal,external,optical,manual` plus `scan_all_linux_kernels true` already make a portable disk appear in this workstation's existing menu unaided, so no entry is needed for local use either. |
 | 11 | Hibernation | Enabled, with a 64 GiB resume ceiling rather than the installing host's RAM. `hibernate-storage` derives the routine swapfile from live `/proc/meminfo` at run time, so only the reserved volume is fixed at install. Two consequences: the recipe's RAM equality check becomes a ceiling check for portable installs, and `hibernate-storage`'s fatal "dedicated resume swap is smaller than physical memory" must degrade to reporting hibernation unavailable rather than failing bootstrap on a machine above the ceiling. |
 | 12 | initramfs | `autodetect` is dropped for portable installs, written into `mkinitcpio.conf` before the first image is built rather than repaired afterwards. The ArchWiki's lighter prescription — `block` and `keyboard` moved before `autodetect` — is subsumed by dropping it, and was not adopted separately. `keyboard` in early userspace is not optional on this recipe: without it the LUKS passphrase cannot be typed on an unfamiliar machine. |
 | 13 | Volume group name | Derived from `--hostname` for every metal install, fixed and portable alike. The name is a constant today, so plugging a portable disk into any machine this recipe built produces two identically named volume groups; early boot activates the root pool by name, and the internal system may fail to boot. That makes it a latent bug in the fixed path too, not a portable-only concern. |
@@ -47,7 +47,10 @@ recorded here, and sequenced first.
 1. **Story 2.56 — metal installer moves to `pacstrap`** ([#253](https://github.com/amasover/dotfiles/issues/253)).
    Engine replacement plus the two fixes that affect every metal install: private
    mountpoint and hostname-derived volume group. Behaviour-preserving for the fixed
-   shape. Gate: the existing `metal-rehearsal run` passes unchanged.
+   shape. Gate: `metal-rehearsal run` passes with no change beyond its installer
+   sentinel — the harness greps the driver's own echo strings, so the new driver
+   keeps emitting `metal-provision: install complete` and an equivalent failure line
+   to hold that diff to one pattern pair.
 2. **Story 2.57 — portable install shape** ([#254](https://github.com/amasover/dotfiles/issues/254)).
    Built by booting the Story 2.55 medium ([#252](https://github.com/amasover/dotfiles/issues/252))
    with the target attached, so no destructive installer runs on a live workstation
@@ -57,9 +60,22 @@ recorded here, and sequenced first.
    The convenience that lets a portable disk be built without rebooting. Gate: OVMF
    vars byte-compare proving zero writes outside the target device.
 
-## Unverified
+## Archinstall coupling outside `finalize_metal`
 
-- `refind-install`'s exact flag spelling for `--usedefault` and `--no-nvram` against
-  the installed `refind` package. Cheap to confirm; confirm before building.
-- Whether anything outside `finalize_metal` depends on the Archinstall JSON dialect
-  for the metal target specifically.
+Surveyed 2026-09-15. Three places, and the weight sits in the second:
+
+- `metal-rehearsal:390-396` greps `archinstall failed rc=\d+` as its failure
+  sentinel. The coupling is to the driver's echo strings, not to Archinstall itself,
+  so it is one pattern pair — see the Story 2.56 gate above.
+- `tests/test_provision_seed.py` asserts the Archinstall JSON dialect directly:
+  `bootloader_config.bootloader == "Refind"`, `encryption_type == "lvm_on_luks"`,
+  the partition structures, and `swap.enabled`. These pin the shape of a config file
+  the metal path will no longer produce, so they are deleted and replaced with
+  assertions about the layout the installer actually creates — not ported. This is
+  the bulk of Story 2.56.
+- `tests/vm-harness.clitest.txt` drives `provision-seed create --target metal` and
+  stubs `provision-seed` subcommands by name in two cases; both move to a metal
+  clitest keyed on `install-on-metal`.
+
+Dialect-independent and portable as-is: `validate_metal_facts`,
+`write_metal_credentials`, `require_wipe_confirmation`, and `metal_layout_gib`.
