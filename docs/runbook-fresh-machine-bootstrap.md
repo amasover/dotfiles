@@ -273,15 +273,26 @@ After first boot and yadm checkout:
    ```
    The final command must return `s "yes"`.
 
-### Loaded hibernation hangs with zswap
+### Loaded hibernation stalls in image preallocation
 
-If storage and boot configuration pass but hibernation hangs under memory
-pressure with zswap populated, use the opt-in
-[hibernate-only shrinker workaround](../.config/dotfiles/hibernate/README.md).
-It pauses the proactive zswap shrinker for `systemd-hibernate.service` only,
-covering both idle timers and the i3 hibernate shortcut without disabling
-zswap or hibernation. Follow its attended verification and upstream-removal
-instructions; do not deploy it universally or modify another OS's swap.
+If storage and boot configuration pass but a loaded machine sits at the lock
+screen instead of powering off, it is almost certainly still in
+`PM: hibernation: Preallocating image memory`. Userspace is frozen there by
+design, so a working machine and a stalling one look identical; confirm with
+`journalctl -b -k | grep 'hibernation: Allocated'` after the next successful
+resume, which reports how long that phase took.
+
+Use the opt-in
+[hibernate preallocation workaround](../.config/dotfiles/hibernate/README.md).
+It evicts the working set to swap for `systemd-hibernate.service` only, before
+the freeze, covering both idle timers and the i3 hibernate shortcut without
+disabling zswap or hibernation. Follow its attended verification and
+upstream-removal instructions; do not deploy it universally or modify another
+OS's swap.
+
+The earlier drop-in in that directory paused the zswap shrinker instead. It did
+not prevent the stall and removed the pool's only pressure-driven drain; the
+installer deletes it from machines that still carry it.
 
 ## rEFInd metal boot configuration
 
