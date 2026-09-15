@@ -1,6 +1,10 @@
 # Decision: metal installer engine and portable install shape
 
-Stories: not yet filed. Grilled 2026-09-15 against the working tree; no PR yet.
+Stories: [2.56](https://github.com/amasover/dotfiles/issues/253),
+[2.57](https://github.com/amasover/dotfiles/issues/254),
+[2.58](https://github.com/amasover/dotfiles/issues/255); install medium
+[2.55](https://github.com/amasover/dotfiles/issues/252). Grilled 2026-09-15 against
+the working tree; no PR yet.
 
 ## Why
 
@@ -40,21 +44,18 @@ recorded here, and sequenced first.
 
 ## Stories
 
-1. **Metal installer moves to `pacstrap`.** Engine replacement plus the two fixes that
-   affect every metal install: private mountpoint and hostname-derived volume group.
-   Behaviour-preserving for the fixed shape. Gate: the existing `metal-rehearsal run`
-   passes unchanged.
-2. **Portable install shape.** Built by booting the Story 2.55 medium with the target
-   attached, so no destructive installer runs on a live workstation yet. Removable
-   rEFInd layout, no `autodetect`, resume ceiling, `refind-config` portable mode, no
-   NVRAM writes. Gate: the two-profile rehearsal.
-3. **Install from a booted workstation.** The convenience that lets a portable disk be
-   built without rebooting. Gate: OVMF vars byte-compare proving zero writes outside
-   the target device.
-
-## Open
-
-- Story numbers, epic placement, and issue numbers.
+1. **Story 2.56 — metal installer moves to `pacstrap`** ([#253](https://github.com/amasover/dotfiles/issues/253)).
+   Engine replacement plus the two fixes that affect every metal install: private
+   mountpoint and hostname-derived volume group. Behaviour-preserving for the fixed
+   shape. Gate: the existing `metal-rehearsal run` passes unchanged.
+2. **Story 2.57 — portable install shape** ([#254](https://github.com/amasover/dotfiles/issues/254)).
+   Built by booting the Story 2.55 medium ([#252](https://github.com/amasover/dotfiles/issues/252))
+   with the target attached, so no destructive installer runs on a live workstation
+   yet. Removable rEFInd layout, no `autodetect`, resume ceiling, `refind-config`
+   portable mode, no NVRAM writes. Gate: the two-profile rehearsal.
+3. **Story 2.58 — install from a booted workstation** ([#255](https://github.com/amasover/dotfiles/issues/255)).
+   The convenience that lets a portable disk be built without rebooting. Gate: OVMF
+   vars byte-compare proving zero writes outside the target device.
 
 ## Unverified
 

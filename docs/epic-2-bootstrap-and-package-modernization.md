@@ -1719,7 +1719,7 @@ So that provisioning a laptop takes one USB stick and no network in the live
 environment, instead of a second CIDATA drive plus a `git clone` that only works
 if the install medium gets online first.
 
-Issue: not yet filed · Origin: 2026-09-15, preparing an install onto an external
+Issue: [#252](https://github.com/amasover/dotfiles/issues/252) · Origin: 2026-09-15, preparing an install onto an external
 USB SSD. The seed-as-second-drive shape is a poor fit for metal, and the metal
 front door already sidesteps it: `install-on-metal` calls `provision-seed create
 --files-only` and never reads a CIDATA volume at all. What it does depend on is
@@ -1780,7 +1780,7 @@ Archinstall,
 So that the layout, bootloader placement, and initramfs are set directly rather than
 repaired afterwards, and a second install shape does not lengthen a repair pass.
 
-Issue: not yet filed · Decisions:
+Issue: [#253](https://github.com/amasover/dotfiles/issues/253) · Decisions:
 [decision-portable-install.md](./decision-portable-install.md) · Origin: the
 2026-09-15 grilling of the portable-SSD request. Nearly every portable requirement
 was awkward to express through Archinstall and direct to express without it, and
@@ -1818,7 +1818,7 @@ that boots on any UEFI x86_64 machine,
 So that I can carry one encrypted drive between machines instead of provisioning
 each machine separately.
 
-Issue: not yet filed · Decisions:
+Issue: [#254](https://github.com/amasover/dotfiles/issues/254) · Decisions:
 [decision-portable-install.md](./decision-portable-install.md) · Origin: 2026-09-15,
 installing to an external USB SSD. Depends on Story 2.56. The install is performed
 by booting the Story 2.55 medium with the target attached, so no destructive
@@ -1856,7 +1856,7 @@ installer medium,
 So that building a portable drive does not require rebooting the machine I am
 working on.
 
-Issue: not yet filed · Decisions:
+Issue: [#255](https://github.com/amasover/dotfiles/issues/255) · Decisions:
 [decision-portable-install.md](./decision-portable-install.md) · Origin: 2026-09-15,
 the original request. Sequenced last because pointing a whole-disk installer at a
 daily driver is the riskiest capability in this design, and here it lands against a
