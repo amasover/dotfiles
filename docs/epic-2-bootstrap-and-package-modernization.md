@@ -1796,7 +1796,7 @@ the volume group name stops being a constant.
 
 **Acceptance criteria:**
 
-- Given the same device, hostname and user, when `install-on-metal` runs from the Arch ISO, then it produces the same partition layout, LUKS/LVM structure, rEFInd installation and first-boot behavior as the Archinstall recipe it replaces, with the attended preflight, typed `WIPE <device>` confirmation and password prompts unchanged
+- Given the same device, hostname and user, when `install-on-metal` runs from the Arch ISO, then it produces the same partition layout, LUKS/LVM structure, rEFInd installation and first-boot behavior as the Archinstall recipe it replaces — identical in every respect except the volume group name, which is derived rather than constant — with the attended preflight, typed `WIPE <device>` confirmation and password prompts unchanged
 - Given the installer, when it mounts the target, then it uses a private path it owns and never `/mnt`, so a booted host's existing `/mnt` mounts are untouched and `genfstab` sees only target mounts
 - Given `--hostname`, when the volume group is created, then its name derives from that hostname, so two disks built by this recipe can coexist in one machine without an ambiguous activation by name
 - Given the metal path leaves `provision-seed`, when the story lands, then that tool retains only the qemu, vmware and daily-vm targets with `--target` and `--files-only` semantics unchanged, and `metal-preflight`, `metal-credentials` and `metal-finalize` live in `install-on-metal` with their tests
