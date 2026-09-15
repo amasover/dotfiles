@@ -40,7 +40,7 @@ STAGES = (
     ("first-boot", 240),
     ("handoff", 1200),
     ("reboot-proof", 300),
-    ("hibernate-proof", 360),
+    ("hibernate-proof", 900),
     ("teardown", 120),
 )
 ANSI_ESCAPE = re.compile(
@@ -585,7 +585,38 @@ class Rehearsal:
             "CanHibernate=yes",
         )
 
+    # An idle guest hibernates in about a second whatever the drop-in does, so
+    # it cannot tell a working preallocation path from a stalling one. Build a
+    # working set, force it through zswap until the pool is populated, and only
+    # then hibernate: that is the shape that regressed on real hardware.
+    PREALLOC_CEILING_SECONDS = 120
+    WORKING_SET_BYTES = 4 << 30
+
     def hibernate_proof(self):
+        self.guest(
+            "/root/dotfiles/.config/dotfiles/hibernate/install",
+            "prereclaim-installed",
+        )
+        # Random pages, because zswap compresses per page and would otherwise
+        # store a zeroed buffer as same-filled entries that occupy no pool.
+        self.guest(
+            "printf 'Y\\n' > /sys/module/zswap/parameters/enabled; "
+            "setsid python -c \"import os, signal;"
+            f"n = {self.WORKING_SET_BYTES};"
+            "buf = bytearray(n);"
+            "blk = os.urandom(1 << 20);"
+            "[buf.__setitem__(slice(o, o + (1 << 20)), blk)"
+            " for o in range(0, n, 1 << 20)];"
+            "open('/run/loadgen.pid', 'w').write(str(os.getpid()));"
+            'signal.pause()" &\n'
+            "until [ -s /run/loadgen.pid ]; do sleep 1; done",
+            "working-set-resident",
+        )
+        self.guest(
+            "echo 2G > /sys/fs/cgroup/memory.reclaim; "
+            "awk '$1 == \"Zswap:\" { exit !($2 > 0) }' /proc/meminfo",
+            "zswap-pool-populated",
+        )
         marker = secrets.token_hex(24)
         self.guest(
             f"printf '%s' {marker} > /dev/shm/metal-rehearsal; "
@@ -599,8 +630,32 @@ class Rehearsal:
         self.guest(
             f'test "$(cat /dev/shm/metal-rehearsal)" = {marker}; '
             'test "$(cat /root/pre-hibernate-id)" = "$(cat /proc/sys/kernel/random/boot_id)"; '
+            'kill -0 "$(cat /run/loadgen.pid)"; '
             "journalctl -b -k --no-pager | grep -qi 'PM: hibernation: hibernation exit'",
             "resumed-session",
+        )
+        # The contract is a cheap frozen phase, not a drained pool: writeback
+        # never triggers during this reclaim, and target_kb already charges the
+        # pool against the eviction target. Assert the helper actually evicted
+        # something, so a future no-op cannot pass on a machine fast enough to
+        # clear the ceiling anyway.
+        self.guest(
+            "journalctl -b -u systemd-hibernate.service --no-pager | awk '"
+            "/hibernate-prereclaim: evicted/ { n++; if ($(NF-5) + 0 <= 0) bad++ }"
+            " END { exit !(n > 0 && !bad) }'",
+            "eviction-met-its-target",
+        )
+        # Emitted while userspace was frozen, so journald only records it after
+        # the resume above; give it a moment to catch up on the ring buffer.
+        self.guest(
+            "for _ in $(seq 30); do "
+            "journalctl -b -k --no-pager | grep -q 'hibernation: Allocated' && break; "
+            "sleep 1; done; "
+            "journalctl -b -k --no-pager | awk '"
+            "/hibernation: Allocated/ { n++; split($0, at, \" in \"); split(at[2], s, \" \");"
+            f" if (s[1] + 0 > {self.PREALLOC_CEILING_SECONDS}) bad++ }}"
+            " END { exit !(n > 0 && !bad) }'",
+            "preallocation-under-ceiling",
         )
 
     def teardown(self):
