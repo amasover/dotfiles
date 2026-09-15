@@ -8,7 +8,7 @@ disposable VM before anything is trusted on metal (Story 2.10 gates metal runs).
 The attended encrypted-metal path has a separate local gate:
 [`metal-rehearsal run`](./runbook-fresh-machine-bootstrap.md#rehearse-the-metal-path-in-a-vm).
 It proves installation, rEFInd/storage handoff, reboot, and actual hibernate/resume
-from the host working tree. Run it before pushing changes to `provision-seed`,
+from the host working tree. Run it before pushing changes to `install-on-metal`,
 `refind-config`, or `hibernate-storage`; it is not part of GitHub Validate.
 
 ## The loop

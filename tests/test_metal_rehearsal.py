@@ -3,18 +3,13 @@
 import fcntl
 import json
 import os
-import pty
-import subprocess
-import sys
 import threading
 import time
-from pathlib import Path
 
 import pytest
 from conftest import load_tool
 
 rehearsal = load_tool("metal_rehearsal", "metal-rehearsal")
-metal = load_tool("install_on_metal", "install-on-metal")
 
 
 def test_fragmented_prompts_preserve_following_input():
@@ -36,38 +31,16 @@ def test_shell_prompt_with_fragmented_ansi_color_and_osc():
     assert buffer.match([rb"root@archiso[^\r\n]*# ?"]) is not None
 
 
-@pytest.mark.parametrize(
-    "disk_bytes,ram_kib,expected",
-    [
-        (63 * 1073741824, 8 * 1048576, (63, 8)),
-        (63 * 1073741824 - 1, 8 * 1048576 + 1, (62, 9)),
-    ],
-)
-def test_live_facts_floor_disk_and_ceil_ram(monkeypatch, disk_bytes, ram_kib, expected):
-    monkeypatch.setattr(
-        metal.subprocess, "check_output", lambda *a, **k: str(disk_bytes)
-    )
-    monkeypatch.setattr(metal.Path, "read_text", lambda _: f"MemTotal: {ram_kib} kB\n")
-    assert metal.hardware_facts("/dev/vda") == expected
-
-
-def test_missing_ram_facts_abort_before_recipe_generation(monkeypatch):
-    monkeypatch.setattr(
-        metal.subprocess, "check_output", lambda *a, **k: str(63 * 1073741824)
-    )
-    monkeypatch.setattr(metal.Path, "read_text", lambda _: "MemAvailable: 42 kB\n")
-    with pytest.raises(ValueError, match="cannot derive"):
-        metal.hardware_facts("/dev/vda")
-
-
 def test_failure_before_success_wins_even_when_success_pattern_is_first():
     buffer = rehearsal.PromptBuffer()
-    buffer.feed(b"archinstall failed rc=1\r\nmetal-provision: install complete")
-    index, match = buffer.match(
-        [rb"metal-provision: install complete", rb"archinstall failed rc=(\d+)"]
+    buffer.feed(
+        b"metal-provision: install failed: pacstrap failed (rc=1)\r\n"
+        b"metal-provision: install complete"
+    )
+    index, _ = buffer.match(
+        [rb"metal-provision: install complete", rb"metal-provision: install failed"]
     )
     assert index == 1
-    assert match.group(1) == b"1"
 
 
 def test_expect_reads_split_terminal_output_and_captures_exit_status(tmp_path):
@@ -112,56 +85,6 @@ def test_stage_deadline_bounds_prompt_timeout():
     finally:
         os.close(reader)
         os.close(writer)
-
-
-def test_real_attended_credentials_accept_terminal_answers_without_echo(tmp_path):
-    master, slave = pty.openpty()
-    credentials = tmp_path / "credentials.json"
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            (
-                "import fcntl, os, sys, termios; "
-                "fcntl.ioctl(0, termios.TIOCSCTTY, 0); os.execvp(sys.argv[1], sys.argv[1:])"
-            ),
-            sys.executable,
-            str(Path(rehearsal.__file__).with_name("provision-seed")),
-            "metal-credentials",
-            "--out",
-            str(credentials),
-            "--user",
-            "aaron",
-        ],
-        stdin=slave,
-        stdout=slave,
-        stderr=slave,
-        start_new_session=True,
-    )
-    os.close(slave)
-    try:
-        with (tmp_path / "terminal.log").open("wb") as log:
-            terminal = rehearsal.Expect(master, lambda: time.monotonic() + 5, log)
-            for prompt, answer in (
-                (rb"User password: ", "test-user-secret"),
-                (rb"Confirm user password: ", "test-user-secret"),
-                (rb"Disk encryption password: ", "test-disk-secret"),
-                (rb"Confirm disk encryption password: ", "test-disk-secret"),
-            ):
-                terminal.expect(prompt)
-                terminal.send(answer + "\n")
-            assert process.wait(timeout=5) == 0
-        assert (
-            json.loads(credentials.read_text())["encryption_password"]
-            == "test-disk-secret"
-        )
-        assert b"test-user-secret" not in (tmp_path / "terminal.log").read_bytes()
-        assert b"test-disk-secret" not in (tmp_path / "terminal.log").read_bytes()
-    finally:
-        if process.poll() is None:
-            process.kill()
-            process.wait()
-        os.close(master)
 
 
 def owned_run(root):

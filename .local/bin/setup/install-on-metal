@@ -1,73 +1,827 @@
 #!/usr/bin/env python3
-"""Install the attended metal recipe from an Arch ISO root console.
+"""Install the attended metal recipe onto one blank disk with pacstrap.
 
-This destroys the explicitly named disk only after the generated driver's live
-preflight and exact WIPE confirmation. Passwords are always prompted by that driver.
+This destroys the explicitly named disk, and only after a live preflight and an
+exact ``WIPE <device>`` confirmation typed on the console. There is no bypass
+flag and no environment override: a confirmation bypass that exists is one that
+eventually reaches real hardware.
+
+Passwords are prompted here and never written to disk. The LUKS passphrase is
+piped to cryptsetup and the account passwords are piped to chpasswd inside the
+target root, so no credentials file exists to leak or to clean up.
+
+The layout is a 1 GiB ESP mounted at /boot plus LVM-on-LUKS carrying a root
+volume and a dedicated resume volume sized to physical RAM. The volume group is
+named for the target host, so two disks built by this recipe can coexist in one
+machine without an ambiguous activation by name.
+
+Subcommands ``metal-preflight`` and ``metal-finalize`` are the same steps the
+install performs, exposed for checking a target before committing to it and for
+re-running the first-boot handoff after a partial failure.
 """
 
 import argparse
+import getpass
 import os
 import re
+import shlex
+import shutil
+import stat
 import subprocess
+import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
+REFIND_MANAGED = "# Managed by dotfiles refind-config (Story 2.52, #230)."
+THEME_MARKER = ".dotfiles-refind-managed"
+MIN_POST_SWAP_ROOT_GIB = 40
+LVM_METADATA_HEADROOM_GIB = 1
+ESP_MIB = 1023
+DATA_START_MIB = 1024
+LUKS_MAPPER = "cryptlvm"
+ROOT_LV = "root"
+RESUME_LV = "resume"
+LOCALE = "en_US.UTF-8 UTF-8"
 
-def hardware_facts(device):
-    disk_bytes = int(
-        subprocess.check_output(
-            ["/usr/bin/blockdev", "--getsize64", device],
-            text=True,
+# The recipe's own boot chain, not the distribution's current preference.
+# udev rather than systemd, because `encrypt` resolves the `cryptdevice=` this
+# recipe writes; `keyboard` precedes `encrypt` so the passphrase can be typed on
+# an unfamiliar machine; `resume` precedes `filesystems` so a hibernation image
+# is restored before anything checks or mounts the root it belongs to.
+METAL_HOOKS = (
+    "base",
+    "udev",
+    "autodetect",
+    "microcode",
+    "modconf",
+    "kms",
+    "keyboard",
+    "keymap",
+    "consolefont",
+    "block",
+    "encrypt",
+    "lvm2",
+    "resume",
+    "filesystems",
+    "fsck",
+)
+
+PACKAGES = (
+    "base",
+    "linux",
+    "linux-firmware",
+    "mkinitcpio",
+    "lvm2",
+    "cryptsetup",
+    # fsck.vfat, for the ESP entry genfstab writes with a nonzero pass number
+    "dosfstools",
+    "refind",
+    "efibootmgr",
+    "networkmanager",
+    "sudo",
+    "openssh",
+    "git",
+    "base-devel",
+    "yadm",
+    "zsh",
+)
+
+# Every binary the destructive phase needs, checked before the disk is touched.
+# Archinstall was a single dependency; pacstrap spreads the work over many, and
+# discovering a missing one after the wipe would leave an unbootable target.
+REQUIRED_TOOLS = (
+    "pacstrap",
+    "genfstab",
+    "arch-chroot",
+    "sgdisk",
+    "partprobe",
+    "wipefs",
+    "cryptsetup",
+    "pvcreate",
+    "vgcreate",
+    "lvcreate",
+    "mkfs.ext4",
+    "mkfs.fat",
+    "mkswap",
+    "blkid",
+    "lsblk",
+    "blockdev",
+    "udevadm",
+)
+
+
+class InstallError(Exception):
+    """A refusal or failure that should reach the console as one clear line."""
+
+
+@dataclass(frozen=True)
+class MetalFacts:
+    device: str
+    disk_size_gib: int
+    ram_gib: int
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"/dev/[A-Za-z0-9._+:-]+", self.device):
+            raise InstallError(
+                "metal disk device must be one canonical whole-disk /dev path"
+            )
+        if self.disk_size_gib <= 0:
+            raise InstallError("metal disk size must be a positive whole GiB value")
+        if self.ram_gib <= 0:
+            raise InstallError("metal RAM size must be a positive whole GiB value")
+
+
+def root_gib(disk_size_gib: int) -> int:
+    """Usable disk after the 1 GiB ESP and 1 GiB GPT/tail reserve."""
+    value = disk_size_gib - 2
+    if value < 20:
+        raise InstallError(f"disk too small ({disk_size_gib}G) — need >= 22G")
+    return value
+
+
+def metal_layout_gib(disk_size_gib: int, ram_gib: int) -> tuple[int, int, int]:
+    """Return root LV, resume LV, and future routine-swap sizes.
+
+    The resume LV equals rounded physical RAM. ``hibernate-storage`` later
+    creates the 1.5x routine swapfile inside root and requires another 10 GiB
+    free. Forty GiB after that swapfile keeps the full workstation reconcile
+    and package caches from repeating the old 38 GiB ENOSPC failure.
+    """
+    if ram_gib <= 0:
+        raise InstallError("metal RAM size must be a positive whole GiB value")
+    available = root_gib(disk_size_gib)
+    routine = (ram_gib * 3 + 1) // 2
+    root = available - ram_gib
+    required_inside_root = routine + MIN_POST_SWAP_ROOT_GIB + LVM_METADATA_HEADROOM_GIB
+    minimum = 2 + ram_gib + required_inside_root
+    if root < required_inside_root:
+        raise InstallError(
+            f"disk too small for {ram_gib} GiB RAM ({disk_size_gib}G) — "
+            f"metal hibernation layout needs >= {minimum}G"
         )
-    )
+    return root, ram_gib, routine
+
+
+def volume_group_name(hostname: str) -> str:
+    """Name the volume group for the host so two recipe-built disks can coexist.
+
+    A constant name makes early boot activate an ambiguous root pool the moment
+    a second disk built by this recipe is attached.
+    """
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", hostname):
+        raise InstallError(
+            "hostname must be lowercase alphanumeric with internal hyphens, "
+            "starting with a letter or digit, at most 63 characters"
+        )
+    return hostname
+
+
+def validate_username(user: str) -> None:
+    if not re.fullmatch(r"[a-z_][a-z0-9_-]*", user):
+        raise InstallError("user must be a portable Linux account name")
+
+
+def partition_prefix(device: str) -> str:
+    """What a partition of this disk is named before its index.
+
+    nvme and mmc disks already end in a digit, so their partitions carry a 'p'
+    separator: sda -> sda1, but nvme0n1 -> nvme0n1p1.
+    """
+    return f"{device}p" if device[-1].isdigit() else device
+
+
+def partition_path(device: str, index: int) -> str:
+    return f"{partition_prefix(device)}{index}"
+
+
+def validate_metal_facts(
+    expected: MetalFacts,
+    *,
+    actual_disk_bytes: int,
+    actual_ram_gib: int,
+    is_whole_disk: bool,
+    is_uefi: bool,
+    mountpoints: list[str],
+    holders: list[str],
+) -> None:
+    """Fail closed before the attended install can touch the disk."""
+    if not is_uefi:
+        raise InstallError("target must boot in UEFI mode")
+    if not is_whole_disk:
+        raise InstallError(f"target is not a whole disk: {expected.device}")
+    minimum_bytes = expected.disk_size_gib * 1073741824
+    maximum_bytes = (expected.disk_size_gib + 1) * 1073741824
+    if not minimum_bytes <= actual_disk_bytes < maximum_bytes:
+        raise InstallError(
+            f"target size does not match configured {expected.disk_size_gib} GiB"
+        )
+    if actual_ram_gib != expected.ram_gib:
+        raise InstallError(
+            f"target RAM rounds to {actual_ram_gib} GiB, "
+            f"recipe expects {expected.ram_gib} GiB"
+        )
+    if any(value.strip() for value in mountpoints):
+        raise InstallError("target disk or one of its children is mounted")
+    if any(value.strip() for value in holders):
+        raise InstallError(
+            "target disk is held by an active device-mapper or RAID stack"
+        )
+
+
+def require_wipe_confirmation(device: str, answer: str) -> None:
+    if answer != f"WIPE {device}":
+        raise InstallError("confirmation did not match")
+
+
+def missing_tools(lookup=shutil.which) -> list[str]:
+    return [name for name in REQUIRED_TOOLS if lookup(name) is None]
+
+
+def require_tools(lookup=shutil.which) -> None:
+    missing = missing_tools(lookup)
+    if missing:
+        raise InstallError(
+            "missing installer tooling: "
+            + ", ".join(missing)
+            + " — install arch-install-scripts, gptfdisk, cryptsetup, lvm2, "
+            "dosfstools, e2fsprogs, util-linux"
+        )
+
+
+def command_output(command: list[str]) -> str:
+    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    if result.returncode:
+        raise InstallError(f"target inspection failed: {command[0]}")
+    return result.stdout.strip()
+
+
+def run(command: list[str], *, stdin: bytes | None = None, label: str) -> None:
+    """Run one installer step, failing with the step name rather than a traceback."""
+    result = subprocess.run(command, input=stdin, check=False)
+    if result.returncode:
+        raise InstallError(f"{label} failed (rc={result.returncode})")
+
+
+def hardware_facts(device: str) -> tuple[int, int]:
+    """Floor disk GiB and ceiling RAM GiB, derived from the machine running this."""
+    try:
+        disk_bytes = int(command_output(["/usr/bin/blockdev", "--getsize64", device]))
+    except ValueError as exc:
+        raise InstallError(f"target disk size is malformed: {device}") from exc
     match = re.search(
         r"^MemTotal:\s+(\d+)\s+kB$", Path("/proc/meminfo").read_text(), re.MULTILINE
     )
     if disk_bytes <= 0 or match is None or int(match.group(1)) <= 0:
-        raise ValueError("cannot derive positive disk size and physical RAM")
+        raise InstallError("cannot derive positive disk size and physical RAM")
     return disk_bytes // 1073741824, (int(match.group(1)) + 1048575) // 1048576
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+def metal_preflight(expected: MetalFacts) -> None:
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        raise InstallError("an attended console or ssh -t session is required")
+    require_tools()
+    try:
+        is_block = stat.S_ISBLK(Path(expected.device).stat().st_mode)
+    except OSError as exc:
+        raise InstallError(f"cannot inspect target device: {expected.device}") from exc
+    is_whole_disk = (
+        is_block
+        and command_output(["/usr/bin/lsblk", "-dnro", "TYPE", expected.device])
+        == "disk"
+    )
+    try:
+        actual_disk_bytes = int(
+            command_output(["/usr/bin/blockdev", "--getsize64", expected.device])
+        )
+    except ValueError as exc:
+        raise InstallError("target disk size is malformed") from exc
+    try:
+        meminfo = Path("/proc/meminfo").read_text()
+    except OSError as exc:
+        raise InstallError("cannot read physical RAM from /proc/meminfo") from exc
+    mem_match = re.search(r"^MemTotal:\s+(\d+)\s+kB$", meminfo, re.MULTILINE)
+    if not mem_match:
+        raise InstallError("cannot read physical RAM from /proc/meminfo")
+    actual_ram_gib = (int(mem_match.group(1)) + 1048575) // 1048576
+    mountpoints = command_output(
+        ["/usr/bin/lsblk", "-nrpo", "MOUNTPOINT", expected.device]
+    ).splitlines()
+    holders = sorted(
+        child.name
+        for child in Path("/sys/class/block").glob("*/holders/*")
+        if _belongs_to(child, expected.device)
+    )
+    validate_metal_facts(
+        expected,
+        actual_disk_bytes=actual_disk_bytes,
+        actual_ram_gib=actual_ram_gib,
+        is_whole_disk=is_whole_disk,
+        is_uefi=Path("/sys/firmware/efi").is_dir(),
+        mountpoints=mountpoints,
+        holders=holders,
+    )
+
+    print("This fresh-laptop recipe destroys every partition on:")
+    print(
+        command_output(
+            ["/usr/bin/lsblk", "-dno", "PATH,SIZE,MODEL,SERIAL", expected.device]
+        )
+    )
+    confirmation = f"WIPE {expected.device}"
+    require_wipe_confirmation(
+        expected.device,
+        input(f"Type {confirmation} to continue: "),
+    )
+
+
+def _belongs_to(holder_link: Path, device: str) -> bool:
+    """True when a /sys holders entry hangs off the named whole disk or a child."""
+    owner = holder_link.parent.parent.name
+    base = Path(device).name
+    if owner == base:
+        return True
+    # Share the naming rule with partition_path, so a sibling namespace such as
+    # nvme0n11 is not mistaken for a partition of nvme0n1, and an unrelated disk
+    # such as sdaa is not mistaken for a partition of sda.
+    prefix = partition_prefix(base)
+    return owner.startswith(prefix) and owner[len(prefix) :].isdigit()
+
+
+def prompt_confirmed(label: str, prompt_fn=None) -> str:
+    prompt_fn = prompt_fn or getpass.getpass
+    first = prompt_fn(f"{label}: ")
+    if not first:
+        raise InstallError(f"{label} cannot be empty")
+    second = prompt_fn(f"Confirm {label.lower()}: ")
+    if first != second:
+        raise InstallError(f"{label} confirmation does not match")
+    return first
+
+
+def prompt_metal_credentials(user: str, prompt_fn=None) -> tuple[str, str]:
+    """Prompt on the target console. Secrets stay in memory; nothing is written."""
+    validate_username(user)
+    user_password = prompt_confirmed("User password", prompt_fn)
+    luks_passphrase = prompt_confirmed("Disk encryption password", prompt_fn)
+    return user_password, luks_passphrase
+
+
+def enable_locale(text: str, locale: str = LOCALE) -> str:
+    """Uncomment one locale.gen entry, refusing a silent no-op.
+
+    Arch ships the entry as ``#  en_US.UTF-8 UTF-8`` — two spaces — so a pattern
+    anchored on a bare ``#`` matches nothing, generates no locale, and leaves
+    ``locale.conf`` pointing at one that does not exist.
+    """
+    entry = re.escape(locale)
+    updated, count = re.subn(rf"(?m)^[ \t]*#[ \t]*({entry})[ \t]*$", r"\1", text)
+    if count:
+        return updated
+    if re.search(rf"(?m)^[ \t]*{entry}[ \t]*$", text):
+        return text
+    raise InstallError(f"target locale.gen carries no entry for {locale}")
+
+
+def _hooks_array(text: str) -> tuple[re.Match, list[str]]:
+    matches = list(re.finditer(r"(?m)^HOOKS=\(([^\n()]*)\)[ \t]*$", text))
+    if len(matches) != 1:
+        raise InstallError("metal recipe requires one literal mkinitcpio HOOKS array")
+    match = matches[0]
+    hooks = shlex.split(match[1])
+    if not all(re.fullmatch(r"[a-zA-Z0-9_-]+", hook) for hook in hooks):
+        raise InstallError("mkinitcpio HOOKS array carries unexpected tokens")
+    return match, hooks
+
+
+def _replace_hooks(text: str, match: re.Match, hooks: list[str]) -> str:
+    return text[: match.start()] + f"HOOKS=({' '.join(hooks)})" + text[match.end() :]
+
+
+def set_hooks(text: str, hooks: tuple[str, ...] = METAL_HOOKS) -> str:
+    """Replace the whole array: the recipe owns its boot chain.
+
+    Arch currently ships a systemd initrd — ``base systemd autodetect microcode
+    modconf kms keyboard sd-vconsole block filesystems fsck`` — in which
+    ``encrypt`` is inert and ``cryptdevice=`` is ignored entirely, so the target
+    reaches an emergency shell instead of a passphrase prompt. Patching that
+    default would make the boot chain depend on which initrd the distribution
+    happens to prefer this month.
+    """
+    match, _ = _hooks_array(text)
+    return _replace_hooks(text, match, list(hooks))
+
+
+def rewrite_hooks(text: str, ensure: list[str]) -> str:
+    """Insert each hook immediately before ``filesystems``, preserving order.
+
+    The array is rewritten in place rather than appended to, so a rerun after a
+    partial failure converges instead of accumulating duplicates.
+    """
+    match, hooks = _hooks_array(text)
+    if {"systemd", "sd-encrypt"} & set(hooks):
+        raise InstallError(
+            "mkinitcpio HOOKS array is systemd-based, where the encrypt hook is "
+            "inert and cryptdevice= is ignored; this recipe needs the udev chain"
+        )
+    if "filesystems" not in hooks:
+        raise InstallError("mkinitcpio HOOKS array has no filesystems hook")
+    for hook in ensure:
+        hooks = [item for item in hooks if item != hook]
+        hooks.insert(hooks.index("filesystems"), hook)
+    return _replace_hooks(text, match, hooks)
+
+
+def refind_linux_conf(volume_group: str, luks_uuid: str) -> str:
+    """Kernel options for the rEFInd stanza rEFInd generates from /boot.
+
+    ``refind-install`` derives this file from the *running* system, which inside
+    an installer is the live medium, so the recipe writes it instead.
+
+    Deliberately no ``resume=``. A fresh install has no hibernation image to
+    restore, and the first boot's handoff owns that option: ``hibernate-storage``
+    selects the dedicated resume volume, then ``refind-config`` derives it as a
+    UUID and persists it. Naming the volume here would pin a device path and
+    short-circuit that handoff, because ``refind-config`` only synthesises
+    ``resume=UUID=`` when the live command line carries no ``resume=`` at all.
+    """
+    options = " ".join(
+        (
+            f"cryptdevice=UUID={luks_uuid}:{LUKS_MAPPER}",
+            f"root=/dev/{volume_group}/{ROOT_LV}",
+            "rw",
+        )
+    )
+    return f'"Boot with standard options"  "{options}"\n'
+
+
+def atomic_write_text(path: Path, content: str, mode: int) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            os.chmod(temporary, mode)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def finalize_metal(root: Path, volume_group: str) -> None:
+    """Persist resume swap and authorize first-boot rEFInd reconciliation."""
+    root = root.resolve()
+    if root == Path("/"):
+        raise InstallError("metal finalization requires an offline target root")
+    if not root.is_dir():
+        raise InstallError(f"target root does not exist: {root}")
+    volume_group = volume_group_name(volume_group)
+
+    fstab = root / "etc/fstab"
+    mkinitcpio = root / "etc/mkinitcpio.conf"
+    paths = [
+        fstab,
+        mkinitcpio,
+        root / "boot/EFI/refind/refind.conf",
+        root / "boot/refind_linux.conf",
+    ]
+    theme = root / "boot/EFI/refind/themes/nord"
+    theme_marker = theme / THEME_MARKER
+    for path in (*paths, theme_marker):
+        current = path
+        while current != root:
+            if current.is_symlink():
+                raise InstallError(f"metal handoff destination is a symlink: {current}")
+            current = current.parent
+    if theme.exists() and (
+        not theme_marker.is_file() or theme_marker.read_text() != REFIND_MANAGED + "\n"
+    ):
+        raise InstallError("metal handoff refuses an unmanaged Nord theme")
+    contents: dict[Path, str] = {}
+    for path in paths:
+        if not path.is_file():
+            raise InstallError(f"metal handoff destination is missing: {path}")
+        contents[path] = path.read_text()
+
+    # genfstab records mounted filesystems only, so the dedicated resume volume
+    # is never in it. Persist the recipe's stable LV name rather than activating
+    # target swap in the installer host.
+    resume_entry = f"/dev/{volume_group}/{RESUME_LV} none swap sw,pri=-1 0 0"
+    swap_entries = [
+        fields
+        for line in contents[fstab].splitlines()
+        if (fields := line.split())
+        and not fields[0].startswith("#")
+        and len(fields) >= 3
+        and fields[2] == "swap"
+    ]
+    if swap_entries and swap_entries != [resume_entry.split()]:
+        raise InstallError("metal handoff fstab has conflicting swap entries")
+    if not swap_entries:
+        contents[fstab] = contents[fstab].rstrip("\n") + "\n\n" + resume_entry + "\n"
+
+    # Resume must run after the volume is unlocked and before any fsck.
+    contents[mkinitcpio] = rewrite_hooks(contents[mkinitcpio], ["resume"])
+
+    for path, content in contents.items():
+        if path not in (fstab, mkinitcpio):
+            if content.startswith(REFIND_MANAGED + "\n"):
+                continue
+            content = REFIND_MANAGED + "\n" + content
+        if path.read_text() != content:
+            mode = path.stat().st_mode & 0o777
+            atomic_write_text(path, content, mode)
+
+    # Always rebuild: a previous attempt may have persisted HOOKS but failed here.
+    result = subprocess.run(["arch-chroot", str(root), "mkinitcpio", "-P"], check=False)
+    if result.returncode:
+        raise InstallError("metal handoff could not rebuild the target initramfs")
+
+    # The package hook copies Nord onto the ESP before bootstrap reconciles it.
+    # Reserve ownership while the fresh target has no theme; never adopt an
+    # existing unmarked directory. The package's copy preserves this marker.
+    theme.mkdir(parents=True, exist_ok=True)
+    if not theme_marker.exists():
+        atomic_write_text(theme_marker, REFIND_MANAGED + "\n", 0o644)
+
+
+def partition_disk(facts: MetalFacts) -> tuple[str, str]:
+    """Wipe the target and lay down the ESP and LVM partitions."""
+    device = facts.device
+    esp, data = partition_path(device, 1), partition_path(device, 2)
+    run(["wipefs", "--all", device], label="wipefs")
+    run(["sgdisk", "--zap-all", device], label="sgdisk --zap-all")
+    run(
+        [
+            "sgdisk",
+            f"--new=1:1MiB:+{ESP_MIB}MiB",
+            "--typecode=1:ef00",
+            "--change-name=1:ESP",
+            f"--new=2:{DATA_START_MIB}MiB:+{root_gib(facts.disk_size_gib)}GiB",
+            "--typecode=2:8e00",
+            "--change-name=2:cryptlvm",
+            device,
+        ],
+        label="sgdisk --new",
+    )
+    run(["partprobe", device], label="partprobe")
+    run(["udevadm", "settle"], label="udevadm settle")
+    return esp, data
+
+
+def build_storage(
+    facts: MetalFacts, volume_group: str, luks_passphrase: str
+) -> tuple[str, str]:
+    """Encrypt, carve, and format the target. Returns the ESP node and LUKS UUID."""
+    esp, data = partition_disk(facts)
+    secret = luks_passphrase.encode()
+    # --key-file - makes cryptsetup consume stdin verbatim, so the passphrase is
+    # sent without a trailing newline and matches what is typed at the boot
+    # prompt, where cryptsetup reads one newline-terminated line.
+    run(
+        [
+            "cryptsetup",
+            "luksFormat",
+            "--type",
+            "luks2",
+            "--batch-mode",
+            "--key-file",
+            "-",
+            data,
+        ],
+        stdin=secret,
+        label="cryptsetup luksFormat",
+    )
+    run(
+        ["cryptsetup", "open", "--key-file", "-", data, LUKS_MAPPER],
+        stdin=secret,
+        label="cryptsetup open",
+    )
+    mapper = f"/dev/mapper/{LUKS_MAPPER}"
+    # The resume volume must be exactly rounded RAM; root takes whatever is left.
+    # Sizing both explicitly would overcommit the PV, because the LUKS2 header and
+    # LVM metadata consume space the partition-level arithmetic cannot see.
+    _, resume_size, _ = metal_layout_gib(facts.disk_size_gib, facts.ram_gib)
+    run(["pvcreate", mapper], label="pvcreate")
+    run(["vgcreate", volume_group, mapper], label="vgcreate")
+    run(
+        ["lvcreate", "--size", f"{resume_size}G", "--name", RESUME_LV, volume_group],
+        label="lvcreate resume",
+    )
+    run(
+        ["lvcreate", "--extents", "100%FREE", "--name", ROOT_LV, volume_group],
+        label="lvcreate root",
+    )
+    run(["mkfs.ext4", "-F", f"/dev/{volume_group}/{ROOT_LV}"], label="mkfs.ext4")
+    run(["mkswap", f"/dev/{volume_group}/{RESUME_LV}"], label="mkswap")
+    run(["mkfs.fat", "-F32", esp], label="mkfs.fat")
+    return esp, command_output(["blkid", "-s", "UUID", "-o", "value", data])
+
+
+def mount_target(root: Path, esp: str, volume_group: str) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    run(["mount", f"/dev/{volume_group}/{ROOT_LV}", str(root)], label="mount root")
+    (root / "boot").mkdir(parents=True, exist_ok=True)
+    run(["mount", esp, str(root / "boot")], label="mount esp")
+
+
+def release_target(root: Path, volume_group: str) -> None:
+    """Detach the target: unmount, deactivate its volume group, close LUKS.
+
+    Best effort by design — this runs on the failure path too, where some of
+    these are already undone, and a second failure here would mask the first.
+    """
+    for command in (
+        ["umount", "--recursive", str(root)],
+        ["vgchange", "--activate", "n", volume_group],
+        ["cryptsetup", "close", LUKS_MAPPER],
+    ):
+        subprocess.run(command, check=False, capture_output=True)
+
+
+def chroot(root: Path, command: list[str], *, stdin: bytes | None = None, label: str):
+    run(["arch-chroot", str(root), *command], stdin=stdin, label=label)
+
+
+def configure_target(
+    root: Path,
+    *,
+    hostname: str,
+    user: str,
+    user_password: str,
+    volume_group: str,
+    luks_uuid: str,
+) -> None:
+    """Bring the pacstrapped tree to the same state Archinstall used to leave."""
+    (root / "etc/hostname").write_text(hostname + "\n")
+    (root / "etc/vconsole.conf").write_text("KEYMAP=us\n")
+    (root / "etc/locale.conf").write_text("LANG=en_US.UTF-8\n")
+    locale_gen = root / "etc/locale.gen"
+    locale_gen.write_text(enable_locale(locale_gen.read_text()))
+    chroot(root, ["locale-gen"], label="locale-gen")
+    chroot(
+        root,
+        ["ln", "-sf", "/usr/share/zoneinfo/UTC", "/etc/localtime"],
+        label="timezone",
+    )
+    chroot(root, ["hwclock", "--systohc"], label="hwclock")
+
+    mkinitcpio = root / "etc/mkinitcpio.conf"
+    mkinitcpio.write_text(set_hooks(mkinitcpio.read_text()))
+
+    sudoers = root / "etc/sudoers.d/10-wheel"
+    sudoers.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(sudoers, "%wheel ALL=(ALL:ALL) ALL\n", 0o440)
+    chroot(
+        root,
+        ["useradd", "--create-home", "--groups", "wheel", "--shell", "/bin/bash", user],
+        label="useradd",
+    )
+    # Passwords reach chpasswd on a pipe, so they never appear in argv or on disk.
+    chroot(
+        root,
+        ["chpasswd"],
+        stdin=f"root:{user_password}\n{user}:{user_password}\n".encode(),
+        label="chpasswd",
+    )
+    for unit in ("NetworkManager", "sshd", "systemd-timesyncd"):
+        chroot(root, ["systemctl", "enable", unit], label=f"enable {unit}")
+
+    # --yes answers refind-install's own Y/N prompts, which would otherwise block
+    # on a console this recipe is not driving. It does not weaken the typed
+    # WIPE confirmation, which is this tool's and is asked before anything here.
+    # It also declines Secure Boot MOK enrolment, which Story 2.44 owns.
+    chroot(root, ["refind-install", "--yes"], label="refind-install")
+    # refind-install derives refind_linux.conf from the *running* system, which
+    # inside an installer is the live medium, and skips it entirely on some
+    # paths. Write the target's own kernel options unconditionally.
+    atomic_write_text(
+        root / "boot/refind_linux.conf",
+        refind_linux_conf(volume_group, luks_uuid),
+        0o644,
+    )
+
+
+def install(
+    *, device: str, hostname: str, user: str, target: Path | None = None
+) -> None:
+    if os.geteuid() != 0:
+        raise InstallError("install-on-metal must run as root")
+    validate_username(user)
+    volume_group = volume_group_name(hostname)
+    disk_gib, ram_gib = hardware_facts(device)
+    print(f"device={device} disk={disk_gib}GiB ram={ram_gib}GiB vg={volume_group}")
+    facts = MetalFacts(device, disk_gib, ram_gib)
+
+    metal_preflight(facts)
+    user_password, luks_passphrase = prompt_metal_credentials(user)
+
+    root = target or Path(tempfile.mkdtemp(prefix="metal-target-", dir="/run"))
+    esp, luks_uuid = build_storage(facts, volume_group, luks_passphrase)
+    try:
+        mount_target(root, esp, volume_group)
+        run(["pacstrap", "-K", str(root), *PACKAGES], label="pacstrap")
+        fstab = subprocess.run(
+            ["genfstab", "-U", str(root)], capture_output=True, text=True, check=False
+        )
+        if fstab.returncode:
+            raise InstallError(f"genfstab failed (rc={fstab.returncode})")
+        (root / "etc/fstab").write_text(fstab.stdout)
+        configure_target(
+            root,
+            hostname=hostname,
+            user=user,
+            user_password=user_password,  # gitleaks:allow -- 2026-09-15: kwarg name
+            volume_group=volume_group,
+            luks_uuid=luks_uuid,
+        )
+        finalize_metal(root, volume_group)
+    finally:
+        # Leave nothing of the target attached to the installing machine, so a
+        # failure is reproducible from a clean state and a host-side run does not
+        # keep an unlocked volume open.
+        release_target(root, volume_group)
+    print("metal-provision: install complete; remove install media, then reboot")
+
+
+def install_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="install-on-metal",
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "subcommands:\n"
+            "  metal-preflight --device DEV --disk-size GIB --ram-gib GIB\n"
+            "  metal-finalize --root DIR --volume-group NAME"
+        ),
+    )
     parser.add_argument(
         "device", help="whole-disk canonical /dev path; inspect lsblk first"
     )
     parser.add_argument("--hostname", required=True)
     parser.add_argument("--user", default="aaron")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def preflight_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="install-on-metal metal-preflight",
+        description="validate target facts and exact wipe confirmation",
+    )
+    parser.add_argument("--device", required=True)
+    parser.add_argument("--disk-size", required=True, type=int)
+    parser.add_argument("--ram-gib", required=True, type=int)
+    return parser
+
+
+def finalize_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="install-on-metal metal-finalize",
+        description=(
+            "persist resume swap and mark fresh rEFInd files for repository takeover"
+        ),
+    )
+    parser.add_argument("--root", required=True)
+    parser.add_argument("--volume-group", required=True)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # A bare device path is the primary form, so subcommands are dispatched by
+    # name. argparse subparsers are themselves a positional and would claim that
+    # device argument, rejecting it as an invalid subcommand choice.
+    command = argv[0] if argv else ""
     try:
-        disk_gib, ram_gib = hardware_facts(args.device)
-        print(f"device={args.device} disk={disk_gib}GiB ram={ram_gib}GiB", flush=True)
-        out = Path(tempfile.mkdtemp(prefix="metal-provision-", dir="/run"))
-        generator = Path(__file__).resolve().with_name("provision-seed")
-        subprocess.run(
-            [
-                str(generator),
-                "create",
-                "--files-only",
-                "--target",
-                "metal",
-                "--out",
-                str(out),
-                "--disk-device",
-                args.device,
-                "--disk-size",
-                str(disk_gib),
-                "--ram-gib",
-                str(ram_gib),
-                "--hostname",
-                args.hostname,
-                "--user",
-                args.user,
-            ],
-            check=True,
-        )
-        driver = str(out / "run-install.sh")
-        os.execv(driver, [driver])
-    except (OSError, ValueError, subprocess.SubprocessError) as exc:
-        parser.exit(1, f"install-on-metal: {exc}\n")
+        if command == "metal-preflight":
+            args = preflight_parser().parse_args(argv[1:])
+            metal_preflight(MetalFacts(args.device, args.disk_size, args.ram_gib))
+            return 0
+        if command == "metal-finalize":
+            args = finalize_parser().parse_args(argv[1:])
+            finalize_metal(Path(args.root), args.volume_group)
+            print("metal-provision: resume swap persisted; rEFInd handoff marked")
+            return 0
+        args = install_parser().parse_args(argv)
+        install(device=args.device, hostname=args.hostname, user=args.user)
+        return 0
+    except InstallError as exc:
+        print(f"metal-provision: install failed: {exc}", file=sys.stderr, flush=True)
+        return 1
+    except OSError as exc:
+        print(f"metal-provision: install failed: {exc}", file=sys.stderr, flush=True)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
