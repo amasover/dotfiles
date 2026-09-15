@@ -31,6 +31,17 @@ Disposable handoff for active work. GitHub issues own durable detail; the
   and cleanup. Next: the required Windows-host daily-VM creation record; the later
   laptop run revalidates the metal path.
 
+- **2.56 pacstrap metal installer** ([#253](https://github.com/amasover/dotfiles/issues/253)):
+  active on `story/2.56-pacstrap-metal-installer`. `install-on-metal` now installs
+  directly with `pacstrap` and owns the metal preflight and finalize steps;
+  `provision-seed` is an Archinstall recipe printer for the three VM targets only.
+  The volume group is named for the host, the target mounts under `/run`, and no
+  credential ever reaches disk. Two traps the engine change exposed: Arch's default
+  HOOKS is systemd-based, where `encrypt` is inert and `cryptdevice=` is ignored,
+  and `refind-config` only derives `resume=UUID=` when the live command line
+  carries no `resume=`. One full `metal-rehearsal run` passes, hibernate included.
+  Next: PR review; then 2.57 builds the portable shape on top.
+
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   laptop and home-4K profiles now match current modesetting names; home split
   bars and workspace placement are live-verified. Story 5.5 already removed the

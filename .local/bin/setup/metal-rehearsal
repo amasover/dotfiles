@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rehearse the attended metal install, handoff, and hibernate on user-owned QEMU.
 
-Local integration gate for provision-seed, refind-config, and hibernate-storage.
+Local integration gate for install-on-metal, refind-config, and hibernate-storage.
 No host elevation, libvirt, guest prompt bypass, or full bootstrap is involved.
 """
 
@@ -388,12 +388,12 @@ class Rehearsal:
             self.serial.expect(prompt, timeout=120)
             self.serial.send(answer + "\n")
         index, _ = self.serial.expect(
-            rb"archinstall failed rc=\d+",
+            rb"metal-provision: install failed",
             rb"metal-provision: install complete",
             timeout=1700,
         )
         if index == 0:
-            raise RehearsalError("archinstall failed; see installer serial log")
+            raise RehearsalError("install failed; see installer serial log")
         self.serial.send("systemctl poweroff\n")
         # Keep draining the serial pty until shutdown so QEMU cannot block on it.
         try:

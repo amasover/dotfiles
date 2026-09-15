@@ -30,7 +30,7 @@ recorded here, and sequenced first.
 | 1 | Scope of "portable" | Install-time portability only: the target reaches a login prompt on any UEFI x86_64 machine. Fitting the chassis it happens to run on — graphics, microcode, power — stays the machine class's job (Story 2.30) and earns its own story. The metal recipe installs only `lvm2` plus `linux-firmware`, so the installer's reach stops well short of runtime hardware regardless. |
 | 2 | Installer engine | The metal path moves from Archinstall to `pacstrap`. Archinstall keeps the disposable QEMU/VMware/daily-VM targets, where unattended throwaway installs are what it is good at. The metal recipe had already diverged: its own layout builder, its own driver template, its own preflight, its own repair pass, and `--files-only` bypassing the seed machinery entirely. What remained shared was the Archinstall JSON dialect and its version skew. No escape hatch is lost: `archinstall 4.4-1` ships on the stock Arch ISO, so the Story 2.55 medium still carries it for ad-hoc manual use. |
 | 3 | Sequencing | Three stories, ordered by blast radius — see [Stories](#stories). Doing the engine change and the new shape together would leave a failed rehearsal with two candidate causes, the situation Story 2.53 exists to prevent. Installing from a booted workstation is separable from the portable shape and is the riskiest capability here, so it lands last and alone, against a baseline already known good. |
-| 4 | Tool structure | `install-on-metal` absorbs the installer and the `metal-preflight`, `metal-credentials`, and `metal-finalize` subcommands, which are already metal-namespaced and used by nothing else. `provision-seed` returns to being a pure Archinstall recipe printer for the three VM targets — the role Story 2.53 defined for it, which a destructive block-device installer inside it would contradict. The driver embeds `install-on-metal` rather than `provision-seed`; metal tests move with the code. |
+| 4 | Tool structure | `install-on-metal` absorbs the installer and the `metal-preflight` and `metal-finalize` subcommands, which are already metal-namespaced and used by nothing else. `provision-seed` returns to being a pure Archinstall recipe printer for the three VM targets — the role Story 2.53 defined for it, which a destructive block-device installer inside it would contradict. Metal tests move with the code. Amended during implementation: `metal-credentials` is not absorbed but deleted. It existed to write an Archinstall credentials file; `pacstrap` needs none, so the passphrase goes to `cryptsetup --key-file -` and the account passwords to `chpasswd`, both on pipes. No secret reaches disk at any point, which retires the mode-0600 file and the signal traps that removed it. |
 | 5 | Selecting portable | A flag on `install-on-metal`, not a `provision-seed --target`. The target registry is an Archinstall construct; once metal leaves that tool, there is no registry for it to be a member of. |
 | 6 | Target mountpoint | The installer mounts the target at a private path it chooses, never `/mnt`. On a booted workstation `/mnt` may already carry the machine's own boot filesystem, its ESP, and an autofs automount root, so it is not available to an installer running from a live host. With `pacstrap` this is a direct choice rather than a flag threaded through three layers. |
 | 7 | rEFInd layout | rEFInd lives at `EFI/BOOT` on portable installs, installed with `refind-install --usedefault <esp-device>` per the [ArchWiki removable-medium guide](https://wiki.archlinux.org/title/Install_Arch_Linux_on_a_removable_medium). Dual placement was considered and rejected on that evidence: rEFInd reads its configuration from its own directory, so a managed `EFI/refind/refind.conf` would sit inert while `refind-config` reported convergence — silent divergence between what is managed and what boots. Verified against `refind` 0.14.2-3: `--usedefault` takes the ESP *device* and mounts it itself, and is mutually exclusive with `--root` (`refind-install:190-193`), so the installer must not reach for a chroot-style invocation. `--alldrivers` is available only under `--usedefault` and is deliberately not used: the recipe mounts the ESP at `/boot`, so rEFInd reads the kernel from FAT with no filesystem driver. |
@@ -48,8 +48,8 @@ recorded here, and sequenced first.
    Engine replacement plus the two fixes that affect every metal install: private
    mountpoint and hostname-derived volume group. Behaviour-preserving for the fixed
    shape. Gate: `metal-rehearsal run` passes with no change beyond its installer
-   sentinel — the harness greps the driver's own echo strings, so the new driver
-   keeps emitting `metal-provision: install complete` and an equivalent failure line
+   sentinel — the harness greps the installer's own echo strings, so it keeps
+   emitting `metal-provision: install complete` and an equivalent failure line
    to hold that diff to one pattern pair.
 2. **Story 2.57 — portable install shape** ([#254](https://github.com/amasover/dotfiles/issues/254)).
    Built by booting the Story 2.55 medium ([#252](https://github.com/amasover/dotfiles/issues/252))
@@ -65,8 +65,8 @@ recorded here, and sequenced first.
 Surveyed 2026-09-15. Three places, and the weight sits in the second:
 
 - `metal-rehearsal:390-396` greps `archinstall failed rc=\d+` as its failure
-  sentinel. The coupling is to the driver's echo strings, not to Archinstall itself,
-  so it is one pattern pair — see the Story 2.56 gate above.
+  sentinel. The coupling is to the installer's echo strings, not to Archinstall
+  itself, so it is one pattern pair — see the Story 2.56 gate above.
 - `tests/test_provision_seed.py` asserts the Archinstall JSON dialect directly:
   `bootloader_config.bootloader == "Refind"`, `encryption_type == "lvm_on_luks"`,
   the partition structures, and `swap.enabled`. These pin the shape of a config file
@@ -74,8 +74,14 @@ Surveyed 2026-09-15. Three places, and the weight sits in the second:
   assertions about the layout the installer actually creates — not ported. This is
   the bulk of Story 2.56.
 - `tests/vm-harness.clitest.txt` drives `provision-seed create --target metal` and
-  stubs `provision-seed` subcommands by name in two cases; both move to a metal
-  clitest keyed on `install-on-metal`.
+  stubs `provision-seed` subcommands by name in two cases. Amended during
+  implementation: neither moves. One pinned the generated driver's signal trap
+  removing the credentials file, a contract that disappears with the file itself;
+  the other pinned generated shell syntax, and metal now generates no shell. The
+  first is deleted, the second narrows to the VM targets, and `install-on-metal`
+  is a tracked script the ordinary lint already covers.
 
 Dialect-independent and portable as-is: `validate_metal_facts`,
-`write_metal_credentials`, `require_wipe_confirmation`, and `metal_layout_gib`.
+`require_wipe_confirmation`, and `metal_layout_gib`. `write_metal_credentials` is
+not ported: with no credentials file to write, it becomes `prompt_metal_credentials`
+returning both secrets in memory.

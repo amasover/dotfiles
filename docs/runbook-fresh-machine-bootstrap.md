@@ -37,25 +37,27 @@ git clone https://github.com/amasover/dotfiles.git /run/dotfiles
 /run/dotfiles/.local/bin/setup/install-on-metal "$device" --hostname new-laptop
 ```
 
-The driver requires UEFI mode, then rechecks that the path is a whole, unmounted disk
-whose size and rounded RAM match the recipe. It requires exact `WIPE <device>` input
-before prompting twice for the user password and LUKS password. Secrets exist only in
-a mode-0600 file in the ISO's tmpfs; the driver removes it on success, failure, or
-interruption. Archinstall creates the 1 GiB ESP, LVM-on-LUKS root/resume layout,
-NetworkManager, user, sshd, and rEFInd.
+The installer requires UEFI mode and root, then rechecks that the path is a whole,
+unmounted, unheld disk whose size and rounded RAM match the recipe. It requires exact
+`WIPE <device>` input before prompting twice for the user password and LUKS password.
+Neither secret is written to disk at any point: the LUKS passphrase reaches
+`cryptsetup` on a pipe and the account passwords reach `chpasswd` inside the target
+root, so there is no credentials file to leak or to clean up.
 
-The default user is `aaron`; pass `--user <name>` to choose another. The front door
-calls `provision-seed create --files-only --target metal` and executes the generated
-driver without changing its preflight, prompts, or finalize steps.
+`pacstrap` installs the base system into a private mount point under `/run`, never
+`/mnt`. The recipe creates the 1 GiB ESP, the LUKS container, the LVM root and resume
+volumes, NetworkManager, the user, sshd, and rEFInd. The volume group is named after
+`--hostname`, so two disks built by this recipe can coexist in one machine without an
+ambiguous activation by name.
 
-To prepare CIDATA media elsewhere instead, use `provision-seed create --target metal`
-with explicit disk/RAM facts and omit `--files-only` on a machine with `pycdlib`;
-attach the resulting `seed.iso` beside the Arch ISO. Cloud-init writes the
-same files but deliberately does not launch `/root/run-install.sh` on metal.
+The default user is `aaron`; pass `--user <name>` to choose another. Since Story 2.56
+the metal path has no generated driver and no cloud-init seed: `install-on-metal`
+performs the install itself. `provision-seed` remains the Archinstall recipe printer
+for the disposable VM targets only.
 
 ### Rehearse the metal path in a VM
 
-Before pushing changes to `provision-seed`, `refind-config`, or `hibernate-storage`,
+Before pushing changes to `install-on-metal`, `refind-config`, or `hibernate-storage`,
 run the attended path against the host working tree, including uncommitted edits
 and non-ignored new files:
 
@@ -228,8 +230,8 @@ space needed to save RAM.
 The Story 2.29 metal recipe creates one LUKS container holding an ext4 root LV and one
 resume LV exactly equal to rounded physical RAM. It disables zram and refuses a disk
 that cannot also hold the future 1.5x-RAM routine swapfile plus 40 GiB workstation
-headroom. Archinstall's filtered `genfstab` never records swap outside the target, so
-the driver's `metal-finalize` step persists the resume LV in the target fstab at
+headroom. `genfstab` records mounted filesystems only, so the dedicated resume LV is
+never in it; the installer's `metal-finalize` step persists it in the target fstab at
 priority -1, inserts the `resume` initramfs hook after `lvm2` and before
 `filesystems`, and rebuilds the initramfs in the target chroot. Without that hook the
 kernel boots but never restores a hibernation image. Whole-GiB rounding of physical
@@ -342,11 +344,12 @@ never selects it. Normal apply fails before writing for unmanaged destinations,
 symlinked paths, a missing or inactive ESP mount, missing kernel-matched boot
 artifacts, or an incomplete/unowned Nord package. No reboot is automatic.
 
-Live derivation is the default and rejects machine-local kernel overrides. Story 2.29
-uses that path deliberately: Archinstall 4.4 installs the first-boot rEFInd binary and
-kernel entry, then `metal-finalize` marks those two fresh files with Story 2.52's
-managed marker and reserves the empty `EFI/refind/themes/nord` directory with the
-reconciler's ownership marker. The `refind-theme-nord` package hook copies its assets
+Live derivation is the default and rejects machine-local kernel overrides. The metal
+path uses it deliberately: `install-on-metal` installs the first-boot rEFInd binary
+and writes its kernel entry, then `metal-finalize` marks those two fresh files with
+Story 2.52's managed marker and reserves the empty `EFI/refind/themes/nord` directory
+with the reconciler's ownership marker. The `refind-theme-nord` package hook copies
+its assets
 into that directory (and mounts the already-mounted ESP a second time; the reconciler
 accepts identical duplicate mount records) before bootstrap runs, so the first
 `refind-config apply` reconciles the theme without `adopt`. An existing unmarked theme
