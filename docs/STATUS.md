@@ -40,7 +40,9 @@ Disposable handoff for active work. GitHub issues own durable detail; the
   HOOKS is systemd-based, where `encrypt` is inert and `cryptdevice=` is ignored,
   and `refind-config` only derives `resume=UUID=` when the live command line
   carries no `resume=`. One full `metal-rehearsal run` passes, hibernate included.
-  Next: PR review; then 2.57 builds the portable shape on top.
+  Next: [#256](https://github.com/amasover/dotfiles/pull/256) review; then 2.59
+  ([#258](https://github.com/amasover/dotfiles/issues/258)) switches the chain to
+  systemd before 2.57 builds the portable shape on it.
 
 - **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
   laptop and home-4K profiles now match current modesetting names; home split
