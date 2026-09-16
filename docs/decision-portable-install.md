@@ -42,6 +42,32 @@ recorded here, and sequenced first.
 | 13 | Volume group name | Derived from `--hostname` for every metal install, fixed and portable alike. The name is a constant today, so plugging a portable disk into any machine this recipe built produces two identically named volume groups; early boot activates the root pool by name, and the internal system may fail to boot. That makes it a latent bug in the fixed path too, not a portable-only concern. |
 | 14 | Verification | `metal-rehearsal` gains a portable mode: install under one machine profile, then boot the same disk under a different emulated storage controller with a freshly created OVMF vars file carrying no boot entries. One run proves both load-bearing claims — the `EFI/BOOT` fallback path works with no firmware bookmark, and the initramfs carries drivers for a controller it never saw at install. A different emulated controller is genuinely different hardware, so this is automation that is actually available rather than a proxy for a live check. Story 3 additionally byte-compares the guest's OVMF vars file across an install to prove zero writes outside the target device. |
 
+## Amendment: systemd initramfs (2026-09-15)
+
+Decision 12 above chose the udev chain, and Story 2.56 hardened that into a guard
+refusing a systemd array. Reviewing the ArchWiki hook list afterwards reversed the
+call: the repository adopts the initramfs Arch actually ships rather than pinning
+against it. Recorded as [Story 2.59](./epic-2-bootstrap-and-package-modernization.md#story-259-systemd-initramfs-and-a-tracked-hooks-policy),
+sequenced after 2.56 and before 2.57, because the portable shape's hook decisions
+rest on which chain it is built from.
+
+| # | Question | Decision |
+| --- | --- | --- |
+| 15 | Initramfs flavour | systemd, on every machine this repository provisions and on the existing workstation. Arch's packaged default has been systemd-based since `mkinitcpio` 40-1 (2025-11-04). Upstream's build-time default is still udev, but `mkinitcpio` is an Arch project — the meson option exists for other distributions, so it is weak evidence of direction and the packaging flip is the stronger signal. The concrete payoff is that TPM2/FIDO2 unlock and UKIs (Story 2.44) stop requiring a second boot-chain migration later. |
+| 16 | Hook translation | `udev` becomes `systemd`; `encrypt` becomes `sd-encrypt`; `keymap` and `consolefont` become `sd-vconsole`; `resume` is dropped outright. `mkinitcpio -H systemd` states the hook replaces `base`, `usr`, `udev` and `resume`, and a systemd initramfs runs no runtime hooks at all — so a retained `resume` hook would be inert rather than harmless. `lvm2` stays: it installs no runtime script and works through the udev rules systemd runs. |
+| 17 | Rescue shell | Kept deliberately, not inherited away. `base` stays ahead of `systemd`, and `SYSTEMD_SULOGIN_FORCE=1` goes on the kernel command line; without it sulogin refuses because the root account is locked, which is verbatim what Story 2.56's failed boot printed. The parameter appears in no manpage — it is read from the command line by `/usr/lib/systemd/systemd-sulogin-shell`, which is its only authority. |
+| 18 | Kernel command line | `cryptdevice=UUID=<uuid>:<name>` becomes `rd.luks.name=<uuid>=<name>`, which `systemd-cryptsetup-generator(8)` documents as implying `rd.luks.uuid=`. `resume=UUID=` is unchanged: `systemd-hibernate-resume-generator(8)` consumes the same parameter. No change is needed in `refind-config` — its `IDENTITY_KEYS` already whitelists `rd.luks.uuid`, `rd.luks.name`, and `rd.lvm.lv`, and its audit already reports `crypt=yes` for them. |
+| 19 | Migration ordering | The `refind_linux.conf` rewrite, the initramfs rebuild, and the reboot are one step. `refind-config` derives identity from the *running* kernel and writes it back, so an `apply` between the rewrite and the reboot silently reverts the new command line to the old one. A known-good initramfs and a rEFInd entry that boots it exist before the reboot, and the sequence passes in `metal-rehearsal` before any live machine is touched. |
+| 20 | HOOKS ownership | Tracked policy, as a drop-in under `/etc/mkinitcpio.conf.d/` rather than the file itself. `mkinitcpio` concatenates the main configuration and appends drop-ins in version-sorted order before sourcing once, so the drop-in's `HOOKS` wins and pacman keeps owning the base file — no `.pacnew` merge is ever required for boot policy. Tracking the whole file was rejected on that basis, and because it would drag hardware-specific `MODULES` into shared policy. The bootstrap seam already exists for autofs maps, the reflector policy, and the pacman gate hook: tracked file, symlinked into `/etc`, with a `--check` dry-run. |
+| 21 | What stays machine-local | `MODULES`. Hardware modules belong to the machine class and its hardware adapter (Story 2.30). This workstation is the argument: it has carried `MODULES=(amdgpu radeon)` on Intel hardware, plus a duplicate `modconf`, since 2022 — drift that went unnoticed precisely because nothing owned the file. |
+
+Checked rather than assumed, after Story 2.56 shipped a `--no-nvram` flag into this
+document that does not exist: the drop-in concatenation order and its `_optconfd`
+opt-out (`/usr/bin/mkinitcpio:1120-1134`); that this machine's preset leaves
+`ALL_config` commented out, so drop-ins do load; `rd.luks.name=` syntax and
+`resume=` handling in the systemd generator manpages; and `SYSTEMD_SULOGIN_FORCE`
+in the `systemd-sulogin-shell` binary.
+
 ## Stories
 
 1. **Story 2.56 — metal installer moves to `pacstrap`** ([#253](https://github.com/amasover/dotfiles/issues/253)).

@@ -1879,6 +1879,73 @@ the external SSD built from this workstation and booted.
 
 ---
 
+### Story 2.59: systemd initramfs and a tracked HOOKS policy
+
+As the repo owner,
+I want every machine this repo provisions to boot through a systemd initramfs
+built from one tracked HOOKS policy,
+So that the boot chain is the one Arch actually ships, TPM2/FIDO2 unlock becomes
+reachable without a second migration, and the array stops drifting unnoticed
+between rebuilds.
+
+Issue: [#258](https://github.com/amasover/dotfiles/issues/258) · Decisions:
+[decision-portable-install.md](./decision-portable-install.md) · Origin: Story
+2.56's first rehearsal reached an emergency shell instead of a passphrase prompt,
+because Arch's packaged default HOOKS has been systemd-based since `mkinitcpio`
+40-1 (2025-11-04) — where `encrypt` is inert and `cryptdevice=` is ignored
+entirely. Story 2.56 resolved that by pinning the udev chain and refusing a
+systemd array. This story deliberately reverses that choice: adopt the default
+rather than pin against it. Starts after 2.56 lands; 2.57 builds on the result.
+
+Two halves, landing together because each is load-bearing for the other. The
+*chain* changes — `udev` to `systemd`, `encrypt` to `sd-encrypt`, `keymap` plus
+`consolefont` to `sd-vconsole`, and `resume` dropped, since `mkinitcpio -H
+systemd` states the hook replaces it and a systemd initramfs runs no runtime
+hooks at all, so keeping it would be silently inert. The *ownership* changes with
+it: the array becomes tracked policy instead of a value written once at
+provisioning and then unmaintained, which is the same gap Story 2.52 opened for
+rEFInd. This workstation is the evidence that it matters — its `mkinitcpio.conf`
+has carried a duplicate `modconf` and `MODULES=(amdgpu radeon)` on Intel hardware
+since 2022, unnoticed.
+
+Tracked as a drop-in under `/etc/mkinitcpio.conf.d/`, not as the file itself.
+`mkinitcpio` concatenates the main configuration first and appends drop-ins in
+version-sorted order before sourcing once, so a drop-in's `HOOKS` wins outright;
+pacman keeps owning the base file and no `.pacnew` merge is ever required for
+boot policy. The bootstrap seam already exists three times over — tracked file,
+symlinked into `/etc`, with a `--check` dry-run — for autofs maps, the reflector
+policy, and the pacman gate hook. `MODULES` is deliberately excluded: hardware
+modules belong to the machine class and its hardware adapter (Story 2.30), not to
+a policy every machine shares.
+
+The rescue shell is kept rather than inherited away. `base` stays, ahead of
+`systemd`, and `SYSTEMD_SULOGIN_FORCE=1` goes on the kernel command line —
+without it sulogin refuses because the root account is locked, which is verbatim
+what 2.56's failed boot printed. That parameter appears in no manpage; it is
+read from the command line by `/usr/lib/systemd/systemd-sulogin-shell`, which is
+the only authority for it.
+
+**Acceptance criteria:**
+
+- Given a fresh metal install, when it first boots, then it unlocks through `sd-encrypt` from `rd.luks.name=<uuid>=<name>`, activates LVM, and reaches a login prompt, with no `encrypt`, `keymap`, `consolefont`, or `resume` hook present in the image
+- Given a boot that fails before the root filesystem, when the initramfs drops to emergency mode, then a usable rescue shell is reachable rather than `the root account is locked`, because `base` precedes `systemd` and `SYSTEMD_SULOGIN_FORCE=1` is on the kernel command line
+- Given hibernation, when the installed system resumes, then `resume=UUID=` drives `systemd-hibernate-resume-generator`, `hibernate-storage --check` still converges, and a real hibernate/resume cycle is asserted — not merely `CanHibernate`
+- Given the HOOKS policy, when any machine bootstraps, then one tracked drop-in is symlinked into `/etc/mkinitcpio.conf.d/`, `install-on-metal` writes the same array from the same tracked source rather than a second copy, and `--check` reports drift while writing nothing
+- Given pacman replaces `/etc/mkinitcpio.conf`, when the initramfs is rebuilt, then the tracked drop-in still determines `HOOKS`, and no `.pacnew` merge is required to keep the boot chain correct
+- Given the public repository, when the tracked policy is reviewed, then it carries no `MODULES` entry and no machine identifier; hardware modules stay with the machine class and its machine-local declaration
+- Given Story 2.56 pinned the udev chain and refused a systemd array, when this story lands, then that guard is inverted rather than removed — a udev array is refused with a message naming the missing `sd-encrypt`, so neither chain can be produced by accident
+- Given the live workstation, when it migrates, then the `refind_linux.conf` rewrite, initramfs rebuild, and reboot happen as one step with no `refind-config apply` between them, because that command derives identity from the running kernel and would silently revert the rewrite
+- Given the live migration, when it is attempted, then a known-good initramfs and a rEFInd entry that boots it already exist, and the whole sequence has passed in `metal-rehearsal` first
+
+**Evidence artifact:** host-independent tests for the systemd HOOKS array, the
+inverted guard, and the drop-in seam through a scratch `/etc` prefix; one passing
+`metal-rehearsal run` on the systemd chain including real hibernate/resume; a live
+workstation transcript recording before/after `HOOKS`, the retained fallback
+initramfs and its menu entry, and converged `refind-config`/`hibernate-storage`
+checks after reboot.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
