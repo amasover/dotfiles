@@ -85,11 +85,13 @@ and the artifact path.
 
 - Throwaway credentials are random per run; retained runs store them mode 0600
   in the mode-0700 artifact directory so the disk can still be unlocked.
-- `install-on-metal` is Python rather than POSIX sh: `hardware_facts` is a pure
-  function returning floor disk GiB and ceiling RAM GiB, so the rounding is
-  unit-tested host-side through `conftest.load_tool` with no ISO in the loop.
-  It uses only ISO-available standard library, prints the derived facts, creates
-  the recipe under `/run`, and execs the unchanged attended driver.
+- `install-on-metal` is Python rather than POSIX sh: its disk and RAM readers are
+  pure enough to unit-test host-side through `conftest.load_tool` with no ISO in
+  the loop, so the floor/ceiling rounding and every refusal are covered without a
+  VM. It uses only ISO-available standard library and prints the derived facts.
+  Since Story 2.56 it performs the install itself with `pacstrap` rather than
+  writing a recipe and execing a generated driver; the harness's only coupling is
+  the `metal-provision:` success and failure lines it greps.
 - The prompt matcher handles fragmented ANSI/OSC terminal controls as well as
   fragmented prompts. A real PTY credential exchange tests the generator's
   attended protocol without a VM or confirmation bypass.

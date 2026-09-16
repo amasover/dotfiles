@@ -1772,7 +1772,7 @@ disabled.
 
 ---
 
-### Story 2.56: Metal installer moves to pacstrap
+### Story 2.56: Metal installer moves to pacstrap ✅
 
 As the repo owner,
 I want the metal install path to build its system with `pacstrap` instead of
@@ -1780,7 +1780,7 @@ Archinstall,
 So that the layout, bootloader placement, and initramfs are set directly rather than
 repaired afterwards, and a second install shape does not lengthen a repair pass.
 
-Issue: [#253](https://github.com/amasover/dotfiles/issues/253) · Decisions:
+Issue: [#253](https://github.com/amasover/dotfiles/issues/253) (closed, PR #256) · Decisions:
 [decision-portable-install.md](./decision-portable-install.md) · Origin: the
 2026-09-15 grilling of the portable-SSD request. Nearly every portable requirement
 was awkward to express through Archinstall and direct to express without it, and
@@ -1796,13 +1796,36 @@ the volume group name stops being a constant.
 
 **Acceptance criteria:**
 
-- Given the same device, hostname and user, when `install-on-metal` runs from the Arch ISO, then it produces the same partition layout, LUKS/LVM structure, rEFInd installation and first-boot behavior as the Archinstall recipe it replaces — identical in every respect except the volume group name, which is derived rather than constant — with the attended preflight, typed `WIPE <device>` confirmation and password prompts unchanged
+- Given the same device, hostname and user, when `install-on-metal` runs from the Arch ISO, then it produces the same partition layout, LUKS/LVM structure, rEFInd installation and first-boot behavior as the Archinstall recipe it replaces — identical except for three differences recorded below — with the typed `WIPE <device>` confirmation and password prompts unchanged, and an attended preflight that only gains refusals
 - Given the installer, when it mounts the target, then it uses a private path it owns and never `/mnt`, so a booted host's existing `/mnt` mounts are untouched and `genfstab` sees only target mounts
 - Given `--hostname`, when the volume group is created, then its name derives from that hostname, so two disks built by this recipe can coexist in one machine without an ambiguous activation by name
-- Given the metal path leaves `provision-seed`, when the story lands, then that tool retains only the qemu, vmware and daily-vm targets with `--target` and `--files-only` semantics unchanged, and `metal-preflight`, `metal-credentials` and `metal-finalize` live in `install-on-metal` with their tests
+- Given the metal path leaves `provision-seed`, when the story lands, then that tool retains only the qemu, vmware and daily-vm targets with `--target` and `--files-only` semantics unchanged, and `metal-preflight` and `metal-finalize` live in `install-on-metal` with their tests
+- Given `pacstrap` needs no credentials file, when the install runs, then neither the user password nor the LUKS passphrase is written anywhere: each reaches its consumer on a pipe, so the mode-0600 secrets file and the signal traps that removed it are retired rather than ported
 - Given no Archinstall dependency remains on the metal path, when the install medium is considered, then `archinstall` stays available on the stock Arch ISO as a manual escape hatch and nothing is added to preserve it
-- Given `metal-rehearsal` greps the driver's own echo strings for success and failure, when the driver is rewritten, then it keeps emitting `metal-provision: install complete` and an equivalent failure line, so the harness diff is one pattern pair rather than a rewritten stage
+- Given `metal-rehearsal` greps the installer's own echo strings for success and failure, when the installer is rewritten, then it keeps emitting `metal-provision: install complete` and an equivalent failure line, so the harness diff is one pattern pair rather than a rewritten stage
 - Given tests that assert the Archinstall JSON dialect for the metal target, when the story lands, then they are deleted and replaced by assertions about the layout the installer actually creates, rather than re-pinned to a new config shape
+
+**Recorded differences from the Archinstall recipe** (everything else is identical):
+
+- The volume group name derives from `--hostname` rather than being the constant
+  `dotfiles` — the fix this story exists to carry.
+- The root logical volume takes the extents remaining after the resume volume
+  instead of the precomputed `metal_layout_gib` size. The LUKS2 header and LVM
+  metadata are invisible to the partition-level arithmetic, so sizing both
+  volumes explicitly overcommits the physical volume.
+- No microcode package is installed. Archinstall detected the CPU vendor and
+  added `intel-ucode`/`amd-ucode` itself; decision 1 of the portable-install
+  record leaves hardware fitting to the machine class, so the target gets its
+  microcode from bootstrap. Until then `refind-config` refuses the first-boot
+  handoff on a missing `/boot/intel-ucode.img`, which is the order the
+  [fresh-machine runbook](./runbook-fresh-machine-bootstrap.md) already
+  prescribes.
+
+The preflight gains refusals rather than losing them: device-mapper holders on
+the target, missing installer tooling, and a non-root invocation. Its configured
+size and RAM comparisons now belong to the `metal-preflight` subcommand alone —
+the install path derives those facts from the machine it runs on, so on that
+path they would compare a reading with itself.
 
 **Evidence artifact:** host-independent tests for layout computation, preflight
 refusals, and the hostname-to-volume-group derivation; one passing
