@@ -44,11 +44,14 @@ ROOT_LV = "root"
 RESUME_LV = "resume"
 LOCALE = "en_US.UTF-8 UTF-8"
 
-# The recipe's own boot chain, not the distribution's current preference.
-# udev rather than systemd, because `encrypt` resolves the `cryptdevice=` this
-# recipe writes; `keyboard` precedes `encrypt` so the passphrase can be typed on
-# an unfamiliar machine; `resume` precedes `filesystems` so a hibernation image
-# is restored before anything checks or mounts the root it belongs to.
+# The recipe's own boot chain, set as a whole rather than patched, so a rebuild
+# cannot inherit whichever chain the packaged default happens to carry. udev
+# today: `encrypt` resolves the `cryptdevice=` this recipe writes, `keyboard`
+# precedes `encrypt` so the passphrase can be typed on an unfamiliar machine,
+# and `resume` precedes `filesystems` so a hibernation image is restored before
+# anything checks or mounts the root it belongs to. Story 2.59 (#258) moves this
+# array to the systemd chain; owning it outright is what keeps that change
+# contained to this constant, the guard in rewrite_hooks, and refind_linux_conf.
 METAL_HOOKS = (
     "base",
     "udev",
@@ -401,12 +404,12 @@ def _replace_hooks(text: str, match: re.Match, hooks: list[str]) -> str:
 def set_hooks(text: str, hooks: tuple[str, ...] = METAL_HOOKS) -> str:
     """Replace the whole array: the recipe owns its boot chain.
 
-    Arch currently ships a systemd initrd — ``base systemd autodetect microcode
-    modconf kms keyboard sd-vconsole block filesystems fsck`` — in which
-    ``encrypt`` is inert and ``cryptdevice=`` is ignored entirely, so the target
-    reaches an emergency shell instead of a passphrase prompt. Patching that
-    default would make the boot chain depend on which initrd the distribution
-    happens to prefer this month.
+    Arch's packaged default is a systemd initrd — ``base systemd autodetect
+    microcode modconf kms keyboard sd-vconsole block filesystems fsck`` — in
+    which ``encrypt`` is inert and ``cryptdevice=`` is ignored entirely, so a
+    target built on it reaches an emergency shell instead of a passphrase
+    prompt. Setting the array outright rather than patching that default keeps
+    the chain a decision of this recipe, whichever chain it names.
     """
     match, _ = _hooks_array(text)
     return _replace_hooks(text, match, list(hooks))
