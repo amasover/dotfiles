@@ -1,0 +1,64 @@
+#!/usr/bin/sh
+# Install (or remove) the hibernate preallocation workaround. Single source of
+# truth for the runbook, the README, and metal-rehearsal, so none of them can
+# drift from the file list that actually ships.
+#
+#   install            place helper, drop-in and note; reload systemd
+#   install --remove   take all three back out; reload systemd
+#
+# Requires root. Run with no sleep operation active.
+set -eu
+
+# Rooted fixtures exercise the file list without touching a host's /etc. This
+# is an install prefix, not the helper's HIBERNATE_PRERECLAIM_ROOT sysfs root.
+root=${HIBERNATE_INSTALL_ROOT:-/}
+case "$root" in /*) ;; *)
+    echo "hibernate-install: install root must be absolute" >&2
+    exit 2
+    ;;
+esac
+root=${root%/}
+
+source_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+dropin_dir=$root/etc/systemd/system/systemd-hibernate.service.d
+helper=$root/usr/local/libexec/hibernate-prereclaim
+dropin=$dropin_dir/50-prereclaim.conf
+note=$dropin_dir/README.md
+
+# Retired by this change; remove so no machine keeps running both workarounds.
+# Its saved sysfs value goes too: systemd drops the runtime directory when the
+# unit stops, but a machine retired mid-session can still be holding one.
+stale_helper=$root/usr/local/libexec/hibernate-zswap-shrinker
+stale_dropin=$dropin_dir/50-zswap-shrinker.conf
+stale_state=$root/run/hibernate-zswap-shrinker
+
+reload() {
+    # Fixtures have no systemd to talk to; only the live root is an empty prefix.
+    if [ -n "$root" ]; then
+        return 0
+    fi
+    systemctl daemon-reload
+}
+
+case "${1-}" in
+    '')
+        install -Dm755 "$source_dir/hibernate-prereclaim" "$helper"
+        install -Dm644 "$source_dir/50-prereclaim.conf" "$dropin"
+        install -Dm644 "$source_dir/README.md" "$note"
+        rm -f -- "$stale_helper" "$stale_dropin"
+        rm -rf -- "$stale_state"
+        reload
+        echo "hibernate-install: installed $dropin"
+        ;;
+    --remove)
+        rm -f -- "$helper" "$dropin" "$note" "$stale_helper" "$stale_dropin"
+        rm -rf -- "$stale_state"
+        rmdir -- "$dropin_dir" 2>/dev/null || true
+        reload
+        echo "hibernate-install: removed $dropin"
+        ;;
+    *)
+        echo "usage: install [--remove]" >&2
+        exit 2
+        ;;
+esac

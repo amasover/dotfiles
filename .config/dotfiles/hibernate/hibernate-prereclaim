@@ -1,0 +1,164 @@
+#!/usr/bin/sh
+# Evict the working set to swap before hibernation freezes userspace.
+#
+# hibernate_preallocate_memory() calls shrink_all_memory(saveable - image_size)
+# after the freeze, with one thread running and kswapd frozen. Pages reclaimed
+# into zswap there stay in RAM as zsmalloc pages, which count_data_pages() also
+# counts, so each compression buys only a fraction of a page of progress and the
+# phase converges at single-digit MB/s. Do the eviction here instead: userspace
+# is still live, every CPU is available, and stores bypass the pool.
+#
+# Retirement: /etc/systemd/system/systemd-hibernate.service.d/README.md
+set -eu
+umask 077
+
+# Rooted fixtures exercise transitions without touching host sysfs.
+root=${HIBERNATE_PRERECLAIM_ROOT:-/}
+case "$root" in /*) ;; *)
+    echo "hibernate-prereclaim: root must be absolute" >&2
+    exit 2
+    ;;
+esac
+root=${root%/}
+
+# Seconds to spend evicting. Shortfalls are reported, never fatal: a slow
+# hibernation beats an aborted one.
+deadline=${HIBERNATE_PRERECLAIM_DEADLINE:-120}
+case "$deadline" in '' | *[!0-9]*)
+    echo "hibernate-prereclaim: deadline must be a whole number of seconds" >&2
+    exit 2
+    ;;
+esac
+
+parameters=$root/sys/module/zswap/parameters
+reclaim=$root/sys/fs/cgroup/memory.reclaim
+meminfo=$root/proc/meminfo
+image=$root/sys/power/image_size
+state=$root/run/hibernate-prereclaim/previous
+
+# Largest single memory.reclaim request, in kB. The kernel loops internally
+# until it reaches the request or stops making progress, so chunking is what
+# gives this script a chance to re-measure between requests and to observe the
+# deadline.
+chunk_limit=1048576
+
+pool_kb() {
+    awk '$1 == "Zswap:" { print $2; found = 1 } END { if (!found) print 0 }' \
+        "$meminfo"
+}
+
+# How much must still leave RAM before preallocation is cheap. Aim under
+# image_size so the frozen phase starts with slack rather than exactly at its
+# ceiling. Pool pages are part of MemTotal-MemFree, so a pool that will not
+# drain is already charged here and the shortfall comes out of evictable
+# memory instead.
+target_kb() {
+    awk -v bytes="$(cat "$image")" '
+        $1 == "MemTotal:" { total = $2 }
+        $1 == "MemFree:" { free = $2 }
+        END {
+            want = int(bytes / 1024)
+            want -= int(want / 10)
+            need = (total - free) - want
+            if (need > 0) print int(need)
+            else print 0
+        }
+    ' "$meminfo"
+}
+
+# One shape for every exit, so the journal always carries how much actually
+# left RAM rather than how much was asked for, whichever way the loop ended.
+report_kb() {
+    moved=$(($1 - $2))
+    [ "$moved" -ge 0 ] || moved=0
+    echo "hibernate-prereclaim: evicted ${moved} of $1 kB; $3"
+}
+
+evict() {
+    if [ ! -w "$reclaim" ] || [ ! -r "$image" ] || [ ! -r "$meminfo" ]; then
+        echo "hibernate-prereclaim: kernel interfaces unavailable; skipped eviction"
+        return 0
+    fi
+    target=$(target_kb)
+    if [ "$target" -eq 0 ]; then
+        echo "hibernate-prereclaim: footprint already under image target"
+        return 0
+    fi
+    started=$(date +%s)
+    remaining=$target
+    while [ "$remaining" -gt 0 ]; do
+        if [ "$deadline" -gt 0 ] \
+            && [ "$(($(date +%s) - started))" -ge "$deadline" ]; then
+            report_kb "$target" "$remaining" "deadline reached"
+            return 0
+        fi
+        chunk=$remaining
+        [ "$chunk" -le "$chunk_limit" ] || chunk=$chunk_limit
+        # A write fails once the kernel can no longer make progress; that is a
+        # stopping condition, not an error.
+        if ! printf '%sK\n' "$chunk" 2>/dev/null >"$reclaim"; then
+            report_kb "$target" "$remaining" "reclaim stalled"
+            return 0
+        fi
+        previous=$remaining
+        # Measure the footprint again instead of crediting the request.
+        # Userspace is still running, so it refaults and allocates while this
+        # loop works: kB asked for is not kB gone, and the frozen phase must
+        # start under image_size by measurement, not by arithmetic.
+        remaining=$(target_kb)
+        # A request the kernel accepted that moved nothing means reclaim is
+        # exhausted or live allocation is outrunning it. Stop and let the
+        # frozen phase finish the rest; a shortfall is slower, not fatal.
+        if [ "$remaining" -ge "$previous" ]; then
+            report_kb "$target" "$remaining" "reclaim stalled"
+            return 0
+        fi
+    done
+    report_kb "$target" 0 "footprint under image target"
+}
+
+case "${1-}" in
+    prepare)
+        read -r was_enabled <"$parameters/enabled"
+        case "$was_enabled" in Y | N | 0 | 1) ;; *)
+            echo "hibernate-prereclaim: invalid zswap state" >&2
+            exit 1
+            ;;
+        esac
+        # Save before changing sysfs so ExecStopPost can also recover failed starts.
+        (
+            set -C
+            printf 'enabled=%s\n' "$was_enabled" >"$state"
+        )
+        # Route this eviction past the pool instead of into it. The pool itself
+        # is left alone: writeback never triggered during a measured 1.5 GB
+        # reclaim, so changing the shrinker flag here would move no pages.
+        printf 'N\n' >"$parameters/enabled"
+        before=$(pool_kb)
+        evict
+        echo "hibernate-prereclaim: zswap pool ${before} kB before, $(pool_kb) kB after"
+        ;;
+    restore)
+        # ExecStopPost also runs when prepare failed before saving a value.
+        [ -e "$state" ] || exit 0
+        while IFS='=' read -r name value; do
+            case "$name" in enabled) ;; *)
+                echo "hibernate-prereclaim: unknown saved parameter" >&2
+                exit 1
+                ;;
+            esac
+            case "$value" in Y | N | 0 | 1) ;; *)
+                echo "hibernate-prereclaim: invalid saved state" >&2
+                exit 1
+                ;;
+            esac
+            printf '%s\n' "$value" >"$parameters/$name"
+            echo "hibernate-prereclaim: restored zswap $name=$value"
+        done <"$state"
+        rm -- "$state"
+        ;;
+    *)
+        echo "usage: hibernate-prereclaim prepare|restore" >&2
+        exit 2
+        ;;
+esac
