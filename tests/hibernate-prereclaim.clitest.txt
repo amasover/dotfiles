@@ -1,18 +1,19 @@
 # Hibernate pre-freeze eviction. No root, real sysfs, or sleep calls.
 # Run from repo root: clitest tests/hibernate-prereclaim.clitest.txt
 
-$ tool=$PWD/.config/dotfiles/hibernate/hibernate-prereclaim; R=$(mktemp -d); export HIBERNATE_PRERECLAIM_ROOT=$R; mkdir -p "$R/sys/module/zswap/parameters" "$R/sys/fs/cgroup" "$R/sys/power" "$R/proc" "$R/run/hibernate-prereclaim"; p=$R/sys/module/zswap/parameters; state=$R/run/hibernate-prereclaim/previous; knob=$R/sys/fs/cgroup/memory.reclaim; loaded() { printf 'MemTotal:        8388608 kB\nMemFree:         1048576 kB\nZswap:            524288 kB\n' > "$R/proc/meminfo"; }; printf '3221225472\n' > "$R/sys/power/image_size"; loaded
+$ tool=$PWD/.config/dotfiles/hibernate/hibernate-prereclaim; R=$(mktemp -d); export HIBERNATE_PRERECLAIM_ROOT=$R; mkdir -p "$R/sys/module/zswap/parameters" "$R/sys/fs/cgroup" "$R/sys/power" "$R/proc" "$R/run/hibernate-prereclaim" "$R/bin"; p=$R/sys/module/zswap/parameters; state=$R/run/hibernate-prereclaim/previous; knob=$R/sys/fs/cgroup/memory.reclaim; loaded() { printf 'MemTotal:        8388608 kB\nMemFree:         1048576 kB\nZswap:            524288 kB\n' > "$R/proc/meminfo"; }; printf '3221225472\n' > "$R/sys/power/image_size"; loaded
 $
-$ reset() { printf 'Y\n' > "$p/enabled"; printf 'N\n' > "$p/shrinker_enabled"; : > "$knob"; loaded; rm -f "$state"; }
+$ reset() { printf 'Y\n' > "$p/enabled"; printf 'N\n' > "$p/shrinker_enabled"; rm -f "$knob"; : > "$knob"; loaded; rm -f "$state"; }
 $
 
-Route the eviction past the pool and restore the original setting afterwards.
-The shrinker setting is not ours to touch: writeback never triggered during a
-measured 1.5 GB reclaim, so it stays exactly as the machine had it:
+Nothing in a fixture reclaims memory, so a request that lands is modelled by
+pointing the knob at meminfo: the write becomes the next reading, which is what
+the helper measures. The eviction routes past the pool, reports the measured
+drop, and the original setting comes back afterwards:
 
-$ reset; "$tool" prepare; cat "$p/enabled" "$p/shrinker_enabled"
-hibernate-prereclaim: evicted 4508876 kB of 4508876 kB requested
-hibernate-prereclaim: zswap pool 524288 kB before, 524288 kB after
+$ reset; ln -sf "$R/proc/meminfo" "$knob"; "$tool" prepare; cat "$p/enabled" "$p/shrinker_enabled"
+hibernate-prereclaim: evicted 4508876 of 4508876 kB; footprint under image target
+hibernate-prereclaim: zswap pool 524288 kB before, 0 kB after
 N
 N
 $ "$tool" restore; cat "$p/enabled" "$p/shrinker_enabled"; test ! -e "$state"; echo "rc=$?"
@@ -22,7 +23,8 @@ N
 rc=0
 $
 
-A shrinker the machine had switched on stays on across the whole operation:
+The shrinker setting is not ours to touch: writeback never triggered during a
+measured 1.5 GB reclaim, so one the machine had switched on stays on:
 
 $ reset; printf 'Y\n' > "$p/shrinker_enabled"; "$tool" prepare > /dev/null; cat "$p/shrinker_enabled"; "$tool" restore > /dev/null; cat "$p/enabled" "$p/shrinker_enabled"
 Y
@@ -39,10 +41,23 @@ $ "$tool" restore > /dev/null; cat "$p/enabled"
 Y
 $
 
-A kernel that stops reclaiming ends the eviction without failing the hibernate:
+Progress is measured, never credited to the request. A write the kernel accepts
+that leaves the footprint where it was ends the eviction and reports the zero
+that was measured, not the kB that were asked for:
+
+$ reset; "$tool" prepare; echo "rc=$?"
+hibernate-prereclaim: evicted 0 of 4508876 kB; reclaim stalled
+hibernate-prereclaim: zswap pool 524288 kB before, 524288 kB after
+rc=0
+$ "$tool" restore > /dev/null; cat "$p/enabled"
+Y
+$
+
+A kernel that rejects the request outright stops the same way, and neither exit
+fails the hibernate:
 
 $ reset; rm "$knob"; mkdir "$knob"; "$tool" prepare; echo "rc=$?"
-hibernate-prereclaim: reclaim stalled after 0 of 4508876 kB
+hibernate-prereclaim: evicted 0 of 4508876 kB; reclaim stalled
 hibernate-prereclaim: zswap pool 524288 kB before, 524288 kB after
 rc=0
 $ rmdir "$knob"; "$tool" restore > /dev/null; cat "$p/enabled"
@@ -53,6 +68,29 @@ Missing kernel interfaces skip the eviction rather than block hibernation:
 
 $ reset; rm "$knob"; "$tool" prepare; echo "rc=$?"
 hibernate-prereclaim: kernel interfaces unavailable; skipped eviction
+hibernate-prereclaim: zswap pool 524288 kB before, 524288 kB after
+rc=0
+$ "$tool" restore > /dev/null; cat "$p/enabled"
+Y
+$
+
+The budget is wall-clock, so a stub clock drives it. This one jumps 1000 s per
+call, which spends any budget before the first request:
+
+$ printf '#!/bin/sh\nd=$(dirname "$0"); n=$(cat "$d/tick" 2>/dev/null || echo 0); n=$((n + 1000)); echo "$n" > "$d/tick"; echo "$n"\n' > "$R/bin/date"; chmod +x "$R/bin/date"
+$ reset; PATH="$R/bin:$PATH" HIBERNATE_PRERECLAIM_DEADLINE=1 "$tool" prepare; echo "rc=$?"
+hibernate-prereclaim: evicted 0 of 4508876 kB; deadline reached
+hibernate-prereclaim: zswap pool 524288 kB before, 524288 kB after
+rc=0
+$ "$tool" restore > /dev/null; cat "$p/enabled"
+Y
+$
+
+A deadline of `0` removes the budget, so the same jumped clock no longer ends
+the eviction and the reclaim itself decides when to stop:
+
+$ reset; rm -f "$R/bin/tick"; PATH="$R/bin:$PATH" HIBERNATE_PRERECLAIM_DEADLINE=0 "$tool" prepare; echo "rc=$?"
+hibernate-prereclaim: evicted 0 of 4508876 kB; reclaim stalled
 hibernate-prereclaim: zswap pool 524288 kB before, 524288 kB after
 rc=0
 $ "$tool" restore > /dev/null; cat "$p/enabled"
@@ -112,23 +150,28 @@ rc=2
 $ rm -rf "$R"; unset HIBERNATE_PRERECLAIM_ROOT
 $
 
-The installer is the one file list the runbook, README and rehearsal share. It
-also evicts the retired shrinker workaround from machines that still carry it:
+The installer is the one file list the runbook, README and rehearsal share. Its
+prefix is a separate knob from the helper's sysfs root, and it evicts the
+retired shrinker workaround, including the value that one saved under /run:
 
-$ installer=$PWD/.config/dotfiles/hibernate/install; I=$(mktemp -d); export HIBERNATE_PRERECLAIM_ROOT=$I; d=$I/etc/systemd/system/systemd-hibernate.service.d; mkdir -p "$d" "$I/usr/local/libexec"; : > "$d/50-zswap-shrinker.conf"; : > "$I/usr/local/libexec/hibernate-zswap-shrinker"; : > "$d/90-unrelated.conf"
+$ installer=$PWD/.config/dotfiles/hibernate/install; I=$(mktemp -d); export HIBERNATE_INSTALL_ROOT=$I; d=$I/etc/systemd/system/systemd-hibernate.service.d; mkdir -p "$d" "$I/usr/local/libexec" "$I/run/hibernate-zswap-shrinker"; : > "$d/50-zswap-shrinker.conf"; : > "$I/usr/local/libexec/hibernate-zswap-shrinker"; : > "$I/run/hibernate-zswap-shrinker/previous"; : > "$d/90-unrelated.conf"
 $ "$installer" > /dev/null; ls "$d"; stat -c '%a' "$I/usr/local/libexec/hibernate-prereclaim" "$d/50-prereclaim.conf"
 50-prereclaim.conf
 90-unrelated.conf
 README.md
 755
 644
-$ test ! -e "$I/usr/local/libexec/hibernate-zswap-shrinker"; echo "stale-helper-gone=$?"
+$ test ! -e "$I/usr/local/libexec/hibernate-zswap-shrinker"; echo "stale-helper-gone=$?"; test ! -e "$I/run/hibernate-zswap-shrinker"; echo "stale-state-gone=$?"
 stale-helper-gone=0
+stale-state-gone=0
 $ "$installer" --remove > /dev/null; ls "$d"; test ! -e "$I/usr/local/libexec/hibernate-prereclaim"; echo "helper-gone=$?"
 90-unrelated.conf
 helper-gone=0
 $ "$installer" --unknown 2>&1; echo "rc=$?"
 usage: install [--remove]
 rc=2
-$ rm -rf "$I"; unset HIBERNATE_PRERECLAIM_ROOT
+$ HIBERNATE_INSTALL_ROOT=relative "$installer" 2>&1; echo "rc=$?"
+hibernate-install: install root must be absolute
+rc=2
+$ rm -rf "$I"; unset HIBERNATE_INSTALL_ROOT
 $

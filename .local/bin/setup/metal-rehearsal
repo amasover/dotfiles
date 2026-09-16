@@ -43,6 +43,8 @@ STAGES = (
     ("hibernate-proof", 900),
     ("teardown", 120),
 )
+PREALLOC_CEILING_SECONDS = 120
+WORKING_SET_BYTES = 4 << 30
 ANSI_ESCAPE = re.compile(
     rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-2A-Z]|[=>])"
 )
@@ -140,6 +142,20 @@ def destroy(path):
             raise RehearsalError("rehearsal is still running") from exc
         shutil.rmtree(path)
     print(f"Destroyed {path}")
+
+
+def journal_gate(source, pattern, requirement):
+    """Fail unless the journal carries a matching line and all of them satisfy it.
+
+    The `n > 0` half is the non-vacuity guard: a gate that passes on an empty
+    journal, or on a near-miss line that never carried the number being read,
+    proves nothing. Anchor `pattern` on the value, not just the message.
+    """
+    return (
+        f"journalctl {source} --no-pager | awk '"
+        f"{pattern} {{ n++; if (!({requirement})) bad++ }}"
+        " END { exit !(n > 0 && !bad) }'"
+    )
 
 
 class Rehearsal:
@@ -589,24 +605,18 @@ class Rehearsal:
     # it cannot tell a working preallocation path from a stalling one. Build a
     # working set, force it through zswap until the pool is populated, and only
     # then hibernate: that is the shape that regressed on real hardware.
-    PREALLOC_CEILING_SECONDS = 120
-    WORKING_SET_BYTES = 4 << 30
-
     def hibernate_proof(self):
         self.guest(
             "/root/dotfiles/.config/dotfiles/hibernate/install",
             "prereclaim-installed",
         )
-        # Random pages, because zswap compresses per page and would otherwise
-        # store a zeroed buffer as same-filled entries that occupy no pool.
+        # One random 1 MiB block repeated to WORKING_SET_BYTES. Zswap compresses
+        # each page on its own, so the repetition costs nothing, while a zeroed
+        # buffer would store as same-filled entries that occupy no pool.
         self.guest(
             "printf 'Y\\n' > /sys/module/zswap/parameters/enabled; "
             "setsid python -c \"import os, signal;"
-            f"n = {self.WORKING_SET_BYTES};"
-            "buf = bytearray(n);"
-            "blk = os.urandom(1 << 20);"
-            "[buf.__setitem__(slice(o, o + (1 << 20)), blk)"
-            " for o in range(0, n, 1 << 20)];"
+            f"buf = os.urandom(1 << 20) * {WORKING_SET_BYTES >> 20};"
             "open('/run/loadgen.pid', 'w').write(str(os.getpid()));"
             'signal.pause()" &\n'
             "until [ -s /run/loadgen.pid ]; do sleep 1; done",
@@ -636,25 +646,35 @@ class Rehearsal:
         )
         # The contract is a cheap frozen phase, not a drained pool: writeback
         # never triggers during this reclaim, and target_kb already charges the
-        # pool against the eviction target. Assert the helper actually evicted
-        # something, so a future no-op cannot pass on a machine fast enough to
-        # clear the ceiling anyway.
+        # pool against the eviction target. Assert that measured memory left
+        # RAM, so a future no-op cannot pass on a machine fast enough to clear
+        # the ceiling anyway. A shortfall still passes: the helper reports what
+        # moved rather than what it asked for, and moving less than the target
+        # is slow, not broken.
         self.guest(
-            "journalctl -b -u systemd-hibernate.service --no-pager | awk '"
-            "/hibernate-prereclaim: evicted/ { n++; if ($(NF-5) + 0 <= 0) bad++ }"
-            " END { exit !(n > 0 && !bad) }'",
-            "eviction-met-its-target",
+            journal_gate(
+                "-b -u systemd-hibernate.service",
+                "/hibernate-prereclaim: evicted [0-9]+ of [0-9]+ kB;/",
+                'substr($0, index($0, "evicted ") + 8) + 0 > 0',
+            ),
+            "eviction-moved-memory",
         )
         # Emitted while userspace was frozen, so journald only records it after
         # the resume above; give it a moment to catch up on the ring buffer.
+        # Wait and gate both match the timing line specifically: preallocation
+        # also logs an "Allocated N pages" line carrying no duration, and
+        # accepting that would let a kernel which stopped reporting the speed
+        # pass the one stage that exists to read it.
         self.guest(
             "for _ in $(seq 30); do "
-            "journalctl -b -k --no-pager | grep -q 'hibernation: Allocated' && break; "
+            "journalctl -b -k --no-pager"
+            " | grep -q 'hibernation: Allocated .* in .* seconds' && break; "
             "sleep 1; done; "
-            "journalctl -b -k --no-pager | awk '"
-            "/hibernation: Allocated/ { n++; split($0, at, \" in \"); split(at[2], s, \" \");"
-            f" if (s[1] + 0 > {self.PREALLOC_CEILING_SECONDS}) bad++ }}"
-            " END { exit !(n > 0 && !bad) }'",
+            + journal_gate(
+                "-b -k",
+                "/hibernation: Allocated .* in .* seconds/",
+                f'substr($0, index($0, " in ") + 4) + 0 <= {PREALLOC_CEILING_SECONDS}',
+            ),
             "preallocation-under-ceiling",
         )
 

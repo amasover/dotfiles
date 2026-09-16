@@ -38,7 +38,8 @@ state=$root/run/hibernate-prereclaim/previous
 
 # Largest single memory.reclaim request, in kB. The kernel loops internally
 # until it reaches the request or stops making progress, so chunking is what
-# gives this script a chance to observe the deadline.
+# gives this script a chance to re-measure between requests and to observe the
+# deadline.
 chunk_limit=1048576
 
 pool_kb() {
@@ -46,10 +47,11 @@ pool_kb() {
         "$meminfo"
 }
 
-# How much must leave RAM before preallocation is cheap. Aim under image_size
-# so the frozen phase starts with slack rather than exactly at its ceiling.
-# Pool pages are part of MemTotal-MemFree, so a pool that will not drain is
-# already charged here and the shortfall comes out of evictable memory instead.
+# How much must still leave RAM before preallocation is cheap. Aim under
+# image_size so the frozen phase starts with slack rather than exactly at its
+# ceiling. Pool pages are part of MemTotal-MemFree, so a pool that will not
+# drain is already charged here and the shortfall comes out of evictable
+# memory instead.
 target_kb() {
     awk -v bytes="$(cat "$image")" '
         $1 == "MemTotal:" { total = $2 }
@@ -64,6 +66,14 @@ target_kb() {
     ' "$meminfo"
 }
 
+# One shape for every exit, so the journal always carries how much actually
+# left RAM rather than how much was asked for, whichever way the loop ended.
+report_kb() {
+    moved=$(($1 - $2))
+    [ "$moved" -ge 0 ] || moved=0
+    echo "hibernate-prereclaim: evicted ${moved} of $1 kB; $3"
+}
+
 evict() {
     if [ ! -w "$reclaim" ] || [ ! -r "$image" ] || [ ! -r "$meminfo" ]; then
         echo "hibernate-prereclaim: kernel interfaces unavailable; skipped eviction"
@@ -75,24 +85,36 @@ evict() {
         return 0
     fi
     started=$(date +%s)
-    evicted=0
-    while [ "$evicted" -lt "$target" ]; do
+    remaining=$target
+    while [ "$remaining" -gt 0 ]; do
         if [ "$deadline" -gt 0 ] \
             && [ "$(($(date +%s) - started))" -ge "$deadline" ]; then
-            echo "hibernate-prereclaim: deadline reached after ${evicted} of ${target} kB"
+            report_kb "$target" "$remaining" "deadline reached"
             return 0
         fi
-        chunk=$((target - evicted))
+        chunk=$remaining
         [ "$chunk" -le "$chunk_limit" ] || chunk=$chunk_limit
         # A write fails once the kernel can no longer make progress; that is a
         # stopping condition, not an error.
         if ! printf '%sK\n' "$chunk" 2>/dev/null >"$reclaim"; then
-            echo "hibernate-prereclaim: reclaim stalled after ${evicted} of ${target} kB"
+            report_kb "$target" "$remaining" "reclaim stalled"
             return 0
         fi
-        evicted=$((evicted + chunk))
+        previous=$remaining
+        # Measure the footprint again instead of crediting the request.
+        # Userspace is still running, so it refaults and allocates while this
+        # loop works: kB asked for is not kB gone, and the frozen phase must
+        # start under image_size by measurement, not by arithmetic.
+        remaining=$(target_kb)
+        # A request the kernel accepted that moved nothing means reclaim is
+        # exhausted or live allocation is outrunning it. Stop and let the
+        # frozen phase finish the rest; a shortfall is slower, not fatal.
+        if [ "$remaining" -ge "$previous" ]; then
+            report_kb "$target" "$remaining" "reclaim stalled"
+            return 0
+        fi
     done
-    echo "hibernate-prereclaim: evicted ${evicted} kB of ${target} kB requested"
+    report_kb "$target" 0 "footprint under image target"
 }
 
 case "${1-}" in
@@ -110,7 +132,7 @@ case "${1-}" in
         )
         # Route this eviction past the pool instead of into it. The pool itself
         # is left alone: writeback never triggered during a measured 1.5 GB
-        # reclaim, so pausing or forcing the shrinker here would be theatre.
+        # reclaim, so changing the shrinker flag here would move no pages.
         printf 'N\n' >"$parameters/enabled"
         before=$(pool_kb)
         evict

@@ -9,8 +9,8 @@ normal use.
 
 `systemctl hibernate` freezes userspace, then calls
 `hibernate_preallocate_memory()`, which runs
-`shrink_all_memory(saveable - image_size)` (`kernel/power/snapshot.c`). Two
-properties make that phase pathological on a loaded machine:
+`shrink_all_memory(saveable - image_size)` (`kernel/power/snapshot.c`). That
+phase is slow on a loaded machine for two reasons:
 
 - Only the calling thread runs. Userspace and kswapd are frozen, so the whole
   eviction is single-threaded.
@@ -51,8 +51,11 @@ and treats the pool as immovable.
 
 1. Saves `zswap.enabled`.
 2. Sets `enabled=N`, so this eviction goes to swap rather than into the pool.
-3. Writes to `/sys/fs/cgroup/memory.reclaim` until the footprint is below
-   `/sys/power/image_size`, in 1 GiB requests, bounded by a deadline.
+3. Writes to `/sys/fs/cgroup/memory.reclaim` in 1 GiB requests until the
+   measured footprint is below `/sys/power/image_size`. It re-reads
+   `/proc/meminfo` after every request, because userspace is still running and
+   kB asked for is not kB gone. It gives up early on the deadline, on a
+   rejected request, or once a request the kernel accepted moves nothing.
 
 `ExecStopPost` restores the parameter after resume or a failed start. A
 shortfall is logged and never fatal: a slow hibernation beats an aborted one,
@@ -63,6 +66,8 @@ evictable memory instead. Root `memory.reclaim` is global reclaim; the
 `reclaim` cftype carries no `CFTYPE_NOT_ON_ROOT` flag (`mm/memcontrol.c`).
 
 `HIBERNATE_PRERECLAIM_DEADLINE` overrides the 120 s budget; `0` removes it.
+Set it for one machine with a second drop-in carrying `Environment=`, not by
+editing the tracked helper.
 
 ## Install on an affected machine
 
@@ -95,9 +100,12 @@ journalctl -b -k --no-pager | grep 'hibernation: Allocated'
 grep Zswap /proc/meminfo
 ```
 
-The service journal should show the eviction totals and the pool size before
-and after, then the restored parameters. The kernel line should report
-preallocation in seconds, not tens of minutes.
+Each eviction ends with one `evicted N of M kB` line naming why it stopped:
+`footprint under image target`, `deadline reached`, or `reclaim stalled`. N is
+measured from `/proc/meminfo`, so a shortfall shows up as a smaller N rather
+than as a silent success. The journal also carries the pool size before and
+after and the restored parameters. The kernel line should report preallocation
+in seconds, not tens of minutes.
 
 To measure preallocation without writing an image or powering off, use the
 kernel's own staged mode. `hibernation_snapshot()` runs
@@ -122,6 +130,10 @@ Repeat the loaded hibernate/resume test above, including full power-off and
 return to the same desktop. Save work first; restore the drop-in if the stall
 returns.
 
+If the drop-in is still parked outside its directory after testing, delete that
+parked copy rather than the original path: `install --remove` only clears the
+canonical locations and will leave the parked file behind.
+
 After those tests pass, remove the workaround while no sleep operation is
 active:
 
@@ -129,6 +141,12 @@ active:
 pkexec /usr/bin/sh "$PWD/.config/dotfiles/hibernate/install" --remove
 grep Zswap /proc/meminfo
 ```
+
+A hibernate that fails between `ExecStartPre` and `ExecStopPost` can leave
+`zswap.enabled` at `N`, because the helper restores it from `/run` and nothing
+else does. Removing the workaround does not put it back. Check `grep Zswap
+/proc/meminfo` and `cat /sys/module/zswap/parameters/enabled`; a reboot
+restores normal boot policy, or write `Y` back directly.
 
 Also retire these tracked assets and their runbook link once affected machines
 no longer need them; bootstrap deliberately does not install this workaround
