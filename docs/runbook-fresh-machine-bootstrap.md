@@ -38,8 +38,11 @@ git clone https://github.com/amasover/dotfiles.git /run/dotfiles
 ```
 
 The installer requires UEFI mode and root, then rechecks that the path is a whole,
-unmounted, unheld disk whose size and rounded RAM match the recipe. It requires exact
-`WIPE <device>` input before prompting twice for the user password and LUKS password.
+unmounted, unheld disk, and that every binary the destructive phase needs is present
+before any of it runs. Size and rounded RAM come from live hardware on this path; the
+`metal-preflight` subcommand is the one that compares them against figures you supply.
+It requires exact `WIPE <device>` input before prompting twice for the user password
+and LUKS password.
 Neither secret is written to disk at any point: the LUKS passphrase reaches
 `cryptsetup` on a pipe and the account passwords reach `chpasswd` inside the target
 root, so there is no credentials file to leak or to clean up.
@@ -358,6 +361,13 @@ directory stops finalization. After first boot, bootstrap's ordinary
 tracked policy plus the package-owned Nord assets. After `hibernate-storage apply`
 selects the resume LV, the second `refind-config apply` adds its live-derived UUID.
 The current workstation's boot files and identifiers are neither read nor copied.
+
+`pacstrap` installs no microcode package — Archinstall detected the CPU vendor and
+added one, and decision 1 of the portable-install record leaves hardware fitting to
+the machine class. A freshly installed target therefore has no
+`/boot/intel-ucode.img`, and `refind-config` refuses to apply until the package step
+above installs microcode. That ordering is why the handoff follows bootstrap rather
+than the install.
 
 Other offline provisioners may still use untracked, root-owned
 `/etc/dotfiles/refind.json` with `--root`; target roots never borrow the installer

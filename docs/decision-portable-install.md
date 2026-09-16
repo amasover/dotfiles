@@ -27,9 +27,9 @@ recorded here, and sequenced first.
 
 | # | Question | Decision |
 | --- | --- | --- |
-| 1 | Scope of "portable" | Install-time portability only: the target reaches a login prompt on any UEFI x86_64 machine. Fitting the chassis it happens to run on — graphics, microcode, power — stays the machine class's job (Story 2.30) and earns its own story. The metal recipe installs only `lvm2` plus `linux-firmware`, so the installer's reach stops well short of runtime hardware regardless. |
+| 1 | Scope of "portable" | Install-time portability only: the target reaches a login prompt on any UEFI x86_64 machine. Fitting the chassis it happens to run on — graphics, microcode, power — stays the machine class's job (Story 2.30) and earns its own story. The metal recipe installs only `lvm2` plus `linux-firmware`, so the installer's reach stops well short of runtime hardware regardless. Consequence confirmed in Story 2.56: Archinstall detected the CPU vendor and added `intel-ucode`/`amd-ucode` itself, and `pacstrap` does not, so a freshly installed target boots without a microcode image and `refind-config` refuses its handoff until bootstrap installs one. That is the order the fresh-machine runbook already prescribes, so nothing is added to the installer to preserve it. |
 | 2 | Installer engine | The metal path moves from Archinstall to `pacstrap`. Archinstall keeps the disposable QEMU/VMware/daily-VM targets, where unattended throwaway installs are what it is good at. The metal recipe had already diverged: its own layout builder, its own driver template, its own preflight, its own repair pass, and `--files-only` bypassing the seed machinery entirely. What remained shared was the Archinstall JSON dialect and its version skew. No escape hatch is lost: `archinstall 4.4-1` ships on the stock Arch ISO, so the Story 2.55 medium still carries it for ad-hoc manual use. |
-| 3 | Sequencing | Three stories, ordered by blast radius — see [Stories](#stories). Doing the engine change and the new shape together would leave a failed rehearsal with two candidate causes, the situation Story 2.53 exists to prevent. Installing from a booted workstation is separable from the portable shape and is the riskiest capability here, so it lands last and alone, against a baseline already known good. |
+| 3 | Sequencing | Separate stories, ordered by blast radius — see [Stories](#stories). Doing the engine change and the new shape together would leave a failed rehearsal with two candidate causes, the situation Story 2.53 exists to prevent. Installing from a booted workstation is separable from the portable shape and is the riskiest capability here, so it lands last and alone, against a baseline already known good. Story 2.59 joined the chain after 2.56 was green, for the same reason: an initrd flavour change and a new install shape in one rehearsal would have two candidate causes. |
 | 4 | Tool structure | `install-on-metal` absorbs the installer and the `metal-preflight` and `metal-finalize` subcommands, which are already metal-namespaced and used by nothing else. `provision-seed` returns to being a pure Archinstall recipe printer for the three VM targets — the role Story 2.53 defined for it, which a destructive block-device installer inside it would contradict. Metal tests move with the code. Amended during implementation: `metal-credentials` is not absorbed but deleted. It existed to write an Archinstall credentials file; `pacstrap` needs none, so the passphrase goes to `cryptsetup --key-file -` and the account passwords to `chpasswd`, both on pipes. No secret reaches disk at any point, which retires the mode-0600 file and the signal traps that removed it. |
 | 5 | Selecting portable | A flag on `install-on-metal`, not a `provision-seed --target`. The target registry is an Archinstall construct; once metal leaves that tool, there is no registry for it to be a member of. |
 | 6 | Target mountpoint | The installer mounts the target at a private path it chooses, never `/mnt`. On a booted workstation `/mnt` may already carry the machine's own boot filesystem, its ESP, and an autofs automount root, so it is not available to an installer running from a live host. With `pacstrap` this is a direct choice rather than a flag threaded through three layers. |
@@ -38,7 +38,7 @@ recorded here, and sequenced first.
 | 9 | ESP-to-boot safety check | For portable installs, `verify_active_refind_esp`'s firmware-entry binding is replaced by a same-disk binding — the ESP must sit on the disk the running root is on. The original check fails both ways on removable media: booted on a foreign machine the loader path is `\EFI\Boot\BootX64.efi`, and booted here through the internal rEFInd the partition GUID is the internal ESP's. The safety property is preserved in a machine-independent form, not deleted. |
 | 10 | NVRAM | Never written by a portable install. There is no `--no-nvram` flag and none is needed: `refind-install` calls `AddBootEntry` only when the target directory is neither `EFI/BOOT` nor `EFI/Microsoft/Boot` (`refind-install:1476-1479`), so `--usedefault` abstains structurally rather than by opt-in. The same branch also suppresses `GenerateRefindLinuxConf`, so the installer must write `refind_linux.conf` itself — `finalize_metal` requires that file to exist and raises "metal handoff destination is missing" without it. This matches the repo's existing stance recorded in `.config/dotfiles/refind/refind.conf` — "firmware entries stay outside this file; `refind-config` never edits NVRAM". That file's `scanfor internal,external,optical,manual` plus `scan_all_linux_kernels true` already make a portable disk appear in this workstation's existing menu unaided, so no entry is needed for local use either. |
 | 11 | Hibernation | Enabled, with a 64 GiB resume ceiling rather than the installing host's RAM. `hibernate-storage` derives the routine swapfile from live `/proc/meminfo` at run time, so only the reserved volume is fixed at install. Two consequences: the recipe's RAM equality check becomes a ceiling check for portable installs, and `hibernate-storage`'s fatal "dedicated resume swap is smaller than physical memory" must degrade to reporting hibernation unavailable rather than failing bootstrap on a machine above the ceiling. |
-| 12 | initramfs | `autodetect` is dropped for portable installs, written into `mkinitcpio.conf` before the first image is built rather than repaired afterwards. The ArchWiki's lighter prescription — `block` and `keyboard` moved before `autodetect` — is subsumed by dropping it, and was not adopted separately. `keyboard` in early userspace is not optional on this recipe: without it the LUKS passphrase cannot be typed on an unfamiliar machine. |
+| 12 | initramfs | `autodetect` is dropped for portable installs, written into `mkinitcpio.conf` before the first image is built rather than repaired afterwards. The ArchWiki's lighter prescription — `block` and `keyboard` moved before `autodetect` — is subsumed by dropping it, and was not adopted separately. `keyboard` in early userspace is not optional on this recipe: without it the LUKS passphrase cannot be typed on an unfamiliar machine. Reversed in part after Story 2.56 was green: the udev chain this row assumed is not the one Arch ships, and Story 2.59 ([#258](https://github.com/amasover/dotfiles/issues/258)) adopts the systemd initramfs that has been the `mkinitcpio` default since 40-1 rather than pinning against it. The recipe owning its whole `HOOKS` array is what contains that change. |
 | 13 | Volume group name | Derived from `--hostname` for every metal install, fixed and portable alike. The name is a constant today, so plugging a portable disk into any machine this recipe built produces two identically named volume groups; early boot activates the root pool by name, and the internal system may fail to boot. That makes it a latent bug in the fixed path too, not a portable-only concern. |
 | 14 | Verification | `metal-rehearsal` gains a portable mode: install under one machine profile, then boot the same disk under a different emulated storage controller with a freshly created OVMF vars file carrying no boot entries. One run proves both load-bearing claims — the `EFI/BOOT` fallback path works with no firmware bookmark, and the initramfs carries drivers for a controller it never saw at install. A different emulated controller is genuinely different hardware, so this is automation that is actually available rather than a proxy for a live check. Story 3 additionally byte-compares the guest's OVMF vars file across an install to prove zero writes outside the target device. |
 
@@ -51,12 +51,20 @@ recorded here, and sequenced first.
    sentinel — the harness greps the installer's own echo strings, so it keeps
    emitting `metal-provision: install complete` and an equivalent failure line
    to hold that diff to one pattern pair.
-2. **Story 2.57 — portable install shape** ([#254](https://github.com/amasover/dotfiles/issues/254)).
+2. **Story 2.59 — initramfs adopts the systemd chain** ([#258](https://github.com/amasover/dotfiles/issues/258)).
+   Sequenced after 2.56 and before 2.57, so the portable shape is built on the
+   chain the distribution ships. `METAL_HOOKS` becomes the systemd array with
+   `base` retained ahead of `systemd` for the rescue shell, `rewrite_hooks`
+   refuses a udev array instead of a systemd one, `refind_linux_conf` emits
+   `rd.luks.name=` instead of `cryptdevice=`, and the `resume` hook is dropped
+   rather than translated. `refind-config` needs no change: its `IDENTITY_KEYS`
+   already whitelists `rd.luks.name` and `rd.lvm.lv`.
+3. **Story 2.57 — portable install shape** ([#254](https://github.com/amasover/dotfiles/issues/254)).
    Built by booting the Story 2.55 medium ([#252](https://github.com/amasover/dotfiles/issues/252))
    with the target attached, so no destructive installer runs on a live workstation
    yet. Removable rEFInd layout, no `autodetect`, resume ceiling, `refind-config`
    portable mode, no NVRAM writes. Gate: the two-profile rehearsal.
-3. **Story 2.58 — install from a booted workstation** ([#255](https://github.com/amasover/dotfiles/issues/255)).
+4. **Story 2.58 — install from a booted workstation** ([#255](https://github.com/amasover/dotfiles/issues/255)).
    The convenience that lets a portable disk be built without rebooting. Gate: OVMF
    vars byte-compare proving zero writes outside the target device.
 
@@ -78,10 +86,13 @@ Surveyed 2026-09-15. Three places, and the weight sits in the second:
   implementation: neither moves. One pinned the generated driver's signal trap
   removing the credentials file, a contract that disappears with the file itself;
   the other pinned generated shell syntax, and metal now generates no shell. The
-  first is deleted, the second narrows to the VM targets, and `install-on-metal`
-  is a tracked script the ordinary lint already covers.
+  first is deleted and the second narrows to the VM targets. `install-on-metal`
+  is not covered by the shell lint — it is Python — so Story 2.56 extends
+  `.github/scripts/ci lint` to parse every tracked Python file, extension-less
+  tools included, rather than leave the metal installer unchecked.
 
-Dialect-independent and portable as-is: `validate_metal_facts`,
-`require_wipe_confirmation`, and `metal_layout_gib`. `write_metal_credentials` is
-not ported: with no credentials file to write, it becomes `prompt_metal_credentials`
-returning both secrets in memory.
+Dialect-independent and portable as-is: the target refusals (now
+`refuse_unsafe_target` and `refuse_unexpected_facts`), `require_wipe_confirmation`,
+and `metal_layout_gib`. `write_metal_credentials` is not ported: with no
+credentials file to write, it becomes `prompt_metal_credentials` returning both
+secrets in memory.

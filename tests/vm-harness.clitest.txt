@@ -197,8 +197,8 @@ $
 
 The VM drivers are generated at run time, so the tracked-script lint never sees
 them. This pins the emitted shell syntax; `sh -n` runs wherever clitest runs.
-Metal has no generated driver since Story 2.56: `install-on-metal` installs
-directly and is linted as a tracked script.
+Metal has no generated driver since Story 2.56: `install-on-metal` is tracked
+Python, which `ci lint` parses rather than shellchecks.
 
 $ T=$(mktemp -d); .local/bin/setup/provision-seed create --files-only --target vmware --out "$T/vm" --disk-size 22 --password throwaway >/dev/null && .local/bin/setup/provision-seed create --files-only --target qemu --out "$T/qemu" --disk-size 22 --password throwaway >/dev/null && sh -n "$T/vm/run-install.sh" && sh -n "$T/qemu/run-install.sh" && echo syntax-ok
 syntax-ok
