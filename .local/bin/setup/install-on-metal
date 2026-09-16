@@ -15,12 +15,15 @@ volume and a dedicated resume volume sized to physical RAM. The volume group is
 named for the target host, so two disks built by this recipe can coexist in one
 machine without an ambiguous activation by name.
 
-Subcommands ``metal-preflight`` and ``metal-finalize`` are the same steps the
-install performs, exposed for checking a target before committing to it and for
-re-running the first-boot handoff after a partial failure.
+Subcommand ``metal-finalize`` is the first-boot handoff the install performs,
+exposed for re-running it after a partial failure. ``metal-preflight`` is the
+same target survey plus one check the install path cannot make: that the disk
+and RAM match figures an operator supplies, rather than the ones read from the
+machine this is running on.
 """
 
 import argparse
+import contextlib
 import getpass
 import os
 import re
@@ -35,6 +38,7 @@ from pathlib import Path
 
 REFIND_MANAGED = "# Managed by dotfiles refind-config (Story 2.52, #230)."
 THEME_MARKER = ".dotfiles-refind-managed"
+GIB_BYTES = 1073741824
 MIN_POST_SWAP_ROOT_GIB = 40
 LVM_METADATA_HEADROOM_GIB = 1
 ESP_MIB = 1023
@@ -103,10 +107,13 @@ REQUIRED_TOOLS = (
     "cryptsetup",
     "pvcreate",
     "vgcreate",
+    "vgchange",
     "lvcreate",
     "mkfs.ext4",
     "mkfs.fat",
     "mkswap",
+    "mount",
+    "umount",
     "blkid",
     "lsblk",
     "blockdev",
@@ -125,14 +132,18 @@ class MetalFacts:
     ram_gib: int
 
     def __post_init__(self) -> None:
-        if not re.fullmatch(r"/dev/[A-Za-z0-9._+:-]+", self.device):
-            raise InstallError(
-                "metal disk device must be one canonical whole-disk /dev path"
-            )
+        validate_device(self.device)
         if self.disk_size_gib <= 0:
             raise InstallError("metal disk size must be a positive whole GiB value")
         if self.ram_gib <= 0:
             raise InstallError("metal RAM size must be a positive whole GiB value")
+
+
+def validate_device(device: str) -> None:
+    if not re.fullmatch(r"/dev/[A-Za-z0-9._+:-]+", device):
+        raise InstallError(
+            "metal disk device must be one canonical whole-disk /dev path"
+        )
 
 
 def root_gib(disk_size_gib: int) -> int:
@@ -172,10 +183,12 @@ def volume_group_name(hostname: str) -> str:
     A constant name makes early boot activate an ambiguous root pool the moment
     a second disk built by this recipe is attached.
     """
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", hostname):
+    # Trailing hyphens are the gap between what LVM accepts and what DNS does;
+    # this string becomes both the volume group name and the hostname.
+    if not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?", hostname):
         raise InstallError(
             "hostname must be lowercase alphanumeric with internal hyphens, "
-            "starting with a letter or digit, at most 63 characters"
+            "starting and ending with a letter or digit, at most 63 characters"
         )
     return hostname
 
@@ -198,37 +211,54 @@ def partition_path(device: str, index: int) -> str:
     return f"{partition_prefix(device)}{index}"
 
 
-def validate_metal_facts(
-    expected: MetalFacts,
-    *,
-    actual_disk_bytes: int,
-    actual_ram_gib: int,
-    is_whole_disk: bool,
-    is_uefi: bool,
-    mountpoints: list[str],
-    holders: list[str],
-) -> None:
+@dataclass(frozen=True)
+class TargetState:
+    """What the installing machine reports about the target, read once."""
+
+    disk_bytes: int
+    ram_gib: int
+    is_whole_disk: bool
+    is_uefi: bool
+    mountpoints: tuple[str, ...]
+    holders: tuple[str, ...]
+
+    def facts(self, device: str) -> MetalFacts:
+        """Floor the capacity to whole GiB; RAM is already rounded up."""
+        return MetalFacts(device, self.disk_bytes // GIB_BYTES, self.ram_gib)
+
+
+def refuse_unsafe_target(device: str, state: TargetState) -> None:
     """Fail closed before the attended install can touch the disk."""
-    if not is_uefi:
+    if not state.is_uefi:
         raise InstallError("target must boot in UEFI mode")
-    if not is_whole_disk:
-        raise InstallError(f"target is not a whole disk: {expected.device}")
-    minimum_bytes = expected.disk_size_gib * 1073741824
-    maximum_bytes = (expected.disk_size_gib + 1) * 1073741824
-    if not minimum_bytes <= actual_disk_bytes < maximum_bytes:
+    if not state.is_whole_disk:
+        raise InstallError(f"target is not a whole disk: {device}")
+    if any(value.strip() for value in state.mountpoints):
+        raise InstallError("target disk or one of its children is mounted")
+    if any(value.strip() for value in state.holders):
+        raise InstallError(
+            "target disk is held by an active device-mapper or RAID stack"
+        )
+
+
+def refuse_unexpected_facts(expected: MetalFacts, state: TargetState) -> None:
+    """Refuse a target that is not the machine the operator described.
+
+    Only ``metal-preflight`` can fail here. The install path derives its facts
+    from this same reading, so it has no expectation to disagree with and asks
+    for none: the disk it installs to is the disk the operator named and typed
+    a ``WIPE`` confirmation for.
+    """
+    minimum_bytes = expected.disk_size_gib * GIB_BYTES
+    maximum_bytes = (expected.disk_size_gib + 1) * GIB_BYTES
+    if not minimum_bytes <= state.disk_bytes < maximum_bytes:
         raise InstallError(
             f"target size does not match configured {expected.disk_size_gib} GiB"
         )
-    if actual_ram_gib != expected.ram_gib:
+    if state.ram_gib != expected.ram_gib:
         raise InstallError(
-            f"target RAM rounds to {actual_ram_gib} GiB, "
+            f"target RAM rounds to {state.ram_gib} GiB, "
             f"recipe expects {expected.ram_gib} GiB"
-        )
-    if any(value.strip() for value in mountpoints):
-        raise InstallError("target disk or one of its children is mounted")
-    if any(value.strip() for value in holders):
-        raise InstallError(
-            "target disk is held by an active device-mapper or RAID stack"
         )
 
 
@@ -266,76 +296,84 @@ def run(command: list[str], *, stdin: bytes | None = None, label: str) -> None:
         raise InstallError(f"{label} failed (rc={result.returncode})")
 
 
-def hardware_facts(device: str) -> tuple[int, int]:
-    """Floor disk GiB and ceiling RAM GiB, derived from the machine running this."""
+def read_disk_bytes(device: str) -> int:
+    """Target capacity, straight from the machine running this installer."""
     try:
-        disk_bytes = int(command_output(["/usr/bin/blockdev", "--getsize64", device]))
+        disk_bytes = int(command_output(["blockdev", "--getsize64", device]))
     except ValueError as exc:
         raise InstallError(f"target disk size is malformed: {device}") from exc
-    match = re.search(
-        r"^MemTotal:\s+(\d+)\s+kB$", Path("/proc/meminfo").read_text(), re.MULTILINE
-    )
-    if disk_bytes <= 0 or match is None or int(match.group(1)) <= 0:
-        raise InstallError("cannot derive positive disk size and physical RAM")
-    return disk_bytes // 1073741824, (int(match.group(1)) + 1048575) // 1048576
+    if disk_bytes <= 0:
+        raise InstallError(f"target disk size is malformed: {device}")
+    return disk_bytes
 
 
-def metal_preflight(expected: MetalFacts) -> None:
-    if not sys.stdin.isatty() or not sys.stdout.isatty():
-        raise InstallError("an attended console or ssh -t session is required")
-    require_tools()
-    try:
-        is_block = stat.S_ISBLK(Path(expected.device).stat().st_mode)
-    except OSError as exc:
-        raise InstallError(f"cannot inspect target device: {expected.device}") from exc
-    is_whole_disk = (
-        is_block
-        and command_output(["/usr/bin/lsblk", "-dnro", "TYPE", expected.device])
-        == "disk"
-    )
-    try:
-        actual_disk_bytes = int(
-            command_output(["/usr/bin/blockdev", "--getsize64", expected.device])
-        )
-    except ValueError as exc:
-        raise InstallError("target disk size is malformed") from exc
+def read_ram_gib() -> int:
+    """Physical RAM rounded up to whole GiB. The resume volume is sized from it."""
     try:
         meminfo = Path("/proc/meminfo").read_text()
     except OSError as exc:
-        raise InstallError("cannot read physical RAM from /proc/meminfo") from exc
-    mem_match = re.search(r"^MemTotal:\s+(\d+)\s+kB$", meminfo, re.MULTILINE)
-    if not mem_match:
-        raise InstallError("cannot read physical RAM from /proc/meminfo")
-    actual_ram_gib = (int(mem_match.group(1)) + 1048575) // 1048576
-    mountpoints = command_output(
-        ["/usr/bin/lsblk", "-nrpo", "MOUNTPOINT", expected.device]
-    ).splitlines()
-    holders = sorted(
-        child.name
-        for child in Path("/sys/class/block").glob("*/holders/*")
-        if _belongs_to(child, expected.device)
+        raise InstallError("cannot derive physical RAM from /proc/meminfo") from exc
+    match = re.search(r"^MemTotal:\s+(\d+)\s+kB$", meminfo, re.MULTILINE)
+    if match is None or int(match.group(1)) <= 0:
+        raise InstallError("cannot derive physical RAM from /proc/meminfo")
+    return (int(match.group(1)) + 1048575) // 1048576
+
+
+def inspect_target(device: str) -> TargetState:
+    """Read every fact the refusals need, once, before anything is touched."""
+    validate_device(device)
+    try:
+        is_block = stat.S_ISBLK(Path(device).stat().st_mode)
+    except OSError as exc:
+        raise InstallError(f"cannot inspect target device: {device}") from exc
+    is_whole_disk = (
+        is_block and command_output(["lsblk", "-dnro", "TYPE", device]) == "disk"
     )
-    validate_metal_facts(
-        expected,
-        actual_disk_bytes=actual_disk_bytes,
-        actual_ram_gib=actual_ram_gib,
+    return TargetState(
+        # A capacity is only meaningful for a real disk, and refuse_unsafe_target
+        # rejects anything else before this value is read by a caller.
+        disk_bytes=read_disk_bytes(device) if is_whole_disk else 0,
+        ram_gib=read_ram_gib(),
         is_whole_disk=is_whole_disk,
         is_uefi=Path("/sys/firmware/efi").is_dir(),
-        mountpoints=mountpoints,
-        holders=holders,
+        mountpoints=tuple(
+            command_output(["lsblk", "-nrpo", "MOUNTPOINT", device]).splitlines()
+        ),
+        holders=tuple(
+            sorted(
+                child.name
+                for child in Path("/sys/class/block").glob("*/holders/*")
+                if _belongs_to(child, device)
+            )
+        ),
     )
 
+
+def survey_target(device: str) -> TargetState:
+    """Attended inspection whose every refusal lands before the disk is touched."""
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        raise InstallError("an attended console or ssh -t session is required")
+    require_tools()
+    state = inspect_target(device)
+    refuse_unsafe_target(device, state)
+    return state
+
+
+def confirm_wipe(device: str) -> None:
     print("This fresh-laptop recipe destroys every partition on:")
-    print(
-        command_output(
-            ["/usr/bin/lsblk", "-dno", "PATH,SIZE,MODEL,SERIAL", expected.device]
-        )
-    )
-    confirmation = f"WIPE {expected.device}"
-    require_wipe_confirmation(
-        expected.device,
-        input(f"Type {confirmation} to continue: "),
-    )
+    print(command_output(["lsblk", "-dno", "PATH,SIZE,MODEL,SERIAL", device]))
+    confirmation = f"WIPE {device}"
+    require_wipe_confirmation(device, input(f"Type {confirmation} to continue: "))
+
+
+def metal_preflight(expected: MetalFacts) -> None:
+    """Check a target against operator-supplied facts before committing to it."""
+    state = survey_target(expected.device)
+    refuse_unexpected_facts(expected, state)
+    # A layout that cannot fit is a refusal, so it belongs here rather than
+    # partway through build_storage, with the disk already wiped.
+    metal_layout_gib(expected.disk_size_gib, expected.ram_gib)
+    confirm_wipe(expected.device)
 
 
 def _belongs_to(holder_link: Path, device: str) -> bool:
@@ -546,9 +584,7 @@ def finalize_metal(root: Path, volume_group: str) -> None:
             atomic_write_text(path, content, mode)
 
     # Always rebuild: a previous attempt may have persisted HOOKS but failed here.
-    result = subprocess.run(["arch-chroot", str(root), "mkinitcpio", "-P"], check=False)
-    if result.returncode:
-        raise InstallError("metal handoff could not rebuild the target initramfs")
+    chroot(root, ["mkinitcpio", "-P"], label="metal handoff initramfs rebuild")
 
     # The package hook copies Nord onto the ESP before bootstrap reconciles it.
     # Reserve ownership while the fresh target has no theme; never adopt an
@@ -722,16 +758,21 @@ def install(
         raise InstallError("install-on-metal must run as root")
     validate_username(user)
     volume_group = volume_group_name(hostname)
-    disk_gib, ram_gib = hardware_facts(device)
-    print(f"device={device} disk={disk_gib}GiB ram={ram_gib}GiB vg={volume_group}")
-    facts = MetalFacts(device, disk_gib, ram_gib)
-
-    metal_preflight(facts)
+    state = survey_target(device)
+    facts = state.facts(device)
+    # A layout that cannot fit is a refusal, so it belongs before the typed
+    # confirmation rather than partway through build_storage.
+    metal_layout_gib(facts.disk_size_gib, facts.ram_gib)
+    print(
+        f"device={device} disk={facts.disk_size_gib}GiB "
+        f"ram={facts.ram_gib}GiB vg={volume_group}"
+    )
+    confirm_wipe(device)
     user_password, luks_passphrase = prompt_metal_credentials(user)
 
     root = target or Path(tempfile.mkdtemp(prefix="metal-target-", dir="/run"))
-    esp, luks_uuid = build_storage(facts, volume_group, luks_passphrase)
     try:
+        esp, luks_uuid = build_storage(facts, volume_group, luks_passphrase)
         mount_target(root, esp, volume_group)
         run(["pacstrap", "-K", str(root), *PACKAGES], label="pacstrap")
         fstab = subprocess.run(
@@ -752,8 +793,15 @@ def install(
     finally:
         # Leave nothing of the target attached to the installing machine, so a
         # failure is reproducible from a clean state and a host-side run does not
-        # keep an unlocked volume open.
+        # keep an unlocked volume open. build_storage belongs inside this block:
+        # it opens the LUKS mapper and activates the volume group, so a failure
+        # anywhere after that is exactly when the detach is needed.
         release_target(root, volume_group)
+        if target is None:
+            # rmdir only fails when the unmount did, and reporting that over
+            # the failure which caused it would bury the real one.
+            with contextlib.suppress(OSError):
+                root.rmdir()
     print("metal-provision: install complete; remove install media, then reboot")
 
 

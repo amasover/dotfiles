@@ -12,7 +12,7 @@ fail() {
 
 lint() {
     local path first
-    local -a bash_files=() sh_files=() zsh_files=() lua_files=()
+    local -a bash_files=() sh_files=() zsh_files=() lua_files=() python_files=()
 
     while IFS= read -r -d '' path; do
         [[ -f $path ]] || continue
@@ -22,6 +22,8 @@ lint() {
             *bash) bash_files+=("$path") ;;
             */sh) sh_files+=("$path") ;;
             *zsh) zsh_files+=("$path") ;;
+            # Extension-less Python tools; *.py is collected by glob below.
+            *python*) [[ $path == *.py ]] || python_files+=("$path") ;;
         esac
     done < <(git ls-files -z)
 
@@ -37,6 +39,18 @@ lint() {
     mapfile -d '' lua_files < <(git ls-files -z -- '*.lua')
     ((${#lua_files[@]} > 0)) || fail "no tracked Lua files found"
     luac5.1 -p "${lua_files[@]}"
+
+    mapfile -d '' -O "${#python_files[@]}" python_files < <(git ls-files -z -- '*.py')
+    ((${#python_files[@]} > 0)) || fail "no tracked Python files found"
+    python - "${python_files[@]}" <<'PY'
+import ast
+import sys
+
+for path in sys.argv[1:]:
+    with open(path, encoding="utf-8") as handle:
+        ast.parse(handle.read(), path)
+PY
+
     actionlint
 }
 

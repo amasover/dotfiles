@@ -24,6 +24,23 @@ DEFAULT_HOOKS = (
     "consolefont block filesystems fsck)\n"
 )
 
+GIB = 1073741824
+
+
+def target_state(**override):
+    """A blank, matching 256 GiB whole disk on a 32 GiB UEFI machine."""
+    return metal.TargetState(
+        **{
+            "disk_bytes": 256 * GIB,
+            "ram_gib": 32,
+            "is_whole_disk": True,
+            "is_uefi": True,
+            "mountpoints": (),
+            "holders": (),
+        }
+        | override
+    )
+
 
 class TestLayoutSizing:
     def test_root_fills_disk_minus_esp_and_slack(self):
@@ -56,7 +73,8 @@ class TestVolumeGroupName:
         assert metal.volume_group_name("alpha") != metal.volume_group_name("beta")
 
     @pytest.mark.parametrize(
-        "hostname", ["", "-leading", "Upper", "has space", "dot.ted", "x" * 64]
+        "hostname",
+        ["", "-leading", "trailing-", "Upper", "has space", "dot.ted", "x" * 64],
     )
     def test_refuses_names_lvm_or_dns_would_not_accept(self, hostname):
         with pytest.raises(metal.InstallError, match="hostname"):
@@ -95,38 +113,27 @@ class TestPartitionPath:
 class TestPreflight:
     FACTS = ("/dev/nvme0n1", 256, 32)
 
-    def _common(self):
-        return {
-            "actual_disk_bytes": 256 * 1073741824,
-            "actual_ram_gib": 32,
-            "is_whole_disk": True,
-            "is_uefi": True,
-            "mountpoints": [],
-            "holders": [],
-        }
+    def _refuse(self, state):
+        metal.refuse_unsafe_target("/dev/nvme0n1", state)
+        metal.refuse_unexpected_facts(metal.MetalFacts(*self.FACTS), state)
 
     def test_accepts_matching_blank_whole_disk(self):
-        metal.validate_metal_facts(
-            metal.MetalFacts(*self.FACTS),
-            **(self._common() | {"actual_disk_bytes": 256 * 1073741824 + 4096}),
-        )
+        self._refuse(target_state(disk_bytes=256 * GIB + 4096))
 
     @pytest.mark.parametrize(
         ("override", "message"),
         [
             ({"is_whole_disk": False}, "whole disk"),
-            ({"actual_disk_bytes": 255 * 1073741824}, "size does not match"),
-            ({"actual_ram_gib": 31}, "RAM rounds"),
-            ({"mountpoints": ["/mnt"]}, "mounted"),
+            ({"disk_bytes": 255 * GIB}, "size does not match"),
+            ({"ram_gib": 31}, "RAM rounds"),
+            ({"mountpoints": ("/mnt",)}, "mounted"),
             ({"is_uefi": False}, "UEFI"),
-            ({"holders": ["dm-0"]}, "held by"),
+            ({"holders": ("dm-0",)}, "held by"),
         ],
     )
     def test_fails_closed_on_every_unsafe_target(self, override, message):
         with pytest.raises(metal.InstallError, match=message):
-            metal.validate_metal_facts(
-                metal.MetalFacts(*self.FACTS), **(self._common() | override)
-            )
+            self._refuse(target_state(**override))
 
     def test_requires_exact_device_specific_confirmation(self):
         metal.require_wipe_confirmation("/dev/nvme0n1", "WIPE /dev/nvme0n1")
@@ -142,6 +149,30 @@ class TestPreflight:
         assert set(missing) == absent
         with pytest.raises(metal.InstallError, match="pacstrap"):
             metal.require_tools(lambda name: None if name in absent else "/usr/bin")
+
+    def test_every_binary_the_destructive_phase_runs_is_checked_first(
+        self, monkeypatch, tmp_path
+    ):
+        """A tool discovered missing after the wipe leaves an unbootable target."""
+        invoked = []
+
+        def record(command, **_kwargs):
+            invoked.append(command[0])
+            return subprocess.CompletedProcess(command, 0)
+
+        def record_output(command):
+            invoked.append(command[0])
+            return "0123-UUID"
+
+        monkeypatch.setattr(metal, "run", record)
+        monkeypatch.setattr(metal, "command_output", record_output)
+        monkeypatch.setattr(metal.subprocess, "run", record)
+        facts = metal.MetalFacts("/dev/vda", 256, 32)
+        metal.build_storage(facts, "metal-test", "disk secret")
+        metal.mount_target(tmp_path / "target", "/dev/vda1", "metal-test")
+        metal.release_target(tmp_path / "target", "metal-test")
+        assert invoked
+        assert set(invoked) <= set(metal.REQUIRED_TOOLS)
 
 
 class TestHooks:
@@ -459,8 +490,8 @@ class TestHardwareFacts:
     @pytest.mark.parametrize(
         ("disk_bytes", "ram_kib", "expected"),
         [
-            (63 * 1073741824, 8 * 1048576, (63, 8)),
-            (63 * 1073741824 - 1, 8 * 1048576 + 1, (62, 9)),
+            (63 * GIB, 8 * 1048576, (63, 8)),
+            (63 * GIB - 1, 8 * 1048576 + 1, (62, 9)),
         ],
     )
     def test_disk_floors_and_ram_ceils(
@@ -470,20 +501,24 @@ class TestHardwareFacts:
         monkeypatch.setattr(
             metal.Path, "read_text", lambda _self: f"MemTotal: {ram_kib} kB\n"
         )
-        assert metal.hardware_facts("/dev/vda") == expected
+        state = target_state(
+            disk_bytes=metal.read_disk_bytes("/dev/vda"), ram_gib=metal.read_ram_gib()
+        )
+        facts = state.facts("/dev/vda")
+        assert (facts.disk_size_gib, facts.ram_gib) == expected
 
     def test_missing_ram_aborts_before_the_disk_is_touched(self, monkeypatch):
-        monkeypatch.setattr(metal, "command_output", lambda _cmd: str(63 * 1073741824))
         monkeypatch.setattr(
             metal.Path, "read_text", lambda _self: "MemAvailable: 42 kB\n"
         )
         with pytest.raises(metal.InstallError, match="cannot derive"):
-            metal.hardware_facts("/dev/vda")
+            metal.read_ram_gib()
 
-    def test_malformed_disk_size_is_refused(self, monkeypatch):
-        monkeypatch.setattr(metal, "command_output", lambda _cmd: "not a number")
+    @pytest.mark.parametrize("reading", ["not a number", "0"])
+    def test_malformed_disk_size_is_refused(self, monkeypatch, reading):
+        monkeypatch.setattr(metal, "command_output", lambda _cmd: reading)
         with pytest.raises(metal.InstallError, match="malformed"):
-            metal.hardware_facts("/dev/vda")
+            metal.read_disk_bytes("/dev/vda")
 
 
 class TestCli:
@@ -527,4 +562,59 @@ class TestCli:
     def test_install_refuses_to_run_unprivileged(self, monkeypatch):
         monkeypatch.setattr(metal.os, "geteuid", lambda: 1000)
         with pytest.raises(metal.InstallError, match="must run as root"):
+            metal.install(device="/dev/vda", hostname="metal-test", user="aaron")
+
+
+class TestInstallFailurePaths:
+    @pytest.fixture
+    def attended(self, monkeypatch):
+        """An install past every refusal, with the destructive half stubbed."""
+        monkeypatch.setattr(metal.os, "geteuid", lambda: 0)
+        monkeypatch.setattr(metal, "survey_target", lambda device: target_state())
+        monkeypatch.setattr(metal, "confirm_wipe", lambda device: None)
+        monkeypatch.setattr(
+            metal,
+            "prompt_metal_credentials",
+            lambda user: ("user secret", "disk secret"),
+        )
+        monkeypatch.setattr(metal, "build_storage", self._refuse_to_build)
+        return monkeypatch
+
+    @staticmethod
+    def _refuse_to_build(*_args):
+        raise metal.InstallError("cryptsetup open failed (rc=1)")
+
+    def test_storage_failure_still_detaches_the_target(self, attended, tmp_path):
+        """`cryptsetup open` has attached the mapper before this can fail."""
+        released = []
+        attended.setattr(
+            metal, "release_target", lambda root, vg: released.append((root, vg))
+        )
+        with pytest.raises(metal.InstallError, match="cryptsetup open"):
+            metal.install(
+                device="/dev/vda", hostname="metal-test", user="aaron", target=tmp_path
+            )
+        assert released == [(tmp_path, "metal-test")]
+
+    def test_the_private_target_directory_does_not_outlive_the_run(
+        self, attended, tmp_path
+    ):
+        owned = tmp_path / "metal-target-test"
+        owned.mkdir()
+        attended.setattr(metal.tempfile, "mkdtemp", lambda **_kwargs: str(owned))
+        attended.setattr(metal, "release_target", lambda root, vg: None)
+        with pytest.raises(metal.InstallError, match="cryptsetup open"):
+            metal.install(device="/dev/vda", hostname="metal-test", user="aaron")
+        assert not owned.exists()
+
+    def test_a_disk_the_layout_cannot_fit_is_refused_before_the_prompt(self, attended):
+        attended.setattr(
+            metal, "survey_target", lambda device: target_state(disk_bytes=40 * GIB)
+        )
+        attended.setattr(
+            metal,
+            "confirm_wipe",
+            lambda device: pytest.fail("confirmed an impossible layout"),
+        )
+        with pytest.raises(metal.InstallError, match="hibernation layout"):
             metal.install(device="/dev/vda", hostname="metal-test", user="aaron")
