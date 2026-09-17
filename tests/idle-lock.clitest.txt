@@ -106,6 +106,18 @@ $ XDG_RUNTIME_DIR="$CLITMP/runtime" PATH="$CLITMP/bin:$PATH" $lock | sed "s#$CLI
 -i IMAGE
 $ XDG_RUNTIME_DIR="$CLITMP/runtime" PATH="$CLITMP/bin:$PATH" $lock --no-fork | sed "s#$CLITMP/runtime/i3lock-screen\.[^ ]*#IMAGE#"
 -n -i IMAGE
+$
+
+a busy keyboard grab is retried instead of forfeiting the whole idle period,
+and an exhausted retry window reports the session left unlocked:
+
+$ printf '#!/bin/sh\nattempt=$(($(cat "$LOCK_ATTEMPTS") + 1)); printf "%%s" "$attempt" > "$LOCK_ATTEMPTS"\n[ "$attempt" -ge "$LOCK_SUCCEEDS_AT" ] || { echo "i3lock: Cannot grab pointer/keyboard" >&2; exit 1; }\nprintf "%%s\\n" "$*"\n' > "$CLITMP/bin/i3lock"
+$ printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$LOCK_LOGGED"\n' > "$CLITMP/bin/logger"; chmod +x "$CLITMP/bin/i3lock" "$CLITMP/bin/logger"
+$ printf 0 > "$CLITMP/attempts"; LOCK_ATTEMPTS="$CLITMP/attempts" LOCK_SUCCEEDS_AT=3 LOCK_RETRY_DELAY=0 XDG_RUNTIME_DIR="$CLITMP/runtime" PATH="$CLITMP/bin:$PATH" $lock > /dev/null 2>&1; echo "rc=$? attempts=$(cat "$CLITMP/attempts")"
+rc=0 attempts=3
+$ printf 0 > "$CLITMP/attempts"; : > "$CLITMP/logged"; LOCK_ATTEMPTS="$CLITMP/attempts" LOCK_LOGGED="$CLITMP/logged" LOCK_SUCCEEDS_AT=99 LOCK_RETRIES=2 LOCK_RETRY_DELAY=0 XDG_RUNTIME_DIR="$CLITMP/runtime" PATH="$CLITMP/bin:$PATH" $lock > /dev/null 2>&1; echo "rc=$? attempts=$(cat "$CLITMP/attempts")"; cat "$CLITMP/logged"
+rc=1 attempts=2
+-t lock i3lock never got the keyboard grab; session left unlocked
 $ find "$CLITMP/runtime" -type f ! -name dotfiles-idle-lock.lock -print
 $
 

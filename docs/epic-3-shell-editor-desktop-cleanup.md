@@ -193,6 +193,20 @@ pixelated-screen helper. The old xautolock declaration, inline shell pipeline,
 hardcoded home paths, fixed screenshot filename, and commented bespoke DPMS
 implementation are retired.
 
+Follow-up (2026-09-16): `tools/lock` fired `i3lock` exactly once and accepted
+its failure silently. `i3lock` refuses to start whenever another X client holds
+the keyboard grab — an open rofi, an active i3 binding mode, a still-running
+`i3lock` — so one conflict forfeited the whole idle period: the soft worker had
+already spent its 5-minute timer and moved on to DPMS power-off, leaving the
+panel dark and the session unauthenticated until the 90-minute hard worker
+hibernated it. Observed live on 2026-09-15 18:42 (`sleep.target` →
+`i3lock: Cannot grab pointer/keyboard` → `locker.service: Failed`), which
+suspended the laptop unlocked. `lock` now retries the grab (12 attempts, 10s
+apart, dropping our own i3 binding mode between tries) and, if the window is
+exhausted, says so through `logger` — idle-path stderr goes to the session tty
+and never reaches the journal. Both callers route through the same helper, so
+the logind/`locker.service` path is fixed by the same change.
+
 **Acceptance criteria:**
 
 - Given initial i3 startup or an in-place restart, exactly one launcher supervises the documented soft and hard `xidlehook` workers
@@ -200,9 +214,10 @@ implementation are retired.
 - Given 3/5/15-minute X and soft-worker policy, blanking, authentication lock, and explicit DPMS power-off each occur at their boundary
 - Given any fullscreen X window, the soft worker is inhibited while the independent 90-minute hard worker remains eligible
 - Given logind starts `lock.target`, tracked `locker.service` locks through the same helper and transitions to `unlock.target` after authentication
+- Given another X client holding the keyboard grab when the lock fires, `lock` retries until the grab is free instead of forfeiting the idle period, and logs to the journal when the retry window is exhausted
 - Given battery fixtures and command stubs, 30/90-minute hibernation selection is deterministic and no fixture can reach real `systemctl hibernate`
 
-**Evidence artifact:** `tests/idle-lock.clitest.txt` (36/36); clean shellcheck,
+**Evidence artifact:** `tests/idle-lock.clitest.txt` (40/40); clean shellcheck,
 shfmt, syntax, and systemd-unit checks; accelerated live blank/lock/DPMS tests;
 singleton launcher/two-worker i3 probes; live `lock.target`/`unlock.target` round
 trip. The first live hibernate attempt exposed insufficient image headroom and
@@ -210,6 +225,10 @@ returned `ENOSPC`. Regression #233 moved routine paging to a high-priority
 encrypted-root swapfile, emptied the resume partition, and reached
 `CanHibernate=yes`. The real 90-minute idle run then hibernated and resumed
 correctly on the live laptop.
+The 2026-09-16 grab-retry follow-up adds two stubbed grab-conflict cases (red
+against the old single-shot helper, green after) plus a live nested-`Xephyr`
+run with a real `XGrabKeyboard` holder: old helper `rc=1` immediately, new
+helper locked after 11s once the holder released.
 
 ---
 

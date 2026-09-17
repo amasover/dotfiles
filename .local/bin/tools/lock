@@ -21,4 +21,19 @@ trap 'rm -rf -- "$image_dir"' EXIT
 
 scrot "$image"
 magick "$image" -scale 10% -scale 1000% "$image"
-i3lock "${i3lock_args[@]}" -i "$image"
+# i3lock exits non-zero when another X client already holds the keyboard grab:
+# an open rofi, an active i3 binding mode, or a still-running i3lock. Firing it
+# once forfeited the entire idle period, leaving the session blanked by X but
+# unauthenticated until the 90-minute hard worker hibernated it.
+# ponytail: fixed retry window; make it idle-aware if it ever locks a session
+# whose user already came back.
+for _ in $(seq "${LOCK_RETRIES:-12}"); do
+    i3lock "${i3lock_args[@]}" -i "$image" && exit 0
+    # Drop our own most likely grab holder before sleeping.
+    i3-msg -q mode default 2>/dev/null || true
+    sleep "${LOCK_RETRY_DELAY:-10}"
+done
+
+# i3's stderr goes to the session tty, so an unlocked screen is otherwise silent.
+logger -t lock "i3lock never got the keyboard grab; session left unlocked"
+exit 1
