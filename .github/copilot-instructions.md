@@ -200,6 +200,22 @@ the source of truth for status.
 
 ---
 
+## Agent skills
+
+### Issue tracker
+
+GitHub issues on `amasover/dotfiles` via the `gh` CLI, inside the Hard rule 8 tracking model: the board owns status, the epic `.md` owns spec. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, label string equal to role name; only `wontfix` exists so far. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` is the primary glossary, `docs/CONTEXT.md` a vm-harness sub-glossary, decisions in `docs/adr/` and the existing `docs/decision-*.md`. See `docs/agents/domain.md`.
+
+---
+
 ## Default investigation order
 
 Start every session by reading [docs/STATUS.md](../docs/STATUS.md) — it names the trunk branch, the tracking board, and what work is in flight, so you can orient without re-reading `prd.md` and every epic. Read only the relevant epic's **Stories** section, not the whole epic.
