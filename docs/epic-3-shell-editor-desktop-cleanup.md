@@ -783,8 +783,8 @@ round retains its SDK session instead of re-reading work.
 Issue: [#195](https://github.com/amasover/dotfiles/issues/195)
 
 Context: `omp-mode` selects provider-paired YAML overlays before OMP starts:
-Claude uses Fable 5.1 `high`, Opus 5 `high` reviews, Opus 5 `medium` tasks, and
-Haiku `low` workers; GitHub Copilot uses Sol `max`, Sol `high` reviews, Luna
+Claude uses Fable 5.1 `high`, Opus 5.5 `high` reviews, Opus 5.5 `medium` tasks,
+and Haiku `low` workers; GitHub Copilot uses Sol `max`, Sol `high` reviews, Luna
 `max` tasks, and Luna `xhigh` workers; OpenAI uses Astra `xhigh`, Sol `high`
 reviews, Luna `max` tasks, and Luna `high` workers.
 The `openrouter` mode runs Gemini 3.8 Flash `high` for primary work, with GLM
@@ -795,8 +795,9 @@ leads the board at 74% for $2.36 per task against GLM 5.3 `max` at 69% for
 $3.99; Astra peaks at `xhigh`, not `max`; Luna passes 2% of tasks at `low`
 against 44% at `high`; and Sonnet 5 `high` reviews at 48% where Opus 5 `high`
 reaches 73% for less money. Claude keeps Fable as primary by preference —
-DeepSWE measured Fable 5, not 5.1. Explicit model IDs avoid floating
-`latest` aliases; prices remain provider-controlled, not a spending cap.
+DeepSWE measured Fable 5, not 5.1, and Opus 5, not the 5.5 the mode now runs.
+Explicit model IDs avoid floating `latest` aliases; prices remain
+provider-controlled, not a spending cap.
 All modes set `modelRoles.slow` and route `reviewer` through `@slow`, and all
 four now pin `modelRoles.task` and route `task` through `@task`. Without that
 pin every mode inherited the global `anthropic/claude-sonnet-5` worker, which
@@ -826,7 +827,7 @@ an independent SDK session every round ([Meridian #820](https://github.com/rynfa
   parent's active model, or the global worker default
 - Given `omp-mode claude`, `copilot`, or `openai`, then a generic `task` worker
   resolves to that mode's own provider and never to `anthropic/claude-sonnet-5`
-- Given `omp-mode claude`, then `reviewer` resolves to Opus 5 at `high` rather
+- Given `omp-mode claude`, then `reviewer` resolves to Opus 5.5 at `high` rather
   than Sonnet 5
 - Given `omp-mode openrouter`, then Gemini 3.8 Flash at `high` is primary, GLM
   5.3 Flash at `max` handles generic `task` workers, DeepSeek V4 Pro 0813 at

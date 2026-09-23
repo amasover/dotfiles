@@ -11,8 +11,8 @@ case "${1:-}" in
         cat <<'EOF'
 Usage: omp-mode <claude|copilot|openai|openrouter> [omp arguments...]
 
-  claude      Fable 5.1 high primary; Opus 5 high reviews;
-              Opus 5 medium tasks; Haiku low mechanical subagents
+  claude      Fable 5.1 high primary; Opus 5.5 high reviews;
+              Opus 5.5 medium tasks; Haiku low mechanical subagents
   copilot     Sol max primary; Sol high reviews;
               Luna max tasks; Luna xhigh mechanical subagents
   openai      Astra xhigh primary; Sol high reviews;
