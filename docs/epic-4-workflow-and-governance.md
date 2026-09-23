@@ -374,6 +374,44 @@ comparison, formatting-only commits, and refreshed validation runbook.
 
 ---
 
+### Story 4.13: Personal agent skills come down from the LAN Forgejo
+
+As the repo owner,
+I want bootstrap and `update` to clone or pull my own agent-skills repo and link it
+into oh-my-pi,
+So that a skill or extension I write once (the first is `yolo`) is on every machine
+without cloning and linking it by hand.
+
+Issue: none filed yet · Origin: the `agent-skills` repo was created on 2026-09-22 on
+the self-hosted Forgejo and linked by hand on the Windows workstation.
+
+Mechanism: `agent-skills` is an OMP plugin package: `skills/<name>/SKILL.md` plus
+`package.json#omp.extensions`. One machine needs a clone and one
+`omp plugin link <clone>`; after that a `git pull` is the whole update, because the
+link points at the working tree. Claude Code is out of scope until a skill there needs
+it.
+
+The Forgejo is reachable only on the LAN today. This repo is public, so the host name,
+port and repo path stay out of tracked files: they come from a machine-local or
+yadm-encrypted setting, and a machine without that setting skips the step the same way
+an off-LAN machine does.
+
+**Acceptance criteria:**
+
+- Given the host is reachable and the clone is authorized, when bootstrap or `update` runs, then the repo is cloned (or fast-forward pulled) into a fixed path and linked with `omp plugin link`; a second run changes nothing
+- Given the host is unreachable, the key is refused, or the setting is absent, then the step prints one warning saying the skills were skipped and to re-run `update` on the LAN, and bootstrap and `update` carry on with exit status unaffected
+- Given a probe of the host, then it is bounded (connect timeout, `BatchMode=yes`) so an off-LAN run never hangs on a prompt or a dead route
+- Given a clone with local changes or a diverged branch, then the step refuses to pull and says so instead of stashing, resetting or merging
+- Given `bootstrap --check`, then the step reports clone, link and reachability state without mutating
+- Given the new `==>` say-line, then `vm-harness-display`'s `BOOTSTRAP_STEPS` maps it and the ordered post-reconcile test covers it
+- Given the Forgejo is later opened beyond the LAN, then the same step works off-LAN with only the setting changed
+
+**Evidence artifact:** a clitest transcript covering reachable, unreachable and
+dirty-clone cases against a local bare repo, plus an `update` run on the LAN and one
+off it.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - The GitHub board is the status source of truth, with issues linked from epic `.md` files.
