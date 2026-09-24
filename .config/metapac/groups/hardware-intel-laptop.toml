@@ -9,5 +9,9 @@ packages = [
   "lib32-vulkan-intel",
   "refind",
   "refind-theme-nord",
+  # oneVPL GPU runtime (Tiger Lake+). Without it the libvpl dispatcher falls back
+  # to legacy Intel Media SDK (API 1.35), which fails on Raptor Lake and breaks
+  # QuickSync encoding in OBS (MFX_ERR_DEVICE_FAILED).
+  "vpl-gpu-rt",
   "vulkan-intel",
 ]
