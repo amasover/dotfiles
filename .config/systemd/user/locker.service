@@ -1,12 +1,20 @@
 [Unit]
 Description=Lock i3 session on logind lock events
-After=lock.target
+# Hold lock.target, and the sleep.target that requires it, until the screen is
+# locked. systemd-lock-handler keeps its sleep delay inhibitor until then.
+Before=lock.target
 PartOf=lock.target
+# End the lock state on any exit. A failed locker that left lock.target active
+# made every later lock and sleep a no-op, so nothing locked again until logout.
 OnSuccess=unlock.target
+OnFailure=unlock.target
 
 [Service]
-Type=simple
-ExecStart=%h/.local/bin/tools/lock --no-fork
+# lock exits only after i3lock holds the grab and its window is mapped.
+Type=forking
+ExecStart=%h/.local/bin/tools/lock
+# Outlast lock's own grab retries (12 x 10s).
+TimeoutStartSec=150
 
 [Install]
 WantedBy=lock.target

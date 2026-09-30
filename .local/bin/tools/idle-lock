@@ -27,7 +27,7 @@ trap stop_workers EXIT
 xidlehook \
     --detect-sleep \
     --not-when-fullscreen \
-    --timer 300 "$tools/lock" "" \
+    --timer 300 "loginctl lock-session" "" \
     --timer 600 "xset dpms force off" "" \
     --timer 900 "$tools/hibernate on-battery" "" 9>&- &
 pids+=("$!")

@@ -27,7 +27,7 @@ soft
 --not-when-fullscreen
 --timer
 300
-/fixture/.local/bin/tools/lock
+loginctl lock-session
 
 --timer
 600
@@ -99,13 +99,10 @@ usage: hibernate on-battery|on-laptop
 rc=2
 $
 
-lock uses a private runtime image, passes no empty argv, and supports the
-foreground mode required by locker.service:
+lock uses a private runtime image and passes no empty argv:
 
 $ XDG_RUNTIME_DIR="$CLITMP/runtime" PATH="$CLITMP/bin:$PATH" $lock | sed "s#$CLITMP/runtime/i3lock-screen\.[^ ]*#IMAGE#"
 -i IMAGE
-$ XDG_RUNTIME_DIR="$CLITMP/runtime" PATH="$CLITMP/bin:$PATH" $lock --no-fork | sed "s#$CLITMP/runtime/i3lock-screen\.[^ ]*#IMAGE#"
--n -i IMAGE
 $
 
 a busy keyboard grab is retried instead of forfeiting the whole idle period,
@@ -133,8 +130,6 @@ $ grep -F 'exec_always --no-startup-id ~/.local/bin/tools/idle-lock' .config/i3/
 exec_always --no-startup-id ~/.local/bin/tools/idle-lock
 $ grep -c 'exec_always.*xidlehook\|exec .*xidlehook' .config/i3/config
 0
-$ grep -F 'ExecStart=%h/.local/bin/tools/lock --no-fork' .config/systemd/user/locker.service
-ExecStart=%h/.local/bin/tools/lock --no-fork
 $ readlink .config/systemd/user/lock.target.wants/locker.service
 ../locker.service
 $ grep -c '"xautolock"' .config/metapac/groups/desktop.toml

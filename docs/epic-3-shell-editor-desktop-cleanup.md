@@ -207,13 +207,31 @@ exhausted, says so through `logger` — idle-path stderr goes to the session tty
 and never reaches the journal. Both callers route through the same helper, so
 the logind/`locker.service` path is fixed by the same change.
 
+Follow-up (2026-09-30): the retry did not fix the sleep path; the 18:42 failure
+was our own second locker. The i3 and rofi hibernate/suspend entries ran
+`lock && systemctl …`, and the idle chain locked directly, so `sleep.target`
+then started `locker.service` against an `i3lock` that already held the grab.
+The failed locker never reached `OnSuccess=unlock.target`, so `lock.target` and
+`sleep.target` stayed active, and restarting an already-active `sleep.target`
+does not restart the failed locker. Every later sleep in that boot ran no
+locker: from 2026-09-15 to 2026-09-30, systemd-lock-handler started
+`sleep.target` for each hibernate and suspend, with no `locker.service` start.
+The unit was also `Type=simple` and ordered `After=lock.target`, so sleep never
+waited for the lock. Now every lock has one owner. The i3 binding, rofi, and
+the 5-minute idle timer run `loginctl lock-session`; suspend and hibernate
+callers run plain `systemctl`, and `sleep.target` locks first. `locker.service`
+is `Type=forking` and `Before=lock.target`, so `sleep.target` and the handler's
+delay inhibitor wait until `i3lock` holds the grab. `OnFailure=unlock.target`
+joins `OnSuccess=`, so no locker exit can leave the targets latched.
+
 **Acceptance criteria:**
 
 - Given initial i3 startup or an in-place restart, exactly one launcher supervises the documented soft and hard `xidlehook` workers
 - Given i3 reloads repeatedly, the runtime lock prevents duplicate worker sets and cannot leak into timer descendants
 - Given 3/5/15-minute X and soft-worker policy, blanking, authentication lock, and explicit DPMS power-off each occur at their boundary
 - Given any fullscreen X window, the soft worker is inhibited while the independent 90-minute hard worker remains eligible
-- Given logind starts `lock.target`, tracked `locker.service` locks through the same helper and transitions to `unlock.target` after authentication
+- Given logind starts `lock.target` or `sleep.target`, tracked `locker.service` holds that target until `i3lock` has the grab, and any locker exit returns to `unlock.target` so the next lock or sleep locks again
+- Given a manual, menu, or idle lock followed by sleep, exactly one `i3lock` runs, because every caller goes through `loginctl lock-session` or `sleep.target`
 - Given another X client holding the keyboard grab when the lock fires, `lock` retries until the grab is free instead of forfeiting the idle period, and logs to the journal when the retry window is exhausted
 - Given battery fixtures and command stubs, 30/90-minute hibernation selection is deterministic and no fixture can reach real `systemctl hibernate`
 
@@ -229,6 +247,13 @@ The 2026-09-16 grab-retry follow-up adds two stubbed grab-conflict cases (red
 against the old single-shot helper, green after) plus a live nested-`Xephyr`
 run with a real `XGrabKeyboard` holder: old helper `rc=1` immediately, new
 helper locked after 11s once the holder released.
+The 2026-09-30 single-owner follow-up reproduced the latch in nested `Xephyr`
+with test copies of the targets. A holder `i3lock` failed the locker, the targets
+stayed active, and the next sleep started nothing. The new unit made
+`sleep.target` wait for the lock (2.1s with a 2s screenshot stub). A second
+sleep or lock while locked started no second `i3lock`. An `i3lock` exit returned
+to `unlock.target`, and a failed grab reset the targets so the next sleep
+locked. `tests/idle-lock.clitest.txt` passes 38/38.
 
 ---
 
