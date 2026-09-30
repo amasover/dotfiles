@@ -21,16 +21,16 @@ echo "This is your selection: $selection"
 
 case "${selection}" in
     "         lock")
-        lock
+        loginctl lock-session
         ;;
     "       logout")
         i3-msg exit
         ;;
     "        sleep")
-        lock && systemctl suspend
+        systemctl suspend
         ;;
     "   hibernate")
-        lock && systemctl hibernate
+        systemctl hibernate
         ;;
     "      reboot")
         systemctl reboot

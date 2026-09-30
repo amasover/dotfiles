@@ -79,9 +79,10 @@ systemd-analyze verify systemd-hibernate.service
 ```
 
 The installed idle timers call `hibernate on-battery` or `hibernate on-laptop`,
-which call `systemctl hibernate`. The i3 Alt+Shift+E, H shortcut runs the locker
-and `systemctl hibernate`. Both reach this one system service; neither needs
-its own wrapper or changed timing. Existing unrelated drop-ins are preserved.
+which call `systemctl hibernate`. The i3 Alt+Shift+E, H shortcut and the rofi
+power menu call it directly; the user `sleep.target` locks the screen first.
+All reach this one system service; none needs its own wrapper or changed timing.
+Existing unrelated drop-ins are preserved.
 
 Only `systemd-hibernate.service` is covered. Direct sysfs writes, hybrid sleep,
 and suspend-then-hibernate are separate paths and do not use this drop-in.
