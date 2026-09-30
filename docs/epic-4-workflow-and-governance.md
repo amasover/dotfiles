@@ -412,6 +412,41 @@ off it.
 
 ---
 
+### Story 4.14: pstack joins the standard Claude Code plugins
+
+As the repo owner,
+I want pstack declared next to the other standard Claude Code plugins,
+So that `poteto-mode`, its playbooks and the principle skills are on every machine
+without per-machine `/plugin` ceremony.
+
+Issue: [#265](https://github.com/amasover/dotfiles/issues/265) · Origin: installed by
+hand on the workstation on 2026-09-30.
+
+Source: pstack is Lauren Tan's skill stack, published only as a Cursor plugin
+(`cursor/plugins/pstack`), which Claude Code cannot install. The declared source is the
+`michael-denyer/pstack-claude` port: it ships a `.claude-plugin/marketplace.json`
+(marketplace `pstack-claude`, plugin `pstack`), tracks upstream, and is the most-used
+port. Executable surface reviewed before adoption: one `SessionStart` hook that prints a
+bundled markdown file (a `session hook: off` line in `~/.claude/pstack-models.md` turns
+it off), skill scripts that run only when a skill invokes them, and no MCP or LSP
+servers.
+
+Mechanism: Story 4.11's `setup/claude-plugins` declaration gains the marketplace and the
+`pstack@pstack-claude` entry; nothing else changes. oh-my-pi does not read Claude Code's
+plugin registry by default, so an omp install (`omp plugin install
+pstack@pstack-claude`) stays a manual step until Story 3.29 or 4.13 gives omp plugins a
+tracked mechanism.
+
+**Acceptance criteria:**
+
+- Given a settings.json without the declaration, when `setup/claude-plugins apply` runs, then the `pstack-claude` marketplace and `pstack@pstack-claude` are declared alongside the existing entries, and the clitest covers both ids
+- Given a machine with the declaration, when `claude` launches, then `claude plugin details pstack@pstack-claude` resolves the plugin (54 skills + SessionStart hook)
+
+**Evidence artifact:** the clitest run plus `claude plugin details` output on the
+workstation.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - The GitHub board is the status source of truth, with issues linked from epic `.md` files.
