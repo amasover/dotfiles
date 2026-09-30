@@ -412,15 +412,15 @@ off it.
 
 ---
 
-### Story 4.14: pstack joins the standard Claude Code plugins
+### Story 4.14: pstack joins the standard Claude Code plugins ✅
 
 As the repo owner,
 I want pstack declared next to the other standard Claude Code plugins,
 So that `poteto-mode`, its playbooks and the principle skills are on every machine
 without per-machine `/plugin` ceremony.
 
-Issue: [#265](https://github.com/amasover/dotfiles/issues/265) · Origin: installed by
-hand on the workstation on 2026-09-30.
+Issue: [#265](https://github.com/amasover/dotfiles/issues/265) (closed, PR #266) · Origin:
+installed by hand on the workstation on 2026-09-30.
 
 Source: pstack is Lauren Tan's skill stack, published only as a Cursor plugin
 (`cursor/plugins/pstack`), which Claude Code cannot install. The declared source is the
