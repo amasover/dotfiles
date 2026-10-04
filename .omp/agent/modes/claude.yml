@@ -1,15 +1,18 @@
-# Claude-primary mode: Fable 5.1 drives at high; Opus 5.5 reviews and runs
-# general tasks; Haiku handles read-only lookup. DeepSWE v1.1 measured Fable 5
-# rather than 5.1 — Fable 5 high scores 69% at $9.18/task — and Opus 5 rather
-# than 5.5. Reviews and generic tasks move off Sonnet 5, the weakest Anthropic
-# config measured (48% at high, 54% at max for $26.40), onto Opus: Opus 5 high
-# reviews at 73% for $6.08, medium works tasks at 69% for $3.29. Pinning `task`
-# also keeps workers off the global selection rather than inheriting it.
+# Claude-primary mode, on the Claude plan through Meridian (models.yml): Opus 5.5
+# at xhigh drives (Aaron's choice, 2026-10-03). Subagents run cheaper: workers
+# and reviews on Opus 5.5 at medium, read-only lookup on Haiku 4.5 at low.
+# DeepSWE v1.1 measured Opus 5 rather than 5.5: high reviews at 73% for $6.08 a
+# task, medium at 69% for $3.29, so medium halves a review for four points.
+# Sonnet 5, the only Sonnet measured, was the weakest Anthropic config (48% at
+# high), so reviews stay on Opus; Sonnet 5.5 is half Opus 5.5's price a token if
+# that is still too much. Pinning `task` keeps workers off the primary's xhigh.
+# On the Windows workstation, ~/.omp/agent/config.yml carries the same roles, so a
+# bare `omp` there (Orca's own agent launch) runs this mode too.
 modelRoles:
-  default: anthropic/claude-fable-5-1:high
+  default: anthropic/claude-opus-5-5:xhigh
   task: anthropic/claude-opus-5-5:medium
   smol: anthropic/claude-haiku-4-5:low
-  slow: anthropic/claude-opus-5-5:high
+  slow: anthropic/claude-opus-5-5:medium
 task:
   agentModelOverrides:
     task: "@task"
