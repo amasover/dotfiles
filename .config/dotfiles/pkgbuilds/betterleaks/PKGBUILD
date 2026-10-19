@@ -13,7 +13,7 @@
 # upstream releases; `custom-pkgs bump` rewrites pkgver + checksums and
 # verifies the fresh checksum against the release's checksums.txt.
 pkgname=betterleaks
-pkgver=1.8.1
+pkgver=1.9.0
 pkgrel=1
 pkgdesc="Find leaked secrets everywhere (gitleaks' successor, official binary)"
 arch=('x86_64')
@@ -21,7 +21,7 @@ url="https://github.com/betterleaks/betterleaks"
 license=('MIT')
 depends=('glibc')
 source=("$pkgname-$pkgver-linux-x64.tar.gz::$url/releases/download/v$pkgver/${pkgname}_${pkgver}_linux_x64.tar.gz")
-sha256sums=('efa407244e1ea8e35f582b8a42becdeac08bdead04f68eb752adda722d583c2a')
+sha256sums=('f8b185a39ffcece2a1ca82bf3a4e7435cd81963ffd16b7a9128daf75f35f6de7')
 
 package() {
     # the release tarball is flat: betterleaks, LICENSE, README.md in $srcdir

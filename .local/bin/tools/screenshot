@@ -95,7 +95,7 @@ done
 function main {
     screenshot_directory="$HOME/screenshots/$(date +"%Y")/"
     mkdir -p "$screenshot_directory"
-    scrot -d 2 "${args[@]}" "${screenshot_directory}%Y-%m-%d_%H_%M_%S_\$wx\$h.png"
+    scrot -d 2 "${args[@]}" -e 'xclip -selection clipboard -target image/png -in "$f"' "${screenshot_directory}%Y-%m-%d_%H_%M_%S_\$wx\$h.png"
 
     if [ "$quiet" = false ]; then
         notify-send "Screenshot Taken" "Saved to ${screenshot_directory}"
