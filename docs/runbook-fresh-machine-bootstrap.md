@@ -130,9 +130,10 @@ What differs from the fixed recipe:
 - The initramfs omits `autodetect`
   (`/etc/mkinitcpio.conf.d/90-dotfiles-portable.conf`), so it carries the storage,
   USB, and keyboard drivers of machines it has never seen.
-- The resume volume is a fixed 64 GiB ceiling, not this machine's RAM, so the
-  disk must hold at least 203 GiB. A machine with more than 64 GiB of RAM still
-  boots the drive; `hibernate-storage` reports hibernation unavailable there.
+- The resume volume is a fixed 64 GiB ceiling, not this machine's RAM. The
+  routine swapfile stays at 96 GiB (1.5x that volume), so the disk must hold at
+  least 203 GiB. A machine with more than 64 GiB of RAM still boots the drive;
+  `hibernate-storage` reports hibernation unavailable there.
 - The drive's rEFInd is unsigned (decision row 22 in
   [decision-portable-install.md](./decision-portable-install.md)): disable Secure
   Boot on a machine that enforces it.
@@ -268,8 +269,9 @@ space needed to save RAM.
 
 The Story 2.29 metal recipe creates one LUKS container holding an ext4 root LV and one
 resume LV exactly equal to rounded physical RAM. It disables zram and refuses a disk
-that cannot also hold the future 1.5x-RAM routine swapfile plus 40 GiB workstation
-headroom. `genfstab` records mounted filesystems only, so the dedicated resume LV is
+that cannot also hold the future routine swapfile, sized at 1.5x the resume
+volume's rounded-up GiB size, plus 40 GiB workstation headroom. `genfstab` records
+mounted filesystems only, so the dedicated resume LV is
 never in it; the installer's `metal-finalize` step persists it in the target fstab at
 priority -1 and rebuilds the initramfs in the target chroot. The initramfs is the
 systemd chain (Story 2.59), which needs no `resume` hook: systemd's
@@ -289,9 +291,10 @@ After first boot and yadm checkout:
    pkexec /usr/bin/bash ~/.local/bin/setup/hibernate-storage apply
    ```
    The module selects the only active encrypted swap partition when the kernel
-   has no resume target yet. It creates `/swapfile` inside encrypted root at 1.5
-   times rounded RAM, activates it at priority 100, drains the lower-priority
-   resume partition, and atomically adds fstab policy after backing up the old
+   has no resume target yet. It creates `/swapfile` inside encrypted root at
+   1.5 times the resume volume's rounded-up whole-GiB size, activates it at
+   priority 100, drains the lower-priority resume partition, and atomically adds
+   fstab policy after backing up the old
    file under `/var/backups/dotfiles/hibernate-storage/`. It refuses ambiguous,
    unencrypted, undersized, non-ext4, or low-disk-space layouts before mutation.
 
