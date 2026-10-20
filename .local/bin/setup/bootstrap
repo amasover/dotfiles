@@ -649,6 +649,18 @@ die_still_held() { # $1 = held package that stepping could not satisfy
     Broken upstream and you already know?  aur-quarantine broken $1 --reason '...'   (2.38: runs then skip it)"
 }
 
+# An unreachable AUR makes the gate fail closed with an "rpc" hold. That is an
+# outage, not a verdict: archlinux.org took tens of seconds per answer on
+# 2026-10-20, and one timeout at the gate killed the drive's bootstrap. The sync
+# loops below wait and retry a few times before dying with it.
+rpc_retries=0
+retry_rpc_hold() { # $1 = hold code -> 0 after waiting, when another try is due
+    [[ $1 == rpc ]] && ((rpc_retries < 3)) || return 1
+    rpc_retries=$((rpc_retries + 1))
+    echo "  AUR RPC unreachable at the quarantine gate — retry $rpc_retries/3 in 30s"
+    sleep 30
+}
+
 # --- 3c. system sync (Story 2.34) ----------------------------------------------
 # Sync DBs age between runs — a resumed VM days later, or a machine restored
 # from an old snapshot — and Arch mirrors purge superseded package files, so a
@@ -687,6 +699,7 @@ elif [[ $UNATTENDED -eq 1 ]]; then
         fi
         [[ -s "$held_install_file" ]] || die "system sync failed and no quarantine hold was recorded — read the pacman output above"
         IFS=$'\t' read -r held_pkg held_code <"$held_install_file"
+        retry_rpc_hold "$held_code" && continue
         [[ -z "${syu_deferred[$held_pkg]+x}" ]] || break
         inst=0
         pacman -Q "$held_pkg" >/dev/null 2>&1 && inst=1
@@ -944,8 +957,10 @@ else
         # (aur-quarantine rpc_info); the cache lives for this pass only.
         AUR_RPC_CACHE=$(mktemp)
         export AUR_RPC_CACHE
-        verdicts=$("$aq" preflight "${candidates[@]}") \
-            || die "pre-flight could not verify (AUR RPC unreachable?) — transient: re-run bootstrap"
+        until verdicts=$("$aq" preflight "${candidates[@]}"); do
+            retry_rpc_hold rpc \
+                || die "pre-flight could not verify (AUR RPC unreachable?) — transient: re-run bootstrap"
+        done
         age_holds=()
         identity=""
         missing=""
@@ -1148,6 +1163,7 @@ elif [[ $UNATTENDED -eq 1 ]]; then
         }
         if [[ -s "$held_install_file" ]]; then
             IFS=$'\t' read -r held_pkg held_code <"$held_install_file"
+            retry_rpc_hold "$held_code" && continue
             [[ "$held_pkg" != "$last_held" ]] || die_still_held "$held_pkg"
             [[ "$held_code" == "age" ]] || die_hold "$held_pkg" "$held_code"
             step_age_hold "$held_pkg"
