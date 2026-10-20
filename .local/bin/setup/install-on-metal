@@ -62,12 +62,16 @@ UNMOUNT_ATTEMPTS = 20
 # Official repositories only, whatever the installing machine's pacman.conf
 # adds: the target keyring starts empty (-K), so a third-party repository's
 # signatures could not verify anyway, and the host's file stays the host's.
+# HookDir is never root-relative, so without it this machine's own
+# /etc/pacman.d/hooks run inside the target: this workstation's quarantine
+# gate aborted pacstrap there, its Exec missing from the new root.
 PACSTRAP_CONF = """\
 [options]
 Architecture = auto
 SigLevel = Required DatabaseOptional
 LocalFileSigLevel = Optional
 ParallelDownloads = 5
+HookDir = {hookdir}
 
 [core]
 Include = /etc/pacman.d/mirrorlist
@@ -991,10 +995,13 @@ def install(
         # Before pacstrap, so the package hook's first image is already the
         # recipe's chain rather than the packaged default rebuilt afterwards.
         install_dropins(root, dropins)
+        # The target's own administrator hook directory: empty at this point.
+        hookdir = root / "etc/pacman.d/hooks"
+        hookdir.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             "w", dir="/run", prefix="metal-pacman-", suffix=".conf"
         ) as conf:
-            conf.write(PACSTRAP_CONF)
+            conf.write(PACSTRAP_CONF.format(hookdir=f"{hookdir}/"))
             conf.flush()
             run(
                 ["pacstrap", "-C", conf.name, "-K", str(root), *PACKAGES],

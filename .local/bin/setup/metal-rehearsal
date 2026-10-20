@@ -664,6 +664,17 @@ class Rehearsal:
             "already exists",
             "host-volume-group-refused",
         )
+        # A real workstation carries its own pacman hooks (this one's quarantine
+        # gate aborts any transaction it cannot vet). They belong to the host:
+        # pacstrap must not run them inside the target.
+        self.guest(
+            "mkdir -p /etc/pacman.d/hooks && printf '%s\\n' '[Trigger]' "
+            "'Type = Package' 'Operation = Install' 'Target = *' '' '[Action]' "
+            "'Description = host-only gate' 'When = PreTransaction' "
+            "'Exec = /usr/bin/false' 'AbortOnFail' "
+            "> /etc/pacman.d/hooks/00-host-only-gate.hook",
+            "host-only-pacman-hook",
+        )
         # Service credential mounts come and go with unrelated units.
         mounts = (
             "findmnt -rn -o TARGET,SOURCE,FSTYPE | grep -v '^/run/credentials/' | sort"
