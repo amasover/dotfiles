@@ -159,8 +159,14 @@ def journal_gate(source, pattern, requirement):
 
 
 class Rehearsal:
-    def __init__(self, keep=False):
+    def __init__(self, keep=False, portable=False):
         self.keep = keep
+        # Portable mode (Story 2.57) installs over virtio, then boots the same
+        # disk as USB mass storage with firmware variables holding no boot
+        # entry: one run proves the fallback path and an initramfs carrying
+        # drivers for a controller it never saw at install.
+        self.portable = portable
+        self.disk_bus = "virtio"
         self.root = Path(__file__).resolve().parents[3]
         self.path = None
         self.stage = "host-preflight"
@@ -239,8 +245,11 @@ class Rehearsal:
         json.dump({"tool": "metal-rehearsal", "pid": os.getpid()}, self.lock)
         self.lock.flush()
         print(f"Artifacts: {self.path}", flush=True)
+        # A portable layout reserves the 64 GiB resume ceiling plus the routine
+        # swap and headroom that ceiling implies; qcow2 stays sparse either way.
+        size = "210G" if self.portable else "63G"
         self.command(
-            ["qemu-img", "create", "-f", "qcow2", str(self.path / "disk.qcow2"), "63G"]
+            ["qemu-img", "create", "-f", "qcow2", str(self.path / "disk.qcow2"), size]
         )
         shutil.copyfile(self.vars, self.path / "OVMF_VARS.fd")
         entries = self.command(
@@ -327,8 +336,7 @@ class Rehearsal:
             f"if=pflash,format=raw,readonly=on,file={self.code}",
             "-drive",
             f"if=pflash,format=raw,file={self.path / 'OVMF_VARS.fd'}",
-            "-drive",
-            f"if=virtio,format=qcow2,file={self.path / 'disk.qcow2'}",
+            *self.disk_args(),
             "-netdev",
             f"user,id=net0,hostfwd=tcp:127.0.0.1:{self.port}-:22",
             "-device",
@@ -370,6 +378,19 @@ class Rehearsal:
             )
         self.monitor.expect(rb"\(qemu\) ", timeout=30)
 
+    def disk_args(self):
+        image = f"format=qcow2,file={self.path / 'disk.qcow2'}"
+        if self.disk_bus == "virtio":
+            return ["-drive", f"if=virtio,{image}"]
+        return [
+            "-device",
+            "qemu-xhci,id=xhci",
+            "-drive",
+            f"if=none,id=target,{image}",
+            "-device",
+            "usb-storage,bus=xhci.0,drive=target,removable=on",
+        ]
+
     def monitor_command(self, command):
         self.vm.stdin.write((command + "\n").encode())
         self.vm.stdin.flush()
@@ -391,7 +412,9 @@ class Rehearsal:
             "mkdir -p /run/dotfiles; "
             f"curl -f {shlex.quote(self.url)} -o /run/tree.tar.gz && "
             "tar -xzf /run/tree.tar.gz -C /run/dotfiles && "
-            "/run/dotfiles/.local/bin/setup/install-on-metal /dev/vda --hostname metal-test\n"
+            "/run/dotfiles/.local/bin/setup/install-on-metal /dev/vda --hostname metal-test"
+            + (" --portable" if self.portable else "")
+            + "\n"
         )
         prompts = (
             (rb"Type WIPE /dev/vda to continue: ", "WIPE /dev/vda"),
@@ -420,6 +443,12 @@ class Rehearsal:
         self.wait_vm()
         os.close(self.serial.fd)
         self.serial = None
+        if self.portable:
+            # Another machine: a different storage controller and firmware that
+            # has never seen this disk, so only the fallback path can boot it.
+            shutil.copyfile(self.vars, self.path / "OVMF_VARS.fd")
+            self.disk_bus = "usb"
+            print("  portable: fresh firmware variables, disk moved to USB", flush=True)
 
     def wait_vm(self):
         rc = self.vm.wait(timeout=self.remaining())
@@ -436,7 +465,10 @@ class Rehearsal:
         self.monitor_command(f"screendump {screenshot}")
         if not screenshot.is_file():
             raise RehearsalError("QEMU failed to save menu screendump")
-        self.pause(37)
+        # USB enumeration and a driver-complete initramfs read through firmware
+        # put the passphrase prompt later than on virtio; typed early, the keys
+        # would land in the rEFInd menu instead.
+        self.pause(67 if self.portable else 37)
         for character in self.luks_password:
             self.monitor_command(f"sendkey {character}")
             self.pause(0.08)
@@ -598,6 +630,18 @@ class Rehearsal:
             "! grep -qE '^hooks/(encrypt|resume|keymap|consolefont)$' /root/image.lst",
             "systemd-chain-image",
         )
+        if self.portable:
+            # Booting over USB already proved the USB drivers; nvme, which this
+            # guest never had, proves autodetect stayed out of the rebuilt image.
+            # rEFInd must live only on the fallback path refind-config manages.
+            self.guest(
+                "test -f /etc/mkinitcpio.conf.d/90-dotfiles-portable.conf; "
+                "grep -qE '/nvme\\.ko' /root/image.lst; "
+                "grep -qE '/usb-storage\\.ko' /root/image.lst; "
+                "test -f /boot/EFI/BOOT/themes/nord/theme.conf; "
+                "test ! -e /boot/EFI/refind",
+                "portable-image-and-layout",
+            )
 
     def reboot_proof(self):
         self.guest(
@@ -804,13 +848,18 @@ def main(argv=None):
         action="store_true",
         help="keep artifacts and throwaway credentials even on pass",
     )
+    run.add_argument(
+        "--portable",
+        action="store_true",
+        help="install --portable, then boot the disk over USB with fresh firmware",
+    )
     remove = commands.add_parser(
         "destroy", help="remove one retained, inactive rehearsal directory"
     )
     remove.add_argument("path", type=Path)
     args = parser.parse_args(argv)
     if args.command == "run":
-        return Rehearsal(args.keep).run()
+        return Rehearsal(args.keep, args.portable).run()
     try:
         destroy(args.path)
     except (RehearsalError, OSError, ValueError) as exc:

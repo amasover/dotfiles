@@ -1835,7 +1835,7 @@ with the harness changed only in its installer sentinel.
 
 ---
 
-### Story 2.57: Portable install shape
+### Story 2.57: Portable install shape ✅
 
 As the repo owner,
 I want `install-on-metal` to produce a persistent Arch system on removable media
@@ -1871,6 +1871,18 @@ controller with a freshly created OVMF vars file holding no boot entries;
 host-independent tests for the ceiling check, the HOOKS array, and `refind-config`'s
 portable discovery and same-disk binding; one transcript of the produced drive
 booting this workstation through its existing rEFInd menu.
+
+Delivered 2026-10-19. `metal-rehearsal run --portable` (448 s) installed over
+virtio, then booted the disk as `usb-storage` behind `qemu-xhci` from a fresh
+`OVMF_VARS` copy. Handoff, reboot, and a real hibernate/resume passed there, and
+the `portable-image-and-layout` check found `90-dotfiles-portable.conf`, `nvme` and
+`usb-storage` modules in the rebuilt image, the theme under `EFI/BOOT`, and no
+`EFI/refind`. The fixed `metal-rehearsal run` also passed on the same tree. How the
+story was built, recorded in decision rows 22 to 25: stock rEFInd stays; a second
+drop-in drops `autodetect`; the shape is recognised from where rEFInd lives, not
+passed as a flag; and hibernation above the ceiling is reported for any machine.
+The real drive's boot through this workstation's menu is recorded with Story
+2.58's live build, because that is how the drive gets built.
 
 ---
 

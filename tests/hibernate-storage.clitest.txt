@@ -51,6 +51,16 @@ $ HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $
 hibernate-storage: converged — routine 48 GiB, resume reserved
 $
 
+a machine with more memory than the resume swap (a portable drive's fixed
+ceiling, Story 2.57) stays converged for paging and reports hibernation
+unavailable instead of failing bootstrap:
+
+$ printf 'MemTotal:       75497472 kB\n' > "$R/proc/meminfo"; /usr/bin/awk '$5 == 100 {$3=113246208} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; truncate -s 108G "$R/swapfile"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check; echo "rc=$?"
+hibernate-storage: converged — routine 108 GiB, resume reserved
+hibernate-storage: hibernation unavailable — 72 GiB RAM exceeds the 33 GiB resume swap
+rc=0
+$
+
 a swap file resume target is repairable drift, not an unsafe state:
 
 $ reset_fixture; printf '253:4\n' > "$R/sys/power/resume"; printf '79427584\n' > "$R/sys/power/resume_offset"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"; cat "$TRACE"
@@ -82,9 +92,6 @@ hibernate-storage: root filesystem is not backed by encrypted storage
 rc=2
 $ reset_fixture; /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$5=100} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
 hibernate-storage: dedicated resume swap priority must stay below routine swap
-rc=2
-$ reset_fixture; /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$3=33554431} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
-hibernate-storage: dedicated resume swap is smaller than physical memory
 rc=2
 $ reset_fixture; HIBERNATE_STORAGE_AVAIL=53687091200 HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool apply 2>&1; echo "rc=$?"; cat "$R/sys/power/resume" "$R/sys/power/resume_offset"; cat "$TRACE"
 hibernate-storage: root needs 48 GiB for routine swap plus 10 GiB free
