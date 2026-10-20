@@ -162,6 +162,16 @@ inside it, and requires the firmware variables file to be byte-identical and the
 host's mounts and device mappings unchanged. Then it boots only the drive, over
 USB with fresh firmware, through the same stages.
 
+The SSK drive the first portable install went onto idles at about 40 °C by its own
+sensor (SCSI temperature log page `0x0D`). No power setting tried on this
+workstation lowered that while the drive stayed attached. Its UAS driver has no
+USB autosuspend. Stopping it when idle (`manage_runtime_start_stop`) saved
+2-3 °C at most. This workstation's Thunderbolt port runs it at 20 Gbps with the
+U1/U2 link power states off. Heat from heavy writes, such as a bootstrap, lingers
+for about half an hour. When the drive is plugged in but unused, power it off with
+`udisksctl power-off -b /dev/sdX` (no password from the desktop session), and
+replug it to use it again. Measured 2026-10-20.
+
 #### From a blank drive to a daily environment
 
 1. Build the drive from the workstation (above) with `--hostname <name> --portable`.
