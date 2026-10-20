@@ -57,6 +57,9 @@ STOCK_ICONS = "icons"
 VOLUME_ICON = "/boot/.VolumeIcon.png"
 ARCH_LOGO = "os_arch.png"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# Every PNG opens with a 13-byte IHDR chunk; the managed marker sits right after.
+PNG_HEADER = PNG_SIGNATURE + (13).to_bytes(4, "big") + b"IHDR"
+PNG_HEADER_END = len(PNG_HEADER) + 13 + 4
 # A fixed install keeps rEFInd in its own directory behind a firmware entry. A
 # portable one (Story 2.57) sits on the removable-media fallback path every
 # firmware boots unaided; refind-install --usedefault names the binary
@@ -825,10 +828,9 @@ def managed_arch_logo(refind_dir: Path, layout: str) -> bytes:
             f"stock rEFInd icons missing on the ESP: {relative} (run refind-install)"
         )
     image = path.read_bytes()
-    if not image.startswith(PNG_SIGNATURE) or image[12:16] != b"IHDR":
+    if not image.startswith(PNG_HEADER) or len(image) <= PNG_HEADER_END:
         raise RefindError(f"stock Arch logo is not a PNG: {relative}")
-    header_end = 8 + 12 + int.from_bytes(image[8:12], "big")
-    return image[:header_end] + MANAGED_PNG_CHUNK + image[header_end:]
+    return image[:PNG_HEADER_END] + MANAGED_PNG_CHUNK + image[PNG_HEADER_END:]
 
 
 def is_managed_file(path: Path) -> bool:
@@ -837,7 +839,7 @@ def is_managed_file(path: Path) -> bool:
     except OSError:
         return False
     if content.startswith(PNG_SIGNATURE):
-        return MANAGED_PNG_CHUNK in content
+        return content[PNG_HEADER_END:].startswith(MANAGED_PNG_CHUNK)
     return content.startswith((MANAGED + "\n").encode())
 
 
