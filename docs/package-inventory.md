@@ -117,7 +117,7 @@ Questions below before manifests are split. Native = official repos; **bold** = 
 - **shell-cli** — `zsh` `bash-completion` `keychain` `screen` `ranger` `broot` `htop`
   `gtop` `ncdu` `tree` `ripgrep` `the_silver_searcher` `jq` `jaq` `yq` `eza` `entr` `pv`
   `dos2unix` `calc` `cloc` `gource` `w3m` `expac` **antibody** **bashmount** **ccat** **metapac**
-- **editor** — `neovim` `gvim` `emacs` `nano` `ex-vi-compat` `intellij-idea-community-edition`
+- **editor** — `neovim` `gvim` `emacs` `nano` `ex-vi-compat` `intellij-idea-oss`
   `editorconfig-core-c` `autopep8` **visual-studio-code-bin** **nord-vim** **omnisharp-roslyn-bin**
 - **desktop** — Xorg (`xorg-server` `xorg-xinit` `xorg-server-xephyr` `xorg-appres`
   `xorg-xev` `xorg-xfd` `xorg-xkill`) · WM/bar/launcher (`i3-wm` `i3lock` `polybar`
