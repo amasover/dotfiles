@@ -413,4 +413,18 @@ aur-quarantine: local patch 0001-fix.patch FAILED to apply to fakepkg — stale 
 rc=1
 $
 
+--- missing-pgp-keys: recipe signing keys this keyring has never held ---
+
+A fresh machine's keyring holds none of them, so build() fetches exactly
+these by fingerprint before makepkg verifies the signed sources; a key the
+user already holds must not be reported (or refetched).
+
+$ pk=$(mktemp -d) && mkdir -m 700 "$pk/gnupg" && mkdir "$pk/recipe" && GNUPGHOME="$pk/gnupg" gpg --batch --passphrase '' --quick-gen-key 'test <t@example.invalid>' ed25519 sign never 2>/dev/null && fpr=$(GNUPGHOME="$pk/gnupg" gpg --batch --with-colons --list-keys 2>/dev/null | awk -F: '/^fpr/ { print $10; exit }') && printf 'pkgbase = fakepkg\n\tvalidpgpkeys = %s\n\tvalidpgpkeys = 3FEF9748469ADBE15DA7CA80AC2D62742012EA22\n' "$fpr" > "$pk/recipe/.SRCINFO" && GNUPGHOME="$pk/gnupg" .local/bin/tools/aur-quarantine missing-pgp-keys "$pk/recipe"  # gitleaks:allow -- 1Password's public signing-key fingerprint, not a secret
+3FEF9748469ADBE15DA7CA80AC2D62742012EA22
+$ printf 'pkgbase = fakepkg\n' > "$pk/recipe/.SRCINFO" && GNUPGHOME="$pk/gnupg" .local/bin/tools/aur-quarantine missing-pgp-keys "$pk/recipe" | wc -w
+0
+$ GNUPGHOME="$pk/gnupg" gpgconf --kill all; rm -rf "$pk"; echo done
+done
+$
+
 End of tests.
