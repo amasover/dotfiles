@@ -1,0 +1,13 @@
+{
+  "peerSource": "none",
+  "recallQueryExpansion": "off",
+  "recallCompress": "off",
+  "profileTokenBudget": 4000,
+  "captureToolResults": true,
+  "captureToolMaxChars": 4000,
+  "commitTokenThreshold": 50000,
+  "commitKeepRecentCount": 0,
+  "pi": {
+    "takeoverEnabled": false
+  }
+}

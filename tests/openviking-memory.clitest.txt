@@ -1,0 +1,113 @@
+# setup/openviking-memory — OpenViking clients for omp and Claude Code, wired
+# from the per-machine server.env. Host-independent: a scratch HOME and stubs
+# for curl, bao, git, npm and claude that log every argv to a trace; node is
+# the real one. The key must never reach an argv, the trace or the output.
+#
+# Run from the repo root: clitest tests/openviking-memory.clitest.txt
+
+$ t=$PWD/.local/bin/setup/openviking-memory; OVT=$(mktemp -d); S=$OVT/stub; export OVT TRACE=$OVT/trace HOME=$OVT/home PATH="$OVT/stub:$PATH"; KEY=ov-key-5b1f; mkdir -p "$S" "$HOME/.config/dotfiles/openviking"; cp .config/dotfiles/openviking/plugin.json "$HOME/.config/dotfiles/openviking/"; echo 0.5.0 > "$OVT/server-version"; echo "$KEY" > "$OVT/good-key"; echo "$KEY" > "$OVT/bao-key"; : > "$TRACE"; echo ready
+ready
+$ printf '%s\n' '#!/bin/sh' 'echo "curl $*" >> "$TRACE"' 'hdr=; case " $* " in *" -H @- "*) hdr=$(cat) ;; esac' 'for last; do :; done' 'case $last in' '  */health) [ -f "$OVT/down" ] && exit 7; printf "{\"status\":\"ok\",\"version\":\"%s\"}" "$(cat "$OVT/server-version")" ;;' '  */api/v1/stats/memories) [ "$hdr" = "X-API-Key: $(cat "$OVT/good-key")" ] || exit 22 ;;' '  */v1/auth/token/revoke-self) [ "$hdr" = "X-Vault-Token: tok-123" ] || exit 22; echo revoked >> "$TRACE" ;;' 'esac' > "$S/curl"
+$ printf '%s\n' '#!/bin/sh' 'echo "bao $*" >> "$TRACE"' 'case $1 in' '  login) printf tok-123 ;;' '  kv) [ "$BAO_TOKEN" = tok-123 ] || exit 2; printf "%s\n" "$(cat "$OVT/bao-key")" ;;' 'esac' > "$S/bao"
+$ printf '%s\n' '#!/bin/sh' 'echo "git $*" >> "$TRACE"' '[ "$1" = -C ] && exit 0' 'for d; do :; done' 'e=$d/examples' 'mkdir -p "$d/.git" "$e/pi-coding-agent-extension" "$e/memory-plugin-shared" "$e/claude-code-memory-plugin/.claude-plugin"' 'echo "export default {}" > "$e/pi-coding-agent-extension/index.ts"' 'echo "{\"version\":\"0.4.13\"}" > "$e/pi-coding-agent-extension/package.json"' ': > "$e/memory-plugin-shared/sync.mjs"' 'echo "{\"version\":\"0.7.6\"}" > "$e/claude-code-memory-plugin/.claude-plugin/plugin.json"' > "$S/git"
+$ printf '%s\n' '#!/bin/sh' 'echo "npm $*" >> "$TRACE"' > "$S/npm"; printf '%s\n' '#!/bin/sh' 'echo "claude $*" >> "$TRACE"' 'case "$1 $2 $3" in' '  "plugin list ") [ -f "$OVT/mkt" ] && printf "  openviking-memory@openviking\n    Read from: %s/claude-code-memory-plugin\n" "$(cat "$OVT/mkt")" ;;' '  "plugin marketplace add") echo "$4" > "$OVT/mkt" ;;' '  "plugin marketplace remove") rm -f "$OVT/mkt" ;;' 'esac' 'exit 0' > "$S/claude"; chmod +x "$S"/*; echo stubs
+stubs
+$
+
+A machine without server.env skips the optional step:
+
+$ $t; echo "rc=$?"
+OpenViking memory: no server.env on this machine - skipping (optional feature)
+rc=0
+$
+
+server.env is parsed, never sourced; anything but plain KEY=value is fatal:
+
+$ printf '%s\n' 'OPENVIKING_URL=$(touch pwned)' > "$HOME/.config/dotfiles/openviking/server.env"; $t; echo "rc=$?"; test ! -e pwned; echo "not run=$?"
+openviking-memory: FATAL: server.env: unsupported line (KEY=value, no quotes or spaces)
+rc=2
+not run=0
+$ printf '%s\n' '# memory server' 'OPENVIKING_URL=https://memory.example.invalid/' 'BAO_ADDR=https://openbao.example.invalid' > "$HOME/.config/dotfiles/openviking/server.env"
+$
+
+Off the LAN the server is unreachable, and the step skips:
+
+$ touch "$OVT/down"; $t; echo "rc=$?"; rm "$OVT/down"
+OpenViking memory: server unreachable (off the LAN?) - skipping
+rc=0
+$
+
+Without a key, check mode names the sign-in and an unattended run skips; neither calls bao:
+
+$ $t --check; echo "rc=$?"
+OpenViking memory: would install the clients for OpenViking v0.5.0 (needs an OpenBao passkey sign-in)
+rc=1
+$ $t --no-login; echo "rc=$?"
+OpenViking memory: needs an OpenBao passkey sign-in - skipping in an unattended run
+rc=0
+$ grep -c '^bao' "$TRACE"
+0
+$
+
+Apply signs in, reads the one key, revokes the token, then installs both clients:
+
+$ $t > "$OVT/out"; echo "rc=$?"; cat "$OVT/out"
+rc=0
+OpenViking memory: OpenBao sign-in: a browser opens; sign in with your passkey. The token reads one key and is revoked at once.
+OpenViking memory: omp extension 0.4.13 (OpenViking v0.5.0)
+OpenViking memory: Claude Code openviking-memory 0.7.6 (OpenViking v0.5.0)
+$ grep -E '^bao|^revoked' "$TRACE"
+bao login -method=oidc -token-only role=admin
+bao kv get -mount=kv -field=key agents/workstation/openviking
+revoked
+$ stat -c %a "$HOME/.openviking/ovcli.conf"; node -p 'const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); [c.url, c.api_key === process.argv[2], c.plugin.peerSource].join(" ")' "$HOME/.openviking/ovcli.conf" "$KEY"
+600
+https://memory.example.invalid true none
+$ test -f "$HOME/.omp/agent/extensions/openviking/index.ts" && cat "$HOME/.openviking/installed-release"
+v0.5.0
+$
+
+A second run is converged and signs in nowhere:
+
+$ : > "$TRACE"; $t; echo "rc=$?"; grep -c '^bao' "$TRACE"
+OpenViking memory: up to date (OpenViking v0.5.0)
+rc=0
+0
+$
+
+A key file readable beyond its owner is drift; apply makes it private again:
+
+$ chmod 644 "$HOME/.openviking/ovcli.conf"; $t --check; echo "rc=$?"
+OpenViking memory: would install the clients for OpenViking v0.5.0
+rc=1
+$ $t > /dev/null; stat -c %a "$HOME/.openviking/ovcli.conf"
+600
+$
+
+A server upgrade reinstalls with the accepted key and drops the old release's source:
+
+$ echo 0.5.1 > "$OVT/server-version"; $t --check; echo "rc=$?"
+OpenViking memory: would install the clients for OpenViking v0.5.1
+rc=1
+$ : > "$TRACE"; $t | tail -1; grep -c '^bao' "$TRACE"; ls "$HOME/.openviking/src"
+OpenViking memory: Claude Code openviking-memory 0.7.6 (OpenViking v0.5.1)
+0
+openviking-v0.5.1
+$
+
+A key from OpenBao that the server refuses is fatal, and the token is still revoked:
+
+$ rm "$HOME/.openviking/ovcli.conf"; echo wrong-key > "$OVT/bao-key"; : > "$TRACE"; $t > /dev/null; echo "rc=$?"; grep -c '^revoked' "$TRACE"; test ! -e "$HOME/.openviking/ovcli.conf"; echo "no conf=$?"
+openviking-memory: FATAL: the server refused the key from OpenBao
+rc=2
+1
+no conf=0
+$
+
+The key never reached an argument list, the trace, or the output:
+
+$ cat "$OVT/out" "$TRACE" | grep -c "$KEY"
+0
+$ rm -rf "$OVT"; echo done
+done
+$

@@ -284,11 +284,23 @@ What it does, in order:
     then verifies both package version and launcher. This runs before first Emacs launch.
 15. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
     unrelated settings.
-16. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
+16. **OpenViking memory (optional)** — `setup/openviking-memory` installs the agent-memory
+    clients from the release the memory server reports: its pi extension into
+    `~/.omp/agent/extensions/openviking` and the Claude Code plugin `openviking-memory`.
+    Both read `~/.openviking/ovcli.conf` (mode 600: server, key, and the tracked
+    `.config/dotfiles/openviking/plugin.json`). The hosts come from
+    `.config/dotfiles/openviking/server.env`, which travels only in the yadm-encrypted
+    archive. Without it, or off the LAN, the step skips. When no accepted key is on the
+    machine, apply opens a browser for an OpenBao passkey sign-in, reads the one key,
+    and revokes the token at once; `--unattended` runs skip instead. A failure warns and
+    bootstrap goes on. `setup/openviking-memory --help` gives the `server.env` format;
+    after writing it on one machine, `yadm encrypt` carries it to the rest. Rerun the
+    tool when the server's version changes, so the clients match it.
+17. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
     reconciles active `Plug` declarations; `--check` is read-only.
-17. **User services** — enables tracked user units; services awaiting attended auth may
+18. **User services** — enables tracked user units; services awaiting attended auth may
     start later through their restart policy.
-18. **Firefox defaults** — composes `/etc/firefox/policies/policies.json` from
+19. **Firefox defaults** — composes `/etc/firefox/policies/policies.json` from
     `.config/dotfiles/firefox/policies.json`: uBlock Origin, 1Password, Multi-Account
     Containers, Don't Fuck With Paste and Bypass Paywalls Clean installed by default, plus
     default preferences the user can still change. The exception is the stylesheet switch
@@ -300,7 +312,7 @@ What it does, in order:
     tracked `userChrome.css`, which lets tabs shrink instead of scrolling, into every
     profile. When Firefox has never run, it first creates Firefox's default profile with
     one headless run.
-19. **Login shell** — `sudo chsh -s /usr/bin/zsh $USER` unless the account's shell is
+20. **Login shell** — `sudo chsh -s /usr/bin/zsh $USER` unless the account's shell is
     already zsh. Reboot when done.
 
 Focused editor validation from the repo checkout:

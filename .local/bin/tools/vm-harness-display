@@ -177,6 +177,7 @@ BOOTSTRAP_STEPS = [
     ("spacemacs", ("Spacemacs checkout",)),
     ("emacs-copilot", ("Emacs Copilot language server",)),
     ("claude-plugins", ("Claude Code plugins",)),
+    ("openviking", ("OpenViking memory",)),
     ("vim-plugins", ("Vim plugins",)),
     ("user-services", ("User services",)),
     ("firefox", ("Firefox defaults",)),

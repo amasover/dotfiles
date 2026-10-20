@@ -1409,6 +1409,23 @@ else
     "$HOME/.local/bin/setup/claude-plugins" apply
 fi
 
+# --- 8e2. OpenViking memory (optional) ------------------------------------------
+# setup/openviking-memory installs the memory server's omp extension and Claude
+# Code plugin from the release the server runs. The hosts come from the
+# yadm-encrypted server.env, so a machine without it, or off the LAN, skips.
+# A missing key means a passkey sign-in to OpenBao, which an unattended run
+# skips. A failure leaves the agents without memory, not the machine broken,
+# so bootstrap goes on.
+say "OpenViking memory (optional)"
+openviking_args=()
+[[ $UNATTENDED -eq 1 ]] && openviking_args=(--no-login)
+if [[ $CHECK -eq 1 ]]; then
+    "$HOME/.local/bin/setup/openviking-memory" --check "${openviking_args[@]}" || true
+else
+    "$HOME/.local/bin/setup/openviking-memory" "${openviking_args[@]}" \
+        || echo "  OpenViking memory failed; bootstrap goes on - rerun ~/.local/bin/setup/openviking-memory"
+fi
+
 # --- 8f. Vim plugins (Story 2.49) ----------------------------------------------
 # setup/vim-plugins uses packaged vim-plug to install active fallback Plug
 # declarations. Its check mode names drift without touching ~/.vim.

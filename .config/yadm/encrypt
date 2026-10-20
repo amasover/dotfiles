@@ -6,3 +6,6 @@
 # NAS automount specifics (hostname, share, 1Password item id). The mechanism
 # — bootstrap step 6f — is public; only these stay out of the public repo.
 .config/dotfiles/autofs/**
+# OpenViking memory server and OpenBao addresses (setup/openviking-memory). The
+# mechanism and plugin.json are public; only these hosts stay out of the repo.
+.config/dotfiles/openviking/server.env
