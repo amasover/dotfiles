@@ -291,7 +291,9 @@ What it does, in order:
 18. **Firefox defaults** — composes `/etc/firefox/policies/policies.json` from
     `.config/dotfiles/firefox/policies.json`: uBlock Origin, 1Password, Multi-Account
     Containers, Don't Fuck With Paste and Bypass Paywalls Clean installed by default, plus
-    default preferences the user can still change. VMware guests also get the WebRender
+    default preferences the user can still change. The exception is the stylesheet switch
+    `userChrome.css` needs: Firefox reads it before policy defaults apply, so the policy
+    sets it as a user value at every start. VMware guests also get the WebRender
     fragment, `policies-vmware.json`. The composed file sits in `~/.local/state/dotfiles/
     firefox/` and `/etc` links to it, so a tracked change needs no root after the first
     link. A policy the tool did not write is fatal and left alone. It then links the

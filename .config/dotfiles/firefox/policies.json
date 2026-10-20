@@ -25,7 +25,7 @@
     "Preferences": {
       "toolkit.legacyUserProfileCustomizations.stylesheets": {
         "Value": true,
-        "Status": "default"
+        "Status": "user"
       },
       "browser.startup.page": {
         "Value": 3,
