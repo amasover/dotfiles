@@ -107,6 +107,22 @@ $ PATH="$aq/bin:$PATH" XDG_STATE_HOME="$aq/state" AUR_QUARANTINE_PACMAN="$aq/bin
 0
 $
 
+--- AUR_RPC_CACHE: one batched answer serves the per-package steps after it ---
+
+With every requested name answered in the cache, and each answer younger than
+the TTL, no request reaches the AUR. The stub curl here fails every call, so
+only a cache hit can succeed. A name the cache lacks, or whose newest answer
+has expired, goes back to the network. A fresh answer for one name must not
+keep another name's expired answer alive.
+
+$ rc=$(mktemp -d) && mkdir -p "$rc/bin" "$rc/state" && printf '#!/bin/sh\nexit 22\n' > "$rc/bin/curl" && chmod +x "$rc/bin/curl" && now=$(date +%s) && old=$((now - 3600)) && printf 'cached-pkg\tcached-pkg\t1\tbob\t%s\nother-pkg\tother-pkg\t1\tcarol\t%s\ncached-pkg\tcached-pkg\t1\tdave\t%s\nfresh-pkg\tfresh-pkg\t1\terin\t%s\n' "$now" "$old" "$now" "$now" > "$rc/rpc.tsv"; CQ() { PATH="$rc/bin:$PATH" XDG_STATE_HOME="$rc/state" AUR_RPC_CACHE="$rc/rpc.tsv" .local/bin/tools/aur-quarantine "$@"; }; CQ accept cached-pkg 2>&1
+aur-quarantine: accepted maintainer for cached-pkg (dave).
+$ CQ accept cached-pkg missing-pkg 2>&1 | tail -1
+aur-quarantine: AUR RPC unreachable or package(s) not found — nothing accepted.
+$ CQ accept other-pkg 2>&1 | tail -1; rm -rf "$rc"
+aur-quarantine: AUR RPC unreachable or package(s) not found — nothing accepted.
+$
+
 --- bootstrap --probe-provider: substitution printed, self-resolution silent ---
 
 The stub pacman answers like the real one: a provider name for flashfocus,
@@ -204,6 +220,20 @@ $ printf 'checking... target not found: some-optional-lib, continuing\n' | .loca
 rc=0
 $ printf '\033[1;31merror:\033[0m target not found: foo\n' | .local/bin/setup/bootstrap --sync-fatal | sed 's/\x1b/E/g'
 E[1;31merror:E[0m target not found: foo
+$
+
+--- bootstrap --failed-builds: AUR builds yay reports failed in a sync log ---
+
+The sync loop dies when the same set fails twice in a row instead of retrying
+ten times: brew-git's stale patch burned half an hour of retries live
+(2026-10-20). Color codes and the pty's carriage returns are stripped; a build
+log merely mentioning "exit status" mid-line does not count.
+
+$ printf ' -> Failed to install the following packages. Manual intervention is required:\r\nbrew-git - exit status 4\r\n\033[1mzeta-bin - exit status 1\033[0m\r\nmake: *** [all] some-target - exit status 2 (in a recipe)\n' | .local/bin/setup/bootstrap --failed-builds
+brew-git
+zeta-bin
+$ printf 'everything installed\n' | .local/bin/setup/bootstrap --failed-builds | wc -l
+0
 $
 
 --- metapac-unmanaged-names: both `metapac unmanaged` output shapes (2.42) ---
@@ -411,6 +441,20 @@ already-applied hunks, and forcing is exactly what the tool must never do.
 $ AUR_PATCHES_DIR="$ap/patches" .local/bin/tools/aur-quarantine apply-patches "$ap/recipe" fakepkg 2>&1 | sed "s|$ap|AP|" | tail -1; AUR_PATCHES_DIR="$ap/patches" .local/bin/tools/aur-quarantine apply-patches "$ap/recipe" fakepkg >/dev/null 2>&1 || echo "rc=$?"
 aur-quarantine: local patch 0001-fix.patch FAILED to apply to fakepkg — stale (upstream moved?). Refresh or delete AP/patches/fakepkg.
 rc=1
+$
+
+--- missing-pgp-keys: recipe signing keys this keyring has never held ---
+
+A fresh machine's keyring holds none of them, so build() fetches exactly
+these by fingerprint before makepkg verifies the signed sources; a key the
+user already holds must not be reported (or refetched).
+
+$ pk=$(mktemp -d) && mkdir -m 700 "$pk/gnupg" && mkdir "$pk/recipe" && GNUPGHOME="$pk/gnupg" gpg --batch --passphrase '' --quick-gen-key 'test <t@example.invalid>' ed25519 sign never 2>/dev/null && fpr=$(GNUPGHOME="$pk/gnupg" gpg --batch --with-colons --list-keys 2>/dev/null | awk -F: '/^fpr/ { print $10; exit }') && printf 'pkgbase = fakepkg\n\tvalidpgpkeys = %s\n\tvalidpgpkeys = 3FEF9748469ADBE15DA7CA80AC2D62742012EA22\n' "$fpr" > "$pk/recipe/.SRCINFO" && GNUPGHOME="$pk/gnupg" .local/bin/tools/aur-quarantine missing-pgp-keys "$pk/recipe"  # gitleaks:allow -- 1Password's public signing-key fingerprint, not a secret
+3FEF9748469ADBE15DA7CA80AC2D62742012EA22
+$ printf 'pkgbase = fakepkg\n' > "$pk/recipe/.SRCINFO" && GNUPGHOME="$pk/gnupg" .local/bin/tools/aur-quarantine missing-pgp-keys "$pk/recipe" | wc -w
+0
+$ GNUPGHOME="$pk/gnupg" gpgconf --kill all; rm -rf "$pk"; echo done
+done
 $
 
 End of tests.

@@ -9,7 +9,7 @@ packages = [
   "ex-vi-compat",
   "glow",
   "gvim",
-  "intellij-idea-community-edition",
+  "intellij-idea-oss",  # Arch's rename of intellij-idea-community-edition (2026)
   "lua-language-server",
   "marksman",
   "nano",

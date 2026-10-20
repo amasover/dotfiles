@@ -12,13 +12,20 @@ cp "$(dirname "$GATE")/../../../.config/yay/quarantine-policy.lua" "$FAKE/home/.
 
 cat >"$FAKE/bin/pacman" <<'EOF'
 #!/usr/bin/env bash
-# fake pacman -Si: packages named c-* live in chaotic-aur, everything else in extra
-pkg="${!#}"
-if [[ "$pkg" == c-* || "$pkg" == chaotic-* ]]; then
-  echo "Repository      : chaotic-aur"
-else
-  echo "Repository      : extra"
-fi
+# fake pacman -Si NAME...: one record per repository carrying each name, in
+# repository order, like the real one. c-* and chaotic-* live in chaotic-aur,
+# dup-* in extra AND chaotic-aur (extra first), everything else in extra.
+[[ "${1:-}" == -Si ]] && shift
+for pkg; do
+    case "$pkg" in
+        c-* | chaotic-*) repos=(chaotic-aur) ;;
+        dup-*) repos=(extra chaotic-aur) ;;
+        *) repos=(extra) ;;
+    esac
+    for repo in "${repos[@]}"; do
+        printf 'Repository      : %s\nName            : %s\n\n' "$repo" "$pkg"
+    done
+done
 EOF
 cat >"$FAKE/bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -103,6 +110,23 @@ check "bypass-once passes + consumed" 0 "$(run c-young)"
 } || echo "ok   bypass flag consumed"
 
 check "chaotic infra skipped, no rpc" 0 "$(FAKE_CURL_RC=22 run chaotic-keyring)"
+
+# pacman installs a name from the first repository that carries it: an extra
+# package that chaotic-aur also builds is not chaotic-sourced, even when its
+# AUR counterpart would be held (and with the AUR unreachable).
+FAKE_RPC_JSON=$(json dup-young "$young" alice)
+export FAKE_RPC_JSON
+check "official-first duplicate passes" 0 "$(FAKE_CURL_RC=22 run dup-young)"
+
+# one transaction, several targets: the batched lookup still finds the
+# chaotic one among official ones
+FAKE_RPC_JSON=$(json c-young "$young" alice)
+export FAKE_RPC_JSON
+check "chaotic young held among others" 1 "$(
+    rm -f "$sdir/held-install.tsv"
+    printf '%s\n' firefox dup-x c-young | "$GATE" >/dev/null 2>&1
+    echo $?
+)" age
 
 rm -rf "$FAKE"
 ((fails == 0)) && echo "ALL GATE CASES PASS" || exit 1

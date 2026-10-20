@@ -1,0 +1,22 @@
+# metapac hardware adapter: a portable drive that boots unknown x86_64 machines
+# (Story 2.60). Its initramfs already carries every kernel driver (no autodetect,
+# Story 2.57); this adds microcode, firmware and GPU userspace for each vendor
+# it may meet. NVIDIA gets nouveau/NVK: the proprietary driver is per-machine.
+# refind-config requires intel-ucode.img; it is harmless on AMD.
+[arch]
+packages = [
+  "acpi",
+  "acpid",
+  "amd-ucode",
+  "intel-media-driver",
+  "intel-ucode",
+  "lib32-vulkan-intel",
+  "lib32-vulkan-nouveau",
+  "lib32-vulkan-radeon",
+  "refind",
+  "refind-theme-nord",
+  "sof-firmware",
+  "vulkan-intel",
+  "vulkan-nouveau",
+  "vulkan-radeon",
+]

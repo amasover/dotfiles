@@ -60,6 +60,8 @@ $ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/b
   not applicable to class daily-vm
 $ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config check workstation; cat "$REFIND_TRACE"
 --check
+$ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config check portable; cat "$REFIND_TRACE"
+--check
 $ HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" REFIND_RC=1 .local/bin/setup/bootstrap --refind-config check workstation; echo "rc=$?"
 rc=0
 $ HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" REFIND_RC=2 .local/bin/setup/bootstrap --refind-config check workstation >/dev/null 2>&1; echo "rc=$?"

@@ -117,7 +117,7 @@ Questions below before manifests are split. Native = official repos; **bold** = 
 - **shell-cli** — `zsh` `bash-completion` `keychain` `screen` `ranger` `broot` `htop`
   `gtop` `ncdu` `tree` `ripgrep` `the_silver_searcher` `jq` `jaq` `yq` `eza` `entr` `pv`
   `dos2unix` `calc` `cloc` `gource` `w3m` `expac` **antibody** **bashmount** **ccat** **metapac**
-- **editor** — `neovim` `gvim` `emacs` `nano` `ex-vi-compat` `intellij-idea-community-edition`
+- **editor** — `neovim` `gvim` `emacs` `nano` `ex-vi-compat` `intellij-idea-oss`
   `editorconfig-core-c` `autopep8` **visual-studio-code-bin** **nord-vim** **omnisharp-roslyn-bin**
 - **desktop** — Xorg (`xorg-server` `xorg-xinit` `xorg-server-xephyr` `xorg-appres`
   `xorg-xev` `xorg-xfd` `xorg-xkill`) · WM/bar/launcher (`i3-wm` `i3lock` `polybar`
@@ -148,9 +148,9 @@ Questions below before manifests are split. Native = official repos; **bold** = 
 - **network-vpn** — `networkmanager` (`wpa_supplicant` dependency) `networkmanager-openvpn`
   `openvpn` `openconnect` `globalprotect-openconnect` `wireguard-tools` `sshuttle`
   `udp2raw` `dnsmasq` `bind` `nmap` `traceroute` `whois` `net-tools` `inetutils`
-  `iproute2` `iputils` `ipset` `ipcalc` `ipv6calc` `nss-mdns` `ntp` `modemmanager`
+  `iproute2` `iputils` `ipset` `ipcalc` `ipv6calc` `nss-mdns` `modemmanager`
   `netctl` `dhcpcd` `b43-fwcutter` `usb_modeswitch` `samba` `rsync` `openssh` `putty`
-  `freerdp` `remmina` `filezilla` `wireshark-qt` `siege` **networkmanager-dispatcher-ntpd**
+  `freerdp` `remmina` `filezilla` `wireshark-qt` `siege`
   **openconnect-service** **openvpn-update-systemd-resolved** **vpn-slice**
   **netmask** **subnetcalc** **gss-ntlmssp** **smtp-cli** **ssmtp** **gnu-netcat** ·
   → **Open question Q3** (VPN sprawl)

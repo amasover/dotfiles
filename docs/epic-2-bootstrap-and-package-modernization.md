@@ -2004,6 +2004,31 @@ passed.
 
 ---
 
+### Story 2.60: A machine class for the portable drive
+
+As the repo owner,
+I want a `portable` machine class,
+So that the drive Story 2.58 builds bootstraps into my full environment and keeps
+working on whichever x86_64 machine it is plugged into.
+
+Issue: [#272](https://github.com/amasover/dotfiles/issues/272) · Origin: 2026-10-19.
+Story 2.57 leaves fitting the chassis to the machine class (Story 2.30), and no class
+fits a drive: `workstation` pairs the Intel-only adapter with the `work` group, and
+the other two are guests. Sequenced after Story 2.58, which builds the drive this
+class bootstraps.
+
+**Acceptance criteria:**
+
+- Given `yadm config local.class portable`, when the metapac template renders, then the host gets the shared purpose groups, `hardware-portable`, `inbox-portable`, and machine-local, and neither `work` nor any other class's adapter or inbox
+- Given the portable adapter, when it is declared, then it carries microcode, firmware, and GPU userspace for Intel, AMD, and NVIDIA (nouveau/NVK), plus the `intel-ucode` and `refind`/`refind-theme-nord` that `refind-config` requires
+- Given class `portable`, when bootstrap reaches the rEFInd step, then it reconciles the drive's `EFI/BOOT` install the way `workstation` reconciles `EFI/refind`
+- Given the runbook, when a new drive is built, then the class table and bootstrap preconditions name `portable`
+
+**Evidence artifact:** the metapac class rendering and bootstrap rEFInd-gate tests
+extended to `portable`; one live bootstrap of the real drive under class `portable`.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness

@@ -70,6 +70,26 @@ $ DECLARED | grep -c '^astro-cli$'
 0
 $
 
+portable drops work and the Intel-only adapter, covers every CPU and GPU
+vendor, and owns a separate inbox:
+
+$ RENDER portable; grep -c '"hardware-portable"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"inbox-portable"' "$H/.config/metapac/config.toml"
+1
+$ grep -c '"work"\|"hardware-intel-laptop"\|"guest-vmware"\|"guest-qemu"\|"inbox-workstation"' "$H/.config/metapac/config.toml"
+0
+$ DECLARED | grep -E '^(amd-ucode|intel-ucode|vulkan-intel|vulkan-radeon|vulkan-nouveau|refind|open-vm-tools|qemu-guest-agent)$'
+amd-ucode
+intel-ucode
+refind
+vulkan-intel
+vulkan-nouveau
+vulkan-radeon
+$ DECLARED | grep -c '^astro-cli$'
+0
+$
+
 harness callers select concrete classes and never inject hardware packages:
 
 $ grep -F 'VM_CLASS="${VM_HARNESS_CLASS:-qemu-harness}"' .local/bin/setup/vm-harness
@@ -129,9 +149,9 @@ $
 all profiles keep the shared package contract and all active group files parse
 through metapac:
 
-$ for class in workstation daily-vm qemu-harness; do RENDER "$class"; DECLARED >/dev/null || exit; done; echo all-render
+$ for class in workstation daily-vm qemu-harness portable; do RENDER "$class"; DECLARED >/dev/null || exit; done; echo all-render
 all-render
-$ for group in hardware-intel-laptop guest-vmware guest-qemu inbox-workstation inbox-daily-vm inbox-qemu-harness; do test -f ".config/metapac/groups/$group.toml" || echo "missing $group"; done
+$ for group in hardware-intel-laptop hardware-portable guest-vmware guest-qemu inbox-workstation inbox-daily-vm inbox-qemu-harness inbox-portable; do test -f ".config/metapac/groups/$group.toml" || echo "missing $group"; done
 $ rm -rf "$CLITMP"; echo done
 done
 $

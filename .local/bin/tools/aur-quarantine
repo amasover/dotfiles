@@ -50,12 +50,21 @@
 #   apply-patches DIR BASE  (internal) apply ~/.config/dotfiles/aur-patches/BASE/
 #                     into DIR's extracted src/ — build() does this itself; the
 #                     subcommand exists as an offline test seam (AUR_PATCHES_DIR).
+#   missing-pgp-keys DIR  (internal) print the validpgpkeys DIR's .SRCINFO names
+#                     that this user's gpg keyring lacks — build() decides with
+#                     it; the subcommand is an offline test seam (GNUPGHOME).
 #   broken-list       dump known-broken entries as TSV:
 #                     pkg<TAB>base<TAB>broken_at<TAB>since<TAB>reason
 #   build BASE SHA    (internal) build+install pkgbase BASE at AUR git commit SHA.
+#   prefetch BASE...  fetch the cached AUR clones of these pkgbases in parallel
+#                     (best effort) so a following stepping pass reads them
+#                     without one network round trip per package.
+#   fetch BASE        (internal) refresh one cached clone; prefetch's worker.
 #
 # Config (env):
 #   AUR_QUARANTINE_DAYS   per-version age threshold, days (default 14).
+#   AUR_QUARANTINE_FETCH_TTL  seconds a fetched clone counts as current (600).
+#   AUR_PREFETCH_JOBS     parallel fetches for prefetch (default 6).
 #   AUR_KNOWN_BROKEN_FILE known-broken list override (tests; default below).
 #   AUR_QUARANTINE_PACMAN pacman override (tests; default /usr/bin/pacman).
 #
@@ -79,12 +88,33 @@ REPO_HANDOFF="@repo-handoff"
 REPO_ACCEPTED_PREFIX="@repo-accepted:"
 
 # rpc_info NAME...  ->  "name<TAB>pkgbase<TAB>lastmod<TAB>maintainer" per resolved package
+# With AUR_RPC_CACHE set to a file, every answer is appended there with the
+# time it was fetched, and a call whose names all have an answer younger than
+# AUR_QUARANTINE_FETCH_TTL reads the newest of each back instead of asking the
+# AUR again. Each answer expires on its own: a later append for other names
+# must not refresh it. Bootstrap's pre-build pass verdicts its packages in one
+# batch and then steps them one by one; without the cache each step repeated
+# that RPC.
 rpc_info() {
     (($# == 0)) && return 0
-    local p args=()
+    local p args=() out hit now cache=${AUR_RPC_CACHE:-}
+    now=$(date +%s)
+    if [[ -n $cache && -s $cache ]]; then
+        hit=$(tac "$cache" | awk -F'\t' -v OFS='\t' -v now="$now" -v ttl="${AUR_QUARANTINE_FETCH_TTL:-600}" '
+            NR == FNR { want[$1]; next }
+            ($1 in want) && !seen[$1]++ && $5 ~ /^[0-9]+$/ && now - $5 < ttl { print $1, $2, $3, $4 }' \
+            <(printf '%s\n' "$@") -)
+        if [[ -n $hit ]] && (($(wc -l <<<"$hit") == $#)); then
+            printf '%s\n' "$hit"
+            return 0
+        fi
+    fi
     for p in "$@"; do args+=(--data-urlencode "arg[]=$p"); done
-    curl -fsG --max-time 20 "${args[@]}" 'https://aur.archlinux.org/rpc/v5/info' 2>/dev/null \
-        | jq -r '.results[] | [.Name, .PackageBase, (.LastModified|tostring), (.Maintainer // "")] | @tsv'
+    out=$(curl -fsG --max-time 20 "${args[@]}" 'https://aur.archlinux.org/rpc/v5/info' 2>/dev/null \
+        | jq -r '.results[] | [.Name, .PackageBase, (.LastModified|tostring), (.Maintainer // "")] | @tsv') \
+        || return 1
+    [[ -z $cache || -z $out ]] || awk -v t="$now" '{ print $0 "\t" t }' <<<"$out" >>"$cache"
+    [[ -z $out ]] || printf '%s\n' "$out"
 }
 # Installed package provenance. An official package removed from sync repos is
 # suddenly reported by `pacman -Qm`, but its local metadata still names the
@@ -156,6 +186,36 @@ apply_patches() { # $1=recipe dir, $2=pkgbase
 }
 has_patches() { compgen -G "$patches_dir/$1/*.patch" >/dev/null; }
 
+# Signing keys a checked-out recipe names (validpgpkeys) that this user's gpg
+# keyring does not hold, space-separated; empty when every key is present.
+missing_pgp_keys() { # $1=recipe dir
+    local fpr missing=()
+    while read -r fpr; do
+        [[ -n $fpr ]] || continue
+        gpg --batch --list-keys "$fpr" >/dev/null 2>&1 || missing+=("$fpr")
+    done < <(sed -n 's/^[[:space:]]*validpgpkeys = //p' "$1/.SRCINFO" 2>/dev/null)
+    echo "${missing[*]}"
+}
+
+# Fetch the signing keys a recipe names that this keyring lacks, by full
+# fingerprint: gpg imports only the key matching a full fingerprint, so a
+# keyserver cannot substitute another. Fails closed with the remedy when a key
+# is on neither keyserver; the caller then holds the build rather than skipping
+# the signature check.
+import_pgp_keys() { # $1=recipe dir, $2=pkgbase
+    local fpr ks
+    for fpr in $(missing_pgp_keys "$1"); do
+        for ks in hkps://keyserver.ubuntu.com hkps://keys.openpgp.org; do
+            if gpg --batch --keyserver "$ks" --recv-keys "$fpr" >/dev/null 2>&1; then
+                echo "aur-quarantine: $2: imported signing key $fpr from $ks (named by the aged recipe)" >&2
+                continue 2
+            fi
+        done
+        echo "aur-quarantine: $2: signing key $fpr is on no keyserver — import it as the AUR page says (gpg --import), then re-run" >&2
+        return 1
+    done
+}
+
 # Constrained TOML reader: [pkg] / ["pkg"] sections holding 'key = "value"'
 # lines. One TSV row per entry: pkg<TAB>base<TAB>broken_at<TAB>since<TAB>reason
 # (base falls back to the package name when the entry doesn't record one).
@@ -209,16 +269,35 @@ aur_head() { # $1=pkgbase -> its current AUR commit, exactly one line
     timeout 20 git ls-remote "https://aur.archlinux.org/$1.git" HEAD 2>/dev/null | head -1 | cut -f1
 }
 
+# A clone fetched within the last AUR_QUARANTINE_FETCH_TTL seconds is current
+# enough for a window measured in days, so the round trip is skipped. prefetch
+# fills that cache in parallel before a stepping pass, and a build reuses the
+# fetch its update just made.
 fetch_repo() { # $1=pkgbase -> ensures clone in cache; echoes its path
-    local base=$1 dir="$cache_dir/$1"
+    local base=$1 dir="$cache_dir/$1" stamp="$cache_dir/$1/.git/aq-fetched" age
     mkdir -p "$cache_dir"
+    if [[ -f $stamp ]]; then
+        age=$(($(date +%s) - $(stat -c %Y "$stamp")))
+        if ((age < ${AUR_QUARANTINE_FETCH_TTL:-600})); then
+            git -C "$dir" reset --quiet --hard origin/HEAD 2>/dev/null || true
+            printf '%s\n' "$dir"
+            return 0
+        fi
+    fi
     if [[ -d $dir/.git ]]; then
         git -C "$dir" fetch --quiet origin 2>/dev/null || return 1
         git -C "$dir" reset --quiet --hard origin/HEAD 2>/dev/null || true
     else
         git clone --quiet "https://aur.archlinux.org/${base}.git" "$dir" 2>/dev/null || return 1
     fi
+    touch "$stamp"
     printf '%s\n' "$dir"
+}
+
+cmd_prefetch() { # PKGBASE... -> fetch their clones in parallel; best effort
+    (($#)) || return 0
+    printf '%s\n' "$@" \
+        | xargs -P "${AUR_PREFETCH_JOBS:-6}" -I{} "$0" fetch {} >/dev/null 2>&1 || true
 }
 
 srcinfo_version() { # stdin = .SRCINFO -> "epoch:pkgver-pkgrel"
@@ -387,15 +466,21 @@ cmd_build() { # $1=pkgbase $2=sha  (installs)
     # Repo-local patches (Story 3.18): extract first (--nobuild; -d defers the
     # dep check to the real build), patch the source, then build unextracted
     # (-e). The plain path stays a single makepkg run.
-    # --skippgpcheck: a fresh machine (harness guest) has an empty gpg keyring,
-    # so any sig-carrying source fails verification outright (arc-gtk-theme:
-    # "unknown public key", 2026-08-20 guest run) — and importing validpgpkeys
-    # unattended would be TOFU on a key id read from the same recipe, adding no
-    # trust. Integrity here is the age-pinned AUR commit plus the PKGBUILD's
-    # checksums, which --nobuild still verifies; the -e build re-verifies
-    # nothing (it reuses src/), so this is the only gate on the patched path.
+    #
+    # Signed sources verify on both paths. A fresh machine's keyring holds none
+    # of the signing keys, so every sig-carrying source failed outright there
+    # (arc-gtk-theme 2026-08-20, 1password on the first portable drive
+    # 2026-10-19). Skipping the check instead is unsafe: makepkg checks the
+    # PKGBUILD's sums, which may be SKIP or fetched from the same server as the
+    # artifact, and only the signature binds those to the vendor. So the keys
+    # the age-pinned recipe names are fetched by full fingerprint first; a
+    # fingerprint is as trustworthy as the checksums beside it.
+    import_pgp_keys "$dir" "$base" || {
+        git -C "$dir" checkout --quiet - 2>/dev/null || true
+        return 1
+    }
     if has_patches "$base"; then
-        if ! (cd "$dir" && rm -rf src && makepkg --nobuild -d --noconfirm --skippgpcheck) \
+        if ! (cd "$dir" && rm -rf src && makepkg --nobuild -d --noconfirm) \
             || ! apply_patches "$dir" "$base"; then
             echo "aur-quarantine: build $base: local patch stage failed — not built." >&2
             git -C "$dir" checkout --quiet - 2>/dev/null || true
@@ -781,13 +866,25 @@ case "${1:-}" in
         shift
         apply_patches "$@"
         ;; # (internal/test seam) RECIPE_DIR PKGBASE
+    missing-pgp-keys)
+        shift
+        missing_pgp_keys "$@"
+        ;; # (internal/test seam) RECIPE_DIR
     build)
         shift
         cmd_build "$@"
         ;;
+    prefetch)
+        shift
+        cmd_prefetch "$@"
+        ;;
+    fetch)
+        shift
+        fetch_repo "${1:?usage: aur-quarantine fetch PKGBASE}" >/dev/null
+        ;;
     -h | --help | "") grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//' ;;
     *)
-        echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|preflight|bypass-once|broken|unbroken|broken-status|broken-current|broken-fix|broken-list|build)" >&2
+        echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|preflight|prefetch|bypass-once|broken|unbroken|broken-status|broken-current|broken-fix|broken-list|build)" >&2
         exit 2
         ;;
 esac

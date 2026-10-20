@@ -162,20 +162,50 @@ inside it, and requires the firmware variables file to be byte-identical and the
 host's mounts and device mappings unchanged. Then it boots only the drive, over
 USB with fresh firmware, through the same stages.
 
-## Bootstrap preconditions
+#### From a blank drive to a daily environment
 
-After the provisioned laptop first boots, network, Git, `base-devel`, and YADM are
-already present. Clone and select the concrete class before bootstrap:
+1. Build the drive from the workstation (above) with `--hostname <name> --portable`.
+2. Boot it. On this workstation, pick it in the rEFInd menu. On any other machine,
+   pick it in the firmware's one-time boot menu. Type the disk passphrase and log in.
+3. Bootstrap it as class `portable` ([Bootstrap preconditions](#bootstrap-preconditions),
+   then [Run](#run)). Then size its swap as described in
+   [Bare-metal hibernation storage](#bare-metal-hibernation-storage).
+
+Step 3 can also run while the workstation keeps working, with the drive booted in a
+VM. Grant your user the device once (`sudo setfacl -m u:$USER:rw /dev/sdX`; the grant
+lasts until the drive is unplugged), copy `/usr/share/edk2/x64/OVMF_VARS.4m.fd` to a
+scratch file, then:
 
 ```bash
+qemu-system-x86_64 -machine q35,accel=kvm -cpu host -m 8G -smp 8 \
+    -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
+    -drive if=pflash,format=raw,file=<scratch copy of OVMF_VARS> \
+    -drive if=virtio,format=raw,cache=none,file=/dev/sdX \
+    -nic user,model=virtio-net-pci
+```
+
+Fresh firmware variables make it boot through the fallback path, as an unfamiliar
+machine would. Bootstrap behaves as it does on metal, except that the `metal`
+confirmation is skipped inside a VM. Routine swap is sized from the drive's resume
+volume, so the VM's RAM does not matter.
+
+## Bootstrap preconditions
+
+After the provisioned laptop or drive first boots, network, Git, `base-devel`, and
+YADM are already present. Clone and select the concrete class before bootstrap:
+
+```bash
+nmtui                                # Wi-Fi only; wired comes up on its own
 yadm clone https://github.com/amasover/dotfiles.git
-yadm config local.class workstation  # current tracked physical adapter: Intel laptop
+yadm config local.class workstation  # or portable: see the class table
 yadm alt
 ```
 
-The class must match the new laptop's hardware. The only physical adapter currently
-tracked is `workstation`/`hardware-intel-laptop`; add another class before provisioning
-different hardware. Resolve any checkout conflict before continuing.
+The class must match the machine. A fixed install takes the class of its hardware;
+the only fixed physical adapter tracked is `workstation`/`hardware-intel-laptop`, so
+add another class before provisioning different hardware. A portable drive takes
+`portable` whatever machine it is first booted on. Resolve any checkout conflict
+before continuing.
 
 ## Run
 
@@ -226,7 +256,7 @@ What it does, in order:
    images whose embedded merged configuration differs from the post-link configuration.
    A machine whose running command line still carries `cryptdevice=` is reported and
    skipped; see [systemd initramfs migration](#systemd-initramfs-migration).
-10. **rEFInd boot configuration** — `workstation` only. Reconciles tracked portable policy,
+10. **rEFInd boot configuration** — `workstation` and `portable` only. Reconciles tracked portable policy,
    generated machine scan/kernel entries, and package-owned Nord assets. Production access
    gets a separate `pkexec` approval; existing files are backed up outside the ESP before
    any write. Unmanaged files stop normal apply rather than being replaced.
@@ -250,7 +280,8 @@ What it does, in order:
     start later through their restart policy.
 18. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and
     leaves metal/non-VMware hosts without the managed link.
-19. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
+19. **Login shell** — `sudo chsh -s /usr/bin/zsh $USER` unless the account's shell is
+    already zsh. Reboot when done.
 
 Focused editor validation from the repo checkout:
 
@@ -275,11 +306,17 @@ All classes include the same 15 purpose groups from
 | `workstation` | Managed physical Intel laptop | `work`, `hardware-intel-laptop`, `inbox-workstation` |
 | `daily-vm` | Windows-hosted VMware daily driver | `guest-vmware`, `inbox-daily-vm` |
 | `qemu-harness` | Disposable libvirt validation guest | `guest-qemu`, `inbox-qemu-harness` |
+| `portable` | Portable drive booting any x86_64 UEFI machine | `hardware-portable`, `inbox-portable` |
 
 Each concrete class selects exactly one hardware adapter and one inbox. To add a
 machine profile, add its guarded template branch, adapter, and inbox; set
 `yadm config local.class <class>`, then run `yadm alt`. Bootstrap enables
 NetworkManager for every class after package reconcile.
+
+`portable` leaves out `work`. Its adapter carries microcode, firmware, and GPU
+userspace for Intel, AMD, and NVIDIA (nouveau/NVK), because the drive meets
+chassis it was never installed on. Its inbox started as a copy of
+`inbox-workstation`'s untriaged set, since the drive succeeded that laptop.
 
 ## Bare-metal hibernation storage
 

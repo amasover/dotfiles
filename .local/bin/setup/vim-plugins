@@ -89,10 +89,21 @@ fi
 manager_present \
     || die "vim-plug runtime missing ($manager_file) — install the declared vim-plug package"
 
+# Only the plug#begin..plug#end block: settings after it can name plugins
+# that are not installed yet (`colorscheme nord`), and `vim -es` exits 1 on
+# that error, which failed the portable drive's first install (2026-10-20).
 run_plug() {
-    local command=$1
+    local command=$1 minimal rc=0
     command -v vim >/dev/null || die "vim not found"
-    vim -Nu "$vimrc" -i NONE -n -es "+$command --sync" '+qall'
+    minimal=$(mktemp)
+    sed -n '/^[[:space:]]*call plug#begin/,/^[[:space:]]*call plug#end/p' "$vimrc" >"$minimal"
+    if [[ ! -s "$minimal" ]]; then
+        rm -f "$minimal"
+        die "no call plug#begin ... call plug#end block in $vimrc"
+    fi
+    vim -Nu "$minimal" -i NONE -n -es "+$command --sync" '+qall' || rc=$?
+    rm -f "$minimal"
+    return "$rc"
 }
 
 case "$action" in

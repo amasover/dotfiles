@@ -5,6 +5,10 @@
 # gnu-netcat + netmask: build-rot relics (200x-era, fail modern toolchains) —
 # machine-local on the workstation; subnetcalc (declared) and repo openbsd-netcat
 # are the modern equivalents (2.7 VM finding).
+# Time sync is systemd-timesyncd on every class (install-on-metal and the
+# archinstall seeds enable it). ntp + networkmanager-dispatcher-ntpd were
+# dropped 2026-10-20: the dispatcher started ntpd on every connection, where it
+# segfaulted on glibc 2.44 and left the portable drive's boot degraded.
 [arch]
 packages = [
   "b43-fwcutter",
@@ -24,11 +28,9 @@ packages = [
   "net-tools",
   "netctl",
   "networkmanager",
-  "networkmanager-dispatcher-ntpd",
   "networkmanager-openvpn",
   "nmap",
   "nss-mdns",
-  "ntp",
   "openbsd-netcat",  # gnu-netcat's replacement (2.15 removal validation, 2026-07-07)
   "openssh",
   "openvpn",

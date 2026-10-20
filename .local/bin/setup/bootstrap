@@ -86,10 +86,13 @@ reconcile_refind_config() {
     [[ $mode == check || $mode == apply ]] \
         || die "refind-config mode must be check or apply"
     [[ -n $class ]] || die "refind-config class is required"
-    if [[ $class != workstation ]]; then
-        echo "  not applicable to class $class"
-        return 0
-    fi
+    case $class in
+        workstation | portable) ;;
+        *)
+            echo "  not applicable to class $class"
+            return 0
+            ;;
+    esac
     if [[ $mode == check ]]; then
         "$tool" --check || [[ $? -eq 1 ]]
     else
@@ -318,6 +321,16 @@ sync_fatal_line() {
     grep -m1 -E $'unresolvable package conflicts detected|error: ?(\x1b\\[[0-9;]*m)? ?target not found:|There are [0-9]+ providers available for' || true
 }
 
+# The AUR builds yay reports failed in a sync log (stdin), sorted, one per
+# line. A build that fails the same way twice in a row is broken, not unlucky:
+# brew-git's stale patch burned the retry loop for half an hour on the
+# portable drive before anything named it (2026-10-20).
+failed_aur_builds() {
+    sed $'s/\x1b\\[[0-9;]*m//g; s/\r$//' \
+        | grep -oE '^[[:alnum:]@._+-]+ - exit status [0-9]+$' \
+        | cut -d' ' -f1 | sort -u || true
+}
+
 # Hidden test seams (tests/quarantine.clitest.txt), dispatched before the arg
 # loop and preconditions:
 #   --probe-provider PKG...        print "<declared>\t<provider>" per substitution
@@ -326,6 +339,7 @@ sync_fatal_line() {
 #   --step-outcome INSTALLED       classify one stepping attempt (note on stdin)
 #   --syu-hold-action CODE INSTALLED  classify a hold that aborted the 3c upgrade
 #   --sync-fatal                   print the deterministic-fatal line from a sync log (stdin)
+#   --failed-builds                print the AUR builds a sync log reports failed (stdin)
 #   --provider-pins MODE           exercise provider pin installation (test-only)
 #   --network-services MODE        exercise NetworkManager convergence (test-only)
 #   --refind-config MODE CLASS      exercise class-gated rEFInd reconciliation (test-only)
@@ -352,6 +366,10 @@ if [[ "${1:-}" == "--syu-hold-action" ]]; then
 fi
 if [[ "${1:-}" == "--sync-fatal" ]]; then
     sync_fatal_line
+    exit 0
+fi
+if [[ "${1:-}" == "--failed-builds" ]]; then
+    failed_aur_builds
     exit 0
 fi
 if [[ "${1:-}" == "--provider-pins" ]]; then
@@ -527,8 +545,11 @@ else
     fi
     if [[ -n "$(find "$mirrorlist" -mtime -7 2>/dev/null)" ]]; then
         echo "  mirrorlist is younger than 7 days - keeping it"
-    else
-        sudo reflector --verbose "@$rfl_dst"
+    elif ! sudo reflector --verbose "@$rfl_dst"; then
+        # Stale beats none: this list just installed reflector, and the timer
+        # re-ranks within a week. archlinux.org took 75 s to serve its mirror
+        # status on 2026-10-19, and the drive's first bootstrap died here.
+        echo "  re-rank failed - keeping the current mirrorlist; reflector.timer retries"
     fi
 fi
 
@@ -628,6 +649,18 @@ die_still_held() { # $1 = held package that stepping could not satisfy
     Broken upstream and you already know?  aur-quarantine broken $1 --reason '...'   (2.38: runs then skip it)"
 }
 
+# An unreachable AUR makes the gate fail closed with an "rpc" hold. That is an
+# outage, not a verdict: archlinux.org took tens of seconds per answer on
+# 2026-10-20, and one timeout at the gate killed the drive's bootstrap. The sync
+# loops below wait and retry a few times before dying with it.
+rpc_retries=0
+retry_rpc_hold() { # $1 = hold code -> 0 after waiting, when another try is due
+    [[ $1 == rpc ]] && ((rpc_retries < 3)) || return 1
+    rpc_retries=$((rpc_retries + 1))
+    echo "  AUR RPC unreachable at the quarantine gate — retry $rpc_retries/3 in 30s"
+    sleep 30
+}
+
 # --- 3c. system sync (Story 2.34) ----------------------------------------------
 # Sync DBs age between runs — a resumed VM days later, or a machine restored
 # from an old snapshot — and Arch mirrors purge superseded package files, so a
@@ -651,9 +684,14 @@ say "System sync"
 if [[ $CHECK -eq 1 ]]; then
     echo "  would: pacman -Syu   (refresh DBs + full upgrade — mirrors purge superseded files)"
 elif [[ $UNATTENDED -eq 1 ]]; then
+    # The gate stops at its first hold, so each failed attempt names one more
+    # held upgrade. Retry for as long as every attempt defers a new package:
+    # a fixed five ran out on the portable drive, which had more held chaotic
+    # upgrades than that (2026-10-20). The same package twice means no progress.
     syu_ok=0
     syu_ignore=()
-    for _ in 1 2 3 4 5; do
+    declare -A syu_deferred=()
+    while :; do
         rm -f "$held_install_file"
         if sudo pacman -Syu "${NC[@]}" "${syu_ignore[@]}"; then
             syu_ok=1
@@ -661,13 +699,16 @@ elif [[ $UNATTENDED -eq 1 ]]; then
         fi
         [[ -s "$held_install_file" ]] || die "system sync failed and no quarantine hold was recorded — read the pacman output above"
         IFS=$'\t' read -r held_pkg held_code <"$held_install_file"
+        retry_rpc_hold "$held_code" && continue
+        [[ -z "${syu_deferred[$held_pkg]+x}" ]] || break
         inst=0
         pacman -Q "$held_pkg" >/dev/null 2>&1 && inst=1
         [[ "$(syu_hold_action "$held_code" "$inst")" == ignore-upgrade ]] || die_hold "$held_pkg" "$held_code"
         defer_pkg "$held_pkg" age "upgrade held at system sync; installed aged version stays"
+        syu_deferred[$held_pkg]=1
         syu_ignore+=(--ignore "$held_pkg")
     done
-    [[ $syu_ok -eq 1 ]] || die "system sync failed after 5 attempts — read the output above"
+    [[ $syu_ok -eq 1 ]] || die "system sync: $held_pkg held again despite --ignore — read the output above"
 else
     sudo pacman -Syu "${NC[@]}"
 fi
@@ -912,8 +953,14 @@ else
     if ((${#candidates[@]} == 0)); then
         echo "  every declared package is repo-sourced — nothing to pre-flight"
     else
-        verdicts=$("$aq" preflight "${candidates[@]}") \
-            || die "pre-flight could not verify (AUR RPC unreachable?) — transient: re-run bootstrap"
+        # The batched verdict's RPC answers serve every per-package step below
+        # (aur-quarantine rpc_info); the cache lives for this pass only.
+        AUR_RPC_CACHE=$(mktemp)
+        export AUR_RPC_CACHE
+        until verdicts=$("$aq" preflight "${candidates[@]}"); do
+            retry_rpc_hold rpc \
+                || die "pre-flight could not verify (AUR RPC unreachable?) — transient: re-run bootstrap"
+        done
         age_holds=()
         identity=""
         missing=""
@@ -970,6 +1017,13 @@ else
             echo "  no age holds, no substitutions (${#candidates[@]} non-repo packages checked)"
         else
             echo "  pre-building (${#to_build[@]}): ${to_build[*]}"
+            # Stepping reads each recipe's history from a cached AUR clone. One
+            # serial fetch per package was most of this pass's wall time on the
+            # portable drive (22 packages, 2026-10-20), so fetch them together
+            # first; update then reuses the fresh clones.
+            prefetch=()
+            for p in "${to_build[@]}"; do prefetch+=("${base_of[$p]:-$p}"); done
+            "$aq" prefetch "${prefetch[@]}"
             build_failed=""
             no_verdict=""
             for p in "${to_build[@]}"; do
@@ -1006,6 +1060,8 @@ else
             done
             ((${#ok_built[@]} == 0)) || echo "  pre-built and installed: ${ok_built[*]}"
         fi
+        rm -f "$AUR_RPC_CACHE"
+        unset AUR_RPC_CACHE
     fi
     # Drift-report state (2.38): age-deferred is per-run knowledge — recorded
     # fresh each unattended run (empty file = nothing deferred last run).
@@ -1092,6 +1148,7 @@ elif [[ $UNATTENDED -eq 1 ]]; then
     sync_ok=0
     sync_log=$(mktemp)
     last_held=""
+    last_failed=""
     for attempt in 1 2 3 4 5 6 7 8 9 10; do
         rm -f "$held_install_file"
         # script(1) gives the sync a pty despite the tee: without it pacman
@@ -1106,6 +1163,7 @@ elif [[ $UNATTENDED -eq 1 ]]; then
         }
         if [[ -s "$held_install_file" ]]; then
             IFS=$'\t' read -r held_pkg held_code <"$held_install_file"
+            retry_rpc_hold "$held_code" && continue
             [[ "$held_pkg" != "$last_held" ]] || die_still_held "$held_pkg"
             [[ "$held_code" == "age" ]] || die_hold "$held_pkg" "$held_code"
             step_age_hold "$held_pkg"
@@ -1131,6 +1189,11 @@ elif [[ $UNATTENDED -eq 1 ]]; then
         [[ -z "$fatal" ]] || die "sync failed deterministically — retrying cannot help. Decisive line: $fatal
     'providers available' = a new provider ambiguity: pin the right provider (bootstrap PROVIDER_PINS) and declare it in a group.
     Otherwise: fix the declarations."
+        failed=$(failed_aur_builds <"$sync_log")
+        [[ -z "$failed" || "$failed" != "$last_failed" ]] || die "the same AUR build failed twice in a row: $(tr '\n' ' ' <<<"$failed")— its error is above.
+    Broken upstream?  aur-quarantine broken <pkg> --reason '...' [--upstream URL] (writes .config/metapac/known-broken.toml),
+    commit it, and re-run: unattended runs then skip it until a newer recipe ages in."
+        last_failed=$failed
         retry_delay=$((60 + attempt * 30))
         echo "bootstrap: sync attempt $attempt failed — retrying in ${retry_delay}s"
         # Purge corrupt built archives (truncated by a disk-full episode, or by
@@ -1392,12 +1455,17 @@ fi
 
 # --- 9. login shell ------------------------------------------------------------
 say "Login shell"
-if [[ "${SHELL:-}" == */zsh ]]; then
+# The account's configured shell, not $SHELL: that stays the old one until the
+# next login, so a re-run before then would change it again. chsh run as the
+# user asks for the user's password even under --unattended, and stalled the
+# portable drive's first bootstrap at a bare "Password:" (2026-10-20); through
+# sudo it needs only the authorization every other step already uses.
+if [[ "$(getent passwd "$USER" | cut -d: -f7)" == */zsh ]]; then
     echo "  already zsh"
 elif [[ $CHECK -eq 1 ]]; then
-    echo "  would: chsh -s /usr/bin/zsh"
+    echo "  would: sudo chsh -s /usr/bin/zsh $USER"
 else
-    chsh -s /usr/bin/zsh
+    sudo chsh -s /usr/bin/zsh "$USER"
 fi
 
 say "Bootstrap complete — reboot to land in the configured session."

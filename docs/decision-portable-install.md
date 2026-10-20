@@ -108,6 +108,11 @@ rows did not reach.
 4. **Story 2.58 — install from a booted workstation** ([#255](https://github.com/amasover/dotfiles/issues/255)).
    The convenience that lets a portable disk be built without rebooting. Gate: OVMF
    vars byte-compare proving zero writes outside the target device.
+5. **Story 2.60 — a machine class for the portable drive** ([#272](https://github.com/amasover/dotfiles/issues/272)).
+   The story row 1 promised: fitting the chassis stays the class's job, so the
+   drive gets a class of its own — shared purposes, an every-vendor hardware
+   adapter, its own inbox, no `work`. Gate: class rendering tests, then the real
+   drive bootstrapped under it.
 
 ## Archinstall coupling outside `finalize_metal`
 
