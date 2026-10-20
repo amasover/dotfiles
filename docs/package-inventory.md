@@ -204,6 +204,8 @@ droppable).
 - **D1 AUR helper:** `yay` = daily driver (primary). Keep `paru` as backup, `brew` for the
   occasional linux-brew-only package. `trizen` **uninstalled** (already gone live). `metapac`
   retained for the declarative-group evaluation. Bootstrap installs yay (+ paru, brew).
+  2026-10-20: `brew` retired; its only formula, `terratag`, is now a vendored PKGBUILD
+  (`.config/dotfiles/pkgbuilds/terratag`).
 - **D2 Work profile (NEW optional `work` group):** Split the Azure/k8s/dotnet/databricks/istio
   stack into a separate optional `work` manifest so a personal fresh install can skip it.
   `globalprotect-openconnect` (+ its `openconnect` companion) belongs to `work` too.

@@ -276,11 +276,9 @@ export PATH=~/.nuget/plugins:$PATH
 export PATH=/opt/idea-IC-171.4424.56/bin:$PATH
 export PATH=/opt/teams-for-linux:$PATH
 export PATH=/usr/share/intellijidea-ce/bin:$PATH
-export PATH=/home/linuxbrew/.linuxbrew/bin:$PATH
 export PATH=~/.yarn/bin:$PATH
 export PATH=~/.krew/bin:$PATH
 export PATH=/usr/local/bin:$PATH
-export PATH=/opt/brew/bin:$PATH
 
 ## NPM TOKEN SETUP
 export NPM_TOKEN=$NPM_TOKEN

@@ -213,31 +213,37 @@ cmd_check() {
 }
 
 cmd_bump() { # $1 = name, $2 = new version
-    local pb="$pkgs_dir/$1/PKGBUILD" srcinfo remote asset sha sums_url sums verdict
+    local pb="$pkgs_dir/$1/PKGBUILD" srcinfo remote asset sha sums_name sums_url sums="" verdict
     [[ -f $pb ]] || die "no vendored package '$1' in $pkgs_dir"
     command -v updpkgsums >/dev/null || die "updpkgsums not found (pacman-contrib)"
     cmd_set_version "$pb" "$2"
     mkdir -p "$cache_dir/src"
     (cd "$(dirname "$pb")" && SRCDEST="$cache_dir/src" updpkgsums)
-    # Verify the freshly computed checksum against upstream's own
-    # checksums.txt (goreleaser convention: next to the release asset).
-    # Mismatch = tampered tarball or CDN — fatal. No checksums.txt = the
+    # Verify the freshly computed checksum against upstream's own checksums
+    # file, published next to the release asset under one of goreleaser's two
+    # usual names: checksums.txt, or the default <project>_<version>_checksums.txt
+    # where <project> prefixes the asset name (terratag).
+    # Mismatch = tampered tarball or CDN — fatal. No checksums file = the
     # upstream publishes none; the pin stays trust-on-first-download, loudly.
     srcinfo=$(cd "$(dirname "$pb")" && makepkg --printsrcinfo)
     remote=$(sed -n 's/^\tsource = //p' <<<"$srcinfo" | head -1)
     remote=${remote##*::}
     asset=${remote##*/}
     sha=$(sed -n 's/^\tsha256sums = //p' <<<"$srcinfo" | head -1)
-    sums_url="${remote%/*}/checksums.txt"
-    if sums=$(curl -fsSL --max-time 15 "$sums_url"); then
+    for sums_name in checksums.txt "${asset%%_"$2"_*}_$2_checksums.txt"; do
+        sums_url="${remote%/*}/$sums_name"
+        sums=$(curl -fsL --max-time 15 "$sums_url") && break
+        sums=""
+    done
+    if [[ -n $sums ]]; then
         verdict=$(cmd_checksum_verdict "$asset" "$sha" <<<"$sums")
         case "$verdict" in
-            verified) echo "  checksum verified against upstream checksums.txt" ;;
+            verified) echo "  checksum verified against upstream $sums_name" ;;
             mismatch) die "checksum MISMATCH for $asset vs $sums_url — DO NOT COMMIT; investigate, then revert with git/yadm checkout" ;;
-            absent) echo "  WARNING: $asset not listed in upstream checksums.txt — checksum is trust-on-first-download" ;;
+            absent) echo "  WARNING: $asset not listed in upstream $sums_name — checksum is trust-on-first-download" ;;
         esac
     else
-        echo "  WARNING: no upstream checksums.txt at $sums_url — checksum is trust-on-first-download"
+        echo "  WARNING: no upstream checksums file next to $remote — checksum is trust-on-first-download"
     fi
     echo "bumped $1 to $2 ($pb) — review + yadm/git commit the change"
 }
