@@ -4,7 +4,7 @@
 #
 # Run from the repo root: clitest tests/vim-plugins.clitest.txt
 
-$ VP=.local/bin/setup/vim-plugins; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin" "$CLITMP/runtime/autoload"; printf "%s\n" "Plug 'owner/foo'" "\"Plug 'ignored/nope'" "Plug 'owner/bar', {'rtp': 'vim/'}" > "$CLITMP/vimrc"; touch "$CLITMP/runtime/autoload/plug.vim"; RUN() { PATH="$CLITMP/bin:$PATH" FAKE_LOG="$CLITMP/call" VIM_PLUGIN_HOME="$CLITMP/vim" VIM_PLUG_RUNTIME="$CLITMP/runtime/autoload/plug.vim" "$VP" "$@"; }; echo ready
+$ VP=.local/bin/setup/vim-plugins; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin" "$CLITMP/runtime/autoload"; printf "%s\n" "call plug#begin('~/.vim/plugged')" "Plug 'owner/foo'" "\"Plug 'ignored/nope'" "Plug 'owner/bar', {'rtp': 'vim/'}" "call plug#end()" "colorscheme nord" > "$CLITMP/vimrc"; touch "$CLITMP/runtime/autoload/plug.vim"; RUN() { PATH="$CLITMP/bin:$PATH" FAKE_LOG="$CLITMP/call" VIM_PLUGIN_HOME="$CLITMP/vim" VIM_PLUG_RUNTIME="$CLITMP/runtime/autoload/plug.vim" "$VP" "$@"; }; echo ready
 ready
 $
 # list derives vim-plug's default directory names and ignores comments
@@ -23,7 +23,7 @@ $ test ! -e "$CLITMP/vim"; echo "rc=$?"
 rc=0
 $
 # fake Vim records install/update actions and creates fallback plugin clones
-$ printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" > "$FAKE_LOG.vim"' 'case "$*" in *"PlugUpdate --sync"*) echo update > "$FAKE_LOG.action" ;; *) echo install > "$FAKE_LOG.action" ;; esac' 'mkdir -p "$VIM_PLUGIN_HOME/plugged/foo/.git" "$VIM_PLUGIN_HOME/plugged/bar/.git"' > "$CLITMP/bin/vim"; chmod +x "$CLITMP/bin/vim"; echo fake
+$ printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" > "$FAKE_LOG.vim"' 'cp "$2" "$FAKE_LOG.vimrc"' 'case "$*" in *"PlugUpdate --sync"*) echo update > "$FAKE_LOG.action" ;; *) echo install > "$FAKE_LOG.action" ;; esac' 'mkdir -p "$VIM_PLUGIN_HOME/plugged/foo/.git" "$VIM_PLUGIN_HOME/plugged/bar/.git"' > "$CLITMP/bin/vim"; chmod +x "$CLITMP/bin/vim"; echo fake
 fake
 $ RUN apply "$CLITMP/vimrc" | sed "s|$CLITMP|TMP|g"
   installed fallback Vim plugins from TMP/vimrc
@@ -31,6 +31,15 @@ $ grep -o 'PlugInstall --sync' "$CLITMP/call.vim"
 PlugInstall --sync
 $ cat "$CLITMP/call.action"
 install
+$
+# install sources only the plug block: settings after it (colorscheme nord)
+# name plugins that are not installed yet, and vim -es exits 1 on that error
+$ cat "$CLITMP/call.vimrc"
+call plug#begin('~/.vim/plugged')
+Plug 'owner/foo'
+"Plug 'ignored/nope'
+Plug 'owner/bar', {'rtp': 'vim/'}
+call plug#end()
 $
 # converged apply/check are no-ops; update routes through PlugUpdate --sync
 $ RUN apply "$CLITMP/vimrc"
