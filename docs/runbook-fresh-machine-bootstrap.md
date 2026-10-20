@@ -169,31 +169,37 @@ What it does, in order:
 8. **Network ownership** — enables and starts NetworkManager, then disables and stops
    systemd-networkd. Harness seeds select NetworkManager from first boot; this step also
    migrates older ISO-networked guests. `--check` requires or reports the exact cutover.
-9. **rEFInd boot configuration** — `workstation` only. Reconciles tracked portable policy,
+9. **Initramfs boot chain** — links the tracked HOOKS policy
+   (`.config/dotfiles/mkinitcpio/hooks.conf`) to
+   `/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf` and rebuilds the initramfs when
+   that changes the effective array. A machine whose running command line still
+   carries `cryptdevice=` is reported and skipped; see
+   [systemd initramfs migration](#systemd-initramfs-migration).
+10. **rEFInd boot configuration** — `workstation` only. Reconciles tracked portable policy,
    generated machine scan/kernel entries, and package-owned Nord assets. Production access
    gets a separate `pkexec` approval; existing files are backed up outside the ESP before
    any write. Unmanaged files stop normal apply rather than being replaced.
-10. **AUR trust baseline** — `aur-quarantine seed` (trust-first-seen, announced;
+11. **AUR trust baseline** — `aur-quarantine seed` (trust-first-seen, announced;
     interim until 2.10's portable baseline).
-11. **oh-my-zsh** — official installer, `KEEP_ZSHRC=yes` so yadm's `.zshrc` survives;
+12. **oh-my-zsh** — official installer, `KEEP_ZSHRC=yes` so yadm's `.zshrc` survives;
     then symlinks the tracked patched agnoster theme into its custom theme directory.
     No custom plugin clone supplies autosuggestions or NVM.
-12. **Spacemacs checkout** — `setup/spacemacs-checkout apply` clones upstream `develop`
+13. **Spacemacs checkout** — `setup/spacemacs-checkout apply` clones upstream `develop`
     when `~/.emacs.d` is absent. An existing wrong/dirty/ahead checkout stops with manual
     repair instructions; bootstrap never overwrites it. Tracked `~/.spacemacs` owns user
     configuration.
-13. **Emacs Copilot server** — installs a pinned `@github/copilot-language-server`
+14. **Emacs Copilot server** — installs a pinned `@github/copilot-language-server`
     under Spacemacs' cache through declared official `nodejs`/`npm` in `/usr/bin`,
     then verifies both package version and launcher. This runs before first Emacs launch.
-14. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
+15. **Claude Code plugins** — merges the declared marketplaces/plugins without replacing
     unrelated settings.
-15. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
+16. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
     reconciles active `Plug` declarations; `--check` is read-only.
-16. **User services** — enables tracked user units; services awaiting attended auth may
+17. **User services** — enables tracked user units; services awaiting attended auth may
     start later through their restart policy.
-17. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and
+18. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and
     leaves metal/non-VMware hosts without the managed link.
-18. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
+19. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
 
 Focused editor validation from the repo checkout:
 
@@ -235,11 +241,12 @@ resume LV exactly equal to rounded physical RAM. It disables zram and refuses a 
 that cannot also hold the future 1.5x-RAM routine swapfile plus 40 GiB workstation
 headroom. `genfstab` records mounted filesystems only, so the dedicated resume LV is
 never in it; the installer's `metal-finalize` step persists it in the target fstab at
-priority -1, inserts the `resume` initramfs hook after `lvm2` and before
-`filesystems`, and rebuilds the initramfs in the target chroot. Without that hook the
-kernel boots but never restores a hibernation image. Whole-GiB rounding of physical
-RAM is a safe target; the image itself can never exceed `MemTotal`, so that is the
-size the module enforces.
+priority -1 and rebuilds the initramfs in the target chroot. The initramfs is the
+systemd chain (Story 2.59), which needs no `resume` hook: systemd's
+`systemd-hibernate-resume-generator` restores the image from the `resume=` kernel
+option that step 3 below persists. Whole-GiB rounding of physical RAM is a safe
+target; the image itself can never exceed `MemTotal`, so that is the size the
+module enforces.
 
 After first boot and yadm checkout:
 
@@ -298,6 +305,44 @@ OS's swap.
 The earlier drop-in in that directory paused the zswap shrinker instead. It did
 not prevent the stall and removed the pool's only pressure-driven drain; the
 installer deletes it from machines that still carry it.
+
+## systemd initramfs
+
+Every machine this repository provisions boots a systemd initramfs (Story 2.59,
+[#258](https://github.com/amasover/dotfiles/issues/258)). The array lives in one
+tracked drop-in, `.config/dotfiles/mkinitcpio/hooks.conf`; `install-on-metal` copies
+it into a fresh target before `pacstrap` builds the first image, and bootstrap step 9
+replaces that copy with a symlink. `mkinitcpio` sources drop-ins after
+`/etc/mkinitcpio.conf`, so pacman keeps owning the base file, a `.pacnew` never
+touches the boot chain, and `MODULES` stays a machine-local value in the base file.
+
+The chain unlocks through `sd-encrypt` from `rd.luks.name=<uuid>=cryptlvm`, never
+`cryptdevice=`, which only the udev `encrypt` hook reads. `base` precedes `systemd` and
+`SYSTEMD_SULOGIN_FORCE=1` is on the kernel command line, so a boot that fails before
+root still reaches a rescue shell even though the root account is locked.
+`refind-config` carries that option forward whenever it regenerates
+`refind_linux.conf` from the running kernel.
+
+### systemd initramfs migration
+
+A machine installed before Story 2.59 boots the udev chain with `cryptdevice=` on its
+command line, and bootstrap refuses to link the policy there: the next kernel update
+would build an image that never prompts for the passphrase. Its command line and
+initramfs change together, attended, in one step:
+
+1. Keep a known-good image and an entry that boots it:
+   `sudo cp /boot/initramfs-linux.img /boot/initramfs-linux-udev.img`, plus a manual
+   rEFInd stanza or `refind_linux.conf` line booting it with today's options.
+2. In `/boot/refind_linux.conf`, replace `cryptdevice=UUID=<uuid>:<name>` with
+   `rd.luks.name=<uuid>=<name>` and append `SYSTEMD_SULOGIN_FORCE=1`.
+3. `sudo ln -sfT ~/.config/dotfiles/mkinitcpio/hooks.conf
+   /etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf && sudo mkinitcpio -P`.
+4. Reboot immediately. Do **not** run `refind-config apply` between steps 2 and 4:
+   it derives the command line from the running kernel and would silently restore
+   `cryptdevice=`.
+5. After reboot, require `grep -q rd.luks.name= /proc/cmdline`,
+   `refind-config --check` and `hibernate-storage --check` converged, then remove the
+   fallback image and stanza.
 
 ## rEFInd metal boot configuration
 

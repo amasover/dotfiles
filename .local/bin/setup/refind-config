@@ -73,7 +73,18 @@ KERNEL_VERSION_STRINGS = (
     "linux-rt",
     "linux",
 )
-SINGLETON_KEYS = {"root", "resume", "resume_offset", "rootflags", "rootfstype", "zfs"}
+# SYSTEMD_SULOGIN_FORCE is no machine identity, but is carried from the live
+# command line the same way: install-on-metal writes it for the systemd
+# initramfs (Story 2.59), whose rescue shell needs it while root is locked.
+SINGLETON_KEYS = {
+    "root",
+    "resume",
+    "resume_offset",
+    "rootflags",
+    "rootfstype",
+    "zfs",
+    "SYSTEMD_SULOGIN_FORCE",
+}
 IDENTITY_KEYS = SINGLETON_KEYS | {
     "cryptdevice",
     "cryptkey",

@@ -97,7 +97,44 @@ reconcile_refind_config() {
     fi
 }
 
-# Step 6f's body, kept as a function with a seam because the parts worth
+# Step 6e's body (Story 2.59). $2 prefixes /etc and /proc/cmdline so a test can
+# point both at a scratch tree, as the NAS automount seam does.
+reconcile_initramfs_hooks() {
+    local mode=${1:-} root=${2:-}
+    [[ $mode == check || $mode == apply ]] \
+        || die "initramfs-hooks mode must be check or apply"
+    local src="$HOME/.config/dotfiles/mkinitcpio/hooks.conf"
+    local dst="$root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf"
+    [[ -f "$src" ]] || die "tracked HOOKS policy missing ($src) — yadm checkout incomplete?"
+    if [[ "$(readlink "$dst" 2>/dev/null)" == "$src" ]]; then
+        echo "  already linked: $dst"
+        return 0
+    fi
+    # sd-encrypt never reads cryptdevice=, so a machine still booting the udev
+    # chain would build an image it cannot unlock at its next kernel update.
+    # Its command line and initramfs move together in one attended step.
+    if grep -qE '(^| )cryptdevice=' "$root/proc/cmdline" 2>/dev/null; then
+        echo "  skipped: this machine boots the udev chain (cryptdevice=);"
+        echo "  migrate it first: docs/runbook-fresh-machine-bootstrap.md, systemd initramfs migration"
+        return 0
+    fi
+    # install-on-metal leaves an identical copy, which needs no rebuild.
+    local rebuild=1
+    cmp -s "$src" "$dst" && rebuild=0
+    if [[ $mode == check ]]; then
+        echo "  would: symlink $dst -> $src"
+        ((rebuild)) && echo "  would: mkinitcpio -P   (the policy changes this machine's initramfs)"
+        return 0
+    fi
+    sudo mkdir -p "${dst%/*}"
+    sudo ln -sfT "$src" "$dst"
+    echo "  linked: $dst"
+    if ((rebuild)); then
+        sudo mkinitcpio -P
+    fi
+}
+
+# Step 6g's body, kept as a function with a seam because the parts worth
 # testing — destination mapping, already-linked detection, check-mode output —
 # need neither a NAS nor the autofs package nor root. $2 prefixes the system
 # path so a test can point it at a scratch tree, as refind-config --root does.
@@ -238,6 +275,7 @@ sync_fatal_line() {
 #   --provider-pins MODE           exercise provider pin installation (test-only)
 #   --network-services MODE        exercise NetworkManager convergence (test-only)
 #   --refind-config MODE CLASS      exercise class-gated rEFInd reconciliation (test-only)
+#   --initramfs-hooks MODE ROOT     exercise the HOOKS drop-in link (test-only)
 if [[ "${1:-}" == "--probe-provider" ]]; then
     shift
     for p in "$@"; do
@@ -275,6 +313,11 @@ fi
 if [[ "${1:-}" == "--refind-config" ]]; then
     [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "refind-config seam is test-only"
     reconcile_refind_config "${2:-}" "${3:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--initramfs-hooks" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "initramfs-hooks seam is test-only"
+    reconcile_initramfs_hooks "${2:-}" "${3:-}"
     exit 0
 fi
 if [[ "${1:-}" == "--nas-automounts" ]]; then
@@ -1128,7 +1171,19 @@ else
     "$custom_pkgs" sync "${NC[@]}"
 fi
 
-# --- 6e. rEFInd boot configuration (Story 2.52) -------------------------------
+# --- 6e. initramfs boot chain (Story 2.59) -------------------------------------
+# One tracked HOOKS policy for every machine, symlinked as a drop-in so pacman
+# keeps owning /etc/mkinitcpio.conf and no .pacnew merge touches boot policy.
+# MODULES stays machine-local. A machine still on the udev chain is reported,
+# never migrated here.
+say "Initramfs boot chain"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_initramfs_hooks check
+else
+    reconcile_initramfs_hooks apply
+fi
+
+# --- 6f. rEFInd boot configuration (Story 2.52) -------------------------------
 # Physical Intel-laptop profiles get repository-owned portable policy plus
 # machine-derived kernel entries. The helper uses a separate pkexec approval,
 # backs up existing destinations outside the ESP, never edits firmware/NVRAM,
@@ -1140,7 +1195,7 @@ else
     reconcile_refind_config apply "$class"
 fi
 
-# --- 6f. NAS automounts (optional) ---------------------------------------------
+# --- 6g. NAS automounts (optional) ---------------------------------------------
 # Opt-in, and inert for anyone who doesn't run a NAS: this step only acts when
 # a machine supplies BOTH halves, and no purpose group pulls it in.
 #   1. maps at ~/.config/dotfiles/autofs/{master.d,maps}/ — carried in the

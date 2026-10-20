@@ -6,6 +6,7 @@ half is proven by `metal-rehearsal`, not here.
 
 import os
 import pty
+import re
 import subprocess
 import sys
 import time
@@ -18,11 +19,6 @@ refind = load_tool("refind_config_for_metal", "refind-config")
 # The rehearsal's terminal framing is the only consumer of the live prompts, so
 # it drives them here rather than a stand-in expect loop.
 rehearsal = load_tool("metal_rehearsal_for_metal", "metal-rehearsal")
-
-DEFAULT_HOOKS = (
-    "HOOKS=(base udev autodetect microcode modconf kms keyboard keymap "
-    "consolefont block filesystems fsck)\n"
-)
 
 GIB = 1073741824
 
@@ -175,55 +171,76 @@ class TestPreflight:
         assert set(invoked) <= set(metal.REQUIRED_TOOLS)
 
 
-class TestHooks:
-    def test_encrypt_and_lvm_precede_filesystems(self):
-        hooks = metal.rewrite_hooks(DEFAULT_HOOKS, ["encrypt", "lvm2"])
-        order = hooks[hooks.index("(") + 1 : hooks.index(")")].split()
-        assert order.index("encrypt") < order.index("lvm2") < order.index("filesystems")
-
-    def test_rerun_after_partial_failure_converges(self):
-        once = metal.rewrite_hooks(DEFAULT_HOOKS, ["encrypt", "lvm2", "resume"])
-        assert metal.rewrite_hooks(once, ["encrypt", "lvm2", "resume"]) == once
-
-    def test_refuses_a_conf_without_one_literal_hooks_array(self):
-        with pytest.raises(metal.InstallError, match="one literal"):
-            metal.rewrite_hooks("MODULES=()\n", ["resume"])
-        with pytest.raises(metal.InstallError, match="one literal"):
-            metal.rewrite_hooks(DEFAULT_HOOKS * 2, ["resume"])
-
-    def test_refuses_a_hooks_array_with_no_filesystems(self):
-        with pytest.raises(metal.InstallError, match="filesystems"):
-            metal.rewrite_hooks("HOOKS=(base udev block)\n", ["resume"])
-
-    # What Arch actually ships today. `encrypt` is inert in a systemd initrd and
-    # `cryptdevice=` is ignored, so a target built on it reaches an emergency
-    # shell instead of a passphrase prompt.
-    SYSTEMD_HOOKS = (
-        "HOOKS=(base systemd autodetect microcode modconf kms keyboard "
-        "sd-vconsole block filesystems fsck)\n"
-    )
+class TestHooksPolicy:
+    POLICY = metal.HOOKS_POLICY.read_text()
 
     @staticmethod
-    def _order(text):
-        return text[text.index("(") + 1 : text.index(")")].split()
+    def sourced_hooks(*confs):
+        """HOOKS after sourcing confs in order, as mkinitcpio does with drop-ins."""
+        return subprocess.run(
+            [
+                "bash",
+                "-c",
+                'for c; do source "$c"; done; printf "%s\\n" "${HOOKS[@]}"',
+                "bash",
+                *map(str, confs),
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.split()
 
-    def test_the_recipe_owns_the_whole_array(self):
-        order = self._order(metal.set_hooks(self.SYSTEMD_HOOKS))
-        assert "systemd" not in order
-        assert "sd-vconsole" not in order
-        assert order.index("keyboard") < order.index("encrypt")
-        assert order.index("encrypt") < order.index("lvm2")
-        assert order.index("lvm2") < order.index("resume")
-        assert order.index("resume") < order.index("filesystems")
-        assert order.index("filesystems") < order.index("fsck")
+    def test_tracked_policy_is_the_systemd_chain_with_a_rescue_shell(self):
+        hooks = metal.policy_hooks(self.POLICY)
+        assert hooks.index("base") < hooks.index("systemd")
+        assert "sd-encrypt" in hooks and "lvm2" in hooks
+        assert not set(metal.UDEV_ONLY_HOOKS) & set(hooks)
 
-    def test_setting_the_array_converges_on_a_rerun(self):
-        once = metal.set_hooks(self.SYSTEMD_HOOKS)
-        assert metal.set_hooks(once) == once
+    def test_policy_carries_no_machine_modules(self):
+        assert not re.search(r"(?m)^\s*MODULES", self.POLICY)
 
-    def test_a_systemd_array_is_refused_rather_than_patched(self):
-        with pytest.raises(metal.InstallError, match="systemd-based"):
-            metal.rewrite_hooks(self.SYSTEMD_HOOKS, ["resume"])
+    def test_dropin_wins_over_whatever_pacman_ships(self, tmp_path):
+        """A replaced /etc/mkinitcpio.conf cannot move the boot chain."""
+        base = tmp_path / "mkinitcpio.conf"
+        base.write_text(
+            "MODULES=(i915)\nHOOKS=(base udev autodetect keymap encrypt resume "
+            "filesystems)\n"
+        )
+        assert self.sourced_hooks(base, metal.HOOKS_POLICY) == metal.policy_hooks(
+            self.POLICY
+        )
+
+    def test_a_udev_array_is_refused_naming_sd_encrypt(self):
+        udev = (
+            "HOOKS=(base udev autodetect keyboard keymap block encrypt lvm2 "
+            "resume filesystems fsck)\n"
+        )
+        with pytest.raises(metal.InstallError, match="sd-encrypt"):
+            metal.policy_hooks(udev)
+
+    @pytest.mark.parametrize("inert", ["resume", "encrypt", "keymap", "consolefont"])
+    def test_udev_only_hooks_are_refused_in_a_systemd_array(self, inert):
+        hooks = self.POLICY.replace("filesystems", f"{inert} filesystems")
+        with pytest.raises(metal.InstallError, match=inert):
+            metal.policy_hooks(hooks)
+
+    def test_rescue_shell_requires_base_ahead_of_systemd(self):
+        swapped = self.POLICY.replace("HOOKS=(base systemd", "HOOKS=(systemd base")
+        with pytest.raises(metal.InstallError, match="base before systemd"):
+            metal.policy_hooks(swapped)
+
+    def test_refuses_a_policy_without_one_literal_hooks_array(self):
+        with pytest.raises(metal.InstallError, match="one literal"):
+            metal.policy_hooks("MODULES=()\n")
+        with pytest.raises(metal.InstallError, match="one literal"):
+            metal.policy_hooks(self.POLICY * 2)
+
+    def test_dropin_is_a_copy_of_the_tracked_policy(self, tmp_path):
+        metal.install_hooks_dropin(tmp_path, self.POLICY)
+        metal.install_hooks_dropin(tmp_path, self.POLICY)
+        dropin = tmp_path / metal.HOOKS_DROPIN
+        assert not dropin.is_symlink()
+        assert dropin.read_text() == self.POLICY
 
 
 class TestLocale:
@@ -250,10 +267,23 @@ class TestLocale:
 
 
 class TestRefindLinuxConf:
-    def test_kernel_options_unlock_the_named_group(self):
+    def test_kernel_options_unlock_the_named_group_through_sd_encrypt(self):
         options = metal.refind_linux_conf("new-laptop", "1234-UUID")
-        assert "cryptdevice=UUID=1234-UUID:cryptlvm" in options
+        assert "rd.luks.name=1234-UUID=cryptlvm" in options
+        assert "cryptdevice=" not in options
         assert "root=/dev/new-laptop/root" in options
+
+    def test_emergency_mode_keeps_a_rescue_shell(self):
+        """sulogin refuses a locked root account unless forced from the cmdline."""
+        options = metal.refind_linux_conf("new-laptop", "1234-UUID")
+        assert "SYSTEMD_SULOGIN_FORCE=1" in options
+
+    def test_handoff_regeneration_keeps_the_unlock_and_rescue_options(self):
+        """refind-config rewrites this file from the running kernel's cmdline."""
+        options = metal.refind_linux_conf("new-laptop", "1234-UUID").split('"')[3]
+        carried = refind.kernel_identity_from_cmdline(options)
+        assert "rd.luks.name=1234-UUID=cryptlvm" in carried
+        assert "SYSTEMD_SULOGIN_FORCE=1" in carried
 
     def test_resume_is_left_to_the_first_boot_handoff(self):
         """refind-config only derives resume=UUID= when the cmdline has none."""
@@ -265,7 +295,7 @@ def metal_target(tmp_path, monkeypatch):
     (tmp_path / "etc").mkdir()
     (tmp_path / "etc/fstab").write_text("/dev/new-laptop/root / ext4 defaults 0 1\n")
     (tmp_path / "etc/mkinitcpio.conf").write_text(
-        "HOOKS=(base udev encrypt lvm2 block filesystems fsck)\n"
+        "HOOKS=(base udev autodetect block filesystems fsck)\n"
     )
     # Building an initramfs requires the installed target; exercised in the VM.
     run = subprocess.run
@@ -305,23 +335,16 @@ def fstab_swap(root):
 
 
 class TestFinalize:
-    def test_resume_runs_after_unlock_before_filesystem_checks(self, metal_target):
+    def test_finalize_installs_the_tracked_chain_and_leaves_the_base_conf(
+        self, metal_target
+    ):
+        base = (metal_target / "etc/mkinitcpio.conf").read_text()
         metal.finalize_metal(metal_target, "new-laptop")
         metal.finalize_metal(metal_target, "new-laptop")
-        hooks = subprocess.run(
-            [
-                "bash",
-                "-c",
-                "source $1 && printf '%s\\n' \"${HOOKS[@]}\"",
-                "bash",
-                str(metal_target / "etc/mkinitcpio.conf"),
-            ],
-            text=True,
-            capture_output=True,
-            check=True,
-        ).stdout.split()
-        assert hooks.index("encrypt") < hooks.index("resume")
-        assert hooks.index("resume") < hooks.index("filesystems") < hooks.index("fsck")
+        assert (metal_target / "etc/mkinitcpio.conf").read_text() == base
+        assert TestHooksPolicy.sourced_hooks(
+            metal_target / "etc/mkinitcpio.conf", metal_target / metal.HOOKS_DROPIN
+        ) == metal.policy_hooks(metal.HOOKS_POLICY.read_text())
 
     def test_resume_swap_follows_the_derived_volume_group(self, metal_target):
         metal.finalize_metal(metal_target, "new-laptop")

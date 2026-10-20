@@ -1,4 +1,4 @@
-# NAS automount installation, bootstrap step 6f (Story 2.54, #249).
+# NAS automount installation, bootstrap step 6g (Story 2.54, #249).
 # Run from repo root: clitest tests/nas-automounts.clitest.txt
 #
 # Host-independent by construction: HOME, the /etc prefix, and every privileged

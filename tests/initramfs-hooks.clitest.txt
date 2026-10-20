@@ -1,0 +1,55 @@
+# Initramfs HOOKS policy link, bootstrap step 6e (Story 2.59, #258).
+# Run from repo root: clitest tests/initramfs-hooks.clitest.txt
+#
+# Host-independent by construction: HOME, the /etc and /proc/cmdline prefix, and
+# every privileged binary are redirected at a scratch tree, so this needs no root
+# and never touches the running machine's initramfs.
+
+$ ITMP=$(mktemp -d); IHOME=$ITMP/home; IROOT=$ITMP/root; IBIN=$ITMP/bin; SRC=$IHOME/.config/dotfiles/mkinitcpio/hooks.conf; DST=$IROOT/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf; TRACE=$ITMP/trace; export BOOTSTRAP_TEST_MODE=1 TRACE; mkdir -p "${SRC%/*}" "$IROOT/etc" "$IROOT/proc" "$IBIN"; cp .config/dotfiles/mkinitcpio/hooks.conf "$SRC"; echo ready
+ready
+$ printf '%s\n' '#!/bin/sh' 'if [ "$1" = mkinitcpio ]; then echo "$*" >> "$TRACE"; exit 0; fi' 'exec "$@"' > "$IBIN/sudo"; chmod +x "$IBIN/sudo"; echo stubs
+stubs
+$
+
+the seam refuses to run outside test mode, and rejects an unknown mode:
+
+$ HOME="$IHOME" PATH="$IBIN:$PATH" BOOTSTRAP_TEST_MODE=0 .local/bin/setup/bootstrap --initramfs-hooks check "$IROOT" 2>&1 | grep FATAL
+bootstrap: FATAL: initramfs-hooks seam is test-only
+$ HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks bogus "$IROOT" 2>&1 | grep FATAL
+bootstrap: FATAL: initramfs-hooks mode must be check or apply
+$
+
+a machine still unlocking through cryptdevice= is reported, never linked, in either mode:
+
+$ printf 'cryptdevice=UUID=1111:cryptlvm root=/dev/vg/root rw\n' > "$IROOT/proc/cmdline"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT"; echo "rc=$?"; test -e "$DST"; echo "linked=$?"
+  skipped: this machine boots the udev chain (cryptdevice=);
+  migrate it first: docs/runbook-fresh-machine-bootstrap.md, systemd initramfs migration
+rc=0
+linked=1
+$
+
+check mode on a systemd-chain machine names the link and the rebuild, and writes nothing:
+
+$ printf 'rd.luks.name=1111=cryptlvm root=/dev/vg/root rw SYSTEMD_SULOGIN_FORCE=1\n' > "$IROOT/proc/cmdline"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks check "$IROOT" | sed "s|$ITMP|T|g"; find "$IROOT/etc" -mindepth 1 | wc -l
+  would: symlink T/root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf -> T/home/.config/dotfiles/mkinitcpio/hooks.conf
+  would: mkinitcpio -P   (the policy changes this machine's initramfs)
+0
+$
+
+install-on-metal's identical copy becomes the link with no rebuild:
+
+$ mkdir -p "${DST%/*}"; cp "$SRC" "$DST"; : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" | sed "s|$ITMP|T|g"; readlink "$DST" | sed "s|$ITMP|T|"; wc -l < "$TRACE"
+  linked: T/root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf
+T/home/.config/dotfiles/mkinitcpio/hooks.conf
+0
+$
+
+a differing drop-in is replaced and the initramfs rebuilt; a second run is a no-op:
+
+$ rm "$DST"; printf 'HOOKS=(base udev)\n' > "$DST"; : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" > /dev/null; cat "$TRACE"
+mkinitcpio -P
+$ : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" | sed "s|$ITMP|T|g"; wc -l < "$TRACE"
+  already linked: T/root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf
+0
+$ rm -rf "$ITMP"; echo done
+done
