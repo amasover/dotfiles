@@ -2004,7 +2004,7 @@ passed.
 
 ---
 
-### Story 2.60: A machine class for the portable drive
+### Story 2.60: A machine class for the portable drive ✅
 
 As the repo owner,
 I want a `portable` machine class,
@@ -2026,6 +2026,18 @@ class bootstraps.
 
 **Evidence artifact:** the metapac class rendering and bootstrap rEFInd-gate tests
 extended to `portable`; one live bootstrap of the real drive under class `portable`.
+
+Delivered 2026-10-20 ([#274](https://github.com/amasover/dotfiles/pull/274)). The
+real drive, an SSK Portable SSD 500GB, bootstrapped under class `portable` in a VM
+on the workstation. The final idempotent pass returned 0 in 76 s, after which
+`hibernate-storage apply` (96 GiB routine swap from the 64 GiB resume volume) and
+`refind-config apply` converged. After a reboot the command line carries `resume=`,
+`CanHibernate` answers `yes`, and the system reports `running`. Eleven stops on
+the way became fixes in the same PR, each listed in its description: reflector
+timeouts, the IntelliJ rename, signing keys on a fresh keyring, held-upgrade and
+repeated-build-failure retry loops, the chaotic gate's speed, vim-plug's first
+install, a `chsh` password prompt, the stepping pass's speed, AUR RPC outages, and
+ntpd crashing on glibc 2.44.
 
 ---
 
