@@ -321,6 +321,16 @@ sync_fatal_line() {
     grep -m1 -E $'unresolvable package conflicts detected|error: ?(\x1b\\[[0-9;]*m)? ?target not found:|There are [0-9]+ providers available for' || true
 }
 
+# The AUR builds yay reports failed in a sync log (stdin), sorted, one per
+# line. A build that fails the same way twice in a row is broken, not unlucky:
+# brew-git's stale patch burned the retry loop for half an hour on the
+# portable drive before anything named it (2026-10-20).
+failed_aur_builds() {
+    sed $'s/\x1b\\[[0-9;]*m//g; s/\r$//' \
+        | grep -oE '^[[:alnum:]@._+-]+ - exit status [0-9]+$' \
+        | cut -d' ' -f1 | sort -u || true
+}
+
 # Hidden test seams (tests/quarantine.clitest.txt), dispatched before the arg
 # loop and preconditions:
 #   --probe-provider PKG...        print "<declared>\t<provider>" per substitution
@@ -329,6 +339,7 @@ sync_fatal_line() {
 #   --step-outcome INSTALLED       classify one stepping attempt (note on stdin)
 #   --syu-hold-action CODE INSTALLED  classify a hold that aborted the 3c upgrade
 #   --sync-fatal                   print the deterministic-fatal line from a sync log (stdin)
+#   --failed-builds                print the AUR builds a sync log reports failed (stdin)
 #   --provider-pins MODE           exercise provider pin installation (test-only)
 #   --network-services MODE        exercise NetworkManager convergence (test-only)
 #   --refind-config MODE CLASS      exercise class-gated rEFInd reconciliation (test-only)
@@ -355,6 +366,10 @@ if [[ "${1:-}" == "--syu-hold-action" ]]; then
 fi
 if [[ "${1:-}" == "--sync-fatal" ]]; then
     sync_fatal_line
+    exit 0
+fi
+if [[ "${1:-}" == "--failed-builds" ]]; then
+    failed_aur_builds
     exit 0
 fi
 if [[ "${1:-}" == "--provider-pins" ]]; then
@@ -1105,6 +1120,7 @@ elif [[ $UNATTENDED -eq 1 ]]; then
     sync_ok=0
     sync_log=$(mktemp)
     last_held=""
+    last_failed=""
     for attempt in 1 2 3 4 5 6 7 8 9 10; do
         rm -f "$held_install_file"
         # script(1) gives the sync a pty despite the tee: without it pacman
@@ -1144,6 +1160,11 @@ elif [[ $UNATTENDED -eq 1 ]]; then
         [[ -z "$fatal" ]] || die "sync failed deterministically — retrying cannot help. Decisive line: $fatal
     'providers available' = a new provider ambiguity: pin the right provider (bootstrap PROVIDER_PINS) and declare it in a group.
     Otherwise: fix the declarations."
+        failed=$(failed_aur_builds <"$sync_log")
+        [[ -z "$failed" || "$failed" != "$last_failed" ]] || die "the same AUR build failed twice in a row: $(tr '\n' ' ' <<<"$failed")— its error is above.
+    Broken upstream?  aur-quarantine broken <pkg> --reason '...' [--upstream URL] (writes .config/metapac/known-broken.toml),
+    commit it, and re-run: unattended runs then skip it until a newer recipe ages in."
+        last_failed=$failed
         retry_delay=$((60 + attempt * 30))
         echo "bootstrap: sync attempt $attempt failed — retrying in ${retry_delay}s"
         # Purge corrupt built archives (truncated by a disk-full episode, or by

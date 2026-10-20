@@ -206,6 +206,20 @@ $ printf '\033[1;31merror:\033[0m target not found: foo\n' | .local/bin/setup/bo
 E[1;31merror:E[0m target not found: foo
 $
 
+--- bootstrap --failed-builds: AUR builds yay reports failed in a sync log ---
+
+The sync loop dies when the same set fails twice in a row instead of retrying
+ten times: brew-git's stale patch burned half an hour of retries live
+(2026-10-20). Color codes and the pty's carriage returns are stripped; a build
+log merely mentioning "exit status" mid-line does not count.
+
+$ printf ' -> Failed to install the following packages. Manual intervention is required:\r\nbrew-git - exit status 4\r\n\033[1mzeta-bin - exit status 1\033[0m\r\nmake: *** [all] some-target - exit status 2 (in a recipe)\n' | .local/bin/setup/bootstrap --failed-builds
+brew-git
+zeta-bin
+$ printf 'everything installed\n' | .local/bin/setup/bootstrap --failed-builds | wc -l
+0
+$
+
 --- metapac-unmanaged-names: both `metapac unmanaged` output shapes (2.42) ---
 
 metapac 0.10 prints one inline-TOML line per backend; older releases printed
