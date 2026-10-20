@@ -38,6 +38,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -48,6 +49,17 @@ THEME_MARKER = ".dotfiles-refind-managed"
 # tool, volume, and arrow icons still come from the theme.
 OS_LOGO_PREFIX = "os_"
 STOCK_ICONS = "icons"
+# rEFInd picks a kernel's OS logo from /etc/os-release on the kernel's own
+# volume. When /boot is that volume's root, as with an ESP mounted at /boot,
+# there is none and rEFInd shows the generic Tux. A .VolumeIcon.png at the
+# volume root names the logo instead: the stock os_arch.png a readable
+# os-release would have selected.
+VOLUME_ICON = "/boot/.VolumeIcon.png"
+ARCH_LOGO = "os_arch.png"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# Every PNG opens with a 13-byte IHDR chunk; the managed marker sits right after.
+PNG_HEADER = PNG_SIGNATURE + (13).to_bytes(4, "big") + b"IHDR"
+PNG_HEADER_END = len(PNG_HEADER) + 13 + 4
 # A fixed install keeps rEFInd in its own directory behind a firmware entry. A
 # portable one (Story 2.57) sits on the removable-media fallback path every
 # firmware boots unaided; refind-install --usedefault names the binary
@@ -797,11 +809,38 @@ def require_stock_icons(refind_dir: Path, layout: str) -> None:
         )
 
 
+def png_chunk(kind: bytes, data: bytes) -> bytes:
+    crc = zlib.crc32(kind + data).to_bytes(4, "big")
+    return len(data).to_bytes(4, "big") + kind + data + crc
+
+
+# A PNG cannot start with the marker line, so the managed logo carries the
+# marker in a text chunk, which image decoders (rEFInd's included) skip.
+MANAGED_PNG_CHUNK = png_chunk(b"tEXt", b"Comment\0" + MANAGED.encode())
+
+
+def managed_arch_logo(refind_dir: Path, layout: str) -> bytes:
+    """The stock Arch logo, marked as managed right after its header chunk."""
+    relative = f"{layout}/{STOCK_ICONS}/{ARCH_LOGO}"
+    path = refind_dir / STOCK_ICONS / ARCH_LOGO
+    if not regular_file(path):
+        raise RefindError(
+            f"stock rEFInd icons missing on the ESP: {relative} (run refind-install)"
+        )
+    image = path.read_bytes()
+    if not image.startswith(PNG_HEADER) or len(image) <= PNG_HEADER_END:
+        raise RefindError(f"stock Arch logo is not a PNG: {relative}")
+    return image[:PNG_HEADER_END] + MANAGED_PNG_CHUNK + image[PNG_HEADER_END:]
+
+
 def is_managed_file(path: Path) -> bool:
     try:
-        return path.read_bytes().startswith((MANAGED + "\n").encode())
+        content = path.read_bytes()
     except OSError:
         return False
+    if content.startswith(PNG_SIGNATURE):
+        return content[PNG_HEADER_END:].startswith(MANAGED_PNG_CHUNK)
+    return content.startswith((MANAGED + "\n").encode())
 
 
 def validate_directory_tree(destination: Path, label: str) -> None:
@@ -863,6 +902,10 @@ def build_state(root: Path, action: str, policy_content: bytes | None = None) ->
             render_linux_config(identity, boot_fsroot),
         ),
     ]
+    if boot_fsroot == "/":
+        files.append(
+            ("Arch logo", rooted(root, VOLUME_ICON), managed_arch_logo(refind_dir, layout))
+        )
     return {
         "root": root,
         "machine": machine,
@@ -882,6 +925,7 @@ def build_state(root: Path, action: str, policy_content: bytes | None = None) ->
             "refind.conf": Path("esp", layout, "refind.conf"),
             "dotfiles-machine.conf": Path("esp", layout, "dotfiles-machine.conf"),
             "refind_linux.conf": Path("boot/refind_linux.conf"),
+            "Arch logo": Path(VOLUME_ICON.lstrip("/")),
             "Nord theme": Path("esp", layout, "themes/nord"),
         },
     }
@@ -1081,7 +1125,12 @@ def apply_state(state: dict, items: list[str]) -> None:
         payload = dict(state["theme"])
         payload[THEME_MARKER] = (MANAGED + "\n").encode()
         sync_directory_payload(state["theme_dir"], payload)
-    order = {"dotfiles-machine.conf": 0, "refind_linux.conf": 1, "refind.conf": 2}
+    order = {
+        "dotfiles-machine.conf": 0,
+        "refind_linux.conf": 1,
+        "Arch logo": 2,
+        "refind.conf": 3,
+    }
     for name, path, desired in sorted(state["files"], key=lambda item: order[item[0]]):
         if name in items:
             atomic_write(path, desired)
@@ -1236,6 +1285,16 @@ def audit(root: Path) -> int:
         f"stock OS logos: {'present' if stock_icons_present(refind_dir) else 'missing'}"
     )
     print(f"  boot directory: /boot; filesystem root: {boot_fsroot}")
+    logo = rooted(root, VOLUME_ICON)
+    if boot_fsroot != "/":
+        logo_state = "not needed; kernels sit below the volume root"
+    elif not path_lexists(logo):
+        logo_state = "missing"
+    elif is_managed_file(logo):
+        logo_state = "managed"
+    else:
+        logo_state = "present, unmanaged"
+    print(f"  Arch logo ({VOLUME_ICON}): {logo_state}")
     boot = rooted(root, "/boot")
     kernel_names = sorted(
         path.name for path in boot.glob("vmlinuz-*") if path.is_file()
