@@ -580,6 +580,24 @@ class Rehearsal:
             'if ($2=="partition" && $4==0 && $5==-1) h++} END {exit !(n==2 && r==1 && h==1)}\' /proc/swaps',
             "swap-layout-and-resume-option",
         )
+        # Story 2.59: bootstrap's step links the tracked policy over the
+        # installer's identical copy, and the image it builds is the systemd
+        # chain with none of the udev-only hooks inert inside it.
+        self.guest(
+            "HOME=/root/dotfiles BOOTSTRAP_TEST_MODE=1 "
+            "/root/dotfiles/.local/bin/setup/bootstrap --initramfs-hooks apply ''; "
+            'test "$(readlink /etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf)" = '
+            "/root/dotfiles/.config/dotfiles/mkinitcpio/hooks.conf; "
+            "mkinitcpio -P",
+            "hooks-policy-linked",
+        )
+        self.guest(
+            "lsinitcpio /boot/initramfs-linux.img > /root/image.lst; "
+            "grep -qx 'usr/lib/systemd/systemd-cryptsetup' /root/image.lst; "
+            "grep -qx 'usr/bin/busybox' /root/image.lst; "
+            "! grep -qE '^hooks/(encrypt|resume|keymap|consolefont)$' /root/image.lst",
+            "systemd-chain-image",
+        )
 
     def reboot_proof(self):
         self.guest(
@@ -591,7 +609,10 @@ class Rehearsal:
         self.unlock_and_login()
         self.guest(
             'test "$(cat /root/pre-reboot-id)" != "$(cat /proc/sys/kernel/random/boot_id)"; '
-            "grep -q 'resume=UUID=' /proc/cmdline",
+            "grep -q 'resume=UUID=' /proc/cmdline; "
+            "grep -q 'rd.luks.name=' /proc/cmdline; "
+            "grep -qw 'SYSTEMD_SULOGIN_FORCE=1' /proc/cmdline; "
+            "! grep -q 'cryptdevice=' /proc/cmdline",
             "reboot-and-kernel-resume",
         )
         self.run_setup("refind-config --check", "hibernate-storage --check")

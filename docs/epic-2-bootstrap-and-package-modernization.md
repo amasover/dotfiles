@@ -1902,7 +1902,7 @@ the external SSD built from this workstation and booted.
 
 ---
 
-### Story 2.59: systemd initramfs and a tracked HOOKS policy
+### Story 2.59: systemd initramfs and a tracked HOOKS policy ✅
 
 As the repo owner,
 I want every machine this repo provisions to boot through a systemd initramfs
@@ -1957,15 +1957,22 @@ the only authority for it.
 - Given pacman replaces `/etc/mkinitcpio.conf`, when the initramfs is rebuilt, then the tracked drop-in still determines `HOOKS`, and no `.pacnew` merge is required to keep the boot chain correct
 - Given the public repository, when the tracked policy is reviewed, then it carries no `MODULES` entry and no machine identifier; hardware modules stay with the machine class and its machine-local declaration
 - Given Story 2.56 pinned the udev chain and refused a systemd array, when this story lands, then that guard is inverted rather than removed — a udev array is refused with a message naming the missing `sd-encrypt`, so neither chain can be produced by accident
-- Given the live workstation, when it migrates, then the `refind_linux.conf` rewrite, initramfs rebuild, and reboot happen as one step with no `refind-config apply` between them, because that command derives identity from the running kernel and would silently revert the rewrite
-- Given the live migration, when it is attempted, then a known-good initramfs and a rEFInd entry that boots it already exist, and the whole sequence has passed in `metal-rehearsal` first
+- Given a machine still booting the udev chain, when bootstrap runs, then the policy is not linked and the step names the migration instead, because the next kernel update would otherwise build an image that cannot unlock
+
+Split to [#268](https://github.com/amasover/dotfiles/issues/268), because each needs a
+person at the machine and a reboot: the live workstation's one-step migration
+(`refind_linux.conf` rewrite, rebuild, reboot, with no `refind-config apply`
+between), with a known-good initramfs and a menu entry for it in place first. The
+procedure is in the runbook's *systemd initramfs migration* section.
 
 **Evidence artifact:** host-independent tests for the systemd HOOKS array, the
-inverted guard, and the drop-in seam through a scratch `/etc` prefix; one passing
-`metal-rehearsal run` on the systemd chain including real hibernate/resume; a live
-workstation transcript recording before/after `HOOKS`, the retained fallback
-initramfs and its menu entry, and converged `refind-config`/`hibernate-storage`
-checks after reboot.
+inverted guard, the drop-in's precedence over a replaced base file,
+and the bootstrap seam through a scratch `/etc` and `/proc/cmdline` prefix; one
+passing `metal-rehearsal run` on the systemd chain (2026-10-19, 347 s): bootstrap's
+step linked the policy in the guest, the image carried `systemd-cryptsetup` and
+`busybox` and no udev-only hook, the rebooted kernel ran `rd.luks.name=` and
+`SYSTEMD_SULOGIN_FORCE=1` with no `cryptdevice=`, and a real hibernate/resume
+passed.
 
 ---
 

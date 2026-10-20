@@ -202,6 +202,18 @@ def test_live_cmdline_keeps_only_identity_options():
     ]
 
 
+def test_systemd_initramfs_options_survive_regeneration():
+    """The rescue shell option must outlive the first-boot handoff that rewrites it."""
+    options = refind.kernel_identity_from_cmdline(
+        "rd.luks.name=aaaa=cryptlvm root=/dev/vg/root rw SYSTEMD_SULOGIN_FORCE=1"
+    )
+    assert options == [
+        "rd.luks.name=aaaa=cryptlvm",
+        "root=/dev/vg/root",
+        "SYSTEMD_SULOGIN_FORCE=1",
+    ]
+
+
 def test_swap_file_resume_target_is_refused(tmp_path):
     root = make_fixture(tmp_path, machine=False)
     (root / "sys/power/resume").write_text("253:4\n")

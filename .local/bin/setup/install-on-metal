@@ -48,31 +48,17 @@ ROOT_LV = "root"
 RESUME_LV = "resume"
 LOCALE = "en_US.UTF-8 UTF-8"
 
-# The recipe's own boot chain, set as a whole rather than patched, so a rebuild
-# cannot inherit whichever chain the packaged default happens to carry. udev
-# today: `encrypt` resolves the `cryptdevice=` this recipe writes, `keyboard`
-# precedes `encrypt` so the passphrase can be typed on an unfamiliar machine,
-# and `resume` precedes `filesystems` so a hibernation image is restored before
-# anything checks or mounts the root it belongs to. Story 2.59 (#258) moves this
-# array to the systemd chain; owning it outright is what keeps that change
-# contained to this constant, the guard in rewrite_hooks, and refind_linux_conf.
-METAL_HOOKS = (
-    "base",
-    "udev",
-    "autodetect",
-    "microcode",
-    "modconf",
-    "kms",
-    "keyboard",
-    "keymap",
-    "consolefont",
-    "block",
-    "encrypt",
-    "lvm2",
-    "resume",
-    "filesystems",
-    "fsck",
+# The boot chain is tracked policy (Story 2.59), not a constant here: bootstrap
+# links the same file into /etc on every machine, so a fresh target and a
+# reconciled one cannot disagree about which initramfs they build.
+HOOKS_POLICY = (
+    Path(__file__).resolve().parents[3] / ".config/dotfiles/mkinitcpio/hooks.conf"
 )
+HOOKS_DROPIN = "etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf"
+# The systemd chain's own equivalents replace these, and a systemd initramfs
+# runs no runtime hooks, so any of them would be silently inert.
+UDEV_ONLY_HOOKS = ("udev", "encrypt", "keymap", "consolefont", "resume")
+REQUIRED_HOOKS = ("base", "systemd", "sd-encrypt", "lvm2", "filesystems")
 
 PACKAGES = (
     "base",
@@ -424,53 +410,55 @@ def enable_locale(text: str, locale: str = LOCALE) -> str:
     raise InstallError(f"target locale.gen carries no entry for {locale}")
 
 
-def _hooks_array(text: str) -> tuple[re.Match, list[str]]:
-    matches = list(re.finditer(r"(?m)^HOOKS=\(([^\n()]*)\)[ \t]*$", text))
+def policy_hooks(text: str) -> list[str]:
+    """The policy's one literal HOOKS array, refused unless it is the systemd chain.
+
+    The guard Story 2.56 pointed at systemd arrays now points at udev ones: the
+    command line this recipe writes carries ``rd.luks.name=``, which only
+    ``sd-encrypt`` reads, so a udev array would never prompt for the passphrase.
+    """
+    matches = re.findall(r"(?m)^HOOKS=\(([^\n()]*)\)[ \t]*$", text)
     if len(matches) != 1:
-        raise InstallError("metal recipe requires one literal mkinitcpio HOOKS array")
-    match = matches[0]
-    hooks = shlex.split(match[1])
+        raise InstallError("HOOKS policy requires one literal mkinitcpio HOOKS array")
+    hooks = shlex.split(matches[0])
     if not all(re.fullmatch(r"[a-zA-Z0-9_-]+", hook) for hook in hooks):
-        raise InstallError("mkinitcpio HOOKS array carries unexpected tokens")
-    return match, hooks
-
-
-def _replace_hooks(text: str, match: re.Match, hooks: list[str]) -> str:
-    return text[: match.start()] + f"HOOKS=({' '.join(hooks)})" + text[match.end() :]
-
-
-def set_hooks(text: str, hooks: tuple[str, ...] = METAL_HOOKS) -> str:
-    """Replace the whole array: the recipe owns its boot chain.
-
-    Arch's packaged default is a systemd initrd — ``base systemd autodetect
-    microcode modconf kms keyboard sd-vconsole block filesystems fsck`` — in
-    which ``encrypt`` is inert and ``cryptdevice=`` is ignored entirely, so a
-    target built on it reaches an emergency shell instead of a passphrase
-    prompt. Setting the array outright rather than patching that default keeps
-    the chain a decision of this recipe, whichever chain it names.
-    """
-    match, _ = _hooks_array(text)
-    return _replace_hooks(text, match, list(hooks))
-
-
-def rewrite_hooks(text: str, ensure: list[str]) -> str:
-    """Insert each hook immediately before ``filesystems``, preserving order.
-
-    The array is rewritten in place rather than appended to, so a rerun after a
-    partial failure converges instead of accumulating duplicates.
-    """
-    match, hooks = _hooks_array(text)
-    if {"systemd", "sd-encrypt"} & set(hooks):
+        raise InstallError("HOOKS policy carries unexpected tokens")
+    missing = [hook for hook in REQUIRED_HOOKS if hook not in hooks]
+    if missing:
         raise InstallError(
-            "mkinitcpio HOOKS array is systemd-based, where the encrypt hook is "
-            "inert and cryptdevice= is ignored; this recipe needs the udev chain"
+            f"HOOKS policy lacks {', '.join(missing)}; rd.luks.name= unlocks "
+            "only through sd-encrypt in a systemd initramfs"
         )
-    if "filesystems" not in hooks:
-        raise InstallError("mkinitcpio HOOKS array has no filesystems hook")
-    for hook in ensure:
-        hooks = [item for item in hooks if item != hook]
-        hooks.insert(hooks.index("filesystems"), hook)
-    return _replace_hooks(text, match, hooks)
+    inert = [hook for hook in UDEV_ONLY_HOOKS if hook in hooks]
+    if inert:
+        raise InstallError(
+            f"HOOKS policy carries udev-only {', '.join(inert)}, inert in a "
+            "systemd initramfs"
+        )
+    if hooks.index("base") > hooks.index("systemd"):
+        raise InstallError("HOOKS policy must place base before systemd")
+    return hooks
+
+
+def hooks_policy_text(policy: Path = HOOKS_POLICY) -> str:
+    try:
+        text = policy.read_text()
+    except OSError as exc:
+        raise InstallError(f"cannot read HOOKS policy: {policy}") from exc
+    policy_hooks(text)
+    return text
+
+
+def install_hooks_dropin(root: Path, text: str) -> None:
+    """Write the policy as the target's drop-in; bootstrap later links it instead.
+
+    A copy rather than a link, because the target has no checkout of this
+    repository until bootstrap clones one.
+    """
+    path = root / HOOKS_DROPIN
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.is_file() or path.read_text() != text:
+        atomic_write_text(path, text, 0o644)
 
 
 def refind_linux_conf(volume_group: str, luks_uuid: str) -> str:
@@ -478,6 +466,10 @@ def refind_linux_conf(volume_group: str, luks_uuid: str) -> str:
 
     ``refind-install`` derives this file from the *running* system, which inside
     an installer is the live medium, so the recipe writes it instead.
+
+    ``SYSTEMD_SULOGIN_FORCE=1`` keeps emergency mode usable: the root account is
+    locked, so sulogin otherwise refuses the rescue shell outright. No manpage
+    documents it; ``systemd-sulogin-shell`` reads it from the command line.
 
     Deliberately no ``resume=``. A fresh install has no hibernation image to
     restore, and the first boot's handoff owns that option: ``hibernate-storage``
@@ -488,9 +480,10 @@ def refind_linux_conf(volume_group: str, luks_uuid: str) -> str:
     """
     options = " ".join(
         (
-            f"cryptdevice=UUID={luks_uuid}:{LUKS_MAPPER}",
+            f"rd.luks.name={luks_uuid}={LUKS_MAPPER}",
             f"root=/dev/{volume_group}/{ROOT_LV}",
             "rw",
+            "SYSTEMD_SULOGIN_FORCE=1",
         )
     )
     return f'"Boot with standard options"  "{options}"\n'
@@ -529,16 +522,15 @@ def finalize_metal(root: Path, volume_group: str) -> None:
     volume_group = volume_group_name(volume_group)
 
     fstab = root / "etc/fstab"
-    mkinitcpio = root / "etc/mkinitcpio.conf"
+    hooks_dropin = root / HOOKS_DROPIN
     paths = [
         fstab,
-        mkinitcpio,
         root / "boot/EFI/refind/refind.conf",
         root / "boot/refind_linux.conf",
     ]
     theme = root / "boot/EFI/refind/themes/nord"
     theme_marker = theme / THEME_MARKER
-    for path in (*paths, theme_marker):
+    for path in (*paths, hooks_dropin, theme_marker):
         current = path
         while current != root:
             if current.is_symlink():
@@ -548,6 +540,7 @@ def finalize_metal(root: Path, volume_group: str) -> None:
         not theme_marker.is_file() or theme_marker.read_text() != REFIND_MANAGED + "\n"
     ):
         raise InstallError("metal handoff refuses an unmanaged Nord theme")
+    hooks = hooks_policy_text()
     contents: dict[Path, str] = {}
     for path in paths:
         if not path.is_file():
@@ -571,11 +564,9 @@ def finalize_metal(root: Path, volume_group: str) -> None:
     if not swap_entries:
         contents[fstab] = contents[fstab].rstrip("\n") + "\n\n" + resume_entry + "\n"
 
-    # Resume must run after the volume is unlocked and before any fsck.
-    contents[mkinitcpio] = rewrite_hooks(contents[mkinitcpio], ["resume"])
-
+    install_hooks_dropin(root, hooks)
     for path, content in contents.items():
-        if path not in (fstab, mkinitcpio):
+        if path != fstab:
             if content.startswith(REFIND_MANAGED + "\n"):
                 continue
             content = REFIND_MANAGED + "\n" + content
@@ -583,7 +574,7 @@ def finalize_metal(root: Path, volume_group: str) -> None:
             mode = path.stat().st_mode & 0o777
             atomic_write_text(path, content, mode)
 
-    # Always rebuild: a previous attempt may have persisted HOOKS but failed here.
+    # Always rebuild: a previous attempt may have written the drop-in but failed here.
     chroot(root, ["mkinitcpio", "-P"], label="metal handoff initramfs rebuild")
 
     # The package hook copies Nord onto the ESP before bootstrap reconciles it.
@@ -715,9 +706,6 @@ def configure_target(
     )
     chroot(root, ["hwclock", "--systohc"], label="hwclock")
 
-    mkinitcpio = root / "etc/mkinitcpio.conf"
-    mkinitcpio.write_text(set_hooks(mkinitcpio.read_text()))
-
     sudoers = root / "etc/sudoers.d/10-wheel"
     sudoers.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(sudoers, "%wheel ALL=(ALL:ALL) ALL\n", 0o440)
@@ -763,6 +751,8 @@ def install(
     # A layout that cannot fit is a refusal, so it belongs before the typed
     # confirmation rather than partway through build_storage.
     metal_layout_gib(facts.disk_size_gib, facts.ram_gib)
+    # A policy that would build an unbootable chain is refused before the wipe.
+    hooks = hooks_policy_text()
     print(
         f"device={device} disk={facts.disk_size_gib}GiB "
         f"ram={facts.ram_gib}GiB vg={volume_group}"
@@ -774,6 +764,9 @@ def install(
     try:
         esp, luks_uuid = build_storage(facts, volume_group, luks_passphrase)
         mount_target(root, esp, volume_group)
+        # Before pacstrap, so the package hook's first image is already the
+        # recipe's chain rather than the packaged default rebuilt afterwards.
+        install_hooks_dropin(root, hooks)
         run(["pacstrap", "-K", str(root), *PACKAGES], label="pacstrap")
         fstab = subprocess.run(
             ["genfstab", "-U", str(root)], capture_output=True, text=True, check=False
