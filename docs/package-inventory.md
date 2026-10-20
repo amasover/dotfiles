@@ -148,9 +148,9 @@ Questions below before manifests are split. Native = official repos; **bold** = 
 - **network-vpn** — `networkmanager` (`wpa_supplicant` dependency) `networkmanager-openvpn`
   `openvpn` `openconnect` `globalprotect-openconnect` `wireguard-tools` `sshuttle`
   `udp2raw` `dnsmasq` `bind` `nmap` `traceroute` `whois` `net-tools` `inetutils`
-  `iproute2` `iputils` `ipset` `ipcalc` `ipv6calc` `nss-mdns` `ntp` `modemmanager`
+  `iproute2` `iputils` `ipset` `ipcalc` `ipv6calc` `nss-mdns` `modemmanager`
   `netctl` `dhcpcd` `b43-fwcutter` `usb_modeswitch` `samba` `rsync` `openssh` `putty`
-  `freerdp` `remmina` `filezilla` `wireshark-qt` `siege` **networkmanager-dispatcher-ntpd**
+  `freerdp` `remmina` `filezilla` `wireshark-qt` `siege`
   **openconnect-service** **openvpn-update-systemd-resolved** **vpn-slice**
   **netmask** **subnetcalc** **gss-ntlmssp** **smtp-cli** **ssmtp** **gnu-netcat** ·
   → **Open question Q3** (VPN sprawl)
