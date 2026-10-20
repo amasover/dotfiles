@@ -171,10 +171,10 @@ What it does, in order:
    migrates older ISO-networked guests. `--check` requires or reports the exact cutover.
 9. **Initramfs boot chain** — links the tracked HOOKS policy
    (`.config/dotfiles/mkinitcpio/hooks.conf`) to
-   `/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf` and rebuilds the initramfs when
-   that changes the effective array. A machine whose running command line still
-   carries `cryptdevice=` is reported and skipped; see
-   [systemd initramfs migration](#systemd-initramfs-migration).
+   `/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf` and rebuilds the default and fallback
+   images whose embedded merged configuration differs from the post-link configuration.
+   A machine whose running command line still carries `cryptdevice=` is reported and
+   skipped; see [systemd initramfs migration](#systemd-initramfs-migration).
 10. **rEFInd boot configuration** — `workstation` only. Reconciles tracked portable policy,
    generated machine scan/kernel entries, and package-owned Nord assets. Production access
    gets a separate `pkexec` approval; existing files are backed up outside the ESP before

@@ -45,6 +45,7 @@ jobs:
             grep \
             jq \
             lua51 \
+            mkinitcpio \
             nodejs \
             patch \
             python \

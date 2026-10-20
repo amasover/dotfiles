@@ -1,55 +1,84 @@
 # Initramfs HOOKS policy link, bootstrap step 6e (Story 2.59, #258).
 # Run from repo root: clitest tests/initramfs-hooks.clitest.txt
 #
-# Host-independent by construction: HOME, the /etc and /proc/cmdline prefix, and
-# every privileged binary are redirected at a scratch tree, so this needs no root
-# and never touches the running machine's initramfs.
+# Host-independent: configuration and boot images live in a scratch root. The
+# sudo stub logs rebuilds and lets the real lsinitcpio inspect fixture archives.
 
-$ ITMP=$(mktemp -d); IHOME=$ITMP/home; IROOT=$ITMP/root; IBIN=$ITMP/bin; SRC=$IHOME/.config/dotfiles/mkinitcpio/hooks.conf; DST=$IROOT/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf; TRACE=$ITMP/trace; export BOOTSTRAP_TEST_MODE=1 TRACE; mkdir -p "${SRC%/*}" "$IROOT/etc" "$IROOT/proc" "$IBIN"; cp .config/dotfiles/mkinitcpio/hooks.conf "$SRC"; echo ready
+$ ITMP=$(mktemp -d); IHOME=$ITMP/home; IROOT=$ITMP/root; IBIN=$ITMP/bin; SRC=$IHOME/.config/dotfiles/mkinitcpio/hooks.conf; DST=$IROOT/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf; TRACE=$ITMP/trace; export BOOTSTRAP_TEST_MODE=1 TRACE; mkdir -p "${SRC%/*}" "$IROOT/etc" "$IROOT/proc" "$IBIN"; cp .config/dotfiles/mkinitcpio/hooks.conf "$SRC"; : > "$TRACE"; printf 'cryptdevice=UUID=1111:cryptlvm root=/dev/vg/root rw\n' > "$IROOT/proc/cmdline"; echo ready
 ready
-$ printf '%s\n' '#!/bin/sh' 'if [ "$1" = mkinitcpio ]; then echo "$*" >> "$TRACE"; exit 0; fi' 'exec "$@"' > "$IBIN/sudo"; chmod +x "$IBIN/sudo"; echo stubs
+$ printf '%s\n' '#!/bin/sh' 'if [ "$1" = mkinitcpio ]; then' '    echo "$*" >> "$TRACE"' '    [ "${FAIL_MKINITCPIO:-0}" != 1 ]' '    exit $?' 'fi' 'exec "$@"' > "$IBIN/sudo"; chmod +x "$IBIN/sudo"; mk_image() { local image=$1 config=$2; mkdir -p "${image%/*}" "$ITMP/build"; cp "$config" "$ITMP/build/buildconfig"; bsdtar --format newc -cf "$image" -C "$ITMP/build" buildconfig; }; echo stubs
 stubs
-$
-
-the seam refuses to run outside test mode, and rejects an unknown mode:
-
-$ HOME="$IHOME" PATH="$IBIN:$PATH" BOOTSTRAP_TEST_MODE=0 .local/bin/setup/bootstrap --initramfs-hooks check "$IROOT" 2>&1 | grep FATAL
+$ HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT"; test -e "$DST"; echo "linked=$?"
+  skipped: this machine boots the udev chain (cryptdevice=);
+  migrate it first: docs/runbook-fresh-machine-bootstrap.md, systemd initramfs migration
+linked=1
+$ BOOTSTRAP_TEST_MODE=0 HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks check "$IROOT" 2>&1 | grep FATAL
 bootstrap: FATAL: initramfs-hooks seam is test-only
-$ HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks bogus "$IROOT" 2>&1 | grep FATAL
+$ printf 'rd.luks.name=1111=cryptlvm root=/dev/vg/root rw SYSTEMD_SULOGIN_FORCE=1\n' > "$IROOT/proc/cmdline"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks bogus "$IROOT" 2>&1 | grep FATAL
 bootstrap: FATAL: initramfs-hooks mode must be check or apply
 $
 
-a machine still unlocking through cryptdevice= is reported, never linked, in either mode:
+check predicts the post-link configuration even when the drop-in is absent:
 
-$ printf 'cryptdevice=UUID=1111:cryptlvm root=/dev/vg/root rw\n' > "$IROOT/proc/cmdline"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT"; echo "rc=$?"; test -e "$DST"; echo "linked=$?"
-  skipped: this machine boots the udev chain (cryptdevice=);
-  migrate it first: docs/runbook-fresh-machine-bootstrap.md, systemd initramfs migration
-rc=0
-linked=1
-$
-
-check mode on a systemd-chain machine names the link and the rebuild, and writes nothing:
-
-$ printf 'rd.luks.name=1111=cryptlvm root=/dev/vg/root rw SYSTEMD_SULOGIN_FORCE=1\n' > "$IROOT/proc/cmdline"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks check "$IROOT" | sed "s|$ITMP|T|g"; find "$IROOT/etc" -mindepth 1 | wc -l
+$ mkdir -p "$IROOT/etc/mkinitcpio.conf.d" "$IROOT/boot"; printf 'MODULES=()\n' > "$IROOT/etc/mkinitcpio.conf"; printf '# sorted before the tracked policy\n' > "$IROOT/etc/mkinitcpio.conf.d/00-extra.conf"; cat "$IROOT/etc/mkinitcpio.conf" "$IROOT/etc/mkinitcpio.conf.d/00-extra.conf" "$SRC" > "$ITMP/initial-config"; mk_image "$IROOT/boot/initramfs-linux.img" "$ITMP/initial-config"; mk_image "$IROOT/boot/initramfs-linux-fallback.img" "$ITMP/initial-config"; : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks check "$IROOT" | sed "s|$ITMP|T|g"; test -L "$DST"; echo "linked=$?"; wc -l < "$TRACE"
   would: symlink T/root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf -> T/home/.config/dotfiles/mkinitcpio/hooks.conf
-  would: mkinitcpio -P   (the policy changes this machine's initramfs)
+  initramfs images match
+linked=1
 0
 $
 
-install-on-metal's identical copy becomes the link with no rebuild:
+install-on-metal's identical copy links without rebuilding images with that configuration:
 
-$ mkdir -p "${DST%/*}"; cp "$SRC" "$DST"; : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" | sed "s|$ITMP|T|g"; readlink "$DST" | sed "s|$ITMP|T|"; wc -l < "$TRACE"
+$ cp "$SRC" "$DST"; : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" | sed "s|$ITMP|T|g"; readlink "$DST" | sed "s|$ITMP|T|"; wc -l < "$TRACE"
   linked: T/root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf
+  initramfs images match
 T/home/.config/dotfiles/mkinitcpio/hooks.conf
 0
 $
 
-a differing drop-in is replaced and the initramfs rebuilt; a second run is a no-op:
+a policy update after linking is reported, and a failed rebuild is retried:
 
-$ rm "$DST"; printf 'HOOKS=(base udev)\n' > "$DST"; : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" > /dev/null; cat "$TRACE"
-mkinitcpio -P
-$ : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" | sed "s|$ITMP|T|g"; wc -l < "$TRACE"
+$ printf '\n# yadm update\n' >> "$SRC"; cat "$IROOT/etc/mkinitcpio.conf" "$IROOT/etc/mkinitcpio.conf.d/00-extra.conf" "$SRC" > "$ITMP/updated-config"; : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks check "$IROOT" | sed "s|$ITMP|T|g"; wc -l < "$TRACE"
   already linked: T/root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf
+  would: mkinitcpio -P   (2 images differ)
+0
+$ : > "$TRACE"; if FAIL_MKINITCPIO=1 HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" > /dev/null 2>&1; then echo unexpected-success; else echo "rebuild failed"; fi; cat "$TRACE"
+rebuild failed
+mkinitcpio -P
+$ : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" > /dev/null; cat "$TRACE"
+mkinitcpio -P
+$ mk_image "$IROOT/boot/initramfs-linux.img" "$ITMP/updated-config"; mk_image "$IROOT/boot/initramfs-linux-fallback.img" "$ITMP/updated-config"; : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" | sed "s|$ITMP|T|g"; wc -l < "$TRACE"
+  already linked: T/root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf
+  initramfs images match
+0
+$
+
+a stale fallback image alone requests a rebuild:
+
+$ mk_image "$IROOT/boot/initramfs-linux.img" "$ITMP/updated-config"; mk_image "$IROOT/boot/initramfs-linux-fallback.img" "$ITMP/initial-config"; : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks check "$IROOT" | sed "s|$ITMP|T|g"; wc -l < "$TRACE"
+  already linked: T/root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf
+  would: mkinitcpio -P   (1 image differs)
+0
+$ : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" > /dev/null; cat "$TRACE"
+mkinitcpio -P
+$ mk_image "$IROOT/boot/initramfs-linux-fallback.img" "$ITMP/updated-config"; : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$IROOT" | sed "s|$ITMP|T|g"; wc -l < "$TRACE"
+  already linked: T/root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf
+  initramfs images match
+0
+$
+
+an unreadable image is stale:
+
+$ printf 'not a cpio archive\n' > "$IROOT/boot/initramfs-linux.img"; : > "$TRACE"; HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks check "$IROOT" 2>/dev/null | sed "s|$ITMP|T|g"; wc -l < "$TRACE"
+  already linked: T/root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf
+  would: mkinitcpio -P   (1 image differs)
+0
+$
+
+no images is fatal instead of rebuilding into an unmounted boot directory:
+
+$ EMPTY=$ITMP/empty; mkdir -p "$EMPTY/etc" "$EMPTY/proc"; printf 'MODULES=()\n' > "$EMPTY/etc/mkinitcpio.conf"; printf 'rd.luks.name=1111=cryptlvm root=/dev/vg/root rw\n' > "$EMPTY/proc/cmdline"; : > "$TRACE"; if HOME="$IHOME" PATH="$IBIN:$PATH" .local/bin/setup/bootstrap --initramfs-hooks apply "$EMPTY" > "$ITMP/no-images.log" 2>&1; then echo unexpected-success; else sed "s|$ITMP|T|g" "$ITMP/no-images.log" | grep FATAL; fi; wc -l < "$TRACE"
+bootstrap: FATAL: no initramfs images found in T/empty/boot (is /boot mounted?)
 0
 $ rm -rf "$ITMP"; echo done
 done

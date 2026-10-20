@@ -103,13 +103,6 @@ reconcile_initramfs_hooks() {
     local mode=${1:-} root=${2:-}
     [[ $mode == check || $mode == apply ]] \
         || die "initramfs-hooks mode must be check or apply"
-    local src="$HOME/.config/dotfiles/mkinitcpio/hooks.conf"
-    local dst="$root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf"
-    [[ -f "$src" ]] || die "tracked HOOKS policy missing ($src) — yadm checkout incomplete?"
-    if [[ "$(readlink "$dst" 2>/dev/null)" == "$src" ]]; then
-        echo "  already linked: $dst"
-        return 0
-    fi
     # sd-encrypt never reads cryptdevice=, so a machine still booting the udev
     # chain would build an image it cannot unlock at its next kernel update.
     # Its command line and initramfs move together in one attended step.
@@ -118,19 +111,80 @@ reconcile_initramfs_hooks() {
         echo "  migrate it first: docs/runbook-fresh-machine-bootstrap.md, systemd initramfs migration"
         return 0
     fi
-    # install-on-metal leaves an identical copy, which needs no rebuild.
-    local rebuild=1
-    cmp -s "$src" "$dst" && rebuild=0
-    if [[ $mode == check ]]; then
+    local src="$HOME/.config/dotfiles/mkinitcpio/hooks.conf"
+    local dst="$root/etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf"
+    [[ -f "$src" ]] || die "tracked HOOKS policy missing ($src) — yadm checkout incomplete?"
+    if [[ "$(readlink "$dst" 2>/dev/null)" == "$src" ]]; then
+        echo "  already linked: $dst"
+    elif [[ $mode == check ]]; then
         echo "  would: symlink $dst -> $src"
-        ((rebuild)) && echo "  would: mkinitcpio -P   (the policy changes this machine's initramfs)"
-        return 0
+    else
+        sudo mkdir -p "${dst%/*}"
+        sudo ln -sfT "$src" "$dst"
+        echo "  linked: $dst"
     fi
-    sudo mkdir -p "${dst%/*}"
-    sudo ln -sfT "$src" "$dst"
-    echo "  linked: $dst"
-    if ((rebuild)); then
-        sudo mkinitcpio -P
+
+    local main="$root/etc/mkinitcpio.conf"
+    local config_dir="$root/etc/mkinitcpio.conf.d"
+    [[ -f "$main" ]] || die "mkinitcpio base configuration missing ($main)"
+    local -a images=("$root"/boot/initramfs-*.img)
+    local image has_image=0
+    for image in "${images[@]}"; do
+        if [[ -e "$image" || -L "$image" ]]; then
+            has_image=1
+            break
+        fi
+    done
+    if ((! has_image)); then
+        die "no initramfs images found in $root/boot (is /boot mounted?)"
+    fi
+
+    # buildconfig stores this exact concatenation, not just the final HOOKS array.
+    local -a dropins=()
+    mapfile -d '' -t dropins < <(
+        {
+            if [[ -d "$config_dir" ]]; then
+                LC_ALL=C.UTF-8 find "$config_dir" -maxdepth 1 -xtype f -name '*.conf' -print0 \
+                    | sed -z 's|.*/||'
+            fi
+            printf '%s\0' '10-dotfiles-hooks.conf'
+        } | LC_ALL=C.UTF-8 sort -zVu
+    )
+    local -a config_files=("$main")
+    local dropin
+    for dropin in "${dropins[@]}"; do
+        if [[ $dropin == 10-dotfiles-hooks.conf ]]; then
+            config_files+=("$src")
+        else
+            config_files+=("$config_dir/$dropin")
+        fi
+    done
+    local merged_config
+    merged_config=$(mktemp) || die "could not create temporary mkinitcpio configuration"
+    if ! cat -- "${config_files[@]}" >"$merged_config"; then
+        rm -f -- "$merged_config"
+        die "failed to read mkinitcpio configuration"
+    fi
+
+    local stale=0
+    for image in "${images[@]}"; do
+        if ! sudo lsinitcpio -c "$image" | cmp -s "$merged_config" -; then
+            stale=$((stale + 1))
+        fi
+    done
+    rm -f -- "$merged_config"
+    if ((stale)); then
+        if [[ $mode == check ]]; then
+            if ((stale == 1)); then
+                echo "  would: mkinitcpio -P   (1 image differs)"
+            else
+                echo "  would: mkinitcpio -P   ($stale images differ)"
+            fi
+        else
+            sudo mkinitcpio -P
+        fi
+    else
+        echo "  initramfs images match"
     fi
 }
 
