@@ -38,3 +38,12 @@ package_manager = "yay"
   "{{ env.HOME }}/.local/share/metapac/machine-local.toml",
 ]
 {% endif %}
+{% if yadm.class == "portable" %}
+# Portable USB drive: shared purposes, every x86_64 chassis it may boot, no work.
+"{{ yadm.hostname }}" = [
+{% include "profiles/common.groups" %}
+  "hardware-portable",
+  "inbox-portable",
+  "{{ env.HOME }}/.local/share/metapac/machine-local.toml",
+]
+{% endif %}

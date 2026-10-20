@@ -1,0 +1,15 @@
+# metapac inbox for class "portable" — auto-captured packages await triage here.
+# Only portable's rendered group list references this file. Seeded from
+# inbox-workstation's untriaged set when the drive took over that laptop's
+# role (Story 2.60); triage moves entries to a purpose group or drops them.
+[arch]
+packages = [
+  "obs-studio",
+  "forgejo-cli",
+  "rofimoji",
+  "paseo-bin",
+  "autofs",
+  "stably-orca-bin",
+  "orca-ide-bin",
+  "kiro-cli",
+]

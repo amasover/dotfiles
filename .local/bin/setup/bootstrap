@@ -86,10 +86,13 @@ reconcile_refind_config() {
     [[ $mode == check || $mode == apply ]] \
         || die "refind-config mode must be check or apply"
     [[ -n $class ]] || die "refind-config class is required"
-    if [[ $class != workstation ]]; then
-        echo "  not applicable to class $class"
-        return 0
-    fi
+    case $class in
+        workstation | portable) ;;
+        *)
+            echo "  not applicable to class $class"
+            return 0
+            ;;
+    esac
     if [[ $mode == check ]]; then
         "$tool" --check || [[ $? -eq 1 ]]
     else
