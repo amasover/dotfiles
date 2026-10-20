@@ -468,8 +468,14 @@ portable boot policy from machine identifiers:
   default tool list when a shorter line is parsed and would double-render the
   same four tools. Padding entries render only when their tool file exists. A
   missing `EFI/refind/icons` fails `--check`, `apply`, and `adopt` closed.
-- The reconciler touches only rEFInd's own directory and `/boot/refind_linux.conf`. It
-  never edits NVRAM, installs a firmware entry, removes another loader, or reboots.
+- rEFInd picks the Arch mark by reading `/etc/os-release` on the kernel's own
+  volume. When `/boot` is the root of its volume, as on a portable drive whose ESP
+  is `/boot`, that file is absent and rEFInd shows the generic Tux. In that layout
+  the reconciler writes the stock `os_arch.png` to `/boot/.VolumeIcon.png`, which
+  rEFInd prefers, marked as managed in a PNG text chunk.
+- The reconciler touches only rEFInd's own directory, `/boot/refind_linux.conf`, and
+  that volume icon. It never edits NVRAM, installs a firmware entry, removes another
+  loader, or reboots.
 - On a portable drive rEFInd's directory is `EFI/BOOT`, not `EFI/refind`: the
   reconciler recognises `EFI/BOOT/bootx64.efi` with `refind.conf` beside it, manages
   the policy, theme, and stock icons there, and binds that ESP to the disk the

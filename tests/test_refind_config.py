@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+import zlib
 from pathlib import Path
 
 import pytest
@@ -791,3 +792,88 @@ def test_portable_esp_must_share_a_disk_with_the_running_root(monkeypatch):
     refind.verify_portable_esp(Path("/"), {"source": "/dev/sdb1"})
     with pytest.raises(refind.RefindError, match="not on the disk"):
         refind.verify_portable_esp(Path("/"), {"source": "/dev/nvme0n1p1"})
+
+
+def tiny_png(rgb: bytes) -> bytes:
+    """A valid 1x1 truecolor PNG whose only pixel is `rgb`."""
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        crc = zlib.crc32(kind + data).to_bytes(4, "big")
+        return len(data).to_bytes(4, "big") + kind + data + crc
+
+    header = (1).to_bytes(4, "big") * 2 + bytes([8, 2, 0, 0, 0])
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(b"\x00" + rgb))
+        + chunk(b"IEND", b"")
+    )
+
+
+def picture_chunks(png: bytes) -> list[tuple[bytes, bytes]]:
+    """The chunks that decide what a PNG shows; text metadata draws nothing."""
+    chunks, offset = [], 8
+    while offset < len(png):
+        size = int.from_bytes(png[offset : offset + 4], "big")
+        kind = png[offset + 4 : offset + 8]
+        if kind not in {b"tEXt", b"zTXt", b"iTXt"}:
+            chunks.append((kind, png[offset + 8 : offset + 8 + size]))
+        offset += 12 + size
+    return chunks
+
+
+def make_root_volume_fixture(tmp_path: Path) -> Path:
+    """Kernels at the root of their volume, as on an ESP mounted at /boot.
+
+    rEFInd picks a kernel's logo from /etc/os-release on the kernel's volume,
+    so a volume that holds only /boot shows the generic Tux.
+    """
+    root = make_portable_fixture(tmp_path)
+    path = root / "etc/dotfiles/refind.json"
+    machine = json.loads(path.read_text())
+    machine["boot_fsroot"] = "/"
+    path.write_text(json.dumps(machine))
+    (root / "efi/EFI/BOOT/icons/os_arch.png").write_bytes(tiny_png(b"\x17\x93\xd1"))
+    return root
+
+
+def test_kernels_at_the_volume_root_show_the_stock_arch_logo(tmp_path, capsys):
+    root = make_root_volume_fixture(tmp_path)
+    stock = root / "efi/EFI/BOOT/icons/os_arch.png"
+    icon = root / "boot/.VolumeIcon.png"
+
+    assert refind.main(["--check", "--root", str(root)]) == 1
+    assert "Arch logo" in capsys.readouterr().out
+    assert refind.main(["apply", "--root", str(root)]) == 0
+    assert picture_chunks(icon.read_bytes()) == picture_chunks(stock.read_bytes())
+    assert refind.main(["--check", "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    # A refind-install that refreshes the stock logos moves the managed copy too.
+    stock.write_bytes(tiny_png(b"\x10\x80\xc0"))
+    assert refind.main(["apply", "--root", str(root)]) == 0
+    assert picture_chunks(icon.read_bytes()) == picture_chunks(stock.read_bytes())
+
+
+def test_kernels_below_the_volume_root_keep_rEFInd_detection(tmp_path):
+    """Beside a readable os-release, or under an arch/ directory, rEFInd already
+    finds the Arch logo, so the boot volume gains no file."""
+    root = make_portable_fixture(tmp_path)
+    assert refind.main(["apply", "--root", str(root)]) == 0
+    assert not (root / "boot/.VolumeIcon.png").exists()
+
+
+def test_unmanaged_volume_icon_requires_adopt(tmp_path, capsys):
+    root = make_root_volume_fixture(tmp_path)
+    icon = root / "boot/.VolumeIcon.png"
+    own = tiny_png(b"\xff\x00\x00")
+    icon.write_bytes(own)
+
+    assert refind.main(["apply", "--root", str(root)]) == 2
+    assert "unmanaged destination: Arch logo" in capsys.readouterr().err
+    assert icon.read_bytes() == own
+    assert refind.main(["adopt", "--root", str(root)]) == 0
+    (backup,) = (root / "var/backups/dotfiles/refind").iterdir()
+    assert (backup / "boot/.VolumeIcon.png").read_bytes() == own
+    stock = root / "efi/EFI/BOOT/icons/os_arch.png"
+    assert picture_chunks(icon.read_bytes()) == picture_chunks(stock.read_bytes())
