@@ -1886,7 +1886,7 @@ The real drive's boot through this workstation's menu is recorded with Story
 
 ---
 
-### Story 2.58: Install from a booted workstation
+### Story 2.58: Install from a booted workstation ✅
 
 As the repo owner,
 I want `install-on-metal` to run from a booted Arch system rather than only from an
@@ -1911,6 +1911,22 @@ baseline already proven by Stories 2.56 and 2.57.
 the guest and byte-comparing the guest's OVMF vars file across the run; preflight
 refusal tests for a mounted target and for missing tooling; one live transcript of
 the external SSD built from this workstation and booted.
+
+Delivered 2026-10-19. `metal-rehearsal run --host-side` (587 s) boots a fixed install
+as the workstation, checks every refusal inside it, and builds the drive on a second
+disk. Its firmware variables file stays byte-identical across the run. The guest's
+mounts, `/etc`, `/var/lib/pacman`, and `/var/cache/pacman` stay unchanged against a
+stamp taken before the refusals, and no device-mapper entries are left. Only the
+drive then boots, over USB with fresh firmware, through handoff, reboot, and a real
+hibernate/resume. Live run on this workstation against an SSK Portable SSD 500GB:
+the first attempt aborted in `pacstrap`, because pacman never makes `HookDir`
+root-relative and the workstation's quarantine-gate hook ran inside the target. Its
+`vgs` survey also left a metadata backup of the host's own VG under `/etc/lvm`. Both
+are fixed, and the rehearsal now carries a host-only hook and stamps state before the
+refusals so neither can regress. The second attempt completed with nothing of the
+drive left attached and the host's boot entries and hooks untouched. The drive then
+booted in a VM from fresh firmware variables through the fallback path. That
+install also gained decision row 27: root stays locked on every metal install.
 
 ---
 
