@@ -88,17 +88,21 @@ REPO_HANDOFF="@repo-handoff"
 REPO_ACCEPTED_PREFIX="@repo-accepted:"
 
 # rpc_info NAME...  ->  "name<TAB>pkgbase<TAB>lastmod<TAB>maintainer" per resolved package
-# With AUR_RPC_CACHE set to a file, every answer is appended there, and a call
-# whose names all have an answer younger than AUR_QUARANTINE_FETCH_TTL reads
-# the newest of each back instead of asking the AUR again. Bootstrap's
-# pre-build pass verdicts its packages in one batch and then steps them one by
-# one; without the cache each step repeated that RPC.
+# With AUR_RPC_CACHE set to a file, every answer is appended there with the
+# time it was fetched, and a call whose names all have an answer younger than
+# AUR_QUARANTINE_FETCH_TTL reads the newest of each back instead of asking the
+# AUR again. Each answer expires on its own: a later append for other names
+# must not refresh it. Bootstrap's pre-build pass verdicts its packages in one
+# batch and then steps them one by one; without the cache each step repeated
+# that RPC.
 rpc_info() {
     (($# == 0)) && return 0
-    local p args=() out hit cache=${AUR_RPC_CACHE:-}
-    if [[ -n $cache && -s $cache ]] \
-        && (($(date +%s) - $(stat -c %Y "$cache") < ${AUR_QUARANTINE_FETCH_TTL:-600})); then
-        hit=$(tac "$cache" | awk -F'\t' 'NR == FNR { want[$1]; next } ($1 in want) && !seen[$1]++' \
+    local p args=() out hit now cache=${AUR_RPC_CACHE:-}
+    now=$(date +%s)
+    if [[ -n $cache && -s $cache ]]; then
+        hit=$(tac "$cache" | awk -F'\t' -v OFS='\t' -v now="$now" -v ttl="${AUR_QUARANTINE_FETCH_TTL:-600}" '
+            NR == FNR { want[$1]; next }
+            ($1 in want) && !seen[$1]++ && $5 ~ /^[0-9]+$/ && now - $5 < ttl { print $1, $2, $3, $4 }' \
             <(printf '%s\n' "$@") -)
         if [[ -n $hit ]] && (($(wc -l <<<"$hit") == $#)); then
             printf '%s\n' "$hit"
@@ -109,7 +113,7 @@ rpc_info() {
     out=$(curl -fsG --max-time 20 "${args[@]}" 'https://aur.archlinux.org/rpc/v5/info' 2>/dev/null \
         | jq -r '.results[] | [.Name, .PackageBase, (.LastModified|tostring), (.Maintainer // "")] | @tsv') \
         || return 1
-    [[ -z $cache || -z $out ]] || printf '%s\n' "$out" >>"$cache"
+    [[ -z $cache || -z $out ]] || awk -v t="$now" '{ print $0 "\t" t }' <<<"$out" >>"$cache"
     [[ -z $out ]] || printf '%s\n' "$out"
 }
 # Installed package provenance. An official package removed from sync repos is

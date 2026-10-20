@@ -27,10 +27,12 @@ days="${AUR_QUARANTINE_DAYS:-14}"
 infra='^(chaotic-keyring|chaotic-mirrorlist)$' # the repo's own non-AUR packages
 
 # --- collect chaotic-sourced targets (stdin: one pkgname per line) -----------
-# One batched sync-DB query, which resolves each name to the first repo that
-# carries it exactly as the per-name lookup did. One `pacman -Si` per target
+# One batched sync-DB query instead of one `pacman -Si` per target, which
 # reloaded every sync DB per package: minutes of "gating chaotic-aur packages"
-# for the portable drive's 942-package first sync (2026-10-20).
+# for the portable drive's 942-package first sync (2026-10-20). `pacman -Si`
+# prints a name once per repository that carries it, in repository order, and
+# pacman installs from the first, so only a name whose FIRST entry is
+# chaotic-aur is gated, as the per-name lookup decided.
 targets=()
 while IFS= read -r pkg; do
     [[ -n "$pkg" && ! "$pkg" =~ $infra ]] && targets+=("$pkg")
@@ -38,7 +40,8 @@ done
 ((${#targets[@]} == 0)) && exit 0
 mapfile -t chaotic < <(
     pacman -Si "${targets[@]}" 2>/dev/null \
-        | awk -F': *' '/^Repository/ { r = $2 } /^Name/ && r == "chaotic-aur" { print $2 }'
+        | awk -F': *' '/^Repository/ { r = $2 }
+            /^Name/ && !($2 in first) { first[$2] = r; if (r == "chaotic-aur") print $2 }'
 )
 ((${#chaotic[@]} == 0)) && exit 0
 
