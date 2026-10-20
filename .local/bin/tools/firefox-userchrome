@@ -74,7 +74,10 @@ if ((${#profiles[@]} == 0)); then
     fi
     shot=$(mktemp -d)
     timeout 120 firefox --headless --screenshot "$shot/first-run.png" about:blank >/dev/null 2>&1 \
-        || { rm -rf "$shot"; die "headless first run of Firefox failed"; }
+        || {
+            rm -rf "$shot"
+            die "headless first run of Firefox failed"
+        }
     rm -rf "$shot"
     mapfile -t profiles < <(profile_dirs)
     ((${#profiles[@]})) || die "Firefox created no profile on its headless first run"

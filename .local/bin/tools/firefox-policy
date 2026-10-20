@@ -101,7 +101,7 @@ elif ((check)); then
     drift=1
 else
     mkdir -p "${generated%/*}"
-    printf '%s\n' "$desired" > "$generated.tmp"
+    printf '%s\n' "$desired" >"$generated.tmp"
     mv -T "$generated.tmp" "$generated"
     echo "Firefox policy: composed $generated $fragment"
 fi
