@@ -75,6 +75,15 @@ rc=0
 0
 $
 
+A key file readable beyond its owner is drift; apply makes it private again:
+
+$ chmod 644 "$HOME/.openviking/ovcli.conf"; $t --check; echo "rc=$?"
+OpenViking memory: would install the clients for OpenViking v0.5.0
+rc=1
+$ $t > /dev/null; stat -c %a "$HOME/.openviking/ovcli.conf"
+600
+$
+
 A server upgrade reinstalls with the accepted key and drops the old release's source:
 
 $ echo 0.5.1 > "$OVT/server-version"; $t --check; echo "rc=$?"

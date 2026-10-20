@@ -33,6 +33,8 @@
 # unattended runs, skips the step when it would need the OpenBao sign-in.
 # Exit: 0 converged, skipped or applied; 1 drift in --check; 2 failure.
 set -euo pipefail
+# The key and the OpenBao token pass through variables; never trace them.
+set +x
 
 usage() {
     sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
@@ -100,7 +102,7 @@ for tool in git node npm curl; do
     fi
 done
 
-if ! health=$(curl -fsS --max-time 10 "$url/health" 2>/dev/null); then
+if ! health=$(curl -q -fsS --max-time 10 "$url/health" 2>/dev/null); then
     say "server unreachable (off the LAN?) - skipping"
     exit 0
 fi
@@ -115,10 +117,11 @@ if [[ -z $version ]]; then
 fi
 src=$root/src/openviking-$version
 
-# The key reaches curl on stdin, never in its arguments.
+# The key reaches curl on stdin, never in its arguments; -q skips ~/.curlrc,
+# which could log the header or weaken TLS.
 key_accepted() {
     printf 'X-API-Key: %s\n' "$1" \
-        | curl -fsS --max-time 10 -o /dev/null -H @- "$url/api/v1/stats/memories" 2>/dev/null
+        | curl -q -fsS --max-time 10 -o /dev/null -H @- "$url/api/v1/stats/memories" 2>/dev/null
 }
 
 # ovcli.conf as it should be, from the key on stdin.
@@ -148,6 +151,7 @@ claude_current() {
 }
 
 if [[ -n $key && -f $ext/index.ts && $(cat "$marker" 2>/dev/null) == "$version" ]] \
+    && [[ $(stat -c %a "$conf") == 600 ]] \
     && [[ $(printf '%s' "$key" | render_conf) == "$(cat "$conf")" ]] && claude_current; then
     say "up to date (OpenViking $version)"
     exit 0
@@ -172,7 +176,7 @@ if [[ -z $key ]]; then
     revoke() {
         if [[ -s $work/token ]]; then
             printf 'X-Vault-Token: %s\n' "$(cat "$work/token")" \
-                | curl -fsS --max-time 10 -o /dev/null -H @- -X POST "$bao_addr/v1/auth/token/revoke-self" \
+                | curl -q -fsS --max-time 10 -o /dev/null -H @- -X POST "$bao_addr/v1/auth/token/revoke-self" \
                 || echo "openviking-memory: could not revoke the OpenBao token; it expires with its TTL" >&2
             rm -f "$work/token"
         fi
