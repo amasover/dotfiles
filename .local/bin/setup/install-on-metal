@@ -52,6 +52,26 @@ LVM_METADATA_HEADROOM_GIB = 1
 ESP_MIB = 1023
 DATA_START_MIB = 1024
 LUKS_MAPPER = "cryptlvm"
+# The name the target is unlocked under while installing. Distinct from
+# LUKS_MAPPER, which a booted host built by this recipe already uses for its own
+# root; the target's command line names its own mapping regardless.
+INSTALL_MAPPER = "metal-install"
+# Official repositories only, whatever the installing machine's pacman.conf
+# adds: the target keyring starts empty (-K), so a third-party repository's
+# signatures could not verify anyway, and the host's file stays the host's.
+PACSTRAP_CONF = """\
+[options]
+Architecture = auto
+SigLevel = Required DatabaseOptional
+LocalFileSigLevel = Optional
+ParallelDownloads = 5
+
+[core]
+Include = /etc/pacman.d/mirrorlist
+
+[extra]
+Include = /etc/pacman.d/mirrorlist
+"""
 ROOT_LV = "root"
 RESUME_LV = "resume"
 LOCALE = "en_US.UTF-8 UTF-8"
@@ -95,31 +115,35 @@ PACKAGES = (
     "zsh",
 )
 
-# Every binary the destructive phase needs, checked before the disk is touched.
-# Archinstall was a single dependency; pacstrap spreads the work over many, and
-# discovering a missing one after the wipe would leave an unbootable target.
-REQUIRED_TOOLS = (
-    "pacstrap",
-    "genfstab",
-    "arch-chroot",
-    "sgdisk",
-    "partprobe",
-    "wipefs",
-    "cryptsetup",
-    "pvcreate",
-    "vgcreate",
-    "vgchange",
-    "lvcreate",
-    "mkfs.ext4",
-    "mkfs.fat",
-    "mkswap",
-    "mount",
-    "umount",
-    "blkid",
-    "lsblk",
-    "blockdev",
-    "udevadm",
-)
+# Every binary the destructive phase needs, checked before the disk is touched,
+# with the package that provides it. Archinstall was a single dependency;
+# pacstrap spreads the work over many, and discovering a missing one after the
+# wipe would leave an unbootable target. A booted workstation lacks some that
+# the Arch ISO always carries, so the refusal names what to install.
+REQUIRED_TOOLS = {
+    "pacstrap": "arch-install-scripts",
+    "genfstab": "arch-install-scripts",
+    "arch-chroot": "arch-install-scripts",
+    "sgdisk": "gptfdisk",
+    "partprobe": "parted",
+    "wipefs": "util-linux",
+    "cryptsetup": "cryptsetup",
+    "pvcreate": "lvm2",
+    "vgcreate": "lvm2",
+    "vgchange": "lvm2",
+    "vgs": "lvm2",
+    "lvcreate": "lvm2",
+    "mkfs.ext4": "e2fsprogs",
+    "mkfs.fat": "dosfstools",
+    "mkswap": "util-linux",
+    "mount": "util-linux",
+    "umount": "util-linux",
+    "blkid": "util-linux",
+    "lsblk": "util-linux",
+    "blockdev": "util-linux",
+    "udevadm": "systemd",
+    "gpgconf": "gnupg",
+}
 
 
 class InstallError(Exception):
@@ -284,11 +308,12 @@ def missing_tools(lookup=shutil.which) -> list[str]:
 def require_tools(lookup=shutil.which) -> None:
     missing = missing_tools(lookup)
     if missing:
+        packages = sorted({REQUIRED_TOOLS[name] for name in missing})
         raise InstallError(
             "missing installer tooling: "
-            + ", ".join(missing)
-            + " — install arch-install-scripts, gptfdisk, cryptsetup, lvm2, "
-            "dosfstools, e2fsprogs, util-linux"
+            + ", ".join(f"{name} ({REQUIRED_TOOLS[name]})" for name in missing)
+            + " — install with: pacman -S --needed "
+            + " ".join(packages)
         )
 
 
@@ -367,6 +392,70 @@ def survey_target(device: str) -> TargetState:
     state = inspect_target(device)
     refuse_unsafe_target(device, state)
     return state
+
+
+def on_install_medium() -> bool:
+    """True on the Arch ISO, or a medium built from it, which mounts itself here."""
+    return Path("/run/archiso").is_dir()
+
+
+def host_volume_groups() -> set[str]:
+    return set(command_output(["vgs", "--noheadings", "-o", "vg_name"]).split())
+
+
+def host_mappers() -> set[str]:
+    mapper = Path("/dev/mapper")
+    return {entry.name for entry in mapper.iterdir()} if mapper.is_dir() else set()
+
+
+def refuse_host_collisions(
+    volume_group: str,
+    portable: bool,
+    install_medium: bool,
+    host_groups: set[str],
+    host_maps: set[str],
+) -> None:
+    """Refuse what would touch the installing machine itself (Story 2.58).
+
+    A fixed install writes a firmware boot entry, which from a booted system
+    lands in that system's own firmware. A volume group already named for the
+    target would make vgcreate fail after the wipe, and early boot ambiguous.
+    An open INSTALL_MAPPER belongs to an earlier, interrupted run: opening the
+    target would fail after the wipe, and cleanup would close a mapping this
+    run never made.
+    """
+    if not install_medium and not portable:
+        raise InstallError(
+            "a fixed install from a booted system would add a firmware boot entry "
+            "to this machine; boot the install medium, or pass --portable"
+        )
+    if volume_group in host_groups:
+        raise InstallError(
+            f"volume group {volume_group} already exists on this machine; "
+            "choose another --hostname"
+        )
+    if INSTALL_MAPPER in host_maps:
+        raise InstallError(
+            f"/dev/mapper/{INSTALL_MAPPER} is already open from an earlier run; "
+            f"unmount what it holds, then: cryptsetup close {INSTALL_MAPPER}"
+        )
+
+
+def target_lvm(command: str, *arguments: str) -> list[str]:
+    """An LVM command that sees only the target's PV and keeps no metadata copy.
+
+    LVM archives every metadata change under the running system's /etc/lvm,
+    which from a booted host is the host's own disk; and --devices keeps the
+    command off every other device, overriding any host devices file.
+    """
+    return [
+        command,
+        "--devices",
+        f"/dev/mapper/{INSTALL_MAPPER}",
+        "--config",
+        "backup { backup = 0 archive = 0 }",
+        *arguments,
+    ]
 
 
 def confirm_wipe(device: str) -> None:
@@ -690,23 +779,27 @@ def build_storage(
         label="cryptsetup luksFormat",
     )
     run(
-        ["cryptsetup", "open", "--key-file", "-", data, LUKS_MAPPER],
+        ["cryptsetup", "open", "--key-file", "-", data, INSTALL_MAPPER],
         stdin=secret,
         label="cryptsetup open",
     )
-    mapper = f"/dev/mapper/{LUKS_MAPPER}"
+    mapper = f"/dev/mapper/{INSTALL_MAPPER}"
     # The resume volume must be exactly rounded RAM; root takes whatever is left.
     # Sizing both explicitly would overcommit the PV, because the LUKS2 header and
     # LVM metadata consume space the partition-level arithmetic cannot see.
     _, resume_size, _ = metal_layout_gib(facts.disk_size_gib, facts.ram_gib)
-    run(["pvcreate", mapper], label="pvcreate")
-    run(["vgcreate", volume_group, mapper], label="vgcreate")
+    run(target_lvm("pvcreate", mapper), label="pvcreate")
+    run(target_lvm("vgcreate", volume_group, mapper), label="vgcreate")
     run(
-        ["lvcreate", "--size", f"{resume_size}G", "--name", RESUME_LV, volume_group],
+        target_lvm(
+            "lvcreate", "--size", f"{resume_size}G", "--name", RESUME_LV, volume_group
+        ),
         label="lvcreate resume",
     )
     run(
-        ["lvcreate", "--extents", "100%FREE", "--name", ROOT_LV, volume_group],
+        target_lvm(
+            "lvcreate", "--extents", "100%FREE", "--name", ROOT_LV, volume_group
+        ),
         label="lvcreate root",
     )
     run(["mkfs.ext4", "-F", f"/dev/{volume_group}/{ROOT_LV}"], label="mkfs.ext4")
@@ -723,17 +816,29 @@ def mount_target(root: Path, esp: str, volume_group: str) -> None:
 
 
 def release_target(root: Path, volume_group: str) -> None:
-    """Detach the target: unmount, deactivate its volume group, close LUKS.
+    """Detach the target: stop its keyring daemons, unmount, deactivate its
+    volume group, close LUKS.
 
     Best effort by design — this runs on the failure path too, where some of
     these are already undone, and a second failure here would mask the first.
+    still_attached() reports whatever this did not release.
     """
     for command in (
+        # pacstrap -K initializes the target's keyring from this machine, not
+        # from inside a chroot, so the gpg daemons it starts outlive pacstrap
+        # and keep the target busy.
+        ["gpgconf", "--homedir", str(root / "etc/pacman.d/gnupg"), "--kill", "all"],
         ["umount", "--recursive", str(root)],
-        ["vgchange", "--activate", "n", volume_group],
-        ["cryptsetup", "close", LUKS_MAPPER],
+        target_lvm("vgchange", "--activate", "n", volume_group),
+        ["cryptsetup", "close", INSTALL_MAPPER],
     ):
         subprocess.run(command, check=False, capture_output=True)
+
+
+def still_attached(root: Path) -> list[str]:
+    held = [str(root)] if root.is_mount() else []
+    mapper = Path(f"/dev/mapper/{INSTALL_MAPPER}")
+    return held + [str(mapper)] if mapper.exists() else held
 
 
 def chroot(root: Path, command: list[str], *, stdin: bytes | None = None, label: str):
@@ -763,7 +868,9 @@ def configure_target(
         ["ln", "-sf", "/usr/share/zoneinfo/UTC", "/etc/localtime"],
         label="timezone",
     )
-    chroot(root, ["hwclock", "--systohc"], label="hwclock")
+    # What hwclock --systohc would leave, without writing the installing
+    # machine's own clock: the target keeps its hardware clock in UTC.
+    (root / "etc/adjtime").write_text("0.0 0 0.0\n0\nUTC\n")
 
     sudoers = root / "etc/sudoers.d/10-wheel"
     sudoers.parent.mkdir(parents=True, exist_ok=True)
@@ -819,6 +926,13 @@ def install(
     validate_username(user)
     volume_group = volume_group_name(hostname)
     state = survey_target(device)
+    refuse_host_collisions(
+        volume_group,
+        portable,
+        on_install_medium(),
+        host_volume_groups(),
+        host_mappers(),
+    )
     facts = state.facts(device)
     if portable:
         # The resume volume serves every machine the drive meets, so it is
@@ -850,9 +964,23 @@ def install(
         # Before pacstrap, so the package hook's first image is already the
         # recipe's chain rather than the packaged default rebuilt afterwards.
         install_dropins(root, dropins)
-        run(["pacstrap", "-K", str(root), *PACKAGES], label="pacstrap")
+        with tempfile.NamedTemporaryFile(
+            "w", dir="/run", prefix="metal-pacman-", suffix=".conf"
+        ) as conf:
+            conf.write(PACSTRAP_CONF)
+            conf.flush()
+            run(
+                ["pacstrap", "-C", conf.name, "-K", str(root), *PACKAGES],
+                label="pacstrap",
+            )
+        # -f keeps only what is mounted under the target: genfstab otherwise
+        # copies every active swap in /proc/swaps, which on a booted host are
+        # the host's own.
         fstab = subprocess.run(
-            ["genfstab", "-U", str(root)], capture_output=True, text=True, check=False
+            ["genfstab", "-U", "-f", str(root), str(root)],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if fstab.returncode:
             raise InstallError(f"genfstab failed (rc={fstab.returncode})")
@@ -875,11 +1003,22 @@ def install(
         # it opens the LUKS mapper and activates the volume group, so a failure
         # anywhere after that is exactly when the detach is needed.
         release_target(root, volume_group)
-        if target is None:
-            # rmdir only fails when the unmount did, and reporting that over
-            # the failure which caused it would bury the real one.
+        held = still_attached(root)
+        if held:
+            # Never silent: pulling a drive that is still mounted and unlocked
+            # loses data, and the next run would refuse the open mapping.
+            print(
+                f"metal-provision: still attached here: {', '.join(held)}. Find "
+                f"what holds it with fuser -vm {root}, then: umount -R {root}; "
+                f"vgchange -an {volume_group}; cryptsetup close {INSTALL_MAPPER}",
+                file=sys.stderr,
+                flush=True,
+            )
+        elif target is None:
             with contextlib.suppress(OSError):
                 root.rmdir()
+    if held:
+        raise InstallError("installed, but the target is still attached (see above)")
     print("metal-provision: install complete; remove install media, then reboot")
 
 

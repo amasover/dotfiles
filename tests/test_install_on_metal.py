@@ -137,14 +137,22 @@ class TestPreflight:
             with pytest.raises(metal.InstallError, match="did not match"):
                 metal.require_wipe_confirmation("/dev/nvme0n1", answer)
 
-    def test_names_every_missing_installer_binary(self):
-        absent = {"pacstrap", "cryptsetup"}
+    def test_names_every_missing_installer_binary_and_its_package(self):
+        """A booted workstation lacks tools the ISO always carries."""
+        absent = {"pacstrap", "sgdisk"}
         missing = metal.missing_tools(
             lambda name: None if name in absent else "/usr/bin"
         )
         assert set(missing) == absent
-        with pytest.raises(metal.InstallError, match="pacstrap"):
+        with pytest.raises(metal.InstallError) as refused:
             metal.require_tools(lambda name: None if name in absent else "/usr/bin")
+        assert "pacstrap (arch-install-scripts)" in str(refused.value)
+        assert "pacman -S --needed arch-install-scripts gptfdisk" in str(refused.value)
+
+    def test_the_host_root_disk_is_refused_by_its_mounted_children(self):
+        """lsblk lists every descendant's mountpoint, root included, for the disk."""
+        with pytest.raises(metal.InstallError, match="mounted"):
+            self._refuse(target_state(mountpoints=("", "/efi", "", "", "/")))
 
     def test_every_binary_the_destructive_phase_runs_is_checked_first(
         self, monkeypatch, tmp_path
@@ -169,6 +177,34 @@ class TestPreflight:
         metal.release_target(tmp_path / "target", "metal-test")
         assert invoked
         assert set(invoked) <= set(metal.REQUIRED_TOOLS)
+
+
+class TestHostCollisions:
+    def test_a_fixed_install_from_a_booted_system_is_refused(self):
+        """It would write a firmware entry into the installing machine itself."""
+        with pytest.raises(metal.InstallError, match="firmware boot entry"):
+            metal.refuse_host_collisions("usb-drive", False, False, set(), set())
+
+    def test_a_portable_install_from_a_booted_system_is_allowed(self):
+        metal.refuse_host_collisions(
+            "usb-drive", True, False, {"vg1"}, {"control", "nvme0n1p4_crypt"}
+        )
+
+    def test_the_install_medium_still_installs_fixed(self):
+        metal.refuse_host_collisions("new-laptop", False, True, set(), {"control"})
+
+    def test_a_volume_group_the_host_already_has_is_refused(self):
+        with pytest.raises(metal.InstallError, match="already exists"):
+            metal.refuse_host_collisions(
+                "usb-drive", True, False, {"usb-drive"}, set()
+            )
+
+    def test_a_mapping_left_open_by_an_interrupted_run_is_refused(self):
+        """Cleanup would otherwise close a mapping this run never opened."""
+        with pytest.raises(metal.InstallError, match="earlier run"):
+            metal.refuse_host_collisions(
+                "usb-drive", True, False, set(), {"control", metal.INSTALL_MAPPER}
+            )
 
 
 class TestHooksPolicy:
@@ -703,6 +739,9 @@ class TestInstallFailurePaths:
         """An install past every refusal, with the destructive half stubbed."""
         monkeypatch.setattr(metal.os, "geteuid", lambda: 0)
         monkeypatch.setattr(metal, "survey_target", lambda device: target_state())
+        monkeypatch.setattr(metal, "on_install_medium", lambda: True)
+        monkeypatch.setattr(metal, "host_volume_groups", set)
+        monkeypatch.setattr(metal, "host_mappers", set)
         monkeypatch.setattr(metal, "confirm_wipe", lambda device: None)
         monkeypatch.setattr(
             metal,

@@ -43,6 +43,15 @@ STAGES = (
     ("hibernate-proof", 900),
     ("teardown", 120),
 )
+# Story 2.58: the fixed install becomes the booted workstation, which then
+# builds a portable drive on a second disk; that drive alone boots afterwards.
+HOST_SIDE_STAGES = (
+    *STAGES[:5],
+    ("host-install", 1800),
+    ("drive-boot", 300),
+    *STAGES[5:],
+)
+HOST_SIDE_HOSTNAME = "metal-usb"
 PREALLOC_CEILING_SECONDS = 120
 WORKING_SET_BYTES = 4 << 30
 ANSI_ESCAPE = re.compile(
@@ -159,14 +168,19 @@ def journal_gate(source, pattern, requirement):
 
 
 class Rehearsal:
-    def __init__(self, keep=False, portable=False):
+    def __init__(self, keep=False, portable=False, host_side=False):
         self.keep = keep
         # Portable mode (Story 2.57) installs over virtio, then boots the same
         # disk as USB mass storage with firmware variables holding no boot
         # entry: one run proves the fallback path and an initramfs carrying
         # drivers for a controller it never saw at install.
         self.portable = portable
+        # Host-side mode (Story 2.58) builds that drive from the booted fixed
+        # install instead of the ISO; the portable checks apply once it boots.
+        self.host_side = host_side
+        self.hostname = "metal-test"
         self.disk_bus = "virtio"
+        self.usb_image = "drive.qcow2" if host_side else "disk.qcow2"
         self.root = Path(__file__).resolve().parents[3]
         self.path = None
         self.stage = "host-preflight"
@@ -247,10 +261,13 @@ class Rehearsal:
         print(f"Artifacts: {self.path}", flush=True)
         # A portable layout reserves the 64 GiB resume ceiling plus the routine
         # swap and headroom that ceiling implies; qcow2 stays sparse either way.
-        size = "210G" if self.portable else "63G"
-        self.command(
-            ["qemu-img", "create", "-f", "qcow2", str(self.path / "disk.qcow2"), size]
-        )
+        disks = {"disk.qcow2": "210G" if self.portable else "63G"}
+        if self.host_side:
+            disks["drive.qcow2"] = "210G"
+        for name, size in disks.items():
+            self.command(
+                ["qemu-img", "create", "-f", "qcow2", str(self.path / name), size]
+            )
         shutil.copyfile(self.vars, self.path / "OVMF_VARS.fd")
         entries = self.command(
             ["bsdtar", "-tf", str(self.iso)], capture_output=True, text=True
@@ -379,14 +396,21 @@ class Rehearsal:
         self.monitor.expect(rb"\(qemu\) ", timeout=30)
 
     def disk_args(self):
-        image = f"format=qcow2,file={self.path / 'disk.qcow2'}"
         if self.disk_bus == "virtio":
-            return ["-drive", f"if=virtio,{image}"]
+            names = ["disk.qcow2", "drive.qcow2"] if self.host_side else ["disk.qcow2"]
+            return [
+                argument
+                for name in names
+                for argument in (
+                    "-drive",
+                    f"if=virtio,format=qcow2,file={self.path / name}",
+                )
+            ]
         return [
             "-device",
             "qemu-xhci,id=xhci",
             "-drive",
-            f"if=none,id=target,{image}",
+            f"if=none,id=target,format=qcow2,file={self.path / self.usb_image}",
             "-device",
             "usb-storage,bus=xhci.0,drive=target,removable=on",
         ]
@@ -444,11 +468,17 @@ class Rehearsal:
         os.close(self.serial.fd)
         self.serial = None
         if self.portable:
-            # Another machine: a different storage controller and firmware that
-            # has never seen this disk, so only the fallback path can boot it.
-            shutil.copyfile(self.vars, self.path / "OVMF_VARS.fd")
-            self.disk_bus = "usb"
-            print("  portable: fresh firmware variables, disk moved to USB", flush=True)
+            self.move_to_usb()
+
+    def move_to_usb(self):
+        # Another machine: a different storage controller and firmware that has
+        # never seen this disk, so only the fallback path can boot it.
+        shutil.copyfile(self.vars, self.path / "OVMF_VARS.fd")
+        self.disk_bus = "usb"
+        print(
+            f"  portable: fresh firmware variables, {self.usb_image} moved to USB",
+            flush=True,
+        )
 
     def wait_vm(self):
         rc = self.vm.wait(timeout=self.remaining())
@@ -536,7 +566,7 @@ class Rehearsal:
         self.shell.send(self.user_password + "\n")
         self.shell.expect(rb"REHEARSAL-SUDO: ")
         self.shell.send(self.user_password + "\n")
-        self.shell.expect(rb"root@metal-test[^\r\n]*# ?")
+        self.shell.expect(rf"root@{self.hostname}[^\r\n]*# ?".encode())
         self.shell.send("stty -echo; export PS1='REHEARSAL# '; export TERM=dumb\n")
         self.shell.expect(rb"REHEARSAL# ")
         self.guest("id -u | grep -qx 0", "root-login")
@@ -578,6 +608,105 @@ class Rehearsal:
     def first_boot(self):
         self.unlock_and_login()
 
+    def transfer_tree(self):
+        self.guest(
+            f"mkdir -p /root/dotfiles; curl -f {shlex.quote(self.url)} -o /root/tree.tar.gz; "
+            "tar -xzf /root/tree.tar.gz -C /root/dotfiles",
+            "working-tree-transfer",
+        )
+
+    def refused(self, arguments, message, label):
+        """The installer exits 1 with message before any prompt; a prompt would hang."""
+        self.guest(
+            "rc=0; /root/dotfiles/.local/bin/setup/install-on-metal "
+            f"{arguments} 2>/root/refusal || rc=$?; "
+            f'test "$rc" -eq 1; grep -qF {shlex.quote(message)} /root/refusal',
+            label,
+        )
+
+    def vars_digest(self):
+        return hashlib.sha256((self.path / "OVMF_VARS.fd").read_bytes()).hexdigest()
+
+    def host_install(self):
+        """Build the portable drive from the booted guest, touching nothing else."""
+        self.transfer_tree()
+        drive = f"/dev/vdb --hostname {HOST_SIDE_HOSTNAME} --portable"
+        self.refused(
+            drive, "pacstrap (arch-install-scripts)", "missing-tools-named-first"
+        )
+        self.guest(
+            "pacman -S --needed --noconfirm arch-install-scripts gptfdisk parted",
+            "installer-tooling",
+        )
+        self.refused(
+            f"/dev/vda --hostname {HOST_SIDE_HOSTNAME} --portable",
+            "is mounted",
+            "own-root-disk-refused",
+        )
+        self.refused(
+            f"/dev/vdb --hostname {HOST_SIDE_HOSTNAME}",
+            "firmware boot entry",
+            "fixed-from-host-refused",
+        )
+        self.refused(
+            "/dev/vdb --hostname metal-test --portable",
+            "already exists",
+            "host-volume-group-refused",
+        )
+        # Service credential mounts come and go with unrelated units.
+        mounts = (
+            "findmnt -rn -o TARGET,SOURCE,FSTYPE | grep -v '^/run/credentials/' | sort"
+        )
+        self.guest(f"{mounts} > /root/mounts.before", "host-mounts-recorded")
+        firmware_before = self.vars_digest()
+        token = "RC-" + secrets.token_hex(6)
+        self.shell.send(
+            f"/root/dotfiles/.local/bin/setup/install-on-metal {drive}; "
+            f"printf '\\n{token}=%s\\n' \"$?\"\n"
+        )
+        for prompt, answer in (
+            (rb"Type WIPE /dev/vdb to continue: ", "WIPE /dev/vdb"),
+            (rb"User password: ", self.user_password),
+            (rb"Confirm user password: ", self.user_password),
+            (rb"Disk encryption password: ", self.luks_password),
+            (rb"Confirm disk encryption password: ", self.luks_password),
+        ):
+            self.shell.expect(prompt, timeout=120)
+            self.shell.send(answer + "\n")
+        _, match = self.shell.expect(
+            token.encode() + rb"=(\d+)\r?\n", timeout=self.remaining()
+        )
+        print(f"  host-side-install: RC={match.group(1).decode()}", flush=True)
+        if match.group(1) != b"0":
+            raise RehearsalError("host-side install failed; see host-install SSH log")
+        if self.vars_digest() != firmware_before:
+            raise RehearsalError("host-side install wrote firmware variables")
+        print("  firmware-variables-unchanged: RC=0", flush=True)
+        # LVM archives metadata under /etc/lvm, and pacman keeps its keyring,
+        # databases, and cache under /etc and /var; none of them may move.
+        self.guest(
+            f"moved=$({mounts} | diff /root/mounts.before - || true); "
+            "changed=$(find /etc /var/lib/pacman /var/cache/pacman "
+            "-newer /root/mounts.before ! -path /etc/resolv.conf); "
+            "left=$(dmsetup ls | grep -E 'metal--usb|metal-install' || true); "
+            'printf "%s\\n" "$moved" "$changed" "$left"; '
+            'test -z "$moved$changed$left"',
+            "host-mounts-mappings-and-state-unchanged",
+        )
+        # No RC marker after poweroff, for the reason teardown gives.
+        try:
+            self.shell.send("systemctl poweroff\n")
+        except OSError:
+            pass
+        self.close_ssh()
+        self.wait_vm()
+        self.hostname = HOST_SIDE_HOSTNAME
+        self.portable = True
+        self.move_to_usb()
+
+    def drive_boot(self):
+        self.unlock_and_login()
+
     def handoff(self):
         print(
             "  Guest prerequisites: stand-in for bootstrap step 9 (not full bootstrap)",
@@ -593,11 +722,7 @@ class Rehearsal:
             "pacman -U --noconfirm /home/aaron/refind-theme-nord/*.pkg.tar.zst",
             "nord-package",
         )
-        self.guest(
-            f"mkdir -p /root/dotfiles; curl -f {shlex.quote(self.url)} -o /root/tree.tar.gz; "
-            "tar -xzf /root/tree.tar.gz -C /root/dotfiles",
-            "working-tree-transfer",
-        )
+        self.transfer_tree()
         self.run_setup(
             "refind-config audit",
             "refind-config apply",
@@ -812,7 +937,7 @@ class Rehearsal:
     def run(self):
         passed = False
         try:
-            for stage, timeout in STAGES:
+            for stage, timeout in HOST_SIDE_STAGES if self.host_side else STAGES:
                 self.stage = stage
                 self.deadline = time.monotonic() + timeout
                 print(f"==> {stage} (timeout {timeout}s)", flush=True)
@@ -853,13 +978,18 @@ def main(argv=None):
         action="store_true",
         help="install --portable, then boot the disk over USB with fresh firmware",
     )
+    run.add_argument(
+        "--host-side",
+        action="store_true",
+        help="build a portable drive from the booted fixed install, then boot it",
+    )
     remove = commands.add_parser(
         "destroy", help="remove one retained, inactive rehearsal directory"
     )
     remove.add_argument("path", type=Path)
     args = parser.parse_args(argv)
     if args.command == "run":
-        return Rehearsal(args.keep, args.portable).run()
+        return Rehearsal(args.keep, args.portable, args.host_side).run()
     try:
         destroy(args.path)
     except (RehearsalError, OSError, ValueError) as exc:

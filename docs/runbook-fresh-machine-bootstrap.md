@@ -114,11 +114,25 @@ it deliberately does not run the full workstation bootstrap.
 ### Portable drive
 
 `--portable` builds the same encrypted recipe on removable media that boots any
-UEFI x86_64 machine (Story 2.57, [#254](https://github.com/amasover/dotfiles/issues/254)):
+UEFI x86_64 machine (Story 2.57, [#254](https://github.com/amasover/dotfiles/issues/254)).
+It runs from the Arch ISO like the fixed recipe, or, since Story 2.58
+([#255](https://github.com/amasover/dotfiles/issues/255)), straight from a booted
+Arch workstation with the drive plugged in:
 
 ```bash
-install-on-metal "$device" --hostname <name> --portable
+lsblk -d -o PATH,SIZE,TRAN,MODEL,SERIAL     # pick the external drive; never guess
+sudo ~/.local/bin/setup/install-on-metal /dev/sdX --hostname <name> --portable
 ```
+
+From a booted system the installer writes nothing outside the drive. It accepts
+only `--portable`, because a fixed install would add a firmware entry to the
+machine running it. It refuses a disk that is mounted (the machine's own root disk
+always is) and a `--hostname` whose volume group the machine already has. Missing
+tooling is named with its package before any prompt; a stock workstation usually
+needs `pacman -S --needed arch-install-scripts gptfdisk parted`. Packages come
+from `[core]` and `[extra]` only, through this machine's mirrorlist, into the
+drive's own cache. The drive is unlocked under a mapping name of its own and
+closed again, and the hardware clock is left alone.
 
 What differs from the fixed recipe:
 
@@ -141,6 +155,11 @@ What differs from the fixed recipe:
 Rehearse with `.local/bin/setup/metal-rehearsal run --portable`. It installs over
 virtio, then boots the same disk as USB storage under fresh firmware variables
 holding no boot entry, and runs the handoff, reboot, and hibernate stages there.
+`metal-rehearsal run --host-side` rehearses the workstation route instead. It
+boots a fixed install, checks its refusals, builds the drive on a second disk from
+inside it, and requires the firmware variables file to be byte-identical and the
+host's mounts and device mappings unchanged. Then it boots only the drive, over
+USB with fresh firmware, through the same stages.
 
 ## Bootstrap preconditions
 
