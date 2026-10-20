@@ -1,0 +1,52 @@
+# tools/firefox-userchrome — link the tracked tab-strip stylesheet into every
+# Firefox profile. Host-independent: a scratch HOME and a stub firefox that
+# creates a profile the way a first launch does.
+#
+# Run from the repo root: clitest tests/firefox-userchrome.clitest.txt
+
+$ t=$PWD/.local/bin/tools/firefox-userchrome; CLITMP=$(mktemp -d); export HOME="$CLITMP/home" FIREFOX_USERCHROME_SOURCE="$CLITMP/userChrome.css"; unset XDG_CONFIG_HOME; mkdir -p "$HOME" "$CLITMP/stub" "$CLITMP/bare"; printf '.tabbrowser-tab { min-width: initial !important; }\n' > "$FIREFOX_USERCHROME_SOURCE"; printf '%s\n' '#!/bin/sh' 'echo "$*" >> "$HOME/firefox.args"' 'd="$HOME/.config/mozilla/firefox"; mkdir -p "$d/abcd.default-release"' 'printf "[Profile0]\nName=default-release\nIsRelative=1\nPath=abcd.default-release\n\n[Install4F96D1932A9F858E]\nDefault=abcd.default-release\n" > "$d/profiles.ini"' > "$CLITMP/stub/firefox"; chmod +x "$CLITMP/stub/firefox"; for tool in bash env awk readlink cmp mkdir ln mktemp rm timeout sed; do ln -s "$(command -v $tool)" "$CLITMP/bare/$tool"; done; echo ready
+ready
+$
+
+No Firefox and no profile: nothing to do:
+
+$ PATH="$CLITMP/bare" $t reconcile; echo "rc=$?"
+Firefox userChrome: Firefox not installed - skipping
+rc=0
+$
+
+Firefox installed but never run: check reports, apply creates its default profile headless, in the XDG location a fresh home uses:
+
+$ PATH="$CLITMP/stub:$CLITMP/bare" $t reconcile --check; echo "rc=$?"
+Firefox userChrome: no profile yet; would create Firefox's default profile headless
+rc=1
+$ test ! -e "$HOME/.config/mozilla"; echo "rc=$?"
+rc=0
+$ PATH="$CLITMP/stub:$CLITMP/bare" $t reconcile; echo "rc=$?"
+Firefox userChrome: created Firefox's default profile headless
+Firefox userChrome: linked abcd.default-release
+rc=0
+$ sed 's|/[^ ]*/first-run.png|<shot>|' "$HOME/firefox.args"
+--headless --screenshot <shot> about:blank
+$ readlink "$HOME/.config/mozilla/firefox/abcd.default-release/chrome/userChrome.css" | sed "s|$CLITMP|<tmp>|"
+<tmp>/userChrome.css
+$ PATH="$CLITMP/stub:$CLITMP/bare" $t reconcile --check; echo "rc=$?"
+Firefox userChrome: abcd.default-release already linked
+rc=0
+$
+
+The legacy ~/.mozilla root: an identical copy is adopted, a different stylesheet is left alone, and an absolute profile path is honoured:
+
+$ m="$HOME/.mozilla/firefox"; mkdir -p "$m/same/chrome" "$m/own/chrome" "$CLITMP/elsewhere"; cp "$FIREFOX_USERCHROME_SOURCE" "$m/same/chrome/userChrome.css"; printf '#nav-bar { display: none; }\n' > "$m/own/chrome/userChrome.css"; printf '%s\n' '[Profile0]' 'Path=same' 'IsRelative=1' '' '[Profile1]' 'Path=own' 'IsRelative=1' '' '[Profile2]' "Path=$CLITMP/elsewhere" 'IsRelative=0' > "$m/profiles.ini"
+$ PATH="$CLITMP/stub:$CLITMP/bare" $t reconcile; echo "rc=$?"
+Firefox userChrome: linked same
+Firefox userChrome: leaving own's own userChrome.css
+Firefox userChrome: linked elsewhere
+Firefox userChrome: abcd.default-release already linked
+rc=0
+$ test -L "$m/same/chrome/userChrome.css" && cat "$m/own/chrome/userChrome.css" && test -L "$CLITMP/elsewhere/chrome/userChrome.css"; echo "rc=$?"
+#nav-bar { display: none; }
+rc=0
+$ rm -rf "$CLITMP"; echo done
+done
+$

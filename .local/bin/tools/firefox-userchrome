@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# firefox-userchrome — link the tracked userChrome.css into every Firefox profile.
+#
+# The stylesheet lets tabs shrink without a floor instead of scrolling the tab
+# strip; Firefox clamps the browser.tabs.tabMinWidth pref to 50px, so no pref
+# does this. Firefox reads it only while
+# toolkit.legacyUserProfileCustomizations.stylesheets is true, which the
+# tracked policies.json defaults on (tools/firefox-policy).
+#
+# Profiles live under ~/.mozilla/firefox when that directory exists and under
+# $XDG_CONFIG_HOME/mozilla/firefox otherwise (Firefox 147+ on a fresh home);
+# both are read. On a machine where Firefox has never run there is no profile
+# to link into, so apply runs Firefox headless once to create its own default
+# profile, exactly as a first launch would. A profile's own, different
+# userChrome.css is left alone and named.
+#
+# Usage:
+#   firefox-userchrome reconcile [--check]
+set -euo pipefail
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+}
+
+die() {
+    echo "firefox-userchrome: FATAL: $*" >&2
+    exit 1
+}
+
+[[ ${1:-} == reconcile ]] || {
+    usage >&2
+    exit 2
+}
+shift
+check=0
+case ${1:-} in
+    "") ;;
+    --check) check=1 ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *) die "unknown argument: $1" ;;
+esac
+
+src=${FIREFOX_USERCHROME_SOURCE:-"$HOME/.config/dotfiles/firefox/userChrome.css"}
+[[ -f $src ]] || die "tracked stylesheet missing: $src"
+roots=("$HOME/.mozilla/firefox" "${XDG_CONFIG_HOME:-$HOME/.config}/mozilla/firefox")
+
+# Absolute directory of every profile profiles.ini lists, one per line.
+profile_dirs() {
+    local root ini
+    for root in "${roots[@]}"; do
+        ini=$root/profiles.ini
+        [[ -f $ini ]] || continue
+        awk -v root="$root" -F= '
+            /^\[/ { if (path != "") print (relative ? root "/" path : path); path = ""; relative = 1; next }
+            $1 == "Path" { path = substr($0, 6) }
+            $1 == "IsRelative" { relative = ($2 == "1") }
+            END { if (path != "") print (relative ? root "/" path : path) }
+        ' "$ini"
+    done
+}
+
+mapfile -t profiles < <(profile_dirs)
+if ((${#profiles[@]} == 0)); then
+    if ! command -v firefox >/dev/null; then
+        echo "Firefox userChrome: Firefox not installed - skipping"
+        exit 0
+    fi
+    if ((check)); then
+        echo "Firefox userChrome: no profile yet; would create Firefox's default profile headless"
+        exit 1
+    fi
+    shot=$(mktemp -d)
+    timeout 120 firefox --headless --screenshot "$shot/first-run.png" about:blank >/dev/null 2>&1 \
+        || {
+            rm -rf "$shot"
+            die "headless first run of Firefox failed"
+        }
+    rm -rf "$shot"
+    mapfile -t profiles < <(profile_dirs)
+    ((${#profiles[@]})) || die "Firefox created no profile on its headless first run"
+    echo "Firefox userChrome: created Firefox's default profile headless"
+fi
+
+drift=0
+for profile in "${profiles[@]}"; do
+    [[ -d $profile ]] || continue
+    css=$profile/chrome/userChrome.css
+    name=${profile##*/}
+    if [[ $(readlink "$css" 2>/dev/null || true) == "$src" ]]; then
+        echo "Firefox userChrome: $name already linked"
+    elif [[ -L $css || (-e $css && ! -f $css) ]] || { [[ -f $css ]] && ! cmp -s "$css" "$src"; }; then
+        echo "Firefox userChrome: leaving $name's own userChrome.css"
+    elif ((check)); then
+        echo "Firefox userChrome: would link $name"
+        drift=1
+    else
+        mkdir -p "$profile/chrome"
+        ln -sfn "$src" "$css"
+        echo "Firefox userChrome: linked $name"
+    fi
+done
+exit "$drift"

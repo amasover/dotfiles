@@ -179,7 +179,7 @@ BOOTSTRAP_STEPS = [
     ("claude-plugins", ("Claude Code plugins",)),
     ("vim-plugins", ("Vim plugins",)),
     ("user-services", ("User services",)),
-    ("firefox-vmware", ("Firefox VMware acceleration",)),
+    ("firefox", ("Firefox defaults",)),
     ("login-shell", ("Login shell",)),
 ]
 
