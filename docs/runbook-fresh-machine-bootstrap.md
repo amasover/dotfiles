@@ -111,6 +111,37 @@ This is a **local integration gate**, not a GitHub Validate step. It downloads a
 ISO and packages, builds an AUR package, and exercises KVM and real hibernation;
 it deliberately does not run the full workstation bootstrap.
 
+### Portable drive
+
+`--portable` builds the same encrypted recipe on removable media that boots any
+UEFI x86_64 machine (Story 2.57, [#254](https://github.com/amasover/dotfiles/issues/254)):
+
+```bash
+install-on-metal "$device" --hostname <name> --portable
+```
+
+What differs from the fixed recipe:
+
+- rEFInd goes to the removable-media fallback path, `EFI/BOOT/bootx64.efi`
+  (`refind-install --usedefault`), with its config beside it. The installing
+  machine gets no firmware boot entry. This workstation's rEFInd
+  (`scanfor …,external`) lists the drive whenever it is plugged in; any other
+  machine boots it from its firmware's one-time boot menu.
+- The initramfs omits `autodetect`
+  (`/etc/mkinitcpio.conf.d/90-dotfiles-portable.conf`), so it carries the storage,
+  USB, and keyboard drivers of machines it has never seen.
+- The resume volume is a fixed 64 GiB ceiling, not this machine's RAM. The
+  routine swapfile stays at 96 GiB (1.5x that volume), so the disk must hold at
+  least 203 GiB. A machine with more than 64 GiB of RAM still boots the drive;
+  `hibernate-storage` reports hibernation unavailable there.
+- The drive's rEFInd is unsigned (decision row 22 in
+  [decision-portable-install.md](./decision-portable-install.md)): disable Secure
+  Boot on a machine that enforces it.
+
+Rehearse with `.local/bin/setup/metal-rehearsal run --portable`. It installs over
+virtio, then boots the same disk as USB storage under fresh firmware variables
+holding no boot entry, and runs the handoff, reboot, and hibernate stages there.
+
 ## Bootstrap preconditions
 
 After the provisioned laptop first boots, network, Git, `base-devel`, and YADM are
@@ -238,8 +269,9 @@ space needed to save RAM.
 
 The Story 2.29 metal recipe creates one LUKS container holding an ext4 root LV and one
 resume LV exactly equal to rounded physical RAM. It disables zram and refuses a disk
-that cannot also hold the future 1.5x-RAM routine swapfile plus 40 GiB workstation
-headroom. `genfstab` records mounted filesystems only, so the dedicated resume LV is
+that cannot also hold the future routine swapfile, sized at 1.5x the resume
+volume's rounded-up GiB size, plus 40 GiB workstation headroom. `genfstab` records
+mounted filesystems only, so the dedicated resume LV is
 never in it; the installer's `metal-finalize` step persists it in the target fstab at
 priority -1 and rebuilds the initramfs in the target chroot. The initramfs is the
 systemd chain (Story 2.59), which needs no `resume` hook: systemd's
@@ -259,9 +291,10 @@ After first boot and yadm checkout:
    pkexec /usr/bin/bash ~/.local/bin/setup/hibernate-storage apply
    ```
    The module selects the only active encrypted swap partition when the kernel
-   has no resume target yet. It creates `/swapfile` inside encrypted root at 1.5
-   times rounded RAM, activates it at priority 100, drains the lower-priority
-   resume partition, and atomically adds fstab policy after backing up the old
+   has no resume target yet. It creates `/swapfile` inside encrypted root at
+   1.5 times the resume volume's rounded-up whole-GiB size, activates it at
+   priority 100, drains the lower-priority resume partition, and atomically adds
+   fstab policy after backing up the old
    file under `/var/backups/dotfiles/hibernate-storage/`. It refuses ambiguous,
    unencrypted, undersized, non-ext4, or low-disk-space layouts before mutation.
 
@@ -368,10 +401,16 @@ portable boot policy from machine identifiers:
   default tool list when a shorter line is parsed and would double-render the
   same four tools. Padding entries render only when their tool file exists. A
   missing `EFI/refind/icons` fails `--check`, `apply`, and `adopt` closed.
-- The reconciler touches only `EFI/refind/**` and `/boot/refind_linux.conf`. It never
-  edits NVRAM, installs a firmware entry, removes another loader, or reboots.
+- The reconciler touches only rEFInd's own directory and `/boot/refind_linux.conf`. It
+  never edits NVRAM, installs a firmware entry, removes another loader, or reboots.
+- On a portable drive rEFInd's directory is `EFI/BOOT`, not `EFI/refind`: the
+  reconciler recognises `EFI/BOOT/bootx64.efi` with `refind.conf` beside it, manages
+  the policy, theme, and stock icons there, and binds that ESP to the disk the
+  running root is on instead of to a firmware entry, which a drive booted on a
+  foreign machine never has. A fixed install's `EFI/refind` wins when both exist.
 
-**Loader follow-up.** Stock rEFInd went dormant after 0.14.2 (Nov 2023), and both
+**Loader follow-up.** Decided 2026-10-19 (decision row 22): stay on stock rEFInd for
+now, portable drives included. Stock rEFInd went dormant after 0.14.2 (Nov 2023), and both
 live bugs this runbook records (`also_scan_dirs @` prefix, `showtools` not
 clearing the default tool array) are fossils of that. If upstream still shows no
 active development roughly 2-3 years on, or a concrete need arrives it cannot

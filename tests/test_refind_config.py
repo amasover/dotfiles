@@ -732,3 +732,62 @@ def test_live_dual_boot_derives_volume_and_verifies_loader_paths(
     monkeypatch.setattr(refind, "partition_guid", lambda source: None)
     with pytest.raises(refind.RefindError, match="cannot derive the boot volume"):
         refind.resolve_dual_boot(Path("/"), machine)
+
+
+def make_portable_fixture(tmp_path: Path) -> Path:
+    """What refind-install --usedefault leaves: rEFInd only on the fallback path."""
+    root = make_fixture(tmp_path)
+    esp = root / "efi/EFI"
+    for directory in ("refind", "ubuntu"):
+        for path in sorted((esp / directory).rglob("*"), reverse=True):
+            path.rmdir() if path.is_dir() else path.unlink()
+        (esp / directory).rmdir()
+    (esp / "BOOT/BOOTX64.EFI").unlink()
+    (esp / "BOOT/bootx64.efi").write_bytes(b"refind binary\n")
+    # install-on-metal's finalize marks the stock config for first-boot takeover.
+    (esp / "BOOT/refind.conf").write_text(refind.MANAGED + "\ntimeout 20\n")
+    (esp / "BOOT/icons").mkdir()
+    (esp / "BOOT/icons/os_unknown.png").write_bytes(b"stock unknown icon\n")
+    return root
+
+
+def test_portable_layout_reconciles_the_config_that_boots(tmp_path, capsys):
+    """rEFInd reads its config from its own directory; EFI/refind would sit inert."""
+    root = make_portable_fixture(tmp_path)
+    assert refind.main(["apply", "--root", str(root)]) == 0
+    assert refind.main(["--check", "--root", str(root)]) == 0
+    assert "converged" in capsys.readouterr().out
+    fallback = root / "efi/EFI/BOOT"
+    assert (fallback / "refind.conf").read_text() == refind.repo_policy().read_text()
+    assert (fallback / "dotfiles-machine.conf").is_file()
+    assert (fallback / "themes/nord" / refind.THEME_MARKER).is_file()
+    assert not (root / "efi/EFI/refind").exists()
+    (backup,) = (root / "var/backups/dotfiles/refind").iterdir()
+    assert (backup / "esp/EFI/BOOT/refind.conf").read_text().endswith("timeout 20\n")
+
+
+def test_a_fallback_loader_alone_is_not_rEFInd(tmp_path):
+    """Any OS may own EFI/BOOT; refind.conf beside the loader identifies rEFInd."""
+    root = make_portable_fixture(tmp_path)
+    (root / "efi/EFI/BOOT/refind.conf").unlink()
+    assert refind.refind_layout(root / "efi") is None
+
+
+def test_portable_esp_must_share_a_disk_with_the_running_root(monkeypatch):
+    """A foreign machine boots it with no firmware entry, so bind by disk instead."""
+    ancestry = {
+        "/dev/sdb1": "sdb1 part\nsdb disk\n",
+        "/dev/mapper/usb-root": "usb-root lvm\ncryptlvm crypt\nsdb2 part\nsdb disk\n",
+        "/dev/nvme0n1p1": "nvme0n1p1 part\nnvme0n1 disk\n",
+    }
+
+    def fake_run(command, **_kwargs):
+        if command[0] == "/usr/bin/findmnt":
+            root = {"filesystems": [{"target": "/", "source": "/dev/mapper/usb-root"}]}
+            return subprocess.CompletedProcess(command, 0, json.dumps(root), "")
+        return subprocess.CompletedProcess(command, 0, ancestry[command[-1]], "")
+
+    monkeypatch.setattr(refind.subprocess, "run", fake_run)
+    refind.verify_portable_esp(Path("/"), {"source": "/dev/sdb1"})
+    with pytest.raises(refind.RefindError, match="not on the disk"):
+        refind.verify_portable_esp(Path("/"), {"source": "/dev/nvme0n1p1"})

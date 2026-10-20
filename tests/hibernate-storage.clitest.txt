@@ -13,6 +13,7 @@ $ printf '#!/bin/sh\nprintf "mkswap %%s\\n" "$*" >> "$HIBERNATE_STORAGE_TRACE"\n
 $ printf '#!/bin/sh\nprintf "swapoff %%s\\n" "$*" >> "$HIBERNATE_STORAGE_TRACE"\n[ "${HIBERNATE_STORAGE_FAIL_SWAPOFF:-0}" -ne 1 ] || exit 1\n/usr/bin/awk -v d="$1" '\''NR == 1 || $1 != d'\'' "$HIBERNATE_STORAGE_ROOT/proc/swaps" > "$HIBERNATE_STORAGE_ROOT/proc/swaps.new"\n/usr/bin/mv "$HIBERNATE_STORAGE_ROOT/proc/swaps.new" "$HIBERNATE_STORAGE_ROOT/proc/swaps"\n' > "$B/swapoff"
 $ printf '#!/bin/sh\nprintf "swapon %%s\\n" "$*" >> "$HIBERNATE_STORAGE_TRACE"\npriority=$2; path=$3\nif [ "$path" = "$HIBERNATE_STORAGE_ROOT/dev/resume" ]; then\n  case ${HIBERNATE_STORAGE_FAIL_RESUME_SWAPON:-never} in\n    always) exit 1 ;;\n    once) marker=${HIBERNATE_STORAGE_FAIL_MARKER:?}; [ -e "$marker" ] || { : > "$marker"; exit 1; } ;;\n  esac\nelse\n  [ "${HIBERNATE_STORAGE_FAIL_ROUTINE_SWAPON:-0}" -ne 1 ] || exit 1\nfi\nsize=$(( $(/usr/bin/stat -c %%s "$path") / 1024 )); type=file\n[ "$path" != "$HIBERNATE_STORAGE_ROOT/dev/resume" ] || { type=partition; size=${HIBERNATE_STORAGE_RESUME_KIB:-34603008}; }\n/usr/bin/printf "%%s %%s %%s 0 %%s\\n" "$path" "$type" "$size" "$priority" >> "$HIBERNATE_STORAGE_ROOT/proc/swaps"\n' > "$B/swapon"
 $ chmod +x "$B"/*
+$ eval "$(declare -f reset_fixture | sed '1s/reset_fixture/reset_fixture_base/')"; reset_fixture() { reset_fixture_base; printf 'MemTotal:       33554428 kB\n' > "$R/proc/meminfo"; /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$3=33554428} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; }; export HIBERNATE_STORAGE_RESUME_KIB=33554428 HIBERNATE_STORAGE_RESUME_BYTES=34359738368; reset_fixture
 $
 
 check reports every required change without mutating the fixture:
@@ -51,6 +52,24 @@ $ HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $
 hibernate-storage: converged — routine 48 GiB, resume reserved
 $
 
+a portable drive keeps its 96 GiB routine swapfile when RAM changes:
+
+$ /usr/bin/awk -v resume="$R/dev/resume" -v routine="$R/swapfile" '$1 == resume {$3=67108860} $1 == routine {$3=100663296} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; truncate -s 96G "$R/swapfile"; printf 'MemTotal:       33554428 kB\n' > "$R/proc/meminfo"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check; echo "rc=$?"
+hibernate-storage: converged — routine 96 GiB, resume reserved
+rc=0
+$ printf 'MemTotal:       75497472 kB\n' > "$R/proc/meminfo"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check; echo "rc=$?"
+hibernate-storage: converged — routine 96 GiB, resume reserved
+hibernate-storage: hibernation unavailable — 72 GiB RAM exceeds the 64 GiB resume swap
+rc=0
+$
+
+a fresh 64 GiB resume volume on a 96 GiB machine needs 96 GiB of routine swap:
+
+$ reset_fixture; printf 'MemTotal:       100663296 kB\n' > "$R/proc/meminfo"; /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$3=67108860} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; HIBERNATE_STORAGE_AVAIL=$((106 * 1073741824)) HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check; echo "rc=$?"
+hibernate-storage: drift — select dedicated resume swap; create 96 GiB routine swapfile; activate priority 100; drain resume swap; persist fstab
+rc=1
+$
+
 a swap file resume target is repairable drift, not an unsafe state:
 
 $ reset_fixture; printf '253:4\n' > "$R/sys/power/resume"; printf '79427584\n' > "$R/sys/power/resume_offset"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"; cat "$TRACE"
@@ -82,9 +101,6 @@ hibernate-storage: root filesystem is not backed by encrypted storage
 rc=2
 $ reset_fixture; /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$5=100} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
 hibernate-storage: dedicated resume swap priority must stay below routine swap
-rc=2
-$ reset_fixture; /usr/bin/awk -v resume="$R/dev/resume" '$1 == resume {$3=33554431} {print}' "$R/proc/swaps" > "$R/proc/swaps.new"; mv "$R/proc/swaps.new" "$R/proc/swaps"; HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool --check 2>&1; echo "rc=$?"
-hibernate-storage: dedicated resume swap is smaller than physical memory
 rc=2
 $ reset_fixture; HIBERNATE_STORAGE_AVAIL=53687091200 HIBERNATE_STORAGE_ROOT="$R" HIBERNATE_STORAGE_TRACE="$TRACE" PATH="$B:$PATH" $tool apply 2>&1; echo "rc=$?"; cat "$R/sys/power/resume" "$R/sys/power/resume_offset"; cat "$TRACE"
 hibernate-storage: root needs 48 GiB for routine swap plus 10 GiB free

@@ -5,12 +5,15 @@
 #   hibernate-storage --check   read-only; 0 converged, 1 drift, 2 unsafe
 #   hibernate-storage apply     create/reconcile routine swap; requires root
 #
-# Contract: installer already created one encrypted, active swap partition at
-# least as large as physical RAM and persisted it in fstab. If the kernel
-# has no resume target yet, this module selects that unambiguous partition.
+# Contract: installer already created one encrypted, active swap partition
+# sized to physical RAM (or, on a portable install, to a fixed ceiling) and
+# persisted it in fstab. If the kernel has no resume target yet, this module
+# selects that unambiguous partition. A machine with more memory than that
+# partition still gets routine swap and reports hibernation unavailable.
 # This module creates /swapfile inside encrypted ext4 root for routine paging,
-# sized to 1.5x rounded RAM and preferred at priority 100. The resume partition
-# stays active at priority -1 but empty, leaving room for the hibernation image.
+# sized to 1.5x the resume volume's rounded-up GiB size and preferred at
+# priority 100. The resume partition stays active at priority -1 but empty,
+# leaving room for the hibernation image.
 set -euo pipefail
 
 usage() {
@@ -156,8 +159,6 @@ inspect() {
         || die "cannot read physical memory size"
     [[ $mem_kib =~ ^[1-9][0-9]*$ ]] || die "physical memory size is malformed"
     ram_gib=$(((mem_kib + 1048575) / 1048576))
-    routine_gib=$(((ram_gib * 3 + 1) / 2))
-    expected_bytes=$((routine_gib * 1073741824))
 
     root_fstype=$(findmnt -n -o FSTYPE --target "$root") \
         || die "cannot identify root filesystem"
@@ -233,10 +234,15 @@ inspect() {
             || die "inactive resume swap size is malformed"
         resume_size_kib=$((resume_size_bytes / 1024))
     fi
+    resume_gib=$(((resume_size_kib + 1048575) / 1048576))
+    routine_gib=$(((resume_gib * 3 + 1) / 2))
+    expected_bytes=$((routine_gib * 1073741824))
     # The image cannot exceed MemTotal, so compare against it rather than the
-    # rounded figure used for sizing the routine swapfile.
-    ((resume_size_kib >= mem_kib)) \
-        || die "dedicated resume swap is smaller than physical memory"
+    # rounded-up resume size used to size the routine swapfile. A portable drive's
+    # resume partition is a fixed ceiling (Story 2.57), so a larger machine is
+    # reported rather than refused: it boots and pages, it just cannot hibernate.
+    hibernation_available=1
+    ((resume_size_kib >= mem_kib)) || hibernation_available=0
 
     routine_path=$(rooted /swapfile)
     while read -r source _; do
@@ -325,6 +331,9 @@ inspect() {
 
 converged() {
     echo "hibernate-storage: converged — routine ${routine_gib} GiB, resume reserved"
+    if ((hibernation_available == 0)); then
+        echo "hibernate-storage: hibernation unavailable — ${ram_gib} GiB RAM exceeds the ${resume_gib} GiB resume swap"
+    fi
 }
 
 mode=${1-}

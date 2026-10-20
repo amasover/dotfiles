@@ -44,10 +44,16 @@ from pathlib import Path, PurePosixPath
 MANAGED = "# Managed by dotfiles refind-config (Story 2.52, #230)."
 THEME_MARKER = ".dotfiles-refind-managed"
 # Nord's monochrome OS logos stay out of the managed theme copy, so rEFInd falls
-# back to the stock logos refind-install placed in EFI/refind/icons. Function,
+# back to the stock logos refind-install placed in its icons directory. Function,
 # tool, volume, and arrow icons still come from the theme.
 OS_LOGO_PREFIX = "os_"
-STOCK_ICONS = "EFI/refind/icons"
+STOCK_ICONS = "icons"
+# A fixed install keeps rEFInd in its own directory behind a firmware entry. A
+# portable one (Story 2.57) sits on the removable-media fallback path every
+# firmware boots unaided; refind-install --usedefault names the binary
+# bootx64.efi there and copies refind.conf beside it.
+FIXED_REFIND_DIR = "EFI/refind"
+PORTABLE_REFIND_DIR = "EFI/BOOT"
 ESP_CANDIDATES = ("/efi", "/boot/efi", "/boot")
 MACHINE_PATH = "/etc/dotfiles/refind.json"
 ALLOWED_MACHINE_KEYS = {"esp", "boot_fsroot", "kernel_options", "dual_boot"}
@@ -339,6 +345,21 @@ def esp_mount_record(root: Path, logical: str, writable: bool) -> dict[str, str]
     return record
 
 
+def refind_layout(esp: Path) -> str | None:
+    """Where rEFInd lives on this ESP, or None. Its own directory wins.
+
+    The fallback path alone does not identify rEFInd, since any loader may sit
+    there; refind.conf beside it does, and refind-install's own upgrade check
+    relies on the same pair.
+    """
+    if regular_file(esp / FIXED_REFIND_DIR / "refind_x64.efi"):
+        return FIXED_REFIND_DIR
+    fallback = esp / PORTABLE_REFIND_DIR
+    if regular_file(fallback / "bootx64.efi") and regular_file(fallback / "refind.conf"):
+        return PORTABLE_REFIND_DIR
+    return None
+
+
 def discover_esp(
     root: Path, machine: dict, writable: bool = False
 ) -> tuple[str, Path, dict[str, str]]:
@@ -346,7 +367,7 @@ def discover_esp(
         logical = machine["esp"]
         path = rooted(root, logical)
         reject_symlink_components(root, path, f"ESP {logical}")
-        if not regular_file(path / "EFI/refind/refind_x64.efi"):
+        if refind_layout(path) is None:
             raise RefindError(
                 f"rEFInd binary missing or unsafe on explicit ESP {logical}"
             )
@@ -356,7 +377,7 @@ def discover_esp(
     for logical in ESP_CANDIDATES:
         path = rooted(root, logical)
         reject_symlink_components(root, path, f"ESP {logical}")
-        if not regular_file(path / "EFI/refind/refind_x64.efi"):
+        if refind_layout(path) is None:
             continue
         try:
             mount = esp_mount_record(root, logical, writable)
@@ -367,8 +388,8 @@ def discover_esp(
         found.append((logical, path, mount))
     if not found:
         raise RefindError(
-            "no active ESP mount contains EFI/refind/refind_x64.efi "
-            f"(checked {', '.join(ESP_CANDIDATES)})"
+            f"no active ESP mount contains rEFInd at {FIXED_REFIND_DIR}/refind_x64.efi "
+            f"or {PORTABLE_REFIND_DIR}/bootx64.efi (checked {', '.join(ESP_CANDIDATES)})"
         )
     if len(found) > 1:
         raise RefindError(
@@ -763,15 +784,16 @@ def load_theme(root: Path) -> tuple[dict[str, bytes], str]:
     return files, owner
 
 
-def stock_icons_present(esp: Path) -> bool:
-    return regular_file(esp / STOCK_ICONS / "os_unknown.png")
+def stock_icons_present(refind_dir: Path) -> bool:
+    return regular_file(refind_dir / STOCK_ICONS / "os_unknown.png")
 
 
-def require_stock_icons(esp: Path) -> None:
+def require_stock_icons(refind_dir: Path, layout: str) -> None:
     """The theme copy omits OS logos, so the refind-install icon set must exist."""
-    if not stock_icons_present(esp):
+    if not stock_icons_present(refind_dir):
         raise RefindError(
-            f"stock rEFInd icons missing on the ESP: {STOCK_ICONS} (run refind-install)"
+            f"stock rEFInd icons missing on the ESP: {layout}/{STOCK_ICONS} "
+            "(run refind-install)"
         )
 
 
@@ -815,15 +837,19 @@ def build_state(root: Path, action: str, policy_content: bytes | None = None) ->
     machine = load_machine(root)
     writable = action in {"apply", "adopt"}
     esp_logical, esp, esp_mount = discover_esp(root, machine, writable)
-    verify_active_refind_esp(root, esp_mount)
-    require_stock_icons(esp)
+    layout = refind_layout(esp)
+    if layout == PORTABLE_REFIND_DIR:
+        verify_portable_esp(root, esp_mount)
+    else:
+        verify_active_refind_esp(root, esp_mount)
+    refind_dir = esp / layout
+    require_stock_icons(refind_dir, layout)
     kernel_versions = required_boot_artifacts(root)
     boot_fsroot = discover_boot_fsroot(root, machine)
     identity = resolve_identity(root, machine)
     stanzas = resolve_dual_boot(root, machine)
     policy = load_policy(policy_content)
     theme, theme_owner = load_theme(root)
-    refind_dir = esp / "EFI/refind"
     files = [
         ("refind.conf", refind_dir / "refind.conf", policy),
         (
@@ -851,6 +877,13 @@ def build_state(root: Path, action: str, policy_content: bytes | None = None) ->
         "theme": theme,
         "theme_owner": theme_owner,
         "theme_dir": refind_dir / "themes/nord",
+        # Where each item lands inside a backup, mirroring its place on disk.
+        "backup_paths": {
+            "refind.conf": Path("esp", layout, "refind.conf"),
+            "dotfiles-machine.conf": Path("esp", layout, "dotfiles-machine.conf"),
+            "refind_linux.conf": Path("boot/refind_linux.conf"),
+            "Nord theme": Path("esp", layout, "themes/nord"),
+        },
     }
 
 
@@ -888,13 +921,6 @@ def drift_items(state: dict) -> list[str]:
         drift.append("Nord theme")
     return drift
 
-
-BACKUP_PATHS = {
-    "refind.conf": Path("esp/EFI/refind/refind.conf"),
-    "dotfiles-machine.conf": Path("esp/EFI/refind/dotfiles-machine.conf"),
-    "refind_linux.conf": Path("boot/refind_linux.conf"),
-    "Nord theme": Path("esp/EFI/refind/themes/nord"),
-}
 
 
 def fsync_directory(path: Path) -> None:
@@ -953,7 +979,7 @@ def backup_existing(state: dict) -> Path | None:
     destination.mkdir(parents=True, mode=0o700)
     entries = []
     for name, source in existing:
-        target = destination / BACKUP_PATHS[name]
+        target = destination / state["backup_paths"][name]
         target.parent.mkdir(parents=True, exist_ok=True)
         if source.is_dir():
             shutil.copytree(source, target)
@@ -1036,12 +1062,14 @@ def remove_destination(path: Path) -> None:
 
 def restore_state(state: dict, backup: Path | None) -> None:
     for name, path, _ in reversed(state["files"]):
-        saved = backup / BACKUP_PATHS[name] if backup is not None else None
+        saved = backup / state["backup_paths"][name] if backup is not None else None
         if saved is not None and saved.is_file():
             atomic_write(path, saved.read_bytes(), stat.S_IMODE(saved.stat().st_mode))
         else:
             remove_destination(path)
-    saved_theme = backup / BACKUP_PATHS["Nord theme"] if backup is not None else None
+    saved_theme = (
+        backup / state["backup_paths"]["Nord theme"] if backup is not None else None
+    )
     if saved_theme is not None and saved_theme.is_dir():
         sync_directory_payload(state["theme_dir"], directory_payload(saved_theme))
     else:
@@ -1107,6 +1135,48 @@ def verify_active_refind_esp(root: Path, mount: dict[str, str]) -> None:
         )
 
 
+def backing_disks(source: str) -> set[str]:
+    """Whole disks beneath a block device, through LVM, crypt and partition layers."""
+    proc = subprocess.run(
+        [
+            "/usr/bin/lsblk",
+            "--inverse",
+            "--list",
+            "--noheadings",
+            "--output",
+            "NAME,TYPE",
+            mount_device(source),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode:
+        raise RefindError("cannot trace a boot device to its disk")
+    return {
+        fields[0]
+        for line in proc.stdout.splitlines()
+        if len(fields := line.split()) == 2 and fields[1] == "disk"
+    }
+
+
+def verify_portable_esp(root: Path, mount: dict[str, str]) -> None:
+    """Bind a fallback-path ESP to the disk the running root is on.
+
+    The firmware-entry binding fails both ways on removable media: a foreign
+    machine boots it through the fallback path with no entry of its own, and a
+    machine whose own rEFInd chains it reports that rEFInd's partition. The disk
+    under the running root is what both share, and it still refuses to write to
+    another disk's ESP that merely happens to be mounted.
+    """
+    if root != Path("/"):
+        return
+    esp_disks = backing_disks(mount["source"])
+    root_disks = backing_disks(findmnt_record("/", ("TARGET", "SOURCE"))["source"])
+    if not esp_disks or not esp_disks <= root_disks:
+        raise RefindError("selected ESP is not on the disk the running root is on")
+
+
 def firmware_flags(text: str) -> tuple[bool, bool, bool]:
     entry = current_firmware_entry(text)
     current_refind = bool(
@@ -1135,11 +1205,15 @@ def audit(root: Path) -> int:
     esp_logical, esp, esp_mount = discover_esp(root, machine)
     boot_fsroot = discover_boot_fsroot(root, machine)
     identity = resolve_identity(root, machine)
-    refind_dir = esp / "EFI/refind"
+    layout = refind_layout(esp)
+    refind_dir = esp / layout
     current_refind, refind_entry, ubuntu_entry = firmware_flags(firmware_text(root))
     keys = {option_key(token) for token in identity}
     print("rEFInd audit (identifiers redacted)")
-    print(f"  ESP: {esp_logical}; mount={esp_mount['fstype']}; rEFInd binary: present")
+    print(
+        f"  ESP: {esp_logical}; mount={esp_mount['fstype']}; rEFInd binary: present; "
+        f"layout={'portable' if layout == PORTABLE_REFIND_DIR else 'fixed'}"
+    )
     print(
         "  firmware rEFInd entry: "
         f"{'present' if refind_entry else 'not observed'}; "
@@ -1159,7 +1233,7 @@ def audit(root: Path) -> int:
     installed_theme = refind_dir / "themes/nord/theme.conf"
     print(
         f"  Nord source owner: {owner}; installed: {'yes' if installed_theme.is_file() else 'no'}; "
-        f"stock OS logos: {'present' if stock_icons_present(esp) else 'missing'}"
+        f"stock OS logos: {'present' if stock_icons_present(refind_dir) else 'missing'}"
     )
     print(f"  boot directory: /boot; filesystem root: {boot_fsroot}")
     boot = rooted(root, "/boot")

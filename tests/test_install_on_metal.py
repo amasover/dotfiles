@@ -236,11 +236,21 @@ class TestHooksPolicy:
             metal.policy_hooks(self.POLICY * 2)
 
     def test_dropin_is_a_copy_of_the_tracked_policy(self, tmp_path):
-        metal.install_hooks_dropin(tmp_path, self.POLICY)
-        metal.install_hooks_dropin(tmp_path, self.POLICY)
+        metal.install_dropins(tmp_path, metal.initramfs_dropins(portable=False))
+        metal.install_dropins(tmp_path, metal.initramfs_dropins(portable=False))
         dropin = tmp_path / metal.HOOKS_DROPIN
         assert not dropin.is_symlink()
         assert dropin.read_text() == self.POLICY
+        assert not (tmp_path / metal.PORTABLE_DROPIN).exists()
+
+    def test_portable_image_drops_only_autodetect(self, tmp_path):
+        """Drivers for machines the drive has never seen, the chain otherwise intact."""
+        metal.install_dropins(tmp_path, metal.initramfs_dropins(portable=True))
+        hooks = self.sourced_hooks(
+            tmp_path / metal.HOOKS_DROPIN, tmp_path / metal.PORTABLE_DROPIN
+        )
+        expected = [h for h in metal.policy_hooks(self.POLICY) if h != "autodetect"]
+        assert hooks == expected
 
 
 class TestLocale:
@@ -308,6 +318,7 @@ def metal_target(tmp_path, monkeypatch):
     monkeypatch.setattr(metal.subprocess, "run", target_run)
     refind_dir = tmp_path / "boot/EFI/refind"
     refind_dir.mkdir(parents=True)
+    (refind_dir / "refind_x64.efi").write_bytes(b"refind binary\n")
     (refind_dir / "refind.conf").write_text("timeout 20\n")
     (tmp_path / "boot/refind_linux.conf").write_text(
         '"Arch Linux" "root=/dev/new-laptop/root"\n'
@@ -439,6 +450,83 @@ class TestFinalize:
         with pytest.raises(metal.InstallError, match="offline target root"):
             metal.finalize_metal(metal.Path("/"), "new-laptop")
 
+    def test_refuses_a_target_without_rEFInd(self, metal_target):
+        (metal_target / "boot/EFI/refind/refind_x64.efi").unlink()
+        with pytest.raises(metal.InstallError, match="no rEFInd installation"):
+            metal.finalize_metal(metal_target, "new-laptop")
+
+    def test_fixed_install_gets_no_portable_dropin(self, metal_target):
+        metal.finalize_metal(metal_target, "new-laptop")
+        assert not (metal_target / metal.PORTABLE_DROPIN).exists()
+
+
+@pytest.fixture
+def portable_target(metal_target):
+    """What refind-install --usedefault leaves: rEFInd on the fallback path only."""
+    fixed = metal_target / "boot/EFI/refind"
+    for child in fixed.iterdir():
+        child.unlink()
+    fixed.rmdir()
+    fallback = metal_target / "boot/EFI/BOOT"
+    fallback.mkdir()
+    (fallback / "bootx64.efi").write_bytes(b"refind binary\n")
+    (fallback / "refind.conf").write_text("timeout 20\n")
+    return metal_target
+
+
+class TestPortableFinalize:
+    def test_marks_the_fallback_path_config_and_reserves_its_theme(
+        self, portable_target
+    ):
+        metal.finalize_metal(portable_target, "usb-drive")
+        fallback = portable_target / "boot/EFI/BOOT"
+        assert (fallback / "refind.conf").read_text().startswith(
+            metal.REFIND_MANAGED + "\n"
+        )
+        assert (fallback / "themes/nord" / metal.THEME_MARKER).is_file()
+        assert not (portable_target / "boot/EFI/refind").exists()
+
+    def test_portable_shape_is_recognised_without_being_told(self, portable_target):
+        """A rerun after a partial failure cannot be handed the wrong shape."""
+        metal.main(
+            ["metal-finalize", "--root", str(portable_target), "--volume-group", "usb"]
+        )
+        hooks = TestHooksPolicy.sourced_hooks(
+            portable_target / metal.HOOKS_DROPIN,
+            portable_target / metal.PORTABLE_DROPIN,
+        )
+        assert "autodetect" not in hooks
+
+    def test_a_fallback_loader_without_rEFInd_config_is_not_rEFInd(
+        self, portable_target
+    ):
+        """Any OS may own EFI/BOOT; refind.conf beside the loader identifies rEFInd."""
+        (portable_target / "boot/EFI/BOOT/refind.conf").unlink()
+        with pytest.raises(metal.InstallError, match="no rEFInd installation"):
+            metal.finalize_metal(portable_target, "usb-drive")
+
+    def test_installer_and_reconciler_agree_on_the_layout(self, portable_target):
+        esp = portable_target / "boot"
+        assert metal.refind_dir(esp) == refind.refind_layout(esp) == "EFI/BOOT"
+
+
+class TestPortableSizing:
+    def test_any_machine_up_to_the_ceiling_passes_preflight(self):
+        expected = metal.MetalFacts("/dev/sda", 256, metal.RESUME_CEILING_GIB)
+        for ram in (8, 32, metal.RESUME_CEILING_GIB):
+            metal.refuse_unexpected_facts(
+                expected, target_state(ram_gib=ram), portable=True
+            )
+
+    def test_a_machine_above_the_ceiling_is_refused(self):
+        expected = metal.MetalFacts("/dev/sda", 256, metal.RESUME_CEILING_GIB)
+        with pytest.raises(metal.InstallError, match="ceiling"):
+            metal.refuse_unexpected_facts(
+                expected,
+                target_state(ram_gib=metal.RESUME_CEILING_GIB + 1),
+                portable=True,
+            )
+
 
 class TestCredentials:
     def test_returns_both_secrets_without_writing_or_printing_them(self, capsys):
@@ -554,17 +642,38 @@ class TestCli:
             "device": "/dev/vda",
             "hostname": "metal-test",
             "user": "aaron",
+            "portable": False,
         }
 
     def test_a_subcommand_is_not_mistaken_for_a_device(self, monkeypatch):
         seen = {}
         monkeypatch.setattr(
-            metal, "metal_preflight", lambda facts: seen.update(f=facts)
+            metal,
+            "metal_preflight",
+            lambda facts, portable: seen.update(f=facts, portable=portable),
         )
         argv = ["metal-preflight", "--device", "/dev/vda"]
         argv += ["--disk-size", "63", "--ram-gib", "8"]
         assert metal.main(argv) == 0
-        assert seen["f"] == metal.MetalFacts("/dev/vda", 63, 8)
+        assert seen == {"f": metal.MetalFacts("/dev/vda", 63, 8), "portable": False}
+
+    def test_portable_preflight_takes_the_ceiling_instead_of_a_ram_figure(
+        self, monkeypatch
+    ):
+        seen = {}
+        monkeypatch.setattr(
+            metal,
+            "metal_preflight",
+            lambda facts, portable: seen.update(f=facts, portable=portable),
+        )
+        argv = ["metal-preflight", "--device", "/dev/sda", "--disk-size", "465"]
+        assert metal.main([*argv, "--portable"]) == 0
+        assert seen == {
+            "f": metal.MetalFacts("/dev/sda", 465, metal.RESUME_CEILING_GIB),
+            "portable": True,
+        }
+        with pytest.raises(SystemExit):
+            metal.main([*argv, "--portable", "--ram-gib", "32"])
 
     def test_an_install_without_a_hostname_is_refused(self):
         with pytest.raises(SystemExit):

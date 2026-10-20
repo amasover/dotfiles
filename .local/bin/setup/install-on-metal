@@ -15,6 +15,11 @@ volume and a dedicated resume volume sized to physical RAM. The volume group is
 named for the target host, so two disks built by this recipe can coexist in one
 machine without an ambiguous activation by name.
 
+``--portable`` builds removable media that boots any UEFI x86_64 machine
+instead (Story 2.57): rEFInd at the firmware's removable-media path with no
+firmware boot entry, an initramfs without ``autodetect``, and a resume volume
+sized to a fixed ceiling rather than the installing machine's RAM.
+
 Subcommand ``metal-finalize`` is the first-boot handoff the install performs,
 exposed for re-running it after a partial failure. ``metal-preflight`` is the
 same target survey plus one check the install path cannot make: that the disk
@@ -33,12 +38,15 @@ import stat
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 REFIND_MANAGED = "# Managed by dotfiles refind-config (Story 2.52, #230)."
 THEME_MARKER = ".dotfiles-refind-managed"
 GIB_BYTES = 1073741824
+# A portable install's resume volume, reserved once for every machine the drive
+# will meet. A machine with more memory boots it but cannot hibernate it.
+RESUME_CEILING_GIB = 64
 MIN_POST_SWAP_ROOT_GIB = 40
 LVM_METADATA_HEADROOM_GIB = 1
 ESP_MIB = 1023
@@ -51,10 +59,17 @@ LOCALE = "en_US.UTF-8 UTF-8"
 # The boot chain is tracked policy (Story 2.59), not a constant here: bootstrap
 # links the same file into /etc on every machine, so a fresh target and a
 # reconciled one cannot disagree about which initramfs they build.
-HOOKS_POLICY = (
-    Path(__file__).resolve().parents[3] / ".config/dotfiles/mkinitcpio/hooks.conf"
-)
+MKINITCPIO_POLICY = Path(__file__).resolve().parents[3] / ".config/dotfiles/mkinitcpio"
+HOOKS_POLICY = MKINITCPIO_POLICY / "hooks.conf"
 HOOKS_DROPIN = "etc/mkinitcpio.conf.d/10-dotfiles-hooks.conf"
+# Portable installs only, sourced after HOOKS_DROPIN to drop autodetect.
+PORTABLE_POLICY = MKINITCPIO_POLICY / "portable.conf"
+PORTABLE_DROPIN = "etc/mkinitcpio.conf.d/90-dotfiles-portable.conf"
+# rEFInd's own directory on a fixed install; the removable-media fallback path
+# on a portable one, so it boots with no firmware entry. refind-install names
+# the binary bootx64.efi there and copies refind.conf beside it.
+FIXED_REFIND_DIR = "EFI/refind"
+PORTABLE_REFIND_DIR = "EFI/BOOT"
 # The systemd chain's own equivalents replace these, and a systemd initramfs
 # runs no runtime hooks, so any of them would be silently inert.
 UDEV_ONLY_HOOKS = ("udev", "encrypt", "keymap", "consolefont", "resume")
@@ -227,13 +242,16 @@ def refuse_unsafe_target(device: str, state: TargetState) -> None:
         )
 
 
-def refuse_unexpected_facts(expected: MetalFacts, state: TargetState) -> None:
+def refuse_unexpected_facts(
+    expected: MetalFacts, state: TargetState, portable: bool = False
+) -> None:
     """Refuse a target that is not the machine the operator described.
 
     Only ``metal-preflight`` can fail here. The install path derives its facts
     from this same reading, so it has no expectation to disagree with and asks
     for none: the disk it installs to is the disk the operator named and typed
-    a ``WIPE`` confirmation for.
+    a ``WIPE`` confirmation for. A portable layout reserves its resume volume for
+    the ceiling, so any machine at or below it fits rather than only one.
     """
     minimum_bytes = expected.disk_size_gib * GIB_BYTES
     maximum_bytes = (expected.disk_size_gib + 1) * GIB_BYTES
@@ -241,7 +259,13 @@ def refuse_unexpected_facts(expected: MetalFacts, state: TargetState) -> None:
         raise InstallError(
             f"target size does not match configured {expected.disk_size_gib} GiB"
         )
-    if state.ram_gib != expected.ram_gib:
+    if portable:
+        if state.ram_gib > expected.ram_gib:
+            raise InstallError(
+                f"target RAM rounds to {state.ram_gib} GiB, above the "
+                f"{expected.ram_gib} GiB portable resume ceiling"
+            )
+    elif state.ram_gib != expected.ram_gib:
         raise InstallError(
             f"target RAM rounds to {state.ram_gib} GiB, "
             f"recipe expects {expected.ram_gib} GiB"
@@ -352,10 +376,10 @@ def confirm_wipe(device: str) -> None:
     require_wipe_confirmation(device, input(f"Type {confirmation} to continue: "))
 
 
-def metal_preflight(expected: MetalFacts) -> None:
+def metal_preflight(expected: MetalFacts, portable: bool = False) -> None:
     """Check a target against operator-supplied facts before committing to it."""
     state = survey_target(expected.device)
-    refuse_unexpected_facts(expected, state)
+    refuse_unexpected_facts(expected, state, portable)
     # A layout that cannot fit is a refusal, so it belongs here rather than
     # partway through build_storage, with the disk already wiped.
     metal_layout_gib(expected.disk_size_gib, expected.ram_gib)
@@ -440,25 +464,53 @@ def policy_hooks(text: str) -> list[str]:
     return hooks
 
 
-def hooks_policy_text(policy: Path = HOOKS_POLICY) -> str:
+def policy_text(policy: Path) -> str:
     try:
-        text = policy.read_text()
+        return policy.read_text()
     except OSError as exc:
-        raise InstallError(f"cannot read HOOKS policy: {policy}") from exc
-    policy_hooks(text)
-    return text
+        raise InstallError(f"cannot read initramfs policy: {policy}") from exc
 
 
-def install_hooks_dropin(root: Path, text: str) -> None:
-    """Write the policy as the target's drop-in; bootstrap later links it instead.
+def initramfs_dropins(portable: bool) -> dict[str, str]:
+    """Each target drop-in path and its content, read from tracked policy.
 
-    A copy rather than a link, because the target has no checkout of this
+    The portable drop-in only filters ``autodetect`` out of the array the
+    shared policy sets, so the two cannot disagree about the chain itself.
+    """
+    hooks = policy_text(HOOKS_POLICY)
+    policy_hooks(hooks)
+    dropins = {HOOKS_DROPIN: hooks}
+    if portable:
+        dropins[PORTABLE_DROPIN] = policy_text(PORTABLE_POLICY)
+    return dropins
+
+
+def install_dropins(root: Path, dropins: dict[str, str]) -> None:
+    """Write the policy as the target's drop-ins; bootstrap later links the shared one.
+
+    Copies rather than links, because the target has no checkout of this
     repository until bootstrap clones one.
     """
-    path = root / HOOKS_DROPIN
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if not path.is_file() or path.read_text() != text:
-        atomic_write_text(path, text, 0o644)
+    for relative, text in dropins.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.is_file() or path.read_text() != text:
+            atomic_write_text(path, text, 0o644)
+
+
+def refind_dir(esp: Path) -> str:
+    """Where rEFInd lives on an ESP: its own directory, or the removable fallback.
+
+    The fallback path alone does not identify rEFInd, since any loader may sit
+    there; refind.conf beside it does, and is what refind-install itself looks
+    for when upgrading a ``--usedefault`` installation.
+    """
+    if (esp / FIXED_REFIND_DIR / "refind_x64.efi").is_file():
+        return FIXED_REFIND_DIR
+    fallback = esp / PORTABLE_REFIND_DIR
+    if (fallback / "bootx64.efi").is_file() and (fallback / "refind.conf").is_file():
+        return PORTABLE_REFIND_DIR
+    raise InstallError("metal handoff finds no rEFInd installation on the target ESP")
 
 
 def refind_linux_conf(volume_group: str, luks_uuid: str) -> str:
@@ -513,7 +565,11 @@ def atomic_write_text(path: Path, content: str, mode: int) -> None:
 
 
 def finalize_metal(root: Path, volume_group: str) -> None:
-    """Persist resume swap and authorize first-boot rEFInd reconciliation."""
+    """Persist resume swap and authorize first-boot rEFInd reconciliation.
+
+    A portable install is recognised by where refind-install put rEFInd, so a
+    rerun after a partial failure cannot be told the wrong shape.
+    """
     root = root.resolve()
     if root == Path("/"):
         raise InstallError("metal finalization requires an offline target root")
@@ -522,15 +578,17 @@ def finalize_metal(root: Path, volume_group: str) -> None:
     volume_group = volume_group_name(volume_group)
 
     fstab = root / "etc/fstab"
-    hooks_dropin = root / HOOKS_DROPIN
+    layout = refind_dir(root / "boot")
+    boot_refind = root / "boot" / layout
+    dropins = initramfs_dropins(portable=layout == PORTABLE_REFIND_DIR)
     paths = [
         fstab,
-        root / "boot/EFI/refind/refind.conf",
+        boot_refind / "refind.conf",
         root / "boot/refind_linux.conf",
     ]
-    theme = root / "boot/EFI/refind/themes/nord"
+    theme = boot_refind / "themes/nord"
     theme_marker = theme / THEME_MARKER
-    for path in (*paths, hooks_dropin, theme_marker):
+    for path in (*paths, *(root / relative for relative in dropins), theme_marker):
         current = path
         while current != root:
             if current.is_symlink():
@@ -540,7 +598,6 @@ def finalize_metal(root: Path, volume_group: str) -> None:
         not theme_marker.is_file() or theme_marker.read_text() != REFIND_MANAGED + "\n"
     ):
         raise InstallError("metal handoff refuses an unmanaged Nord theme")
-    hooks = hooks_policy_text()
     contents: dict[Path, str] = {}
     for path in paths:
         if not path.is_file():
@@ -564,7 +621,7 @@ def finalize_metal(root: Path, volume_group: str) -> None:
     if not swap_entries:
         contents[fstab] = contents[fstab].rstrip("\n") + "\n\n" + resume_entry + "\n"
 
-    install_hooks_dropin(root, hooks)
+    install_dropins(root, dropins)
     for path, content in contents.items():
         if path != fstab:
             if content.startswith(REFIND_MANAGED + "\n"):
@@ -691,6 +748,8 @@ def configure_target(
     user_password: str,
     volume_group: str,
     luks_uuid: str,
+    esp: str,
+    portable: bool,
 ) -> None:
     """Bring the pacstrapped tree to the same state Archinstall used to leave."""
     (root / "etc/hostname").write_text(hostname + "\n")
@@ -728,7 +787,15 @@ def configure_target(
     # on a console this recipe is not driving. It does not weaken the typed
     # WIPE confirmation, which is this tool's and is asked before anything here.
     # It also declines Secure Boot MOK enrolment, which Story 2.44 owns.
-    chroot(root, ["refind-install", "--yes"], label="refind-install")
+    if portable:
+        # The removable-media path, so any firmware boots the drive unaided.
+        # refind-install never writes NVRAM for EFI/BOOT (refind-install:1476),
+        # and --usedefault mounts the ESP device itself, excluding --root.
+        chroot(
+            root, ["refind-install", "--yes", "--usedefault", esp], label="refind-install"
+        )
+    else:
+        chroot(root, ["refind-install", "--yes"], label="refind-install")
     # refind-install derives refind_linux.conf from the *running* system, which
     # inside an installer is the live medium, and skips it entirely on some
     # paths. Write the target's own kernel options unconditionally.
@@ -740,7 +807,12 @@ def configure_target(
 
 
 def install(
-    *, device: str, hostname: str, user: str, target: Path | None = None
+    *,
+    device: str,
+    hostname: str,
+    user: str,
+    portable: bool = False,
+    target: Path | None = None,
 ) -> None:
     if os.geteuid() != 0:
         raise InstallError("install-on-metal must run as root")
@@ -748,15 +820,26 @@ def install(
     volume_group = volume_group_name(hostname)
     state = survey_target(device)
     facts = state.facts(device)
+    if portable:
+        # The resume volume serves every machine the drive meets, so it is
+        # sized to the ceiling rather than to whichever machine installs it.
+        facts = replace(facts, ram_gib=RESUME_CEILING_GIB)
     # A layout that cannot fit is a refusal, so it belongs before the typed
     # confirmation rather than partway through build_storage.
     metal_layout_gib(facts.disk_size_gib, facts.ram_gib)
     # A policy that would build an unbootable chain is refused before the wipe.
-    hooks = hooks_policy_text()
+    dropins = initramfs_dropins(portable)
     print(
         f"device={device} disk={facts.disk_size_gib}GiB "
-        f"ram={facts.ram_gib}GiB vg={volume_group}"
+        f"resume={facts.ram_gib}GiB vg={volume_group}"
+        + (" portable" if portable else "")
     )
+    if portable and state.ram_gib > RESUME_CEILING_GIB:
+        print(
+            f"note: this machine's {state.ram_gib} GiB RAM is above the "
+            f"{RESUME_CEILING_GIB} GiB ceiling; the drive boots here but cannot "
+            "hibernate here"
+        )
     confirm_wipe(device)
     user_password, luks_passphrase = prompt_metal_credentials(user)
 
@@ -766,7 +849,7 @@ def install(
         mount_target(root, esp, volume_group)
         # Before pacstrap, so the package hook's first image is already the
         # recipe's chain rather than the packaged default rebuilt afterwards.
-        install_hooks_dropin(root, hooks)
+        install_dropins(root, dropins)
         run(["pacstrap", "-K", str(root), *PACKAGES], label="pacstrap")
         fstab = subprocess.run(
             ["genfstab", "-U", str(root)], capture_output=True, text=True, check=False
@@ -781,6 +864,8 @@ def install(
             user_password=user_password,  # gitleaks:allow -- 2026-09-15: kwarg name
             volume_group=volume_group,
             luks_uuid=luks_uuid,
+            esp=esp,
+            portable=portable,
         )
         finalize_metal(root, volume_group)
     finally:
@@ -805,7 +890,7 @@ def install_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "subcommands:\n"
-            "  metal-preflight --device DEV --disk-size GIB --ram-gib GIB\n"
+            "  metal-preflight --device DEV --disk-size GIB (--ram-gib GIB | --portable)\n"
             "  metal-finalize --root DIR --volume-group NAME"
         ),
     )
@@ -814,6 +899,11 @@ def install_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--hostname", required=True)
     parser.add_argument("--user", default="aaron")
+    parser.add_argument(
+        "--portable",
+        action="store_true",
+        help="removable media bootable on any UEFI x86_64 machine",
+    )
     return parser
 
 
@@ -824,7 +914,13 @@ def preflight_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--device", required=True)
     parser.add_argument("--disk-size", required=True, type=int)
-    parser.add_argument("--ram-gib", required=True, type=int)
+    ram = parser.add_mutually_exclusive_group(required=True)
+    ram.add_argument("--ram-gib", type=int)
+    ram.add_argument(
+        "--portable",
+        action="store_true",
+        help=f"accept any RAM up to the {RESUME_CEILING_GIB} GiB resume ceiling",
+    )
     return parser
 
 
@@ -849,7 +945,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if command == "metal-preflight":
             args = preflight_parser().parse_args(argv[1:])
-            metal_preflight(MetalFacts(args.device, args.disk_size, args.ram_gib))
+            ram_gib = RESUME_CEILING_GIB if args.portable else args.ram_gib
+            metal_preflight(
+                MetalFacts(args.device, args.disk_size, ram_gib), args.portable
+            )
             return 0
         if command == "metal-finalize":
             args = finalize_parser().parse_args(argv[1:])
@@ -857,7 +956,12 @@ def main(argv: list[str] | None = None) -> int:
             print("metal-provision: resume swap persisted; rEFInd handoff marked")
             return 0
         args = install_parser().parse_args(argv)
-        install(device=args.device, hostname=args.hostname, user=args.user)
+        install(
+            device=args.device,
+            hostname=args.hostname,
+            user=args.user,
+            portable=args.portable,
+        )
         return 0
     except InstallError as exc:
         print(f"metal-provision: install failed: {exc}", file=sys.stderr, flush=True)
