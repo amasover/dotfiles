@@ -1426,12 +1426,17 @@ fi
 
 # --- 9. login shell ------------------------------------------------------------
 say "Login shell"
-if [[ "${SHELL:-}" == */zsh ]]; then
+# The account's configured shell, not $SHELL: that stays the old one until the
+# next login, so a re-run before then would change it again. chsh run as the
+# user asks for the user's password even under --unattended, and stalled the
+# portable drive's first bootstrap at a bare "Password:" (2026-10-20); through
+# sudo it needs only the authorization every other step already uses.
+if [[ "$(getent passwd "$USER" | cut -d: -f7)" == */zsh ]]; then
     echo "  already zsh"
 elif [[ $CHECK -eq 1 ]]; then
-    echo "  would: chsh -s /usr/bin/zsh"
+    echo "  would: sudo chsh -s /usr/bin/zsh $USER"
 else
-    chsh -s /usr/bin/zsh
+    sudo chsh -s /usr/bin/zsh "$USER"
 fi
 
 say "Bootstrap complete — reboot to land in the configured session."

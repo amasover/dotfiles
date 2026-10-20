@@ -280,7 +280,8 @@ What it does, in order:
     start later through their restart policy.
 18. **VMware Firefox policy** — reconciles the guest-only hardware-acceleration policy and
     leaves metal/non-VMware hosts without the managed link.
-19. **Login shell** — `chsh -s /usr/bin/zsh` if needed. Reboot when done.
+19. **Login shell** — `sudo chsh -s /usr/bin/zsh $USER` unless the account's shell is
+    already zsh. Reboot when done.
 
 Focused editor validation from the repo checkout:
 
