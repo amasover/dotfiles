@@ -44,8 +44,9 @@ before any of it runs. Size and rounded RAM come from live hardware on this path
 It requires exact `WIPE <device>` input before prompting twice for the user password
 and LUKS password.
 Neither secret is written to disk at any point: the LUKS passphrase reaches
-`cryptsetup` on a pipe and the account passwords reach `chpasswd` inside the target
-root, so there is no credentials file to leak or to clean up.
+`cryptsetup` on a pipe and the user password reaches `chpasswd` inside the target
+root, so there is no credentials file to leak or to clean up. Root gets no password
+and stays locked; administer through `sudo` (`sudo -i` for a root shell).
 
 `pacstrap` installs the base system into a private mount point under `/run`, never
 `/mnt`. The recipe creates the 1 GiB ESP, the LUKS container, the LVM root and resume

@@ -7,8 +7,8 @@ flag and no environment override: a confirmation bypass that exists is one that
 eventually reaches real hardware.
 
 Passwords are prompted here and never written to disk. The LUKS passphrase is
-piped to cryptsetup and the account passwords are piped to chpasswd inside the
-target root, so no credentials file exists to leak or to clean up.
+piped to cryptsetup and the user's password to chpasswd inside the target root,
+so no credentials file exists to leak or to clean up. Root gets no password.
 
 The layout is a 1 GiB ESP mounted at /boot plus LVM-on-LUKS carrying a root
 volume and a dedicated resume volume sized to physical RAM. The volume group is
@@ -38,6 +38,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -56,6 +57,8 @@ LUKS_MAPPER = "cryptlvm"
 # LUKS_MAPPER, which a booted host built by this recipe already uses for its own
 # root; the target's command line names its own mapping regardless.
 INSTALL_MAPPER = "metal-install"
+# Half-second tries while the target's keyring daemons exit after gpgconf.
+UNMOUNT_ATTEMPTS = 20
 # Official repositories only, whatever the installing machine's pacman.conf
 # adds: the target keyring starts empty (-K), so a third-party repository's
 # signatures could not verify anyway, and the host's file stays the host's.
@@ -823,12 +826,23 @@ def release_target(root: Path, volume_group: str) -> None:
     these are already undone, and a second failure here would mask the first.
     still_attached() reports whatever this did not release.
     """
-    for command in (
-        # pacstrap -K initializes the target's keyring from this machine, not
-        # from inside a chroot, so the gpg daemons it starts outlive pacstrap
-        # and keep the target busy.
+    # pacstrap -K initializes the target's keyring from this machine, not from
+    # inside a chroot, so the gpg daemons it starts outlive pacstrap and keep
+    # the target busy. gpgconf only asks them to exit, so the unmount retries
+    # briefly while they let go.
+    subprocess.run(
         ["gpgconf", "--homedir", str(root / "etc/pacman.d/gnupg"), "--kill", "all"],
-        ["umount", "--recursive", str(root)],
+        check=False,
+        capture_output=True,
+    )
+    for _ in range(UNMOUNT_ATTEMPTS):
+        if not root.is_mount():
+            break
+        unmount = ["umount", "--recursive", str(root)]
+        if not subprocess.run(unmount, check=False, capture_output=True).returncode:
+            break
+        time.sleep(0.5)
+    for command in (
         target_lvm("vgchange", "--activate", "n", volume_group),
         ["cryptsetup", "close", INSTALL_MAPPER],
     ):
@@ -839,6 +853,16 @@ def still_attached(root: Path) -> list[str]:
     held = [str(root)] if root.is_mount() else []
     mapper = Path(f"/dev/mapper/{INSTALL_MAPPER}")
     return held + [str(mapper)] if mapper.exists() else held
+
+
+def holders(root: Path) -> str:
+    """Who keeps the target busy, for the report when it stays attached."""
+    with contextlib.suppress(OSError):
+        found = subprocess.run(
+            ["fuser", "-vm", str(root)], capture_output=True, text=True, check=False
+        )
+        return (found.stdout + found.stderr).strip()
+    return ""
 
 
 def chroot(root: Path, command: list[str], *, stdin: bytes | None = None, label: str):
@@ -880,13 +904,16 @@ def configure_target(
         ["useradd", "--create-home", "--groups", "wheel", "--shell", "/bin/bash", user],
         label="useradd",
     )
-    # Passwords reach chpasswd on a pipe, so they never appear in argv or on disk.
+    # The password reaches chpasswd on a pipe, so it never appears in argv or
+    # on disk. Root stays locked: the wheel user administers through sudo, and
+    # SYSTEMD_SULOGIN_FORCE=1 keeps the rescue shell open to a locked root.
     chroot(
         root,
         ["chpasswd"],
-        stdin=f"root:{user_password}\n{user}:{user_password}\n".encode(),
+        stdin=f"{user}:{user_password}\n".encode(),
         label="chpasswd",
     )
+    chroot(root, ["passwd", "--lock", "root"], label="lock root")
     for unit in ("NetworkManager", "sshd", "systemd-timesyncd"):
         chroot(root, ["systemctl", "enable", unit], label=f"enable {unit}")
 
@@ -1008,8 +1035,9 @@ def install(
             # Never silent: pulling a drive that is still mounted and unlocked
             # loses data, and the next run would refuse the open mapping.
             print(
-                f"metal-provision: still attached here: {', '.join(held)}. Find "
-                f"what holds it with fuser -vm {root}, then: umount -R {root}; "
+                f"metal-provision: still attached here: {', '.join(held)}. "
+                f"Holding it:\n{holders(root) or '(fuser found nothing)'}\n"
+                f"Stop those, then: umount -R {root}; "
                 f"vgchange -an {volume_group}; cryptsetup close {INSTALL_MAPPER}",
                 file=sys.stderr,
                 flush=True,

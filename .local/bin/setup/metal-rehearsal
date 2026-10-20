@@ -331,6 +331,11 @@ class Rehearsal:
         )
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.url = f"http://10.0.2.2:{self.server.server_port}/tree.tar.gz"
+        # The installer pacstraps through this machine's ranked mirrorlist, as
+        # a real workstation would: with reflector masked, the ISO's own list
+        # leans on a single CDN, and one bad hour there fails every stage.
+        shutil.copyfile("/etc/pacman.d/mirrorlist", public / "mirrorlist")
+        self.mirrorlist = self.url.rsplit("/", 1)[0] + "/mirrorlist"
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             self.port = sock.getsockname()[1]
@@ -434,6 +439,7 @@ class Rehearsal:
     def install(self):
         self.serial.send(
             "mkdir -p /run/dotfiles; "
+            f"curl -f {shlex.quote(self.mirrorlist)} -o /etc/pacman.d/mirrorlist && "
             f"curl -f {shlex.quote(self.url)} -o /run/tree.tar.gz && "
             "tar -xzf /run/tree.tar.gz -C /run/dotfiles && "
             "/run/dotfiles/.local/bin/setup/install-on-metal /dev/vda --hostname metal-test"
@@ -607,6 +613,11 @@ class Rehearsal:
 
     def first_boot(self):
         self.unlock_and_login()
+        self.root_locked()
+
+    def root_locked(self):
+        """The recipe sets no root password; the wheel user administers via sudo."""
+        self.guest('test "$(passwd -S root | cut -d" " -f2)" = L', "root-locked")
 
     def transfer_tree(self):
         self.guest(
@@ -693,19 +704,16 @@ class Rehearsal:
             'test -z "$moved$changed$left"',
             "host-mounts-mappings-and-state-unchanged",
         )
-        # No RC marker after poweroff, for the reason teardown gives.
-        try:
-            self.shell.send("systemctl poweroff\n")
-        except OSError:
-            pass
-        self.close_ssh()
-        self.wait_vm()
+        self.power_off()
+        # The drive is another machine with its own host key on the same port.
+        (self.path / "known_hosts").unlink(missing_ok=True)
         self.hostname = HOST_SIDE_HOSTNAME
         self.portable = True
         self.move_to_usb()
 
     def drive_boot(self):
         self.unlock_and_login()
+        self.root_locked()
 
     def handoff(self):
         print(
@@ -869,14 +877,18 @@ class Rehearsal:
         )
 
     def teardown(self):
-        # No RC marker after poweroff: systemd tears the SSH session down
-        # before the marker can return, so expecting it always hits EOF.
-        # QEMU exiting within the stage deadline is the success signal.
-        try:
-            self.shell.send("systemctl poweroff\n")
-        except OSError:
-            pass  # a dead session cannot deliver it; wait_vm reports the timeout
+        self.power_off()
+
+    def power_off(self):
+        """Close SSH, then press the ACPI power button through the monitor.
+
+        A poweroff typed into the session can be lost: closing the session
+        right after sending it can hang up the shell before it reads the line,
+        and the guest then runs on to the stage deadline. QEMU exiting within
+        the deadline is the success signal.
+        """
         self.close_ssh()
+        self.monitor_command("system_powerdown")
         self.wait_vm()
 
     def print_tail(self, pattern, label):
