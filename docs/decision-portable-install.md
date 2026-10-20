@@ -81,6 +81,7 @@ rows did not reach.
 | 24 | Recognising the shape | `metal-finalize` and `refind-config` both identify a portable install by where rEFInd lives, not by a flag. A portable install has `EFI/BOOT/bootx64.efi` with `refind.conf` beside it; `EFI/refind/refind_x64.efi` wins if both layouts are present. The config file is what identifies rEFInd, because any OS may own the fallback loader. `refind-install` uses the same pair to recognise its own `--usedefault` installs. A rerun after a partial failure therefore cannot be handed the wrong shape. |
 | 25 | Hibernation above the ceiling | `hibernate-storage` reports hibernation unavailable for any machine whose RAM exceeds its resume swap, and still converges routine paging. This is not limited to portable installs: a fixed machine after a RAM upgrade gets the same report. |
 | 26 | Routine swap sizing | Size `/swapfile` at 1.5x the resume volume's rounded-up GiB size instead of live RAM. The resume volume is an install-time decision: a portable 64 GiB ceiling yields a stable 96 GiB routine swapfile when the drive moves between hosts, while a fixed install's resume LV is rounded RAM and preserves today's size. |
+| 27 | Root account | Locked on every metal install. The installer used to give root the user's password; the wheel user administers through `sudo` instead, and row 17's `SYSTEMD_SULOGIN_FORCE=1` keeps the rescue shell open to a locked root. Decided before the first real portable drive was built. |
 
 ## Stories
 
