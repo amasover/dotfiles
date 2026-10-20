@@ -95,6 +95,8 @@ done
 function main {
     screenshot_directory="$HOME/screenshots/$(date +"%Y")/"
     mkdir -p "$screenshot_directory"
+    # scrot expands $f in the -e command itself, so it must reach scrot unexpanded.
+    # shellcheck disable=SC2016
     scrot -d 2 "${args[@]}" -e 'xclip -selection clipboard -target image/png -in "$f"' "${screenshot_directory}%Y-%m-%d_%H_%M_%S_\$wx\$h.png"
 
     if [ "$quiet" = false ]; then
