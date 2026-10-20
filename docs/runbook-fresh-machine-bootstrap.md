@@ -162,6 +162,33 @@ inside it, and requires the firmware variables file to be byte-identical and the
 host's mounts and device mappings unchanged. Then it boots only the drive, over
 USB with fresh firmware, through the same stages.
 
+#### From a blank drive to a daily environment
+
+1. Build the drive from the workstation (above) with `--hostname <name> --portable`.
+2. Boot it. On this workstation, pick it in the rEFInd menu. On any other machine,
+   pick it in the firmware's one-time boot menu. Type the disk passphrase and log in.
+3. Bootstrap it as class `portable` ([Bootstrap preconditions](#bootstrap-preconditions),
+   then [Run](#run)). Then size its swap as described in
+   [Bare-metal hibernation storage](#bare-metal-hibernation-storage).
+
+Step 3 can also run while the workstation keeps working, with the drive booted in a
+VM. Grant your user the device once (`sudo setfacl -m u:$USER:rw /dev/sdX`; the grant
+lasts until the drive is unplugged), copy `/usr/share/edk2/x64/OVMF_VARS.4m.fd` to a
+scratch file, then:
+
+```bash
+qemu-system-x86_64 -machine q35,accel=kvm -cpu host -m 8G -smp 8 \
+    -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
+    -drive if=pflash,format=raw,file=<scratch copy of OVMF_VARS> \
+    -drive if=virtio,format=raw,cache=none,file=/dev/sdX \
+    -nic user,model=virtio-net-pci
+```
+
+Fresh firmware variables make it boot through the fallback path, as an unfamiliar
+machine would. Bootstrap behaves as it does on metal, except that the `metal`
+confirmation is skipped inside a VM. Routine swap is sized from the drive's resume
+volume, so the VM's RAM does not matter.
+
 ## Bootstrap preconditions
 
 After the provisioned laptop or drive first boots, network, Git, `base-devel`, and
