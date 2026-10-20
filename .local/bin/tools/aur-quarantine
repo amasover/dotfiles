@@ -56,9 +56,15 @@
 #   broken-list       dump known-broken entries as TSV:
 #                     pkg<TAB>base<TAB>broken_at<TAB>since<TAB>reason
 #   build BASE SHA    (internal) build+install pkgbase BASE at AUR git commit SHA.
+#   prefetch BASE...  fetch the cached AUR clones of these pkgbases in parallel
+#                     (best effort) so a following stepping pass reads them
+#                     without one network round trip per package.
+#   fetch BASE        (internal) refresh one cached clone; prefetch's worker.
 #
 # Config (env):
 #   AUR_QUARANTINE_DAYS   per-version age threshold, days (default 14).
+#   AUR_QUARANTINE_FETCH_TTL  seconds a fetched clone counts as current (600).
+#   AUR_PREFETCH_JOBS     parallel fetches for prefetch (default 6).
 #   AUR_KNOWN_BROKEN_FILE known-broken list override (tests; default below).
 #   AUR_QUARANTINE_PACMAN pacman override (tests; default /usr/bin/pacman).
 #
@@ -82,12 +88,29 @@ REPO_HANDOFF="@repo-handoff"
 REPO_ACCEPTED_PREFIX="@repo-accepted:"
 
 # rpc_info NAME...  ->  "name<TAB>pkgbase<TAB>lastmod<TAB>maintainer" per resolved package
+# With AUR_RPC_CACHE set to a file, every answer is appended there, and a call
+# whose names all have an answer younger than AUR_QUARANTINE_FETCH_TTL reads
+# the newest of each back instead of asking the AUR again. Bootstrap's
+# pre-build pass verdicts its packages in one batch and then steps them one by
+# one; without the cache each step repeated that RPC.
 rpc_info() {
     (($# == 0)) && return 0
-    local p args=()
+    local p args=() out hit cache=${AUR_RPC_CACHE:-}
+    if [[ -n $cache && -s $cache ]] \
+        && (($(date +%s) - $(stat -c %Y "$cache") < ${AUR_QUARANTINE_FETCH_TTL:-600})); then
+        hit=$(tac "$cache" | awk -F'\t' 'NR == FNR { want[$1]; next } ($1 in want) && !seen[$1]++' \
+            <(printf '%s\n' "$@") -)
+        if [[ -n $hit ]] && (($(wc -l <<<"$hit") == $#)); then
+            printf '%s\n' "$hit"
+            return 0
+        fi
+    fi
     for p in "$@"; do args+=(--data-urlencode "arg[]=$p"); done
-    curl -fsG --max-time 20 "${args[@]}" 'https://aur.archlinux.org/rpc/v5/info' 2>/dev/null \
-        | jq -r '.results[] | [.Name, .PackageBase, (.LastModified|tostring), (.Maintainer // "")] | @tsv'
+    out=$(curl -fsG --max-time 20 "${args[@]}" 'https://aur.archlinux.org/rpc/v5/info' 2>/dev/null \
+        | jq -r '.results[] | [.Name, .PackageBase, (.LastModified|tostring), (.Maintainer // "")] | @tsv') \
+        || return 1
+    [[ -z $cache || -z $out ]] || printf '%s\n' "$out" >>"$cache"
+    [[ -z $out ]] || printf '%s\n' "$out"
 }
 # Installed package provenance. An official package removed from sync repos is
 # suddenly reported by `pacman -Qm`, but its local metadata still names the
@@ -242,16 +265,35 @@ aur_head() { # $1=pkgbase -> its current AUR commit, exactly one line
     timeout 20 git ls-remote "https://aur.archlinux.org/$1.git" HEAD 2>/dev/null | head -1 | cut -f1
 }
 
+# A clone fetched within the last AUR_QUARANTINE_FETCH_TTL seconds is current
+# enough for a window measured in days, so the round trip is skipped. prefetch
+# fills that cache in parallel before a stepping pass, and a build reuses the
+# fetch its update just made.
 fetch_repo() { # $1=pkgbase -> ensures clone in cache; echoes its path
-    local base=$1 dir="$cache_dir/$1"
+    local base=$1 dir="$cache_dir/$1" stamp="$cache_dir/$1/.git/aq-fetched" age
     mkdir -p "$cache_dir"
+    if [[ -f $stamp ]]; then
+        age=$(($(date +%s) - $(stat -c %Y "$stamp")))
+        if ((age < ${AUR_QUARANTINE_FETCH_TTL:-600})); then
+            git -C "$dir" reset --quiet --hard origin/HEAD 2>/dev/null || true
+            printf '%s\n' "$dir"
+            return 0
+        fi
+    fi
     if [[ -d $dir/.git ]]; then
         git -C "$dir" fetch --quiet origin 2>/dev/null || return 1
         git -C "$dir" reset --quiet --hard origin/HEAD 2>/dev/null || true
     else
         git clone --quiet "https://aur.archlinux.org/${base}.git" "$dir" 2>/dev/null || return 1
     fi
+    touch "$stamp"
     printf '%s\n' "$dir"
+}
+
+cmd_prefetch() { # PKGBASE... -> fetch their clones in parallel; best effort
+    (($#)) || return 0
+    printf '%s\n' "$@" \
+        | xargs -P "${AUR_PREFETCH_JOBS:-6}" -I{} "$0" fetch {} >/dev/null 2>&1 || true
 }
 
 srcinfo_version() { # stdin = .SRCINFO -> "epoch:pkgver-pkgrel"
@@ -828,9 +870,17 @@ case "${1:-}" in
         shift
         cmd_build "$@"
         ;;
+    prefetch)
+        shift
+        cmd_prefetch "$@"
+        ;;
+    fetch)
+        shift
+        fetch_repo "${1:?usage: aur-quarantine fetch PKGBASE}" >/dev/null
+        ;;
     -h | --help | "") grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//' ;;
     *)
-        echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|preflight|bypass-once|broken|unbroken|broken-status|broken-current|broken-fix|broken-list|build)" >&2
+        echo "aur-quarantine: unknown subcommand '$1' (seed|accept|auto|auto-off|update|preflight|prefetch|bypass-once|broken|unbroken|broken-status|broken-current|broken-fix|broken-list|build)" >&2
         exit 2
         ;;
 esac

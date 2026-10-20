@@ -940,6 +940,10 @@ else
     if ((${#candidates[@]} == 0)); then
         echo "  every declared package is repo-sourced — nothing to pre-flight"
     else
+        # The batched verdict's RPC answers serve every per-package step below
+        # (aur-quarantine rpc_info); the cache lives for this pass only.
+        AUR_RPC_CACHE=$(mktemp)
+        export AUR_RPC_CACHE
         verdicts=$("$aq" preflight "${candidates[@]}") \
             || die "pre-flight could not verify (AUR RPC unreachable?) — transient: re-run bootstrap"
         age_holds=()
@@ -998,6 +1002,13 @@ else
             echo "  no age holds, no substitutions (${#candidates[@]} non-repo packages checked)"
         else
             echo "  pre-building (${#to_build[@]}): ${to_build[*]}"
+            # Stepping reads each recipe's history from a cached AUR clone. One
+            # serial fetch per package was most of this pass's wall time on the
+            # portable drive (22 packages, 2026-10-20), so fetch them together
+            # first; update then reuses the fresh clones.
+            prefetch=()
+            for p in "${to_build[@]}"; do prefetch+=("${base_of[$p]:-$p}"); done
+            "$aq" prefetch "${prefetch[@]}"
             build_failed=""
             no_verdict=""
             for p in "${to_build[@]}"; do
@@ -1034,6 +1045,8 @@ else
             done
             ((${#ok_built[@]} == 0)) || echo "  pre-built and installed: ${ok_built[*]}"
         fi
+        rm -f "$AUR_RPC_CACHE"
+        unset AUR_RPC_CACHE
     fi
     # Drift-report state (2.38): age-deferred is per-run knowledge — recorded
     # fresh each unattended run (empty file = nothing deferred last run).

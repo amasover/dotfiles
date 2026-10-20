@@ -107,6 +107,21 @@ $ PATH="$aq/bin:$PATH" XDG_STATE_HOME="$aq/state" AUR_QUARANTINE_PACMAN="$aq/bin
 0
 $
 
+--- AUR_RPC_CACHE: one batched answer serves the per-package steps after it ---
+
+With every requested name answered in the cache, and the answer younger than
+the TTL, no request reaches the AUR. The stub curl here fails every call, so
+only a cache hit can succeed. An expired cache, or a name it lacks, goes back
+to the network.
+
+$ rc=$(mktemp -d) && mkdir -p "$rc/bin" "$rc/state" && printf '#!/bin/sh\nexit 22\n' > "$rc/bin/curl" && chmod +x "$rc/bin/curl" && printf 'cached-pkg\tcached-pkg\t1\tbob\nother-pkg\tother-pkg\t1\tcarol\ncached-pkg\tcached-pkg\t1\tdave\n' > "$rc/rpc.tsv"; CQ() { PATH="$rc/bin:$PATH" XDG_STATE_HOME="$rc/state" AUR_RPC_CACHE="$rc/rpc.tsv" .local/bin/tools/aur-quarantine "$@"; }; CQ accept cached-pkg 2>&1
+aur-quarantine: accepted maintainer for cached-pkg (dave).
+$ CQ accept cached-pkg missing-pkg 2>&1 | tail -1
+aur-quarantine: AUR RPC unreachable or package(s) not found — nothing accepted.
+$ touch -d '1 hour ago' "$rc/rpc.tsv"; CQ accept other-pkg 2>&1 | tail -1; rm -rf "$rc"
+aur-quarantine: AUR RPC unreachable or package(s) not found — nothing accepted.
+$
+
 --- bootstrap --probe-provider: substitution printed, self-resolution silent ---
 
 The stub pacman answers like the real one: a provider name for flashfocus,
