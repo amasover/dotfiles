@@ -1,0 +1,241 @@
+#!/usr/bin/env bash
+# openviking-memory — wire OpenViking agent memory into omp and Claude Code.
+#
+# OpenViking is a self-hosted memory server. Its own repository ships the
+# clients, one set per release: a pi extension omp loads from
+# ~/.omp/agent/extensions/openviking, and the Claude Code plugin
+# openviking-memory. Both read ~/.openviking/ovcli.conf: the server URL, the
+# API key, and the tracked settings in ~/.config/dotfiles/openviking/plugin.json.
+# The clients come from the release the server reports on /health, so they never
+# speak a newer API than the server does.
+#
+# Optional and per machine: ~/.config/dotfiles/openviking/server.env names the
+# server and the OpenBao that holds its key. It rides the yadm-encrypted archive,
+# so neither host is in the public repository. A machine without it, or off the
+# LAN, skips this step.
+#
+# The key never lands in a tracked file, an argument list or the output. On a
+# machine that already has an accepted key in ovcli.conf, it is reused.
+# Otherwise apply signs in to OpenBao with OIDC (a browser opens; sign in with
+# the passkey), reads the one key, and revokes the token before it goes on.
+#
+# server.env, KEY=value lines with no quotes:
+#   OPENVIKING_URL=https://memory.example      required
+#   BAO_ADDR=https://openbao.example           required
+#   OPENVIKING_BAO_PATH=agents/workstation/openviking   (KV mount "kv"; default shown)
+#   OPENVIKING_BAO_FIELD=key                   default shown
+#   OPENVIKING_BAO_ROLE=admin                  OIDC role; default shown
+#
+# Usage:
+#   openviking-memory [--check] [--no-login]
+#
+# --check reports what apply would do and changes nothing. --no-login, for
+# unattended runs, skips the step when it would need the OpenBao sign-in.
+# Exit: 0 converged, skipped or applied; 1 drift in --check; 2 failure.
+set -euo pipefail
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+}
+
+die() {
+    echo "openviking-memory: FATAL: $*" >&2
+    exit 2
+}
+
+say() {
+    echo "OpenViking memory: $*"
+}
+
+check=0
+login=1
+while (($#)); do
+    case $1 in
+        --check) check=1 ;;
+        --no-login) login=0 ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *) die "unknown argument: $1" ;;
+    esac
+    shift
+done
+
+settings=${OPENVIKING_SETTINGS_DIR:-"$HOME/.config/dotfiles/openviking"}
+root=$HOME/.openviking
+conf=$root/ovcli.conf
+marker=$root/installed-release
+ext=$HOME/.omp/agent/extensions/openviking
+repo=${OPENVIKING_REPO:-https://github.com/volcengine/OpenViking.git}
+
+if [[ ! -f $settings/server.env ]]; then
+    say "no server.env on this machine - skipping (optional feature)"
+    exit 0
+fi
+[[ -f $settings/plugin.json ]] || die "tracked settings missing: $settings/plugin.json"
+
+url='' bao_addr='' bao_path=agents/workstation/openviking bao_field=key bao_role=admin
+while IFS= read -r line || [[ -n $line ]]; do
+    [[ -z $line || $line == \#* ]] && continue
+    [[ $line =~ ^([A-Z_]+)=([A-Za-z0-9:/._@%+-]+)$ ]] \
+        || die "server.env: unsupported line (KEY=value, no quotes or spaces)"
+    value=${BASH_REMATCH[2]}
+    case ${BASH_REMATCH[1]} in
+        OPENVIKING_URL) url=${value%/} ;;
+        BAO_ADDR) bao_addr=${value%/} ;;
+        OPENVIKING_BAO_PATH) bao_path=$value ;;
+        OPENVIKING_BAO_FIELD) bao_field=$value ;;
+        OPENVIKING_BAO_ROLE) bao_role=$value ;;
+        *) die "server.env: unknown key ${BASH_REMATCH[1]}" ;;
+    esac
+done <"$settings/server.env"
+[[ $url == https://* ]] || die "server.env: OPENVIKING_URL must be an https URL"
+[[ $bao_addr == https://* ]] || die "server.env: BAO_ADDR must be an https URL"
+
+for tool in git node npm curl; do
+    if ! command -v "$tool" >/dev/null; then
+        say "$tool is not installed - skipping"
+        exit 0
+    fi
+done
+
+if ! health=$(curl -fsS --max-time 10 "$url/health" 2>/dev/null); then
+    say "server unreachable (off the LAN?) - skipping"
+    exit 0
+fi
+version=$(printf '%s' "$health" | node -e '
+  let v = "";
+  try { v = JSON.parse(require("fs").readFileSync(0, "utf8")).version || ""; } catch {}
+  process.stdout.write(/^v?[0-9]+(\.[0-9]+)*$/.test(v) ? "v" + v.replace(/^v/, "") : "");
+')
+if [[ -z $version ]]; then
+    say "server reported no release version - skipping"
+    exit 0
+fi
+src=$root/src/openviking-$version
+
+# The key reaches curl on stdin, never in its arguments.
+key_accepted() {
+    printf 'X-API-Key: %s\n' "$1" \
+        | curl -fsS --max-time 10 -o /dev/null -H @- "$url/api/v1/stats/memories" 2>/dev/null
+}
+
+# ovcli.conf as it should be, from the key on stdin.
+render_conf() {
+    node -e '
+      const fs = require("fs");
+      const [url, settings] = process.argv.slice(1);
+      const conf = { url, api_key: fs.readFileSync(0, "utf8"), plugin: JSON.parse(fs.readFileSync(settings, "utf8")) };
+      process.stdout.write(JSON.stringify(conf, null, 2) + "\n");
+    ' "$url" "$settings/plugin.json"
+}
+
+key=
+if [[ -f $conf ]]; then
+    key=$(node -e '
+      try { process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).api_key || ""); } catch {}
+    ' "$conf")
+    if [[ -n $key ]] && ! key_accepted "$key"; then
+        say "the key in ovcli.conf is no longer accepted"
+        key=
+    fi
+fi
+
+claude_current() {
+    command -v claude >/dev/null || return 0
+    claude plugin list 2>/dev/null | grep -Fq "Read from: $src/examples/claude-code-memory-plugin"
+}
+
+if [[ -n $key && -f $ext/index.ts && $(cat "$marker" 2>/dev/null) == "$version" ]] \
+    && [[ $(printf '%s' "$key" | render_conf) == "$(cat "$conf")" ]] && claude_current; then
+    say "up to date (OpenViking $version)"
+    exit 0
+fi
+
+if ((check)); then
+    if [[ -z $key ]]; then
+        say "would install the clients for OpenViking $version (needs an OpenBao passkey sign-in)"
+    else
+        say "would install the clients for OpenViking $version"
+    fi
+    exit 1
+fi
+
+if [[ -z $key ]]; then
+    if ((! login)); then
+        say "needs an OpenBao passkey sign-in - skipping in an unattended run"
+        exit 0
+    fi
+    command -v bao >/dev/null || die "bao is not installed (openbao package)"
+    work=$(umask 077 && mktemp -d)
+    revoke() {
+        if [[ -s $work/token ]]; then
+            printf 'X-Vault-Token: %s\n' "$(cat "$work/token")" \
+                | curl -fsS --max-time 10 -o /dev/null -H @- -X POST "$bao_addr/v1/auth/token/revoke-self" \
+                || echo "openviking-memory: could not revoke the OpenBao token; it expires with its TTL" >&2
+            rm -f "$work/token"
+        fi
+    }
+    trap 'revoke; rm -rf "$work"' EXIT
+    say "OpenBao sign-in: a browser opens; sign in with your passkey. The token reads one key and is revoked at once."
+    BAO_ADDR=$bao_addr timeout 300 bao login -method=oidc -token-only "role=$bao_role" >"$work/token" \
+        || die "OpenBao sign-in failed"
+    [[ -s $work/token ]] || die "OpenBao sign-in returned no token"
+    key=$(BAO_ADDR=$bao_addr BAO_TOKEN=$(cat "$work/token") bao kv get -mount=kv -field="$bao_field" "$bao_path") \
+        || {
+            revoke
+            die "could not read $bao_path ($bao_field) from OpenBao"
+        }
+    revoke
+    key=$(printf '%s' "$key" | tr -d '\r\n')
+    [[ -n $key ]] || die "OpenBao returned an empty key"
+    key_accepted "$key" || die "the server refused the key from OpenBao"
+fi
+
+if [[ ! -d $src/.git ]]; then
+    rm -rf "$src.tmp"
+    git -c advice.detachedHead=false clone -q --depth 1 --branch "$version" --filter=blob:none \
+        --sparse "$repo" "$src.tmp"
+    git -C "$src.tmp" sparse-checkout set examples agent-plugins
+    mv -T "$src.tmp" "$src"
+fi
+# The clients import shared modules and skills that git does not hold; this generates them.
+node "$src/examples/memory-plugin-shared/sync.mjs" >/dev/null
+
+mkdir -p "$root"
+(umask 077 && printf '%s' "$key" | render_conf >"$conf.tmp")
+chmod 600 "$conf.tmp"
+mv -T "$conf.tmp" "$conf"
+
+version_of() { node -p 'require(process.argv[1]).version' "$1"; }
+
+# omp loads every directory under ~/.omp/agent/extensions that holds an
+# index.ts, so the new copy is built outside it and swapped in.
+stage=$root/stage-omp
+rm -rf "$stage"
+cp -R "$src/examples/pi-coding-agent-extension" "$stage"
+npm ci --prefix "$stage" --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null
+mkdir -p "${ext%/*}"
+rm -rf "$ext"
+mv -T "$stage" "$ext"
+say "omp extension $(version_of "$ext/package.json") (OpenViking $version)"
+
+# Claude Code installs from a marketplace; this one is the release's own
+# directory, so the plugin stays at this version until the next run.
+if command -v claude >/dev/null; then
+    claude plugin uninstall openviking-memory@openviking >/dev/null 2>&1 || true
+    claude plugin marketplace remove openviking >/dev/null 2>&1 || true
+    if ! { claude plugin marketplace add "$src/examples" >/dev/null \
+        && claude plugin install openviking-memory@openviking >/dev/null; }; then
+        die "Claude Code is left without the memory plugin; run this again"
+    fi
+    say "Claude Code openviking-memory $(version_of "$src/examples/claude-code-memory-plugin/.claude-plugin/plugin.json") (OpenViking $version)"
+else
+    say "Claude Code not installed - plugin skipped"
+fi
+
+for old in "$root"/src/openviking-*; do
+    [[ $old == "$src" ]] || rm -rf "$old"
+done
+printf '%s\n' "$version" >"$marker"

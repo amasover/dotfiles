@@ -158,6 +158,7 @@ class TestStepFor:
             ("Spacemacs checkout", "spacemacs"),
             ("Emacs Copilot language server", "emacs-copilot"),
             ("Claude Code plugins", "claude-plugins"),
+            ("OpenViking memory (optional)", "openviking"),
             ("Vim plugins", "vim-plugins"),
             ("User services", "user-services"),
             ("Firefox defaults", "firefox"),

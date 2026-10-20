@@ -41,6 +41,7 @@ packages = [
   "nodejs-vmd",
   "oh-my-pi-bin",
   "nuget",
+  "openbao",  # bao CLI: setup/openviking-memory reads the memory server's key with a passkey sign-in
   "playwright",
   "podman",
   "podman-compose",
