@@ -530,8 +530,11 @@ else
     fi
     if [[ -n "$(find "$mirrorlist" -mtime -7 2>/dev/null)" ]]; then
         echo "  mirrorlist is younger than 7 days - keeping it"
-    else
-        sudo reflector --verbose "@$rfl_dst"
+    elif ! sudo reflector --verbose "@$rfl_dst"; then
+        # Stale beats none: this list just installed reflector, and the timer
+        # re-ranks within a week. archlinux.org took 75 s to serve its mirror
+        # status on 2026-10-19, and the drive's first bootstrap died here.
+        echo "  re-rank failed - keeping the current mirrorlist; reflector.timer retries"
     fi
 fi
 
