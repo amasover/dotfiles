@@ -285,7 +285,7 @@ same TOML), not new groups.
 
 - Given each detected backend, when adoption decides, then each gets an explicit disposition with Aaron: enable + declare, leave to the update loop, or consolidate away (e.g. migrate the lone pipx tool to uv rather than enabling a fourth python-tool manager)
 - Given nvm owns node (update loop; 2.8 adoption notes), when the npm backend is considered, then the nvm ordering problem is resolved deliberately — a fresh `metapac sync` runs before nvm/node exist; verify how metapac handles an enabled-but-absent backend before enabling it
-- Given brew's tap-qualified name (`env0/terratag/terratag`), when the brew backend is enabled, then tap handling is verified against metapac 0.9.4 (taps may need install hooks or documentation)
+- Brew is consolidated away (2026-10-20): its one leaf, `terratag`, is a vendored PKGBUILD (Story 2.46 machinery), and `brew-git` left the `development` group, so no brew backend is enabled
 - Given VS Code extensions may already ride Settings Sync, when the vscode backend is considered, then only one mechanism is chosen as the source of truth
 - Given a backend is enabled, when adoption completes, then `metapac unmanaged` is exactly empty for that backend too, and the template's `enabled_backends` is updated + re-rendered live
 - Given crates/npm/PyPI installs have no quarantine analog (Story 2.6 covers AUR only), when backends are enabled, then the ungated supply-chain surface of a fresh `metapac sync` is noted in the threat-model doc — accepted or ticketed, not silent

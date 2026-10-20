@@ -1,0 +1,26 @@
+# Vendored PKGBUILD - maintained in this repo; terratag has no AUR package.
+# Upstream: https://github.com/env0/terratag (MPL-2.0). Replaces the Homebrew
+# tap env0/terratag, the only formula Homebrew ever installed here; Homebrew
+# itself is retired (2026-10-20).
+#
+# Bin-style: repackages upstream's official static release binary rather than
+# compiling. The sha256 below is pinned from the release's own
+# terratag_<version>_checksums.txt.
+# Update flow: `custom-pkgs check` (run by setup/update's first step) watches
+# upstream releases; `custom-pkgs bump terratag VERSION` rewrites pkgver +
+# checksums and verifies the fresh checksum against that checksums file.
+pkgname=terratag
+pkgver=0.8.0
+pkgrel=1
+pkgdesc="Create and maintain tags across Terraform-managed AWS, Azure, and GCP resources (official binary)"
+arch=('x86_64')
+url="https://github.com/env0/terratag"
+license=('MPL-2.0')
+source=("$pkgname-$pkgver-linux-amd64.tar.gz::$url/releases/download/v$pkgver/${pkgname}_${pkgver}_linux_amd64.tar.gz")
+sha256sums=('25ea3dbb0cda06e287a22e6db6b22c13b05e93383633c9fe97c1315d8274b966')
+
+package() {
+    # the release tarball is flat: terratag, LICENSE, README.md in $srcdir
+    install -Dm755 "$srcdir/$pkgname" "$pkgdir/usr/bin/$pkgname"
+    install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

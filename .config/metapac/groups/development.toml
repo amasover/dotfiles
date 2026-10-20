@@ -14,7 +14,6 @@ packages = [
   "aspnet-runtime",
   "aspnet-runtime-9.0",
   "bfg",
-  "brew-git",
   "changie",
   "bun",
   "claude-code",
