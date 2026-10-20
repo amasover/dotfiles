@@ -1,0 +1,76 @@
+# tools/firefox-policy — compose and link Firefox's system policy (Story 5.7,
+# extended with default extensions and preferences). Host-independent: fixture
+# roots never invoke sudo.
+#
+# Run from the repo root: clitest tests/firefox-policy.clitest.txt
+
+$ t=.local/bin/tools/firefox-policy; CLITMP=$(mktemp -d); export FIREFOX_POLICY_SOURCE_DIR="$CLITMP/src" FIREFOX_POLICY_STATE="$CLITMP/state/policies.json"; mkdir "$CLITMP/src"; printf '%s\n' '{"policies":{"Preferences":{"base.pref":{"Value":1}},"ExtensionSettings":{"x@y":{"installation_mode":"normal_installed"}}}}' > "$CLITMP/src/policies.json"; printf '%s\n' '{"policies":{"Preferences":{"vm.pref":{"Value":true}}}}' > "$CLITMP/src/policies-vmware.json"; prefs() { jq -c '.policies.Preferences | keys' "$FIREFOX_POLICY_STATE"; }; echo ready
+ready
+$
+
+Every machine gets the base policy; check mode reports drift and writes nothing:
+
+$ $t reconcile --check --root "$CLITMP/m" --virt kvm | sed "s|$CLITMP|<tmp>|g"; echo "rc=${PIPESTATUS[0]}"
+Firefox policy: would compose <tmp>/state/policies.json without the VMware fragment
+Firefox policy: would link <tmp>/m/etc/firefox/policies/policies.json -> <tmp>/state/policies.json
+rc=1
+$ test ! -e "$CLITMP/state/policies.json" && test ! -e "$CLITMP/m/etc"; echo "rc=$?"
+rc=0
+$ $t reconcile --root "$CLITMP/m" --virt kvm | sed "s|$CLITMP|<tmp>|g"
+Firefox policy: composed <tmp>/state/policies.json without the VMware fragment
+Firefox policy: linked <tmp>/m/etc/firefox/policies/policies.json -> <tmp>/state/policies.json
+$ prefs
+["base.pref"]
+$ $t reconcile --root "$CLITMP/m" --virt kvm | sed "s|$CLITMP|<tmp>|g"; echo "rc=${PIPESTATUS[0]}"
+Firefox policy: composed without the VMware fragment, unchanged
+Firefox policy: <tmp>/m/etc/firefox/policies/policies.json already linked
+rc=0
+$
+
+A VMware guest adds the WebRender fragment on top, keeping the base:
+
+$ $t reconcile --root "$CLITMP/m" --virt vmware | sed "s|$CLITMP|<tmp>|g" | head -1
+Firefox policy: composed <tmp>/state/policies.json with the VMware fragment
+$ prefs; jq -c '.policies.ExtensionSettings | keys' "$FIREFOX_POLICY_STATE"
+["base.pref","vm.pref"]
+["x@y"]
+$
+
+A tracked change reaches Firefox through the existing link, without relinking:
+
+$ printf '%s\n' '{"policies":{"Preferences":{"base.pref":{"Value":2}}}}' > "$CLITMP/src/policies.json"
+$ $t reconcile --root "$CLITMP/m" --virt kvm | sed "s|$CLITMP|<tmp>|g"
+Firefox policy: composed <tmp>/state/policies.json without the VMware fragment
+Firefox policy: <tmp>/m/etc/firefox/policies/policies.json already linked
+$ jq -c '.policies.Preferences' "$CLITMP/m/etc/firefox/policies/policies.json"
+{"base.pref":{"Value":2}}
+$
+
+Story 5.7's direct link to the VMware file is this tool's own, so it moves:
+
+$ mkdir -p "$CLITMP/legacy/etc/firefox/policies"; ln -s "$CLITMP/src/policies-vmware.json" "$CLITMP/legacy/etc/firefox/policies/policies.json"
+$ $t reconcile --root "$CLITMP/legacy" --virt vmware | sed "s|$CLITMP|<tmp>|g" | tail -1
+Firefox policy: linked <tmp>/legacy/etc/firefox/policies/policies.json -> <tmp>/state/policies.json
+$
+
+An unmanaged policy is fatal and untouched, and nothing is composed:
+
+$ rm "$FIREFOX_POLICY_STATE"; mkdir -p "$CLITMP/unmanaged/etc/firefox/policies"; printf 'mine\n' > "$CLITMP/unmanaged/etc/firefox/policies/policies.json"
+$ $t reconcile --root "$CLITMP/unmanaged" --virt none 2>"$CLITMP/err"; echo "rc=$?"; sed -e 's/^firefox-policy: FATAL: //' -e "s|$CLITMP|<tmp>|g" "$CLITMP/err"
+rc=1
+refusing to overwrite unmanaged policy: <tmp>/unmanaged/etc/firefox/policies/policies.json
+$ cat "$CLITMP/unmanaged/etc/firefox/policies/policies.json"; test ! -e "$FIREFOX_POLICY_STATE"; echo "rc=$?"
+mine
+rc=0
+$
+
+The tracked policies compose: five default extensions everywhere, WebRender only in VMware:
+
+$ export FIREFOX_POLICY_SOURCE_DIR=.config/dotfiles/firefox; $t reconcile --root "$CLITMP/real" --virt kvm >/dev/null; jq -r '.policies.ExtensionSettings | length' "$FIREFOX_POLICY_STATE"; jq -r '.policies.Preferences | has("gfx.webrender.all")' "$FIREFOX_POLICY_STATE"
+5
+false
+$ $t reconcile --root "$CLITMP/real" --virt vmware >/dev/null; jq -r '.policies.Preferences | has("gfx.webrender.all") and has("browser.startup.page")' "$FIREFOX_POLICY_STATE"
+true
+$ rm -rf "$CLITMP"; echo done
+done
+$

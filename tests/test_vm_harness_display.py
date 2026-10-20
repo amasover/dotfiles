@@ -160,7 +160,7 @@ class TestStepFor:
             ("Claude Code plugins", "claude-plugins"),
             ("Vim plugins", "vim-plugins"),
             ("User services", "user-services"),
-            ("Firefox VMware acceleration", "firefox-vmware"),
+            ("Firefox defaults", "firefox"),
             ("Login shell", "login-shell"),
         ]
         indexes = []

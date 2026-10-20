@@ -1439,18 +1439,21 @@ for unit in meridian.service; do
     fi
 done
 
-# --- 8h. VMware Firefox acceleration (Story 5.7) -------------------------------
-# Mesa's SVGA driver deliberately reports its Gallium "accelerated" bit false.
-# Firefox then blocklists hardware WebRender even though VMware SVGA3D works.
-# A guest-only enterprise policy forces WebRender through GLX (EGL context
-# creation fails on this stack). The reconciler removes only its own symlink
-# outside VMware and refuses to overwrite any unrelated Firefox policy.
-say "Firefox VMware acceleration"
-firefox_vmware_policy="$HOME/.local/bin/tools/firefox-vmware-policy"
+# --- 8h. Firefox defaults (Story 5.7, extended) --------------------------------
+# tools/firefox-policy composes the system policy: the tracked default
+# extensions and preferences everywhere, plus the VMware WebRender fragment in
+# VMware guests (Mesa's SVGA driver reports its Gallium "accelerated" bit false,
+# so Firefox blocklists hardware WebRender that SVGA3D can run). It refuses to
+# overwrite a policy it did not write. tools/firefox-userchrome then links the
+# tracked tab-strip stylesheet into every profile, creating Firefox's default
+# profile headless when it has never run.
+say "Firefox defaults"
 if [[ $CHECK -eq 1 ]]; then
-    "$firefox_vmware_policy" reconcile --check
+    "$HOME/.local/bin/tools/firefox-policy" reconcile --check || true
+    "$HOME/.local/bin/tools/firefox-userchrome" reconcile --check || true
 else
-    "$firefox_vmware_policy" reconcile
+    "$HOME/.local/bin/tools/firefox-policy" reconcile
+    "$HOME/.local/bin/tools/firefox-userchrome" reconcile
 fi
 
 # --- 9. login shell ------------------------------------------------------------

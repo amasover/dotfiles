@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# firefox-policy — install the tracked Firefox enterprise policy.
+#
+# Firefox reads one system policy file, /etc/firefox/policies/policies.json.
+# It is composed from the tracked policies.json (default extensions and
+# preferences, every machine) and, on a VMware guest only, policies-vmware.json.
+# Firefox 154 sees Mesa's SVGA driver as software GL and blocklists hardware
+# WebRender. The guest works through GLX when hardware WebRender is forced;
+# Firefox's default EGL path fails to create a WebRender context.
+#
+# The composed file is written below ~/.local/state and /etc links to it, so a
+# tracked change reaches Firefox on the next run without root. Only creating
+# or moving the link needs sudo. Anything else at /etc is left to its owner.
+#
+# Usage:
+#   firefox-policy reconcile [--check] [--root DIR] [--virt NAME]
+#
+# Production detects virtualization and writes below /. Tests inject a fixture
+# root and virtualization name; fixture roots never invoke sudo.
+set -euo pipefail
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+}
+
+die() {
+    echo "firefox-policy: FATAL: $*" >&2
+    exit 1
+}
+
+cmd=${1:-}
+[[ $cmd == reconcile ]] || {
+    usage >&2
+    exit 2
+}
+shift
+
+check=0
+root=/
+virt=
+while (($#)); do
+    case $1 in
+        --check)
+            check=1
+            shift
+            ;;
+        --root)
+            (($# >= 2)) || die "--root needs a directory"
+            root=$2
+            shift 2
+            ;;
+        --virt)
+            (($# >= 2)) || die "--virt needs a name"
+            virt=$2
+            shift 2
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *) die "unknown argument: $1" ;;
+    esac
+done
+
+[[ $root == /* ]] || die "--root must be absolute"
+if [[ -z $virt ]]; then
+    virt=$(systemd-detect-virt 2>/dev/null || true)
+    [[ -n $virt ]] || virt=none
+fi
+
+src_dir=${FIREFOX_POLICY_SOURCE_DIR:-"$HOME/.config/dotfiles/firefox"}
+generated=${FIREFOX_POLICY_STATE:-"${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/firefox/policies.json"}
+# Story 5.7 linked /etc straight to the VMware file; that link is ours to move.
+legacy=$src_dir/policies-vmware.json
+dst=${root%/}/etc/firefox/policies/policies.json
+sudo_cmd=()
+[[ $root == / ]] && sudo_cmd=(sudo)
+
+sources=("$src_dir/policies.json")
+[[ $virt == vmware ]] && sources+=("$legacy")
+for source in "${sources[@]}"; do
+    [[ -f $source ]] || die "tracked policy missing: $source"
+done
+desired=$(jq -S -s 'reduce .[] as $part ({}; . * $part)' "${sources[@]}") \
+    || die "tracked policy is not valid JSON"
+fragment=$([[ $virt == vmware ]] && echo "with the VMware fragment" || echo "without the VMware fragment")
+
+current=$(readlink "$dst" 2>/dev/null || true)
+if [[ $current != "$generated" && $current != "$legacy" ]] && [[ -e $dst || -L $dst ]]; then
+    die "refusing to overwrite unmanaged policy: $dst"
+fi
+
+drift=0
+if [[ -f $generated && $(cat "$generated") == "$desired" ]]; then
+    echo "Firefox policy: composed $fragment, unchanged"
+elif ((check)); then
+    echo "Firefox policy: would compose $generated $fragment"
+    drift=1
+else
+    mkdir -p "${generated%/*}"
+    printf '%s\n' "$desired" > "$generated.tmp"
+    mv "$generated.tmp" "$generated"
+    echo "Firefox policy: composed $generated $fragment"
+fi
+
+if [[ $current == "$generated" ]]; then
+    echo "Firefox policy: $dst already linked"
+elif ((check)); then
+    echo "Firefox policy: would link $dst -> $generated"
+    drift=1
+else
+    "${sudo_cmd[@]}" install -d -m 755 "${dst%/*}"
+    "${sudo_cmd[@]}" ln -sfn "$generated" "$dst"
+    echo "Firefox policy: linked $dst -> $generated"
+fi
+exit "$drift"
