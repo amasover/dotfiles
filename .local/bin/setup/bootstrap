@@ -657,9 +657,14 @@ say "System sync"
 if [[ $CHECK -eq 1 ]]; then
     echo "  would: pacman -Syu   (refresh DBs + full upgrade — mirrors purge superseded files)"
 elif [[ $UNATTENDED -eq 1 ]]; then
+    # The gate stops at its first hold, so each failed attempt names one more
+    # held upgrade. Retry for as long as every attempt defers a new package:
+    # a fixed five ran out on the portable drive, which had more held chaotic
+    # upgrades than that (2026-10-20). The same package twice means no progress.
     syu_ok=0
     syu_ignore=()
-    for _ in 1 2 3 4 5; do
+    declare -A syu_deferred=()
+    while :; do
         rm -f "$held_install_file"
         if sudo pacman -Syu "${NC[@]}" "${syu_ignore[@]}"; then
             syu_ok=1
@@ -667,13 +672,15 @@ elif [[ $UNATTENDED -eq 1 ]]; then
         fi
         [[ -s "$held_install_file" ]] || die "system sync failed and no quarantine hold was recorded — read the pacman output above"
         IFS=$'\t' read -r held_pkg held_code <"$held_install_file"
+        [[ -z "${syu_deferred[$held_pkg]+x}" ]] || break
         inst=0
         pacman -Q "$held_pkg" >/dev/null 2>&1 && inst=1
         [[ "$(syu_hold_action "$held_code" "$inst")" == ignore-upgrade ]] || die_hold "$held_pkg" "$held_code"
         defer_pkg "$held_pkg" age "upgrade held at system sync; installed aged version stays"
+        syu_deferred[$held_pkg]=1
         syu_ignore+=(--ignore "$held_pkg")
     done
-    [[ $syu_ok -eq 1 ]] || die "system sync failed after 5 attempts — read the output above"
+    [[ $syu_ok -eq 1 ]] || die "system sync: $held_pkg held again despite --ignore — read the output above"
 else
     sudo pacman -Syu "${NC[@]}"
 fi
