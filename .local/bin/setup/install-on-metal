@@ -406,8 +406,16 @@ def on_install_medium() -> bool:
     return Path("/run/archiso").is_dir()
 
 
+# Shared by every LVM command here. Even a read such as vgs writes a metadata
+# backup and archive under /etc/lvm for any VG it finds without a current
+# one, which on a booted host is the host's own VG on the host's own disk.
+NO_LVM_BACKUP = ("--config", "backup { backup = 0 archive = 0 }")
+
+
 def host_volume_groups() -> set[str]:
-    return set(command_output(["vgs", "--noheadings", "-o", "vg_name"]).split())
+    return set(
+        command_output(["vgs", *NO_LVM_BACKUP, "--noheadings", "-o", "vg_name"]).split()
+    )
 
 
 def host_mappers() -> set[str]:
@@ -451,16 +459,15 @@ def refuse_host_collisions(
 def target_lvm(command: str, *arguments: str) -> list[str]:
     """An LVM command that sees only the target's PV and keeps no metadata copy.
 
-    LVM archives every metadata change under the running system's /etc/lvm,
-    which from a booted host is the host's own disk; and --devices keeps the
-    command off every other device, overriding any host devices file.
+    --devices keeps the command off every other device, overriding any host
+    devices file; NO_LVM_BACKUP keeps the target's metadata out of the host's
+    /etc/lvm.
     """
     return [
         command,
         "--devices",
         f"/dev/mapper/{INSTALL_MAPPER}",
-        "--config",
-        "backup { backup = 0 archive = 0 }",
+        *NO_LVM_BACKUP,
         *arguments,
     ]
 

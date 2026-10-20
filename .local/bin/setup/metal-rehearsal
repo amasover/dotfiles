@@ -649,21 +649,6 @@ class Rehearsal:
             "pacman -S --needed --noconfirm arch-install-scripts gptfdisk parted",
             "installer-tooling",
         )
-        self.refused(
-            f"/dev/vda --hostname {HOST_SIDE_HOSTNAME} --portable",
-            "is mounted",
-            "own-root-disk-refused",
-        )
-        self.refused(
-            f"/dev/vdb --hostname {HOST_SIDE_HOSTNAME}",
-            "firmware boot entry",
-            "fixed-from-host-refused",
-        )
-        self.refused(
-            "/dev/vdb --hostname metal-test --portable",
-            "already exists",
-            "host-volume-group-refused",
-        )
         # A real workstation carries its own pacman hooks (this one's quarantine
         # gate aborts any transaction it cannot vet). They belong to the host:
         # pacstrap must not run them inside the target.
@@ -679,8 +664,25 @@ class Rehearsal:
         mounts = (
             "findmnt -rn -o TARGET,SOURCE,FSTYPE | grep -v '^/run/credentials/' | sort"
         )
+        # Recorded before the refusals: they run the installer's own host
+        # survey, which must not write the host either.
         self.guest(f"{mounts} > /root/mounts.before", "host-mounts-recorded")
         firmware_before = self.vars_digest()
+        self.refused(
+            f"/dev/vda --hostname {HOST_SIDE_HOSTNAME} --portable",
+            "is mounted",
+            "own-root-disk-refused",
+        )
+        self.refused(
+            f"/dev/vdb --hostname {HOST_SIDE_HOSTNAME}",
+            "firmware boot entry",
+            "fixed-from-host-refused",
+        )
+        self.refused(
+            "/dev/vdb --hostname metal-test --portable",
+            "already exists",
+            "host-volume-group-refused",
+        )
         token = "RC-" + secrets.token_hex(6)
         self.shell.send(
             f"/root/dotfiles/.local/bin/setup/install-on-metal {drive}; "
