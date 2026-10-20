@@ -27,13 +27,19 @@ days="${AUR_QUARANTINE_DAYS:-14}"
 infra='^(chaotic-keyring|chaotic-mirrorlist)$' # the repo's own non-AUR packages
 
 # --- collect chaotic-sourced targets (stdin: one pkgname per line) -----------
-chaotic=()
+# One batched sync-DB query, which resolves each name to the first repo that
+# carries it exactly as the per-name lookup did. One `pacman -Si` per target
+# reloaded every sync DB per package: minutes of "gating chaotic-aur packages"
+# for the portable drive's 942-package first sync (2026-10-20).
+targets=()
 while IFS= read -r pkg; do
-    [[ -n "$pkg" ]] || continue
-    [[ "$pkg" =~ $infra ]] && continue
-    repo=$(pacman -Si "$pkg" 2>/dev/null | awk -F': *' '/^Repository/ { print $2; exit }')
-    [[ "$repo" == "chaotic-aur" ]] && chaotic+=("$pkg")
+    [[ -n "$pkg" && ! "$pkg" =~ $infra ]] && targets+=("$pkg")
 done
+((${#targets[@]} == 0)) && exit 0
+mapfile -t chaotic < <(
+    pacman -Si "${targets[@]}" 2>/dev/null \
+        | awk -F': *' '/^Repository/ { r = $2 } /^Name/ && r == "chaotic-aur" { print $2 }'
+)
 ((${#chaotic[@]} == 0)) && exit 0
 
 # --- one-transaction bypass (consumed on sight) -------------------------------
