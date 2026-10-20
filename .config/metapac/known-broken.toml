@@ -13,3 +13,8 @@
 #   aur-quarantine broken PKG --reason "..." [--upstream URL]
 #   aur-quarantine unbroken PKG
 
+[brew-git]
+reason    = "prepare() fails: brew4archlinux.patch no longer applies to upstream bin/brew (Homebrew HEAD moved; AUR recipe unchanged since 2025-07-13)"
+upstream  = "https://aur.archlinux.org/packages/brew-git"
+broken_at = "74304011f1c60127041511a084ecf317e89d7bfd"   # skip while the AUR commit still equals this
+since     = "2026-10-20"
