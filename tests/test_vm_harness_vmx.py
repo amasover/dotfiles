@@ -74,6 +74,11 @@ class TestBuildVmx:
         assert "usb_xhci" not in text
         assert "svga." not in text
 
+    def test_x86_64_sound_uses_workstation_default_card(self):
+        text = _build()
+        assert 'sound.present = "TRUE"' in text
+        assert "sound.virtualDev" not in text
+
 
 class TestBuildVmxAarch64:
     # Fusion on Apple silicon: ids read off Fusion 26H1's own `vmcli VM Create`.
@@ -104,6 +109,21 @@ class TestBuildVmxAarch64:
         for capped in ("svga.maxWidth", "svga.maxHeight", "svga.numDisplays",
                        "svga.vramSize"):
             assert capped not in text
+
+    def test_sound_card_is_hdaudio(self):
+        # Fusion's es1371 default fails arm power-on; hdaudio is the one that runs.
+        text = _build(arch="aarch64")
+        assert 'sound.present = "TRUE"' in text
+        assert 'sound.virtualDev = "hdaudio"' in text
+
+    def test_virtual_camera_on_free_xhci_port(self):
+        text = _build(arch="aarch64")
+        assert 'usb_xhci:5.deviceType = "video"' in text
+        assert 'usb_xhci:5.port = "5"' in text
+        assert 'usb_xhci:5.parent = "-1"' in text
+        # Fusion adds its own HID (port 4) and hubs (6, 7) at power-on.
+        for taken in ("usb_xhci:4.", "usb_xhci:6.", "usb_xhci:7."):
+            assert taken not in text
 
     def test_each_key_written_once(self):
         keys = [l.split(" = ")[0] for l in _build(arch="aarch64").splitlines()]
@@ -139,7 +159,9 @@ class TestFullKeySets:
 
     def test_aarch64(self):
         assert self._keys("aarch64") == SHARED_KEYS + [
-            "usb_xhci.present", "svga.autodetect", "svga.graphicsMemoryKB"]
+            "usb_xhci.present", "svga.autodetect", "svga.graphicsMemoryKB",
+            "sound.virtualDev", "usb_xhci:5.present", "usb_xhci:5.deviceType",
+            "usb_xhci:5.port", "usb_xhci:5.parent"]
 
 
 class TestEjectMedia:

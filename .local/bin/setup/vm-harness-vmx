@@ -72,6 +72,19 @@ ARCH_HW = {
             # for compositor and WebRender surfaces; verified honoured live
             # (vmware.log: "SVGA: graphicsMemoryKB=2097152").
             ("svga.graphicsMemoryKB", "2097152"),
+            # Fusion's sound default is es1371, which the arm vmx refuses at
+            # power-on ("es1371 is not valid device type for sound"); hdaudio
+            # powers on and binds the host's default output and input
+            # (scratch VM, 2026-11-03). The guest driver is snd-hda-intel.
+            ("sound.virtualDev", "hdaudio"),
+            # The Mac's camera as a virtual UVC device ("Add Device > Camera"
+            # in the GUI, Fusion Pro 26H1 guide): Fusion streams the host's
+            # default AVCapture camera into it. Port 5 is the one Fusion
+            # leaves free beside its own HID (4) and hubs (6, 7).
+            ("usb_xhci:5.present", "TRUE"),
+            ("usb_xhci:5.deviceType", "video"),
+            ("usb_xhci:5.port", "5"),
+            ("usb_xhci:5.parent", "-1"),
         ],
     },
 }
@@ -137,7 +150,11 @@ def build_vmx(
         ("tools.syncTime", "FALSE"),
         # Headless runs must never block on a dialog.
         ("msg.autoAnswer", "TRUE"),
-        ("sound.present", "FALSE"),
+        # Workstation's sound device is on by default and covers Linux guests
+        # (Workstation Pro 26H1 guide, "Virtual Machine Sound Support"); the
+        # card type is left to each product's guest-OS default except where
+        # that default fails (aarch64: see ARCH_HW).
+        ("sound.present", "TRUE"),
         ("usb.present", hw["usb"]),
         # VMware presents a floppy controller unless told otherwise; the guest
         # kernel probes the empty drive and logs "I/O error, dev fd0" on every
