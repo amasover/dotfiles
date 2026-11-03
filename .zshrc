@@ -58,9 +58,10 @@ plugins=(
     vi-mode
     archlinux)
 
-# macOS (class work-mac): Homebrew's prefix. mise's brew: manager installs
-# there too, with or without Homebrew itself, so no `brew shellenv`. Set before
-# oh-my-zsh so its compinit sees Homebrew's completions.
+# macOS (class work-mac): Homebrew's prefix, set here only, so every interactive
+# shell gets it, login or not. mise's brew: manager installs there too, with or
+# without Homebrew itself, so no `brew shellenv`. Set before oh-my-zsh so its
+# compinit sees Homebrew's completions.
 if [[ $OSTYPE == darwin* && -d /opt/homebrew/bin ]]; then
     typeset -U path fpath
     path=(/opt/homebrew/bin /opt/homebrew/sbin $path)
@@ -100,7 +101,6 @@ fi
 if [[ -n $SSH_CONNECTION ]]; then
   export EDITOR='vim'
 else
-  [[ $OSTYPE == darwin* ]] || export ARCHFLAGS="-arch x86_64"
   export EDITOR='vim'
 fi
 
@@ -355,14 +355,12 @@ export ANSIBLE_PLAYBOOKS_DIR=~/code/ansible-playbooks
 
 export PATH=$PATH:/home/han/.local/bin
 
+autoload -U +X bashcompinit && bashcompinit
 if [[ $OSTYPE != darwin* ]]; then
     export DOTNET_ROOT="/usr/share/dotnet"
 
     source /home/aaron/.config/broot/launcher/bash/br
-fi
 
-autoload -U +X bashcompinit && bashcompinit
-if [[ $OSTYPE != darwin* ]]; then
     source $HOME/.tenv.completion.zsh
 
     tf_version=$(tenv tf detect -q | cut -d ' ' -f2)

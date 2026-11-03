@@ -4,9 +4,8 @@ emulate zsh
 
 if [[ $OSTYPE == darwin* ]]; then
 	# macOS (class work-mac): login shells and the GUI apps they start get mise's
-	# shims; interactive shells add full activation in .zshrc. Homebrew's prefix
-	# goes first so its tools win over the older system ones.
-	[[ -d /opt/homebrew/bin ]] && export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
+	# shims; interactive shells add full activation, and Homebrew's prefix, in
+	# .zshrc.
 	if command -v mise >/dev/null; then
 		eval "$(mise activate zsh --shims)"
 	fi
