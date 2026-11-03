@@ -1,0 +1,25 @@
+# Mac shared folders (Story 5.8): every folder the VMware host shares (HGFS)
+# appears under ~/mac/<name> — on the work VM ~/mac/vmshare and
+# ~/mac/Downloads, set at create by VM_HARNESS_SHARES. A user-mode FUSE mount:
+# no root, no fstab, files owned by this user. Bootstrap's "User services"
+# step enables it on VMware guests only.
+#
+# Off VMware the unit is skipped; with nothing shared (vmware-hgfsclient lists
+# no names) ExecCondition skips it cleanly instead of failing. The first
+# ExecStartPre clears a mount left behind by a crashed run or a hand mount
+# ("Transport endpoint is not connected" would stop mkdir).
+[Unit]
+Description=Mac shared folders (VMware HGFS) at ~/mac
+ConditionVirtualization=vmware
+
+[Service]
+ExecCondition=/bin/sh -c 'test -n "$$(vmware-hgfsclient)"'
+ExecStartPre=-/usr/bin/fusermount3 -uqz %h/mac
+ExecStartPre=/usr/bin/mkdir -p %h/mac
+ExecStart=/usr/bin/vmhgfs-fuse .host:/ %h/mac -f -o subtype=vmhgfs-fuse
+ExecStop=/usr/bin/fusermount3 -u %h/mac
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

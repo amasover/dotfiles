@@ -230,6 +230,32 @@ reconcile_yay_mflags() {
     fi
 }
 
+# Step 8g's body (Story 3.24): tracked systemd user units, enabled
+# idempotently. meridian.service is useless until `claude login`, a
+# first-session step, so a failed start is tolerated (Restart=on-failure picks
+# it up later). mac-shares.service mounts the VMware host's shared folders, so
+# only VMware guests enable it. $2 = systemd-detect-virt's answer.
+reconcile_user_services() {
+    local mode=${1:-} virt=${2:-} unit
+    [[ $mode == check || $mode == apply ]] \
+        || die "user-services mode must be check or apply"
+    for unit in meridian.service mac-shares.service; do
+        if [[ $unit == mac-shares.service && $virt != vmware ]]; then
+            echo "  $unit skipped: not a VMware guest"
+        elif [[ ! -f "$HOME/.config/systemd/user/$unit" ]]; then
+            echo "  $unit not tracked on this checkout — skipping"
+        elif systemctl --user is-enabled "$unit" >/dev/null 2>&1; then
+            echo "  $unit already enabled"
+        elif [[ $mode == check ]]; then
+            echo "  would: systemctl --user enable --now $unit"
+        else
+            systemctl --user daemon-reload
+            systemctl --user enable --now "$unit" \
+                || echo "  $unit enabled but not started (meridian: claude login pending?)"
+        fi
+    done
+}
+
 # Step 6e's body (Story 2.59). $2 prefixes /etc and /proc/cmdline so a test can
 # point both at a scratch tree, as the NAS automount seam does.
 reconcile_initramfs_hooks() {
@@ -547,6 +573,11 @@ fi
 if [[ "${1:-}" == "--yay-mflags" ]]; then
     [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "yay-mflags seam is test-only"
     reconcile_yay_mflags "${2:-}" "${3:-}" "${4:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--user-services" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "user-services seam is test-only"
+    reconcile_user_services "${2:-}" "${3:-}"
     exit 0
 fi
 
@@ -1625,24 +1656,13 @@ else
 fi
 
 # --- 8g. user services (Story 3.24) --------------------------------------------
-# systemd user units tracked in yadm (currently meridian.service — the Claude
-# subscription proxy for oh-my-pi). Enable is idempotent; the unit is useless
-# until `claude login` has run, which is a first-session step, so failures to
-# start are tolerated — systemd's Restart=on-failure picks it up post-login.
+# See reconcile_user_services: meridian everywhere, mac-shares on VMware guests.
 say "User services"
-# shellcheck disable=SC2043  # single-element today; the list grows per story
-for unit in meridian.service; do
-    if [[ ! -f "$HOME/.config/systemd/user/$unit" ]]; then
-        echo "  $unit not tracked on this checkout — skipping"
-    elif systemctl --user is-enabled "$unit" >/dev/null 2>&1; then
-        echo "  $unit already enabled"
-    elif [[ $CHECK -eq 1 ]]; then
-        echo "  would: systemctl --user enable --now $unit"
-    else
-        systemctl --user daemon-reload
-        systemctl --user enable --now "$unit" || echo "  $unit enabled but not started (claude login pending?)"
-    fi
-done
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_user_services check "$virt"
+else
+    reconcile_user_services apply "$virt"
+fi
 
 # --- 8h. Firefox defaults (Story 5.7, extended) --------------------------------
 # tools/firefox-policy composes the system policy: the tracked default
