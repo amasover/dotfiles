@@ -130,7 +130,7 @@ Questions below before manifests are split. Native = official repos; **bold** = 
   `noto-fonts-emoji` `awesome-terminal-fonts` `adobe-source-code-pro-fonts`
   `papirus-icon-theme` `opendesktop-fonts` **arc-gtk-theme** **arc-solid-gtk-theme**
   **noto-fonts-sc** **noto-fonts-tc**) · login (`lightdm-webkit-theme-litarvan`)
-- **hardware-intel-laptop** (retired 2026-11-02 with the laptop) — ACPI,
+- **hardware-intel-laptop** (unused since 2026-11-02; kept for a planned personal Intel laptop) — ACPI,
   `intel-ucode`, `refind` + theme, `intel-media-driver`, `vulkan-intel`, and
   `lib32-vulkan-intel`; Xorg used built-in modesetting
 - **guest-vmware / guest-qemu** — hypervisor agent/display packages + zram

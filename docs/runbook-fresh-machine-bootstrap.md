@@ -343,9 +343,9 @@ All classes include the same 15 purpose groups from
 The `arch-*` adapter is not chosen per class: the template includes the one
 matching `yadm.arch` (`uname -m`) for every class. Shared purpose groups stay
 architecture-neutral; x86-only packages live in `arch-x86_64` and their aarch64
-substitutes in `arch-aarch64`. The `workstation` class, its
-`hardware-intel-laptop` adapter and `inbox-workstation` were retired with the
-old work laptop (wiped and returned); `work-vm` carries the `work` group now.
+substitutes in `arch-aarch64`. The `workstation` class and `inbox-workstation` were
+retired with the old work laptop; `hardware-intel-laptop` stays for a planned personal
+Intel laptop, and `work-vm` carries the `work` group now.
 
 Each concrete class selects exactly one hardware or guest adapter and one inbox. To add a
 machine profile, add its guarded template branch, adapter, and inbox; set

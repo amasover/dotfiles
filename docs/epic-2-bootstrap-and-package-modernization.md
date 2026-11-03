@@ -695,9 +695,10 @@ included 15-group purpose list; only `workstation` adds `work`. Each class names
 exactly one `inbox-<class>`, and yay resolves that inbox from rendered
 `hostname_groups` rather than counting every tracked inbox file.
 
-Retired 2026-11-02: the laptop was wiped and returned, so `workstation`,
-`hardware-intel-laptop` and `inbox-workstation` are gone; `work-vm` (Mac-hosted
-Fusion, aarch64) now carries `work`. See
+Retired 2026-11-02: the work laptop is wiped and gone, so `workstation` and
+`inbox-workstation` are retired; `work-vm` (Mac-hosted Fusion, aarch64) now carries
+`work`. `hardware-intel-laptop` stays as the adapter for a planned personal Intel
+laptop; no class uses it until that class exists. See
 [decision-work-vm.md](./decision-work-vm.md). The record below is historical.
 
 The Intel adapter owns ACPI, refind, Intel media, and 64/32-bit Intel Vulkan.

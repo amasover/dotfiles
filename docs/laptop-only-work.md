@@ -28,8 +28,8 @@ historical; re-home any still-wanted story on the Mac work VM
 
 #### Story 3.17 — monitor-name migration ([#129](https://github.com/amasover/dotfiles/issues/129)) ✅
 
-Closed 2026-11-02 with the laptop: every tracked profile fingerprinted its
-`eDP-1` panel, so the profiles and `.screenlayout` scripts are retired.
+Closed 2026-11-02 with the work laptop: its work-site setups can no longer be
+reconnected. The profiles and `.screenlayout` scripts stay for a planned personal laptop.
 
 #### Story 3.2 — classify editor configs ✅ ([#29](https://github.com/amasover/dotfiles/issues/29))
 

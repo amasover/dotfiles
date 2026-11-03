@@ -56,9 +56,10 @@ Supporting choices, decided together:
   genuinely missing, so bootstrap still fails loudly on them.
   `xf86-video-vmware` moves to `guest-vmware-x86_64`, used only by `daily-vm`.
 - **Class model.** `work-vm` = the common purpose groups + `guest-vmware` +
-  `work` + `inbox-work-vm` + the machine-local group. The `workstation` class, the
-  `hardware-intel-laptop` adapter and `inbox-workstation` are retired with the
-  laptop, and so are its monitor profiles (Story 3.17).
+  `work` + `inbox-work-vm` + the machine-local group. The `workstation` class and
+  `inbox-workstation` are retired with the work laptop. The `hardware-intel-laptop`
+  adapter, the autorandr profiles and the `.screenlayout` scripts stay for a planned
+  personal Linux laptop.
 
 ## Why this is recorded
 

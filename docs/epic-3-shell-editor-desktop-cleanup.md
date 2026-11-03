@@ -530,16 +530,15 @@ Polybar relaunching a global autorandr concern.
 `xrandr --listactivemonitors`, Polybar process placement, and i3 workspace
 placement after each retained setup is reconnected.
 
-**Closed 2026-11-02: the hardware is gone.** The old work laptop was wiped and
-returned. All three tracked autorandr profiles (`home`, `laptop`, `office`)
-fingerprinted its built-in `eDP-1` panel, so none can match again; they are
-retired with the `home` split hook. The 4K monitor is now driven through the
-Mac work VM ([decision-work-vm.md](./decision-work-vm.md)). The
-`.screenlayout` scripts were superseded and are retired too. The global
-autorandr `postswitch` and `preswitch.d` hooks stay as generic glue for any future
-profile. With no profile saved, i3's session-start `autorandr --change --force`
-finds no match and applies nothing; `exec --no-startup-id` ignores its exit
-status. VM display layout belongs to the Epic 5 Mac work VM story.
+**Closed 2026-11-02: the remaining work sites are unreachable.** The old work laptop
+is wiped and gone, so the offsite work-4K, office, and DisplayLink setups can no
+longer be reconnected. The tracked profiles (`home`, `laptop`, `office`), the `home`
+split hook, and the `.screenlayout` scripts stay: a planned personal Linux laptop may
+reuse them once it captures its own `eDP-1` fingerprint. The 4K monitor is driven
+through the Mac work VM for now ([decision-work-vm.md](./decision-work-vm.md)); no
+profile matches there, so i3's session-start `autorandr --change --force` applies
+nothing and `exec --no-startup-id` ignores its exit status. VM display layout belongs
+to Epic 5 Story 5.8.
 
 ---
 
