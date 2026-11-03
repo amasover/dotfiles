@@ -334,6 +334,16 @@ The tradeoff is CPU compositing on aarch64; WebGL 2 keeps hardware, and
 svga driver or Fusion updates, retry hardware WebRender by swapping
 `gfx.webrender.software` for `gfx.webrender.all` in `policies-vmware-aarch64.json`.
 
+**Multi-display (2026-11-02):** on the disposable guest, Fusion's "Use All
+Displays in Full Screen" sent `DisplayTopology_Set 2 , 1512 0 3840 2160 , 0
+1495 1512 949`. `vm-autofit` placed the outputs and `monitor-split auto`
+carved `Virtual-1~1` (1920x2160+1512+0), `~2` (1920x1080+3432+0) and `~3`
+(1920x1080+3432+1080) beside the panel `Virtual-2`. i3 put workspace 1 on
+`~1`, 3 on `~2` and 2 on `~3`. Polybar launched main, main-bottom, left,
+split-one and split-two (`auto: Virtual-1~1 left=Virtual-2 top=Virtual-1~2
+bottom=Virtual-1~3`). Leaving full screen cleared the split, and entering it
+again rebuilt it with no manual step.
+
 **Sound, camera, clipboard and drag-and-drop (2026-11-03):** the generated vmx
 had `sound.present = "FALSE"`, so the guest had no sound card. With sound on,
 Fusion picks es1371, and the arm vmx refuses it at power-on ("es1371 is not
@@ -364,7 +374,14 @@ two seconds after `startx`). File drag-and-drop from the Mac did not, because
   `arch-x86_64`, and bootstrap still fails loudly on a genuinely missing package.
 - Multi-display: in Fusion's "Use All Displays in Full Screen" mode, the guest
   gets one output per Mac display (panel + external 4K, later a second 4K).
-  Polybar roles and i3 workspaces follow without an autorandr profile.
+  The 3840x2160 4K output is carved into the old home split by
+  `tools/monitor-split` (left 1920x2160 main, right-top and right-bottom
+  1920x1080; workspaces 1 → main, 2 → bottom, 3 and 5 → top). It is opted in
+  for class `work-vm` by `.config/monitor-split/policy##class.work-vm` and
+  rebuilt by `vm-autofit` on every full-screen toggle and dock/undock.
+  Polybar gives the main bar to the left half, split bars to top/bottom, and
+  LEFT to the panel. Roles and i3 workspaces follow without an autorandr
+  profile ([4k-split-monitor-layout.md](../knowledge/reference/4k-split-monitor-layout.md)).
 - HiDPI: a recorded choice between Fusion's full-resolution Retina mode with a
   guest `Xft.dpi` and scaled (non-Retina) mode. Text is sharp and consistently
   sized on both the Retina panel and the 4K.
