@@ -59,6 +59,51 @@ class TestBuildVmx:
         assert 'pciBridge4.virtualDev = "pcieRootPort"' in text
         assert text.count('virtualDev = "pcieRootPort"') == 4
 
+    def test_x86_64_keeps_workstation_hardware(self):
+        # The Windows/Workstation VM is validated as-is; the arm table must
+        # not leak into it.
+        text = _build()
+        assert 'guestOS = "other6xlinux-64"' in text
+        assert 'virtualHW.version = "21"' in text
+        assert 'usb.present = "FALSE"' in text
+        assert "usb_xhci" not in text
+        assert "svga." not in text
+
+
+class TestBuildVmxAarch64:
+    # Fusion on Apple silicon: ids read off Fusion 26H1's own `vmcli VM Create`.
+    def test_arm_guest_id_and_hardware_version(self):
+        text = _build(arch="aarch64")
+        assert 'guestOS = "arm-other7xlinux-64"' in text
+        assert 'virtualHW.version = "22"' in text
+
+    def test_xhci_usb_input(self):
+        # KB 315602: arm guests get keyboard/mouse via the XHCI controller.
+        text = _build(arch="aarch64")
+        assert 'usb.present = "TRUE"' in text
+        assert 'usb_xhci.present = "TRUE"' in text
+        assert 'usb.present = "FALSE"' not in text
+
+    def test_shared_shape_kept(self):
+        text = _build(arch="aarch64")
+        for line in ('firmware = "efi"', 'mks.enable3d = "TRUE"',
+                     'nvme0:0.present = "TRUE"', 'ethernet0.virtualDev = "vmxnet3"',
+                     'serial0.fileType = "file"', 'floppy0.present = "FALSE"'):
+            assert line in text
+        assert text.count('deviceType = "cdrom-image"') == 2
+
+    def test_multimonitor_display_left_to_autodetect(self):
+        text = _build(arch="aarch64")
+        assert 'svga.autodetect = "TRUE"' in text
+        assert 'svga.graphicsMemoryKB = "2097152"' in text
+        for capped in ("svga.maxWidth", "svga.maxHeight", "svga.numDisplays",
+                       "svga.vramSize"):
+            assert capped not in text
+
+    def test_each_key_written_once(self):
+        keys = [l.split(" = ")[0] for l in _build(arch="aarch64").splitlines()]
+        assert len(keys) == len(set(keys))
+
 
 class TestEjectMedia:
     def test_detaches_both_cd_drives_only(self):
@@ -158,6 +203,13 @@ class TestCli:
         rc = vmx.main(["media", "--vmx", str(out)])
         assert rc == 0
         assert capsys.readouterr().out.splitlines()[-1] == "ejected"
+
+    def test_generate_arch_flag(self, tmp_path):
+        out = tmp_path / "t.vmx"
+        rc = vmx.main(["generate", "--out", str(out), "--disk", "d", "--iso", "a",
+                       "--seed-iso", "s", "--serial-log", "l", "--arch", "aarch64"])
+        assert rc == 0
+        assert 'guestOS = "arm-other7xlinux-64"' in out.read_text()
 
     def test_mac_missing_is_an_error(self, tmp_path):
         out = tmp_path / "t.vmx"

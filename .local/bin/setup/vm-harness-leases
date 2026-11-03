@@ -2,9 +2,12 @@
 """vm-harness-leases — guest IP from VMware's vmnet DHCP leases (2.36, #119).
 
 The `ip` channel that works before VMware Tools are up (the live ISO has no
-tools, so `vmrun getGuestIPAddress` has nothing to answer with): parse
-C:\\ProgramData\\VMware\\vmnetdhcp.leases (dhcpd.leases(5) format, all times
-UTC) for the harness VM's generated MAC.
+tools, so `vmrun getGuestIPAddress` has nothing to answer with): parse the
+NAT network's DHCP leases (dhcpd.leases(5) format, all times UTC) for the
+harness VM's generated MAC. Workstation on Windows keeps them in
+C:\\ProgramData\\VMware\\vmnetdhcp.leases; Fusion on macOS in
+/var/db/vmware/vmnet-dhcpd-vmnet8.leases (vmnet8 = NAT; world-readable, seen
+holding the live ISO's lease 2026-11-02).
 
 A MAC accumulates several lease blocks over a VM's life, so pick by the
 `starts` timestamp — NOT by file position. vmnetdhcp rewrites the file as it
@@ -31,7 +34,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-DEFAULT_LEASES = r"C:\ProgramData\VMware\vmnetdhcp.leases"
+DEFAULT_LEASES = ("/var/db/vmware/vmnet-dhcpd-vmnet8.leases"
+                  if sys.platform == "darwin"
+                  else r"C:\ProgramData\VMware\vmnetdhcp.leases")
 
 # Sorts after any real timestamp: `ends never;` means the lease never expires.
 NEVER = "9999/99/99 99:99:99"

@@ -1,11 +1,23 @@
-# vm-harness-vmware — disposable VMware Workstation validation harness (Windows host).
+# vm-harness-vmware — disposable VMware validation harness: Workstation on a
+# Windows host, Fusion on an Apple-silicon Mac (PowerShell 7, `pwsh`).
 #
 # PowerShell sibling of the libvirt/QEMU vm-harness (Story 2.36, #119): fresh-
-# installs Arch unattended in a throwaway VMware Workstation VM, runs the repo
-# bootstrap inside it, and asserts the result. Same pipeline vocabulary and
-# logging contract as the bash harness; hypervisor plumbing differs. Thin
-# driver by design — logic lives in Python (provision-seed, vm-harness-vmx/-leases),
+# installs Arch unattended in a throwaway VMware VM, runs the repo bootstrap
+# inside it, and asserts the result. Same pipeline vocabulary and logging
+# contract as the bash harness; hypervisor plumbing differs. Thin driver by
+# design — logic lives in Python (provision-seed, vm-harness-vmx/-leases),
 # guest-side bash is shared with the libvirt harness.
+#
+# Hosts ($IsMacOS picks; everything past the host switch is host-neutral):
+#   Windows  Workstation, x86_64 guest from the official archiso, seed target
+#            vmware, default class daily-vm, work dir %LOCALAPPDATA%.
+#   macOS    Fusion (runs arm64 guests only), aarch64 guest from the latest
+#            archiso-aarch64 release (Arch Linux Ports), seed target
+#            vmware-aarch64, default class work-vm, work dir
+#            ~/.local/share/bootstrap-harness-vmware. Python: the harness venv
+#            (<that work dir>/venv), else Homebrew python3.14, else PATH
+#            python3 — the first >= 3.10 that imports pycdlib (seed ISO).
+#            Run as `pwsh vm-harness-vmware.ps1 ...` (PowerShell 7).
 #
 # Flags (before the subcommand, same vocabulary as the bash harness):
 #   --progress compact display instead of the stream: three live rows (phase
@@ -19,8 +31,11 @@
 #
 # Subcommands:
 #   fetch      download + sha256-verify the latest Arch ISO into the local cache
+#              (macOS: the latest archiso-aarch64 release on Codeberg, checked
+#              against the sha256 its release notes publish)
 #   seed       generate the cloud-init NoCloud seed (provision-seed target
-#              vmware: NVMe device path, open-vm-tools, live-ISO ssh for exec)
+#              vmware / vmware-aarch64: NVMe device path, open-vm-tools,
+#              live-ISO ssh for exec)
 #   create     VM directory: fresh seed, growable NVMe disk (vdiskmanager),
 #              .vmx via vm-harness-vmx (UEFI, serial-to-file, NAT). Dies if the
 #              VM already exists — destroy is always explicit
@@ -77,6 +92,9 @@
 # VM_HARNESS_TRUST_DIR overrides where the AUR trust baseline lives — both
 # where trust-import writes it and where bootstrap reads it (default
 # ~\.local\state\aur-quarantine); see Get-TrustDir.
+# VM_HARNESS_SSH_KEY names a private key to seed and log in with (its .pub is
+# the seeded key; ssh gets -i + IdentitiesOnly) — for hosts whose keys live in
+# an agent with no ~/.ssh/id_*.pub on disk, and for throwaway-key runs.
 
 $ErrorActionPreference = 'Stop'
 
@@ -92,29 +110,62 @@ $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = $Utf8NoBom
 
 $VmName = 'arch-harness'
-$WorkDir = if ($env:VM_HARNESS_DIR) { $env:VM_HARNESS_DIR } else { Join-Path $env:LOCALAPPDATA 'bootstrap-harness-vmware' }
+# Host switch. Windows PowerShell has no $IsMacOS (null → Windows), PowerShell 7
+# defines it everywhere.
+$OnMac = [bool]$IsMacOS
+$WorkDir = if ($env:VM_HARNESS_DIR) { $env:VM_HARNESS_DIR }
+           elseif ($OnMac) { Join-Path $HOME '.local/share/bootstrap-harness-vmware' }
+           else { Join-Path $env:LOCALAPPDATA 'bootstrap-harness-vmware' }
 $CacheDir = Join-Path $WorkDir 'cache'
 $SeedDir = Join-Path $WorkDir 'seed'
 $VmDir = Join-Path $WorkDir 'vm'
 $LogDir = Join-Path $WorkDir 'logs'
-$Iso = Join-Path $CacheDir 'archlinux-x86_64.iso'
+# Fusion on Apple silicon runs arm64 guests only.
+$GuestArch = if ($OnMac) { 'aarch64' } else { 'x86_64' }
+$SeedTarget = if ($OnMac) { 'vmware-aarch64' } else { 'vmware' }
+$Iso = Join-Path $CacheDir "archlinux-$GuestArch.iso"
 $Mirror = 'https://geo.mirror.pkgbuild.com/iso/latest'
+# archiso-aarch64 publishes through Codeberg releases (ISO hosted off-site,
+# sha256 in the release notes) — see Get-PortsIsoSource.
+$PortsReleases = 'https://codeberg.org/api/v1/repos/ironrobin/archiso-aarch64/releases/latest'
 $DiskGib = if ($env:VM_HARNESS_DISK) { [int]$env:VM_HARNESS_DISK } else { 80 }
 $RamMib = if ($env:VM_HARNESS_RAM) { [int]$env:VM_HARNESS_RAM } else { 12288 }
-$Cpus = if ($env:VM_HARNESS_CPUS) { [int]$env:VM_HARNESS_CPUS } else { 16 }
+# The Mac (15 cores, meetings stay on macOS) keeps half its cores for itself.
+$Cpus = if ($env:VM_HARNESS_CPUS) { [int]$env:VM_HARNESS_CPUS } elseif ($OnMac) { 8 } else { 16 }
 $VmUser = 'aaron'
 $VmPass = 'vm'    # throwaway VM only; reachable only from this host's NAT
 $Repo = if ($env:VM_HARNESS_REPO) { $env:VM_HARNESS_REPO } else { 'https://github.com/amasover/dotfiles.git' }
 $Branch = $env:VM_HARNESS_BRANCH  # guest clones this branch (default: repo default = main);
                                   # set it to validate guest-side bootstrap changes pre-merge
-$Class = if ($env:VM_HARNESS_CLASS) { $env:VM_HARNESS_CLASS } else { 'daily-vm' }
-$SshOpts = @('-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=NUL',
+$Class = if ($env:VM_HARNESS_CLASS) { $env:VM_HARNESS_CLASS } elseif ($OnMac) { 'work-vm' } else { 'daily-vm' }
+$SshOpts = @('-o', 'StrictHostKeyChecking=no',
+             '-o', "UserKnownHostsFile=$(if ($OnMac) { '/dev/null' } else { 'NUL' })",
              '-o', 'LogLevel=ERROR')
+if ($env:VM_HARNESS_SSH_KEY) { $SshOpts += @('-i', $env:VM_HARNESS_SSH_KEY, '-o', 'IdentitiesOnly=yes') }
 $Vmx = Join-Path $VmDir "$VmName.vmx"
 $DiskVmdk = Join-Path $VmDir 'disk.vmdk'
 $SerialLog = Join-Path $VmDir 'install-serial.log'
 $RunStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$Python = 'C:\Python314\python.exe'
+
+# macOS has no fixed install path to pin, and the system python3 (3.9) is too
+# old for these tools. First >= 3.10 that imports pycdlib (the seed ISO needs
+# it) wins; else the first >= 3.10 (every other phase runs without it, and the
+# seed's ImportError names the gap); else the preferred path, so Invoke-Phase
+# dies naming it.
+function Find-MacPython {
+    $cands = @((Join-Path $WorkDir 'venv/bin/python3'), '/opt/homebrew/bin/python3.14')
+    $onPath = Get-Command python3 -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($onPath) { $cands += $onPath.Source }
+    $usable = @($cands | Where-Object { Test-Path $_ } | Where-Object {
+        & $_ -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>$null
+        $LASTEXITCODE -eq 0
+    })
+    $withIso = $usable | Where-Object { & $_ -c 'import pycdlib' 2>$null; $LASTEXITCODE -eq 0 } |
+        Select-Object -First 1
+    if ($withIso) { $withIso } elseif ($usable) { $usable[0] } else { '/opt/homebrew/bin/python3.14' }
+}
+$Python = if ($OnMac) { Find-MacPython } else { 'C:\Python314\python.exe' }
 $SeedTool = Join-Path $PSScriptRoot 'provision-seed'
 $VmxTool = Join-Path $PSScriptRoot 'vm-harness-vmx'
 $LeasesTool = Join-Path $PSScriptRoot 'vm-harness-leases'
@@ -128,14 +179,23 @@ $script:ResumeHeader = ''       # set by a resuming up; Invoke-Phase logs it onc
 $script:SinkDied = $false       # display child died mid-phase — output was lost
 # .local/bin/setup -> .local/share/yadm/archive, in whichever checkout runs.
 $Archive = Join-Path $PSScriptRoot '..\..\share\yadm\archive'
-# Workstation's install root moved between releases (26H1: Program Files;
-# 25H2: Program Files (x86)) — take whichever actually has vmrun.
-$VmwareDir = @("$env:ProgramFiles\VMware\VMware Workstation",
-               "${env:ProgramFiles(x86)}\VMware\VMware Workstation") |
-    Where-Object { Test-Path (Join-Path $_ 'vmrun.exe') } | Select-Object -First 1
-if (-not $VmwareDir) { $VmwareDir = "$env:ProgramFiles\VMware\VMware Workstation" }
-$VmRun = Join-Path $VmwareDir 'vmrun.exe'
-$VdiskMgr = Join-Path $VmwareDir 'vmware-vdiskmanager.exe'
+if ($OnMac) {
+    # Fusion keeps its command-line tools inside the app bundle.
+    $VmwareDir = '/Applications/VMware Fusion.app/Contents/Library'
+    $VmRun = Join-Path $VmwareDir 'vmrun'
+    $VdiskMgr = Join-Path $VmwareDir 'vmware-vdiskmanager'
+    $VmRunType = 'fusion'
+} else {
+    # Workstation's install root moved between releases (26H1: Program Files;
+    # 25H2: Program Files (x86)) — take whichever actually has vmrun.
+    $VmwareDir = @("$env:ProgramFiles\VMware\VMware Workstation",
+                   "${env:ProgramFiles(x86)}\VMware\VMware Workstation") |
+        Where-Object { Test-Path (Join-Path $_ 'vmrun.exe') } | Select-Object -First 1
+    if (-not $VmwareDir) { $VmwareDir = "$env:ProgramFiles\VMware\VMware Workstation" }
+    $VmRun = Join-Path $VmwareDir 'vmrun.exe'
+    $VdiskMgr = Join-Path $VmwareDir 'vmware-vdiskmanager.exe'
+    $VmRunType = 'ws'
+}
 $InstallTimeoutMin = 60
 
 # One sink owns the phase output (Invoke-Phase): the display child's stdin.
@@ -254,7 +314,9 @@ function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
 }
 
 function Get-HostPubkey {
-    $k = Get-ChildItem "$env:USERPROFILE\.ssh\id_*.pub" -ErrorAction SilentlyContinue | Select-Object -First 1
+    $k = if ($env:VM_HARNESS_SSH_KEY) { Get-Item "$($env:VM_HARNESS_SSH_KEY).pub" -ErrorAction SilentlyContinue }
+         elseif ($OnMac) { Get-ChildItem (Join-Path $HOME '.ssh/id_*.pub') -ErrorAction SilentlyContinue | Select-Object -First 1 }
+         else { Get-ChildItem "$env:USERPROFILE\.ssh\id_*.pub" -ErrorAction SilentlyContinue | Select-Object -First 1 }
     if ($k) { (Get-Content $k.FullName -Raw).Trim() }
     else {
         Say "WARNING: no ~/.ssh/id_*.pub on the host — ssh steps will password-prompt ($VmPass)"
@@ -264,7 +326,29 @@ function Get-HostPubkey {
 
 function Test-VmRunning {
     if (-not (Test-Path $Vmx)) { return $false }
-    ((& $VmRun -T ws list) -join "`n") -match [regex]::Escape($Vmx)
+    ((& $VmRun -T $VmRunType list) -join "`n") -match [regex]::Escape($Vmx)
+}
+
+# Power the VM on headless. On macOS, vmrun's vmware-vmx child inherits
+# vmrun's stdout/stderr and the driver's process group: a captured `2>&1`
+# never reaches EOF while the VM runs (the boot phase hung on it, 2026-11-02),
+# and a Ctrl-C or killed driver takes the VM down with it (vmware.log:
+# "Caught signal 15"). So there vmrun runs in its own session with its
+# output in a temp file, replayed once vmrun itself exits — the VM outlives
+# the driver the way it does under Workstation. Windows keeps the plain call.
+$DetachedStart = @'
+import subprocess, sys, tempfile
+with tempfile.TemporaryFile() as out:
+    rc = subprocess.run(sys.argv[1:], stdin=subprocess.DEVNULL, stdout=out,
+                        stderr=subprocess.STDOUT, start_new_session=True).returncode
+    out.seek(0)
+    sys.stdout.write(out.read().decode(errors="replace"))
+sys.exit(rc)
+'@
+function Start-Vm {
+    if ($OnMac) { & $Python -c $DetachedStart $VmRun -T $VmRunType start $Vmx nogui 2>&1 }
+    else { & $VmRun -T $VmRunType start $Vmx nogui 2>&1 }
+    if ($LASTEXITCODE -ne 0) { throw "vmrun start failed (rc=$LASTEXITCODE)" }
 }
 
 # Read the serial log past $Offset without fighting VMware's open handle.
@@ -367,6 +451,7 @@ function ConvertTo-ShellQuoted([string]$Value) {
 # for runs meant to predict a real rebuild (design note on #119).
 function Get-TrustDir {
     if ($env:VM_HARNESS_TRUST_DIR) { $env:VM_HARNESS_TRUST_DIR }
+    elseif ($OnMac) { Join-Path $HOME '.local/state/aur-quarantine' }
     else { Join-Path $env:USERPROFILE '.local\state\aur-quarantine' }
 }
 
@@ -401,7 +486,7 @@ function New-Seed {
     Say 'Generating cloud-init seed (fresh answers each time)'
     if (Test-Path $SeedDir) { Remove-Item -Recurse -Force $SeedDir }
     $pk = Get-HostPubkey
-    $seedArgs = @('create', '--out', $SeedDir, '--target', 'vmware',
+    $seedArgs = @('create', '--out', $SeedDir, '--target', $SeedTarget,
                   '--disk-size', $DiskGib, '--password', $VmPass, '--user', $VmUser)
     if ($pk) { $seedArgs += @('--pubkey', $pk, '--live-ssh') }
     & $Python $SeedTool @seedArgs
@@ -411,7 +496,7 @@ function New-Seed {
 function Get-GuestIp {
     # Tools answer once the installed system is up; the live ISO has no tools,
     # so fall back to the vmnet DHCP lease for the VM's generated MAC.
-    $ip = & $VmRun -T ws getGuestIPAddress $Vmx 2>$null
+    $ip = & $VmRun -T $VmRunType getGuestIPAddress $Vmx 2>$null
     if ($LASTEXITCODE -eq 0 -and $ip -match '^\d+\.\d+\.\d+\.\d+$') { return $ip }
     $mac = & $Python $VmxTool mac --vmx $Vmx 2>$null
     if ($LASTEXITCODE -ne 0) { return $null }
@@ -420,17 +505,40 @@ function Get-GuestIp {
     $null
 }
 
+# archiso-aarch64 ships one ISO per Codeberg release, hosted off-site, with no
+# checksum asset: the sha256 sits in the release notes as `<hex>  <name>`.
+# Match it to the exact asset name — the 2026-08-03 notes listed other build
+# dates than their assets, so a near-match must not pass. Both come from the
+# same release, so this catches a bad download or a swapped bucket object, not
+# a compromised release. Returns the expected hash; the ISO lands at $Iso.new.
+function Get-PortsIso {
+    $rel = Invoke-RestMethod -Uri $PortsReleases
+    $asset = @($rel.assets | Where-Object { $_.name -match '^archlinux-\d{4}\.\d{2}\.\d{2}-aarch64\.iso$' })
+    if ($asset.Count -ne 1) {
+        throw "release $($rel.tag_name): expected one archlinux-<date>-aarch64.iso asset, found $($asset.Count)"
+    }
+    $name = $asset[0].name
+    $m = [regex]::Match("$($rel.body)", "([0-9a-fA-F]{64})\s+$([regex]::Escape($name))")
+    if (-not $m.Success) { throw "release $($rel.tag_name) publishes no sha256 for $name" }
+    Say "Fetching $name ($($rel.name)) from $($asset[0].browser_download_url)"
+    Invoke-WebRequest -Uri $asset[0].browser_download_url -OutFile "$Iso.new"
+    $m.Groups[1].Value
+}
+
 function Cmd-Fetch {
     Invoke-Phase 'fetch' {
         New-Item -ItemType Directory -Force $CacheDir | Out-Null
-        Say "Fetching latest Arch ISO + checksum from $Mirror"
-        Invoke-WebRequest -Uri "$Mirror/archlinux-x86_64.iso" -OutFile "$Iso.new"
-        Invoke-WebRequest -Uri "$Mirror/sha256sums.txt" -OutFile (Join-Path $CacheDir 'sha256sums.txt')
+        if ($OnMac) { $expected = Get-PortsIso }
+        else {
+            Say "Fetching latest Arch ISO + checksum from $Mirror"
+            Invoke-WebRequest -Uri "$Mirror/archlinux-x86_64.iso" -OutFile "$Iso.new"
+            Invoke-WebRequest -Uri "$Mirror/sha256sums.txt" -OutFile (Join-Path $CacheDir 'sha256sums.txt')
+            $line = Select-String -Path (Join-Path $CacheDir 'sha256sums.txt') -Pattern ' archlinux-x86_64\.iso$' | Select-Object -First 1
+            if (-not $line) { throw 'no archlinux-x86_64.iso entry in sha256sums.txt' }
+            $expected = ($line.Line -split '\s+')[0]
+        }
         # Verify BEFORE renaming into place: a failed check must not leave a
         # bad ISO at the path later phases trust with a bare existence test.
-        $line = Select-String -Path (Join-Path $CacheDir 'sha256sums.txt') -Pattern ' archlinux-x86_64\.iso$' | Select-Object -First 1
-        if (-not $line) { throw 'no archlinux-x86_64.iso entry in sha256sums.txt' }
-        $expected = ($line.Line -split '\s+')[0]
         $actual = (Get-FileHash "$Iso.new" -Algorithm SHA256).Hash.ToLower()
         if ($actual -ne $expected.ToLower()) {
             Remove-Item "$Iso.new" -Force
@@ -456,7 +564,7 @@ function Cmd-Create {
         if ($LASTEXITCODE -ne 0) { throw "vdiskmanager failed (rc=$LASTEXITCODE)" }
         & $Python $VmxTool generate --out $Vmx --name $VmName --disk $DiskVmdk `
             --iso $Iso --seed-iso (Join-Path $SeedDir 'seed.iso') `
-            --serial-log $SerialLog --ram $RamMib --cpus $Cpus
+            --serial-log $SerialLog --ram $RamMib --cpus $Cpus --arch $GuestArch
         if ($LASTEXITCODE -ne 0) { throw "vm-harness-vmx failed (rc=$LASTEXITCODE)" }
         Say 'Ready. Next: install'
     }
@@ -472,8 +580,7 @@ function Cmd-Install {
         # A dead run's log could satisfy the exit-marker check below.
         if (Test-Path $SerialLog) { Remove-Item -Force $SerialLog }
         Say 'Unattended install — serial console streams below (also: tail install)'
-        & $VmRun -T ws start $Vmx nogui 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "vmrun start failed (rc=$LASTEXITCODE)" }
+        Start-Vm
         $offset = [long]0
         $deadline = (Get-Date).AddMinutes($InstallTimeoutMin)
         do {
@@ -504,8 +611,7 @@ function Cmd-Boot {
         }
         if (Test-VmRunning) { Say 'Already running' }
         else {
-            & $VmRun -T ws start $Vmx nogui 2>&1
-            if ($LASTEXITCODE -ne 0) { throw "vmrun start failed (rc=$LASTEXITCODE)" }
+            Start-Vm
         }
         $ip = Wait-Ssh
         Say "Up. ssh $VmUser@$ip   (password: $VmPass, or the seeded host key)"
@@ -672,7 +778,7 @@ function Cmd-Destroy {
     if (-not (Test-Path $VmDir)) { Say 'Nothing to destroy (no VM dir)'; return }
     if ((Test-Path $Vmx) -and (Test-VmRunning)) {
         Say "Stopping $VmName"
-        & $VmRun -T ws stop $Vmx hard 2>&1 | Out-Null
+        & $VmRun -T $VmRunType stop $Vmx hard 2>&1 | Out-Null
     }
     Say 'Destroying VM directory (cached ISO + logs kept)'
     Remove-Item -Recurse -Force $VmDir -Confirm:$false

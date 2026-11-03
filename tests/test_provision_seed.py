@@ -129,6 +129,49 @@ class TestUserConfiguration:
         assert "vmtoolsd" not in cmds
 
 
+class TestAarch64Targets:
+    def _cfg(self, target, **kw):
+        return seed.build_user_configuration(make_request(target, **kw))
+
+    def test_targets_carry_arch(self):
+        assert seed.TARGETS["vmware-aarch64"].arch == "aarch64"
+        assert seed.TARGETS["work-vm"].arch == "aarch64"
+        for name in ("qemu", "vmware", "daily-vm"):
+            assert seed.TARGETS[name].arch == "x86_64"
+
+    def test_harness_target_mirrors_vmware(self):
+        cfg = self._cfg("vmware-aarch64")
+        assert cfg["disk_config"]["device_modifications"][0]["device"] == "/dev/nvme0n1"
+        assert "disk_encryption" not in cfg["disk_config"]
+        assert "open-vm-tools" in cfg["packages"]
+        cmds = "\n".join(cfg["custom_commands"])
+        assert "NOPASSWD" in cmds and "serial-getty@ttyS0" in cmds
+
+    def test_work_vm_mirrors_daily_vm(self):
+        cfg = self._cfg("work-vm")
+        assert cfg["disk_config"]["disk_encryption"]["encryption_type"] == "luks"
+        cmds = "\n".join(cfg["custom_commands"])
+        assert "vmtoolsd.service" in cmds
+        assert "NOPASSWD" not in cmds
+
+    @pytest.mark.parametrize("target", ["vmware-aarch64", "work-vm"])
+    def test_ports_keyring_and_drzee_mirror(self, target):
+        cfg = self._cfg(target)
+        assert "archports-keyring" in cfg["packages"]
+        cmds = "\n".join(cfg["custom_commands"])
+        assert seed.PORTS_MIRROR in cmds and "/etc/pacman.d/mirrorlist" in cmds
+        assert "ironrobin-aarch64" in cmds
+
+    @pytest.mark.parametrize("target", ["qemu", "vmware", "daily-vm"])
+    def test_x86_64_targets_untouched_by_ports_policy(self, target):
+        cfg = self._cfg(target)
+        assert "archports-keyring" not in cfg["packages"]
+        assert "drzee" not in "\n".join(cfg["custom_commands"])
+
+    def test_same_archinstall_dialect_on_both_arches(self):
+        assert self._cfg("vmware-aarch64")["version"] == self._cfg("vmware")["version"]
+
+
 class TestUserData:
     def _ud(self, target="vmware", live_ssh_pubkey=None):
         request = make_request(target)
@@ -165,6 +208,17 @@ class TestUserData:
         ud = self._ud()
         assert "ssh_authorized_keys:" not in ud
         assert "systemctl, start, sshd" not in ud
+
+    def test_live_ssh_reenables_root_login(self):
+        # archiso-aarch64's cloud.cfg ships disable_root: true.
+        ud = self._ud(live_ssh_pubkey="ssh-ed25519 AAAA test")
+        assert "disable_root: false" in ud
+
+    def test_install_driver_stops_serial_getty_before_opening_the_line(self):
+        script = seed.build_run_install()
+        assert script.index("systemctl stop serial-getty@ttyS0") < script.index(
+            "exec > /dev/ttyS0"
+        )
 
 
 class TestSeedIso:

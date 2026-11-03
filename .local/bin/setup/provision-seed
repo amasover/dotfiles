@@ -5,13 +5,17 @@
 cloud-init files, and CIDATA ISO. The QEMU and VMware harness targets remain
 unattended and use throwaway credentials. The ``daily-vm`` target shares VMware
 hardware defaults but emits a LUKS-encrypted root without harness-only sudo or
-serial policy.
+serial policy. The aarch64 pair (``vmware-aarch64`` harness, ``work-vm`` daily)
+is the same two shapes for Fusion on an Apple-silicon Mac, installed from the
+archiso-aarch64 ISO against the Arch Linux Ports repos.
 
 Pure recipe logic stays here so both harnesses and the daily VM consume one
 module. Metal installs are not Archinstall recipes: ``install-on-metal`` owns the
 attended pacstrap path end to end.
-Archinstall schema: release 4.4 / configuration version 2.8.6; see the schema
-skew record in docs/runbook-vm-validation.md.
+Archinstall schema: release 4.4 / configuration version 2.8.6 — on x86_64 and
+on aarch64 alike (archiso-aarch64 2026.09.01 ships archinstall-aarch64 4.4-4:
+upstream 4.4 plus bootloader-path and forge-repo patches); see the schema skew
+record in docs/runbook-vm-validation.md.
 """
 
 import argparse
@@ -38,6 +42,7 @@ class TargetSpec:
     swap_enabled: bool
     encrypted: bool
     harness: bool
+    arch: str = "x86_64"
 
 
 @dataclass(frozen=True)
@@ -80,7 +85,40 @@ TARGETS = {
         encrypted=True,
         harness=False,
     ),
+    "vmware-aarch64": TargetSpec(
+        name="vmware-aarch64",
+        device="/dev/nvme0n1",
+        packages=("open-vm-tools",),
+        services=("vmtoolsd.service",),
+        bootloader="Systemd-boot",
+        swap_enabled=True,
+        encrypted=False,
+        harness=True,
+        arch="aarch64",
+    ),
+    "work-vm": TargetSpec(
+        name="work-vm",
+        device="/dev/nvme0n1",
+        packages=("open-vm-tools",),
+        services=("vmtoolsd.service",),
+        bootloader="Systemd-boot",
+        swap_enabled=True,
+        encrypted=True,
+        harness=False,
+        arch="aarch64",
+    ),
 }
+
+# Arch Linux Ports (aarch64) signs with its own key, shipped as
+# archports-keyring in [forge]; the installed system needs it to verify every
+# later sync.
+ARCH_PACKAGES = {"x86_64": (), "aarch64": ("archports-keyring",)}
+
+# The drzee mirror the archiso-aarch64 ISO installs from. The live ISO's
+# pacman.conf names it with literal Server lines (and adds the ISO builder's
+# own [ironrobin-aarch64] repo) while its /etc/pacman.d/mirrorlist is the
+# stock x86_64 list — archinstall copies both into the target as-is.
+PORTS_MIRROR = "https://arch-linux-repo.drzee.net/arch/$repo/os/$arch"
 
 ARCHINSTALL_VERSION = "2.8.6"
 ESP_OBJ_ID = "11111111-1111-1111-1111-111111111111"
@@ -259,6 +297,20 @@ def _authorized_keys_command(user: str, pubkey: str) -> str:
     )
 
 
+def _ports_pacman_command() -> str:
+    """Point the installed aarch64 system at the drzee mirror the usual way —
+    repos `Include` /etc/pacman.d/mirrorlist, which names drzee — and drop the
+    ISO builder's repo: a third-party repo ahead of [core] has no place in a
+    daily system. The trailing grep fails the install if anything is left."""
+    return (
+        f"printf 'Server = %s\\n' {shlex.quote(PORTS_MIRROR)} "
+        "> /etc/pacman.d/mirrorlist && "
+        "sed -i -e '/^\\[ironrobin-aarch64\\]$/,/^$/d' "
+        "-e 's|^Server = .*|Include = /etc/pacman.d/mirrorlist|' /etc/pacman.conf && "
+        "! grep -q -e '^\\[ironrobin-aarch64\\]' -e '^Server' /etc/pacman.conf"
+    )
+
+
 def _validate_username(user: str) -> None:
     if not re.fullmatch(r"[a-z_][a-z0-9_-]*", user):
         raise ValueError("user must be a portable Linux account name")
@@ -289,11 +341,16 @@ def build_request(
 
 def build_user_configuration(request: ProvisioningRequest) -> dict:
     target = request.target
-    packages = ["git", "base-devel", "yadm", "openssh", "zsh", *target.packages]
+    packages = [
+        "git", "base-devel", "yadm", "openssh", "zsh",
+        *ARCH_PACKAGES[target.arch], *target.packages,
+    ]
     custom_commands = [
         "systemctl enable sshd",
         *[f"systemctl enable {service}" for service in target.services],
     ]
+    if target.arch == "aarch64":
+        custom_commands.append(_ports_pacman_command())
 
     if target.device is None:
         raise ValueError(f"{target.name} has no disk device")
@@ -366,7 +423,14 @@ def build_user_credentials(
 
 
 def build_run_install() -> str:
+    # archiso-aarch64 under Fusion gets its kernel console from ACPI SPCR
+    # (ttyS0, the VMware serial port — verified live), so systemd spawns a
+    # serial getty there; agetty's vhangup() would kill this script's handle
+    # to the line (the QEMU harness masks the same getty for the same reason,
+    # see the runbook). Stop it before opening the line; a no-op on x86_64,
+    # whose ISO has no serial console.
     return """#!/bin/sh
+systemctl stop serial-getty@ttyS0.service 2>/dev/null
 exec > /dev/ttyS0 2>&1
 echo HARNESS-RUNCMD-START
 archinstall --config /root/user_configuration.json \\
@@ -418,7 +482,10 @@ def build_user_data(
         if permissions:
             lines.append(f"    permissions: '{permissions}'")
     if live_ssh_pubkey:
-        lines += ["ssh_authorized_keys:", f"  - {live_ssh_pubkey}"]
+        # archiso-aarch64's cloud.cfg ships `disable_root: true`, which turns
+        # the root key into a "login as the user arch" refusal (seen live
+        # 2026-11-02); the live-ISO exec channel is root by contract.
+        lines += ["disable_root: false", "ssh_authorized_keys:", f"  - {live_ssh_pubkey}"]
 
     lines += [
         "bootcmd:",
