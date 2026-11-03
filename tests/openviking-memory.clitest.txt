@@ -106,20 +106,20 @@ no conf=0
 $
 
 Local mode: local.env selects it even beside server.env. Only the loopback URL
-is accepted, the key is the one setup/openviking-server stored, and OpenBao is
+is accepted, the key is the one setup/openviking-local-server stored, and OpenBao is
 never asked:
 
 $ L=$HOME/.config/dotfiles/openviking/local.env; LKEY=ov-user-77c2; printf '%s\n' 'OPENVIKING_URL=http://192.0.2.1:1933' > "$L"; $t; echo "rc=$?"
 openviking-memory: FATAL: local.env: OPENVIKING_URL must be http://127.0.0.1:1933
 rc=2
 $ cp .config/dotfiles/openviking/local.env##os.Darwin "$L"; : > "$TRACE"; { $t; echo "rc=$?"; } 2>&1 | sed "s|$HOME|~|"
-openviking-memory: FATAL: no user key in ~/.openviking/user.key (setup/openviking-server mints it)
+openviking-memory: FATAL: no user key in ~/.openviking/user.key (setup/openviking-local-server mints it)
 rc=2
 $ (umask 077 && echo "$LKEY" > "$HOME/.openviking/user.key"); { $t; echo "rc=$?"; } 2>&1 | sed "s|$HOME|~|"
-openviking-memory: FATAL: the server refuses the key in ~/.openviking/user.key (setup/openviking-server mints a new one)
+openviking-memory: FATAL: the server refuses the key in ~/.openviking/user.key (setup/openviking-local-server mints a new one)
 rc=2
 $ echo "$LKEY" > "$OVT/good-key"; touch "$OVT/down"; $t; echo "rc=$?"; rm "$OVT/down"
-openviking-memory: FATAL: the local server is not answering on http://127.0.0.1:1933 (setup/openviking-server)
+openviking-memory: FATAL: the local server is not answering on http://127.0.0.1:1933 (setup/openviking-local-server)
 rc=2
 $ $t --check; echo "rc=$?"
 OpenViking memory: would install the clients for OpenViking v0.5.1

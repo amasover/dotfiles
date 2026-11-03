@@ -40,6 +40,6 @@ stderr_path = "~/Library/Logs/openviking.log"
 [bootstrap.hooks.final]
 description = "OpenViking: converge the local server, then wire omp and Claude Code to it"
 run = [
-    "mise exec -- ~/.local/bin/setup/openviking-server",
+    "mise exec -- ~/.local/bin/setup/openviking-local-server",
     "mise exec -- ~/.local/bin/setup/openviking-memory --no-login",
 ]

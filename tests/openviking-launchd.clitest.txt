@@ -12,10 +12,10 @@ $ printf '%s\n' '#!/bin/sh' 'echo "server $* (in $PWD)"' > "$OVT/server"; printf
 stubs
 $
 
-Before setup/openviking-server has rendered ov.conf the agent exits 0, so launchd leaves it idle:
+Before setup/openviking-local-server has rendered ov.conf the agent exits 0, so launchd leaves it idle:
 
 $ $t; echo "rc=$?"
-openviking-launchd: not converged yet (setup/openviking-server) - idle
+openviking-launchd: not converged yet (setup/openviking-local-server) - idle
 rc=0
 $
 

@@ -2,9 +2,9 @@
 # openviking-launchd — the program the openviking LaunchAgent runs (macOS).
 #
 # Starts the local OpenViking server from ~/.openviking/ov.conf, which
-# setup/openviking-server renders and then restarts this agent. Until ov.conf
-# and the server exist it exits 0, so launchd, which restarts only failures,
-# leaves the agent idle instead of looping.
+# setup/openviking-local-server renders and then restarts this agent. Until
+# ov.conf and the server exist it exits 0, so launchd, which restarts only
+# failures, leaves the agent idle instead of looping.
 #
 # Upstream #4210: a server killed by an unclean shutdown can leave
 # <workspace>/.openviking.pid behind, and after a reboot an unrelated process
@@ -30,7 +30,7 @@ server=${OPENVIKING_SERVER_BIN:-"$HOME/.local/bin/openviking-server"}
 ollama=http://127.0.0.1:11434
 
 if [[ ! -f $conf || ! -x $server ]]; then
-    say "not converged yet (setup/openviking-server) - idle"
+    say "not converged yet (setup/openviking-local-server) - idle"
     exit 0
 fi
 

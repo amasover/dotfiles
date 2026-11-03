@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# openviking-server — converge the local OpenViking memory server.
+# openviking-local-server — converge the local OpenViking memory server.
 #
 # In local mode the memory server runs on this machine, on loopback, with
 # Ollama models, and starts with an empty store. Two tracked files in
@@ -25,7 +25,7 @@
 # Neither key reaches an argument list or the output.
 #
 # Usage:
-#   openviking-server [--check]
+#   openviking-local-server [--check]
 #
 # --check reports what apply would do and changes nothing.
 # Exit: 0 converged, skipped or applied; 1 drift in --check; 2 failure.
@@ -38,7 +38,7 @@ usage() {
 }
 
 die() {
-    echo "openviking-server: FATAL: $*" >&2
+    echo "openviking-local-server: FATAL: $*" >&2
     exit 2
 }
 

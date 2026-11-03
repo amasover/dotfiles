@@ -1,6 +1,6 @@
 # Local OpenViking server: its presence selects local mode. yadm links it on
-# macOS only; there setup/openviking-server runs the server on loopback and
-# setup/openviking-memory wires the clients to it instead of the LAN server.
+# macOS only; there setup/openviking-local-server runs the server on loopback
+# and setup/openviking-memory wires the clients to it instead of the LAN server.
 # Nothing here is private. KEY=value lines, no quotes.
 OPENVIKING_URL=http://127.0.0.1:1933
 OPENVIKING_VERSION=0.5.3
