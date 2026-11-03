@@ -104,11 +104,18 @@ reconcile_refind_config() {
 # no [multilib], no chaotic-aur, and its pacman.conf names the Ports server on
 # each repo instead of including the archlinux.org mirrorlist. A step built on
 # that x86_64-only infrastructure asks here first: silent on x86_64, one skip
-# line anywhere else. $1 = machine arch (uname -m, the same value as yadm.arch).
-x86_64_only() { # $1 = machine arch, $2 = what is skipped and why
+# line anywhere else. $1 = machine arch (uname -m, the same value as yadm.arch),
+# $2 = what is skipped and why.
+x86_64_only() {
     [[ $1 == x86_64 ]] && return 0
     echo "  skipped on $1: $2"
     return 1
+}
+
+yay_saved_mflags() { # $1 = yay config.json; empty when unset or unreadable
+    local out
+    out=$(jq -r '.mflags // ""' "$1" 2>/dev/null) || out=""
+    printf '%s' "$out"
 }
 
 # AUR arch arrays often omit aarch64 even for plain source builds (metapac's
@@ -124,14 +131,14 @@ reconcile_yay_mflags() {
         || die "yay-mflags mode must be check or apply"
     [[ -n $config ]] || die "yay-mflags config path is required"
     [[ $arch == x86_64 ]] && return 0
-    current=$(jq -r '.mflags // ""' "$config" 2>/dev/null) || current=""
+    current=$(yay_saved_mflags "$config")
     if [[ " $current " == *" --ignorearch "* ]]; then
         echo "  yay makepkg flags already carry --ignorearch on $arch"
     elif [[ $mode == check ]]; then
         echo "  would: yay -Y --save --mflags='${current:+$current }--ignorearch'   ($arch)"
     else
         yay -Y --save --mflags="${current:+$current }--ignorearch"
-        current=$(jq -r '.mflags // ""' "$config" 2>/dev/null) || current=""
+        current=$(yay_saved_mflags "$config")
         [[ " $current " == *" --ignorearch "* ]] \
             || die "yay did not save --ignorearch into $config"
         echo "  yay makepkg flags saved on $arch: $current"

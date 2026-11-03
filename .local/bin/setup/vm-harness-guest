@@ -80,10 +80,9 @@ assert_class_profile() {
         name=${file##*/}
         name=${name%.toml}
         case $name in
-            # An architecture-specific supplement (guest-vmware-x86_64 carries
-            # the x86-only video driver for daily-vm) rides beside the class's
-            # one adapter; it is not a second adapter.
-            hardware-*-x86_64 | hardware-*-aarch64 | guest-*-x86_64 | guest-*-aarch64) ;;
+            # A group named for an architecture (guest-vmware-x86_64,
+            # arch-aarch64) adds to the class's adapter; it is not a second one.
+            *-x86_64 | *-aarch64) ;;
             hardware-* | guest-*)
                 active_adapter=$name
                 adapter_count=$((adapter_count + 1))
