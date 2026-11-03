@@ -33,4 +33,24 @@ mode_config="$HOME/.omp/agent/modes/$mode.yml"
 # the root --config flag. Put the selected mode last: primary, review, and cheap
 # worker models must stay provider-paired even when a caller has another overlay.
 export PI_CONFIG_FILES="${PI_CONFIG_FILES:+$PI_CONFIG_FILES:}$mode_config"
-exec /usr/bin/omp "$@"
+
+# Resolve omp by path, not PATH: the shell puts ~/.local/bin/{setup,tools,work},
+# ~/.bin and ~/.local/bin ahead of /usr/bin, so a stale omp or a wrapper that
+# calls omp-mode could run instead, or loop. pacman installs /usr/bin/omp; the
+# macOS installer, ~/.local/bin/omp. OMP_MODE_CANDIDATES (a :-list) is the test
+# seam. A candidate that is this script, by link or by copy, never counts.
+self=$(realpath "$0")
+omp=
+IFS=: read -r -a candidates <<<"${OMP_MODE_CANDIDATES:-/usr/bin/omp:$HOME/.local/bin/omp}"
+for candidate in "${candidates[@]}"; do
+    [[ -f $candidate && -x $candidate ]] || continue
+    [[ $(realpath "$candidate") != "$self" ]] || continue
+    cmp -s "$candidate" "$self" && continue
+    omp=$candidate
+    break
+done
+if [[ -z $omp ]]; then
+    echo "omp-mode: no omp binary at ${OMP_MODE_CANDIDATES:-/usr/bin/omp or $HOME/.local/bin/omp}" >&2
+    exit 1
+fi
+exec "$omp" "$@"

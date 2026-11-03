@@ -16,3 +16,13 @@ task:
     sonic: anthropic/claude-haiku-4-5-20251001
 dev:
   autoqaConsent: granted
+compaction:
+  idleEnabled: true
+  idleTimeoutSeconds: 3600
+  idleThresholdTokens: 100000
+  methodOrder:
+    - snapcompact
+    - remote
+    - handoff
+    - shake
+    - soft
