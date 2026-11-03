@@ -108,3 +108,24 @@ jobs:
 
       - name: Run repository test suites
         run: .github/scripts/ci test
+
+  macos:
+    name: Validate (macOS)
+    # The work Mac's release; the suites run under its /bin/bash 3.2 and BSD tools.
+    runs-on: macos-26
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install macOS validation dependencies
+        run: brew install clitest yadm
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Run the Mac test suites
+        run: .github/scripts/ci test-macos
