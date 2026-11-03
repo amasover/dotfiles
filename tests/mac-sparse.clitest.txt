@@ -3,9 +3,15 @@
 # in a scratch repo holding an empty file per tracked (and new, unignored) path,
 # so this runs on Linux CI and needs no yadm or $HOME.
 #
+# G runs git without the user's or the system's config, scoped to each call
+# (clitest shares one shell across test files, so nothing is exported). That
+# also drops a global safe.directory, which CI needs because its checkout
+# belongs to another uid, so the one call into this repo passes it on the
+# command line, one of the places git reads safe.directory from.
+#
 # Run from the repo root: clitest tests/mac-sparse.clitest.txt
 
-$ R=$PWD/.config/yadm/sparse/work-mac; T=$(mktemp -d); export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1; git ls-files -z --cached --others --exclude-standard | (cd "$T" && while IFS= read -r -d '' f; do mkdir -p "./$(dirname "$f")"; : > "./$f"; done); git -C "$T" init -q && git -C "$T" add -A && git -C "$T" -c user.name=t -c user.email=t@example.invalid commit -qm all && git -C "$T" sparse-checkout set --no-cone --stdin < "$R" 2>/dev/null; git -C "$T" ls-files -t | sed -n 's/^H //p' > "$T/landed"; test -s "$T/landed" && echo ready
+$ R=$PWD/.config/yadm/sparse/work-mac; T=$(mktemp -d); G() { GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git "$@"; }; G -c safe.directory="$PWD" ls-files -z --cached --others --exclude-standard | (cd "$T" && while IFS= read -r -d '' f; do mkdir -p "./$(dirname "$f")"; : > "./$f"; done); G -C "$T" init -q && G -C "$T" add -A && G -C "$T" -c user.name=t -c user.email=t@example.invalid commit -qm all && G -C "$T" sparse-checkout set --no-cone --stdin < "$R" 2>/dev/null; G -C "$T" ls-files -t | sed -n 's/^H //p' > "$T/landed"; test -s "$T/landed" && echo ready
 ready
 $
 # the contract with conf.d/openviking.toml's owner: these patterns stay listed
@@ -20,7 +26,7 @@ $ for f in .zshrc .zprofile .profile .gitconfig '.gitconfig-os##os.Darwin' '.con
 checked
 $
 # every Darwin alternate lands; nothing conditioned on Linux does
-$ git -C "$T" ls-files -t -- '*##*os.Darwin*' | grep -vc '^H ' || true
+$ G -C "$T" ls-files -t -- '*##*os.Darwin*' | grep -vc '^H ' || true
 0
 $ grep -c 'os\.Linux' "$T/landed" || true
 0
@@ -31,6 +37,6 @@ $ grep -E '(^|/)(\.xinitrc|\.Xresources|\.xbindkeysrc|\.gtkrc-2\.0|\.screenlayou
 none
 $ grep -cE '^\.local/bin/(setup/(bootstrap|update|vm-harness.*|install-on-metal|metal-rehearsal|provision-seed)|tools/(metapac-.*|aur-quarantine|chaotic-quarantine-gate|volume-.*|idle-lock|lock))$' "$T/landed" || true
 0
-$ rm -rf "$T"; echo done
+$ rm -rf "$T"; unset -f G; echo done
 done
 $
