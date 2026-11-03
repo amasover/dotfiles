@@ -103,16 +103,17 @@ In practical terms, the repo should help Aaron:
 ### The two eras (added 2026-07-10)
 
 The work divides into a bounded **cleanup era** and an open-ended **steady state**
-(terms: [CONTEXT.md](../CONTEXT.md); decision:
-[decision-daily-driver-vm.md](./decision-daily-driver-vm.md)). The cleanup era is
-done when both hold:
+(terms: [CONTEXT.md](../CONTEXT.md); decisions:
+[decision-daily-driver-vm.md](./decision-daily-driver-vm.md), superseded in part by
+[decision-work-vm.md](./decision-work-vm.md)). The cleanup era is done when a
+**daily-driver rebuild succeeds**: a machine bootstrapped from nothing but this repo
+and the encrypted archive, then actually used daily, passing the
+[daily-drivable acceptance checklist](./runbook-fresh-machine-bootstrap.md). The
+first target is the aarch64 work VM under VMware Fusion on the work Mac; the Windows
+VM and bare metal are later, optional variants.
 
-1. **A daily-driver rebuild succeeds** — a machine bootstrapped from nothing but this
-   repo and the encrypted archive, then actually used daily, passing the
-   [daily-drivable acceptance checklist](./runbook-fresh-machine-bootstrap.md). The
-   first target is a VM under VMware Workstation on the Windows personal machine;
-   bare metal (spare laptop) is a later variant.
-2. **The work machine completes its Story 1.8 recovery steps** after the history rewrite.
+The cleanup era no longer waits on the old work machine's Story 1.8 recovery steps:
+that machine was wiped and is no longer accessible (2026-11-02), so it holds no clone to recover.
 
 After that, the repo operates as a continuously converging workstation platform —
 drift observed, triaged, and reconciled as routine (the reconcile and update loops),

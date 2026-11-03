@@ -481,7 +481,7 @@ dashed output names,
 So that autorandr auto-switching and the polybar multi-monitor layouts work
 again after the 3.16 driver change.
 
-Issue: [#129](https://github.com/amasover/dotfiles/issues/129) · Origin: fallout from
+Issue: [#129](https://github.com/amasover/dotfiles/issues/129) (closed, PR #282) · Origin: fallout from
 Story 3.16 (#126, PR #127), found during post-reboot verification. Not a regression to
 reverse — the driver switch was correct; the rename has to be followed through.
 
