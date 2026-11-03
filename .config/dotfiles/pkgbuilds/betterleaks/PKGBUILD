@@ -6,9 +6,10 @@
 # "upgrade" it to the AUR build (tools/custom-pkgs + bootstrap own both).
 #
 # Bin-style by choice: repackages upstream's official release binary rather
-# than compiling. The sha256 below is pinned from the release's own
+# than compiling. The sha256s below are pinned from the release's own
 # checksums.txt (which also carries a sigstore attestation, verifiable with
-# `cosign verify-blob` if ever in doubt).
+# `cosign verify-blob` if ever in doubt). aarch64 serves the Arch Linux Ports
+# work VM; upstream publishes a linux_arm64 asset next to linux_x64.
 # Update flow: `custom-pkgs check` (run by setup/update's first step) watches
 # upstream releases; `custom-pkgs bump` rewrites pkgver + checksums and
 # verifies the fresh checksum against the release's checksums.txt.
@@ -16,12 +17,14 @@ pkgname=betterleaks
 pkgver=1.9.0
 pkgrel=1
 pkgdesc="Find leaked secrets everywhere (gitleaks' successor, official binary)"
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 url="https://github.com/betterleaks/betterleaks"
 license=('MIT')
 depends=('glibc')
-source=("$pkgname-$pkgver-linux-x64.tar.gz::$url/releases/download/v$pkgver/${pkgname}_${pkgver}_linux_x64.tar.gz")
-sha256sums=('f8b185a39ffcece2a1ca82bf3a4e7435cd81963ffd16b7a9128daf75f35f6de7')
+source_x86_64=("$pkgname-$pkgver-linux-x64.tar.gz::$url/releases/download/v$pkgver/${pkgname}_${pkgver}_linux_x64.tar.gz")
+source_aarch64=("$pkgname-$pkgver-linux-arm64.tar.gz::$url/releases/download/v$pkgver/${pkgname}_${pkgver}_linux_arm64.tar.gz")
+sha256sums_x86_64=('f8b185a39ffcece2a1ca82bf3a4e7435cd81963ffd16b7a9128daf75f35f6de7')
+sha256sums_aarch64=('1d39116e0a58dc94574715e2aa12a2dbd5062f193eee3fec011fef6ba06bd13b')
 
 package() {
     # the release tarball is flat: betterleaks, LICENSE, README.md in $srcdir

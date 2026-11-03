@@ -87,6 +87,13 @@ AURWEB="https://aur.archlinux.org/packages"
 REPO_HANDOFF="@repo-handoff"
 REPO_ACCEPTED_PREFIX="@repo-accepted:"
 
+# Arch Linux Ports (aarch64, the work VM): AUR arch arrays often omit aarch64
+# even for plain source builds (metapac's does), and makepkg refuses those
+# without --ignorearch. yay builds them with it already; these direct makepkg
+# runs must match. x86_64 builds run exactly as before.
+makepkg_arch=()
+[[ $(uname -m) == x86_64 ]] || makepkg_arch=(--ignorearch)
+
 # rpc_info NAME...  ->  "name<TAB>pkgbase<TAB>lastmod<TAB>maintainer" per resolved package
 # With AUR_RPC_CACHE set to a file, every answer is appended there with the
 # time it was fetched, and a call whose names all have an answer younger than
@@ -480,18 +487,18 @@ cmd_build() { # $1=pkgbase $2=sha  (installs)
         return 1
     }
     if has_patches "$base"; then
-        if ! (cd "$dir" && rm -rf src && makepkg --nobuild -d --noconfirm) \
+        if ! (cd "$dir" && rm -rf src && makepkg --nobuild -d --noconfirm "${makepkg_arch[@]}") \
             || ! apply_patches "$dir" "$base"; then
             echo "aur-quarantine: build $base: local patch stage failed — not built." >&2
             git -C "$dir" checkout --quiet - 2>/dev/null || true
             return 1
         fi
-        if (cd "$dir" && makepkg -esi --noconfirm); then
+        if (cd "$dir" && makepkg -esi --noconfirm "${makepkg_arch[@]}"); then
             git -C "$dir" checkout --quiet - 2>/dev/null || true
             return 0
         fi
     # makepkg -s installs repo deps; AUR deps are NOT resolved here. Any failure -> hold.
-    elif (cd "$dir" && makepkg -si --noconfirm); then
+    elif (cd "$dir" && makepkg -si --noconfirm "${makepkg_arch[@]}"); then
         git -C "$dir" checkout --quiet - 2>/dev/null || true
         return 0
     fi

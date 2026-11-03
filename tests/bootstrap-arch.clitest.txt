@@ -1,0 +1,77 @@
+# Architecture gates for the Arch Linux Ports work VM (aarch64). Host-independent:
+# pure seams (a stub yay at most) plus greps of tracked files, no pacman, no
+# network, no /etc.
+#
+# Run from the repo root: clitest tests/bootstrap-arch.clitest.txt
+
+x86_64 runs every step silently, so its output stays exactly what it was;
+anything else logs one skip line instead of running the step:
+
+$ .local/bin/setup/bootstrap --x86-64-only x86_64 'chaotic-aur is x86_64-only'
+run
+$ .local/bin/setup/bootstrap --x86-64-only aarch64 'chaotic-aur is x86_64-only'
+  skipped on aarch64: chaotic-aur is x86_64-only
+$
+
+The x86_64-only steps all ask that gate with the machine's own arch: mirror
+ranking (Ports names its servers directly), [multilib] (absent from a Ports
+pacman.conf, so enabling it died) and chaotic-aur (x86_64 binaries only):
+
+$ grep -c '^machine_arch=$(uname -m)$' .local/bin/setup/bootstrap
+1
+$ grep -c '^if ! x86_64_only "$machine_arch" ' .local/bin/setup/bootstrap
+3
+$ awk '/^say /{ s = $0 } /^if ! x86_64_only "\$machine_arch" /{ print s }' .local/bin/setup/bootstrap
+say "Pacman mirrors"
+say "multilib repo"
+say "chaotic-aur repo"
+$
+
+AUR arch arrays often omit aarch64 (metapac's does) even for plain source
+builds. Off x86_64, bootstrap saves --ignorearch into yay's own config once, so
+metapac sync and update's -Syu inherit it with no per-call flags. A stub yay
+writes config.json the way `yay -Y --save --mflags=...` does:
+
+$ export BOOTSTRAP_TEST_MODE=1; Y=$(mktemp -d); mkdir -p "$Y/bin"; printf '%s\n' '#!/bin/sh' 'echo "yay $*" >> "$YAY_TRACE"' 'for a; do case $a in --mflags=*) v=${a#--mflags=} ;; esac; done' '[ -n "${YAY_NO_SAVE:-}" ] || printf "{\n\t\"mflags\": \"%s\"\n}\n" "$v" > "$YAY_CONFIG"' > "$Y/bin/yay"; chmod +x "$Y/bin/yay"; MF() { : > "$Y/trace"; PATH="$Y/bin:$PATH" YAY_TRACE="$Y/trace" YAY_CONFIG="$Y/config.json" .local/bin/setup/bootstrap --yay-mflags "$1" "$2" "$Y/config.json"; cat "$Y/trace"; }; echo ready
+ready
+$ MF apply x86_64; test -e "$Y/config.json"; echo "config=$?"
+config=1
+$ MF check aarch64; test -e "$Y/config.json"; echo "config=$?"
+  would: yay -Y --save --mflags='--ignorearch'   (aarch64)
+config=1
+$ MF apply aarch64
+  yay makepkg flags saved on aarch64: --ignorearch
+yay -Y --save --mflags=--ignorearch
+$ MF apply aarch64
+  yay makepkg flags already carry --ignorearch on aarch64
+$ printf '{\n\t"mflags": "--nocheck"\n}\n' > "$Y/config.json"; MF apply aarch64
+  yay makepkg flags saved on aarch64: --nocheck --ignorearch
+yay -Y --save --mflags=--nocheck --ignorearch
+$ rm "$Y/config.json"; YAY_NO_SAVE=1 MF apply aarch64 2>&1 | sed "s|$Y|Y|" | grep .
+bootstrap: FATAL: yay did not save --ignorearch into Y/config.json
+yay -Y --save --mflags=--ignorearch
+$ BOOTSTRAP_TEST_MODE=0 MF check aarch64 2>&1 | grep FATAL
+bootstrap: FATAL: yay-mflags seam is test-only
+$ rm -rf "$Y"; echo done
+done
+$
+
+bootstrap 5 runs it against the config yay itself reads, before the first AUR
+build; metapac's install and update's -Syu carry no arch flag of their own:
+
+$ grep -c 'reconcile_yay_mflags apply "$machine_arch" "${XDG_CONFIG_HOME:-$HOME/.config}/yay/config.json"' .local/bin/setup/bootstrap
+1
+$ grep -c 'ignorearch' .local/bin/setup/update
+1
+$ grep -E '^ *(AUR_QUARANTINE_BYPASS=1 )?yay -S(yu)? ' .local/bin/setup/bootstrap .local/bin/setup/update | grep -c ignorearch || true
+0
+$
+
+every vendored PKGBUILD builds on aarch64 — betterleaks is the mandatory
+pre-commit scanner — and a per-arch source carries its own pinned checksum:
+
+$ grep -L -E "^arch=\(.*'(any|aarch64)'" .config/dotfiles/pkgbuilds/*/PKGBUILD | wc -l
+0
+$ for f in .config/dotfiles/pkgbuilds/*/PKGBUILD; do for a in x86_64 aarch64; do grep -q "^source_$a=" "$f" && { grep -qE "^sha256sums_$a=\('[0-9a-f]{64}'\)$" "$f" || echo "unpinned: $f $a"; }; done; done; echo checked
+checked
+$

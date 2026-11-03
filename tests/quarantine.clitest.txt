@@ -457,4 +457,31 @@ $ GNUPGHOME="$pk/gnupg" gpgconf --kill all; rm -rf "$pk"; echo done
 done
 $
 
+--- build: --ignorearch on every makepkg run off x86_64, nothing new on x86_64 ---
+
+Arch Linux Ports (aarch64) builds AUR sources whose arch array omits aarch64
+(metapac's does); makepkg refuses those without --ignorearch. Stub makepkg and
+uname; the recipe is a local git commit in a fresh cache clone (no network).
+The patched path's extract stage gets the flag too.
+
+$ ab=$(mktemp -d) && r="$ab/cache/aur-quarantine/fakepkg" && mkdir -p "$ab/bin" "$ab/patches/fakepkg" "$r" && printf 'pkgbase = fakepkg\n' > "$r/.SRCINFO" && git -C "$r" init -q && git -C "$r" add .SRCINFO && git -C "$r" -c user.name=t -c user.email=t@example.invalid commit -qm recipe && touch "$r/.git/aq-fetched" && sha=$(git -C "$r" rev-parse HEAD) && printf '%s\n' '#!/bin/sh' 'echo "makepkg $*" >> "$AB_TRACE"' 'case " $* " in *" --nobuild "*) mkdir -p src/fake-1.0 && printf "hello\nworld\n" > src/fake-1.0/f.txt ;; esac' > "$ab/bin/makepkg" && printf '%s\n' '#!/bin/sh' 'echo "$AB_ARCH"' > "$ab/bin/uname" && chmod +x "$ab/bin/makepkg" "$ab/bin/uname" && BUILD() { : > "$ab/trace"; AB_TRACE="$ab/trace" PATH="$ab/bin:$PATH" XDG_CACHE_HOME="$ab/cache" AUR_PATCHES_DIR="$ab/patches" .local/bin/tools/aur-quarantine build fakepkg "$sha" 2>/dev/null; echo "rc=$?"; cat "$ab/trace"; }; echo ready
+ready
+$ AB_ARCH=x86_64 BUILD
+rc=0
+makepkg -si --noconfirm
+$ AB_ARCH=aarch64 BUILD
+rc=0
+makepkg -si --noconfirm --ignorearch
+$ printf -- '--- a/f.txt\n+++ b/f.txt\n@@ -1,2 +1,2 @@\n hello\n-world\n+patched\n' > "$ab/patches/fakepkg/0001-fix.patch"; AB_ARCH=aarch64 BUILD
+rc=0
+makepkg --nobuild -d --noconfirm --ignorearch
+makepkg -esi --noconfirm --ignorearch
+$ AB_ARCH=x86_64 BUILD
+rc=0
+makepkg --nobuild -d --noconfirm
+makepkg -esi --noconfirm
+$ rm -rf "$ab"; echo done
+done
+$
+
 End of tests.

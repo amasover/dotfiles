@@ -129,6 +129,17 @@ $ printf 'aaaa  pkg-1.0-darwin.tar.gz\n' | $t checksum-verdict pkg-1.0-linux-x64
 absent
 $
 
+source-pins: bump verifies one asset per source array — a plain source= first,
+then each source_<arch>= (aarch64 rides the Arch Linux Ports work VM). The
+`name::` rename prefix is dropped, so the url is the upstream asset's:
+
+$ printf 'pkgbase = p\n\tpkgver = 1.0\n\tarch = x86_64\n\tarch = aarch64\n\tsource_x86_64 = p-1.0-x64.tar.gz::https://h/r/v1.0/p_1.0_linux_x64.tar.gz\n\tsha256sums_x86_64 = aaaa\n\tsource_aarch64 = p-1.0-arm64.tar.gz::https://h/r/v1.0/p_1.0_linux_arm64.tar.gz\n\tsha256sums_aarch64 = bbbb\n\npkgname = p\n' | $t source-pins
+https://h/r/v1.0/p_1.0_linux_x64.tar.gz	aaaa
+https://h/r/v1.0/p_1.0_linux_arm64.tar.gz	bbbb
+$ printf 'pkgbase = f\n\tarch = any\n\tsource = https://h/a.otf\n\tsource = https://h/b.otf\n\tsha256sums = 1111\n\tsha256sums = 2222\n' | $t source-pins
+https://h/a.otf	1111
+$
+
 sync must create makepkg's `$srcdir` even for source-only recipes, and keep the
 caller's stdin. A child that reads stdin (pacman asks "Proceed with installation?
 [Y/n]" there) would otherwise consume the loop's package list:

@@ -30,7 +30,7 @@ $
 
 bootstrap validates before acting — missing requireds never touch the system.
 
-$ .local/bin/setup/vm-harness-guest bootstrap --class workstation 2>&1; echo rc=$?
+$ .local/bin/setup/vm-harness-guest bootstrap --class work-vm 2>&1; echo rc=$?
 vm-harness-guest: FATAL: bootstrap needs --class and --repo
 rc=2
 $
@@ -91,8 +91,8 @@ OK
 NetworkManager enabled and active; systemd-networkd disabled and inactive
  [ok] inbox: empty
 rc=0
-$ out=$(FAKE_CLASS=workstation RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
-vm-harness-guest: FATAL: expected yadm class 'qemu-harness', found 'workstation'
+$ out=$(FAKE_CLASS=work-vm RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
+vm-harness-guest: FATAL: expected yadm class 'qemu-harness', found 'work-vm'
 rc=2
 $ out=$(FAKE_NM_ACTIVE=0 RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
 vm-harness-guest: FATAL: NetworkManager is not active
@@ -105,6 +105,26 @@ stale-pkg
 rc=1
 $ out=$(FAKE_METAPAC_RC=9 RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
 vm-harness-guest: FATAL: metapac unmanaged failed (rc=9) — the gate did not run
+rc=2
+$
+
+work-vm shares daily-vm's guest-vmware adapter with its own inbox. An
+architecture supplement (guest-vmware-x86_64 on daily-vm) and the arch-*
+adapters ride beside the one adapter instead of counting as a second:
+
+$ RUN_CLASS() { printf '[hostname_groups]\n"%s" = [\n' "$(uname -n)" > "$U/home/.config/metapac/config.toml"; for group in "${@:2}"; do printf '[arch]\npackages = [\n]\n' > "$U/home/.config/metapac/groups/$group.toml"; printf '  "%s",\n' "$group" >> "$U/home/.config/metapac/config.toml"; done; printf ']\n' >> "$U/home/.config/metapac/config.toml"; PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" FAKE_CLASS="$1" "$G" check --class "$1"; }; echo ready
+ready
+$ out=$(RUN_CLASS work-vm guest-vmware arch-aarch64 inbox-work-vm 2>&1); rc=$?; printf '%s\n' "$out" | grep -E '^--- class profile|FATAL'; echo "rc=$rc"
+--- class profile: work-vm (guest-vmware, inbox-work-vm)
+rc=0
+$ out=$(RUN_CLASS daily-vm guest-vmware guest-vmware-x86_64 arch-x86_64 inbox-daily-vm 2>&1); rc=$?; printf '%s\n' "$out" | grep -E '^--- class profile|FATAL'; echo "rc=$rc"
+--- class profile: daily-vm (guest-vmware, inbox-daily-vm)
+rc=0
+$ out=$(RUN_CLASS work-vm guest-vmware guest-qemu inbox-work-vm 2>&1); rc=$?; printf '%s\n' "$out" | grep -E '^--- class profile|FATAL'; echo "rc=$rc"
+vm-harness-guest: FATAL: class 'work-vm' expected adapter 'guest-vmware'; active: guest-qemu (count 2)
+rc=2
+$ out=$(RUN_CLASS workstation guest-vmware inbox-workstation 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
+vm-harness-guest: FATAL: unsupported machine class 'workstation'
 rc=2
 $
 

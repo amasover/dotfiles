@@ -52,21 +52,21 @@ rEFInd configuration: reconciled dotfiles-machine.conf
 0
 $
 
-bootstrap routes rEFInd only to workstation and preserves drift semantics:
+bootstrap routes rEFInd only to the portable drive and preserves drift semantics:
 
 $ export BOOTSTRAP_TEST_MODE=1; REFIND_HOME="$RTMP/home"; REFIND_STUB="$REFIND_HOME/.local/bin/setup/refind-config"; REFIND_TRACE="$RTMP/refind-trace"; mkdir -p "$(dirname "$REFIND_STUB")"; printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$REFIND_TRACE"' 'exit "${REFIND_RC:-0}"' > "$REFIND_STUB"; chmod +x "$REFIND_STUB"; echo ready
 ready
 $ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config check daily-vm; cat "$REFIND_TRACE"
   not applicable to class daily-vm
-$ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config check workstation; cat "$REFIND_TRACE"
---check
+$ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config check work-vm; cat "$REFIND_TRACE"
+  not applicable to class work-vm
 $ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config check portable; cat "$REFIND_TRACE"
 --check
-$ HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" REFIND_RC=1 .local/bin/setup/bootstrap --refind-config check workstation; echo "rc=$?"
+$ HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" REFIND_RC=1 .local/bin/setup/bootstrap --refind-config check portable; echo "rc=$?"
 rc=0
-$ HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" REFIND_RC=2 .local/bin/setup/bootstrap --refind-config check workstation >/dev/null 2>&1; echo "rc=$?"
+$ HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" REFIND_RC=2 .local/bin/setup/bootstrap --refind-config check portable >/dev/null 2>&1; echo "rc=$?"
 rc=1
-$ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config apply workstation; cat "$REFIND_TRACE"
+$ : > "$REFIND_TRACE"; HOME="$REFIND_HOME" REFIND_TRACE="$REFIND_TRACE" .local/bin/setup/bootstrap --refind-config apply portable; cat "$REFIND_TRACE"
 apply
 $ rm -rf "$RTMP"; echo done
 done
