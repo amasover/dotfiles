@@ -21,7 +21,6 @@
 packages = [
   "alsa-utils",
   "cava",
-  "feishin-bin",
   "ffmpegthumbnailer",
   "gimp",
   "gpu-screen-recorder",
@@ -38,7 +37,6 @@ packages = [
   "playerctl",
   "tesseract",
   "tesseract-data-eng",
-  "tidal-hifi-bin",
   "vlc",
   "xdg-desktop-portal-gtk",
   "yt-dlp",

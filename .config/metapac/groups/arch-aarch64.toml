@@ -1,0 +1,14 @@
+# metapac architecture adapter: aarch64 machines (Arch Linux Ports, drzee.net
+# core/extra/forge). config.toml##template renders "arch-{{ yadm.arch }}" into
+# every class. Each line substitutes an arch-x86_64.toml package whose role
+# would otherwise be lost; roles with no aarch64 route (zoom, tidal-hifi,
+# omnisharp, git-credential-manager, changie, 1password) are simply absent.
+[arch]
+packages = [
+  # Ports signs its packages with this keyring (forge repo); declared so the
+  # unmanaged check stays exactly empty when archiso installs it.
+  "archports-keyring",
+  "feishin",  # for feishin-bin: drzee extra builds it from source
+  "teensy_loader_cli",  # for teensy-loader: drzee extra, CLI only
+  "vesktop-bin",  # for discord: upstream ships an aarch64 build
+]
