@@ -107,6 +107,12 @@
 # b.bundle my-branch`): bootstrap copies it into the guest and clones from it
 # instead of VM_HARNESS_REPO, so an unpushed branch can be validated; pair it
 # with VM_HARNESS_BRANCH.
+# VM_HARNESS_SHARES shares host folders into the VM at create (VMware shared
+# folders, HGFS): `NAME=HOSTPATH` pairs separated by `;`, e.g.
+# `vmshare=~/vmshare;Downloads=~/Downloads`. A leading `~` is the host home;
+# a missing host folder is created, an existing one is left as it is. The
+# guest mounts them all under ~/mac (mac-shares.service). Unset (the
+# disposable default) shares nothing.
 
 $ErrorActionPreference = 'Stop'
 
@@ -567,11 +573,32 @@ function Cmd-Fetch {
 
 function Cmd-Seed { Invoke-Phase 'seed' { New-Seed } }
 
+# VM_HARNESS_SHARES -> vm-harness-vmx --share arguments (it rejects empty and
+# duplicate names). Expands a leading ~ and creates a missing host folder; an
+# existing one (Downloads) is used as it is.
+function Get-ShareArgs {
+    $out = @()
+    foreach ($spec in ("$env:VM_HARNESS_SHARES" -split ';')) {
+        $spec = $spec.Trim()
+        if (-not $spec) { continue }
+        $name, $path = $spec -split '=', 2
+        if ($null -eq $path) { throw "VM_HARNESS_SHARES: '$spec' is not NAME=HOSTPATH" }
+        if ($path -eq '~' -or $path -like '~/*' -or $path -like '~\*') { $path = $HOME + $path.Substring(1) }
+        if ($path -and -not (Test-Path -LiteralPath $path)) {
+            New-Item -ItemType Directory -Force -Path $path | Out-Null
+            Say "Created host folder for share '$name': $path"
+        }
+        $out += @('--share', "$name=$path")
+    }
+    $out
+}
+
 function Cmd-Create {
     Invoke-Phase 'create' {
         if (-not (Test-Path $Iso)) { throw 'no cached ISO — run: fetch' }
         if (Test-Path $Vmx) { throw "VM '$VmName' exists — run: destroy first" }
         New-Item -ItemType Directory -Force $VmDir | Out-Null
+        $shareArgs = @(Get-ShareArgs)
         New-Seed
         Say "Creating VM (disk ${DiskGib}G, ram ${RamMib}M, $Cpus vcpus)"
         # No vmx (checked above), so a disk here is a failed create's debris.
@@ -580,8 +607,9 @@ function Cmd-Create {
         if ($LASTEXITCODE -ne 0) { throw "vdiskmanager failed (rc=$LASTEXITCODE)" }
         & $Python $VmxTool generate --out $Vmx --name $VmName --disk $DiskVmdk `
             --iso $Iso --seed-iso (Join-Path $SeedDir 'seed.iso') `
-            --serial-log $SerialLog --ram $RamMib --cpus $Cpus --arch $GuestArch
+            --serial-log $SerialLog --ram $RamMib --cpus $Cpus --arch $GuestArch @shareArgs
         if ($LASTEXITCODE -ne 0) { throw "vm-harness-vmx failed (rc=$LASTEXITCODE)" }
+        if ($shareArgs) { Say "Shared folders: $(($shareArgs | Where-Object { $_ -ne '--share' }) -join ', ')" }
         Say 'Ready. Next: install'
     }
 }
