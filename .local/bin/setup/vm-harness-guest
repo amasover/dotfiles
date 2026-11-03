@@ -7,16 +7,29 @@
 # VMware harnesses now copy and invoke this file for bootstrap/check.
 #
 # Subcommands:
-#   bootstrap --class C --repo URL [--branch B]
+#   bootstrap --class C --repo URL [--branch B] [--attended]
 #              clone/refresh yadm, select the concrete machine class, ensure an
 #              empty machine-local group exists, then run bootstrap check+apply
+#              (--unattended). --attended is the first bootstrap of a real VM
+#              (Story 5.8): run it over `ssh -t`; bootstrap runs without
+#              --unattended, so it prompts (yadm decrypt asks for the archive
+#              passphrase). It first asks for the user's sudo password once
+#              (sudo -v), then installs a temporary password-free sudo drop-in
+#              (/etc/sudoers.d/89-first-bootstrap) so the hours-long run never
+#              stops at a sudo prompt; a trap deletes it when the run ends
+#              (success, failure, Ctrl-C, hangup, TERM).
 #   check --class C
-#              assert the selected class/adapter/inbox, package drift, services
-#
+#              assert the selected class/adapter/inbox, package drift, services;
+#              fails first if the temporary sudo drop-in is still there
 # Hardware packages come only from the class's tracked adapter group (Story
 # 2.30). This helper never injects them into machine-local.toml.
 set -euo pipefail
 tools_dir=${VM_HARNESS_GUEST_TOOLS_DIR:-$HOME/.local/bin/tools}
+# Test seam: the sudoers include dir (sudo ignores names containing a dot, so
+# the staging copy below is inert until it is renamed into place).
+sudoers_dir=${VM_HARNESS_GUEST_SUDOERS_DIR:-/etc/sudoers.d}
+dropin=$sudoers_dir/89-first-bootstrap
+dropin_staging=$sudoers_dir/.89-first-bootstrap.new
 
 say() { printf '\n==> %s\n' "$*"; }
 die() {
@@ -53,6 +66,52 @@ migrate_legacy_machine_local() {
     }
     chmod --reference="$file" "$tmp"
     mv "$tmp" "$file"
+}
+
+# /etc/sudoers.d is root-only (0750), so existence is asked through sudo. -n
+# never prompts: while the drop-in exists sudo needs no password and the test
+# answers; once it is gone a real VM's user needs one, -n fails, and that
+# counts as absent too.
+dropin_present() { sudo -n test -e "$dropin" 2>/dev/null; }
+
+# Written to a temp file, checked by visudo, staged under a dotted name and
+# renamed: a half-written file in sudoers.d would break sudo for everyone.
+install_sudo_dropin() {
+    local tmp
+    tmp=$(mktemp)
+    printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$(id -un)" >"$tmp"
+    if ! sudo visudo -cf "$tmp" >/dev/null; then
+        rm -f "$tmp"
+        die 'visudo rejected the temporary sudo drop-in — nothing installed'
+    fi
+    sudo install -m 0440 "$tmp" "$dropin_staging"
+    rm -f "$tmp"
+    sudo mv -f "$dropin_staging" "$dropin"
+    echo "==> Temporary password-free sudo for this run: $dropin (deleted when the run ends)"
+}
+
+remove_sudo_dropin() {
+    dropin_present || sudo -n test -e "$dropin_staging" 2>/dev/null || return 0
+    sudo -n rm -f "$dropin" "$dropin_staging" 2>/dev/null || true
+    if dropin_present; then
+        printf 'vm-harness-guest: WARNING: could not delete %s — delete it now: sudo rm %s\n' \
+            "$dropin" "$dropin" >&2
+        return 1
+    fi
+    echo "==> Temporary sudo drop-in deleted ($dropin)"
+}
+
+# The user types the sudo password once; from here until the run ends sudo
+# is password-free. EXIT covers success and failure (set -e); each signal
+# exits with its conventional code, which runs the EXIT trap.
+begin_attended_sudo() {
+    say 'sudo: type your password for this VM (asked once; the run then uses a temporary drop-in)'
+    sudo -v || die 'sudo -v failed — no drop-in installed'
+    trap remove_sudo_dropin EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    install_sudo_dropin
 }
 
 expected_profile() {
@@ -101,7 +160,7 @@ assert_class_profile() {
 }
 
 cmd_bootstrap() {
-    local class='' repo='' branch='' current_branch ml
+    local class='' repo='' branch='' attended=0 current_branch ml
     while (($#)); do
         case $1 in
             --class)
@@ -119,11 +178,20 @@ cmd_bootstrap() {
                 branch=$2
                 shift 2
                 ;;
+            --attended)
+                attended=1
+                shift
+                ;;
             *) die "bootstrap: unknown argument '$1'" ;;
         esac
     done
     [[ -n "$class" && -n "$repo" ]] \
         || die 'bootstrap needs --class and --repo'
+    if ((attended)); then
+        begin_attended_sudo
+        # gpg's pinentry (yadm decrypt) prompts on the terminal it is told about.
+        if tty -s; then GPG_TTY=$(tty) && export GPG_TTY; fi
+    fi
     sudo pacman -S --needed --noconfirm git base-devel yadm
     # Clone, or refresh an existing checkout. A resumed guest cannot rely on
     # `yadm clone || true`: that silently keeps converging the first branch.
@@ -168,8 +236,13 @@ cmd_bootstrap() {
     elif grep -q '^# harness-owned guest hardware set' "$ml"; then
         migrate_legacy_machine_local "$ml"
     fi
-    "$HOME/.local/bin/setup/bootstrap" --check --unattended
-    "$HOME/.local/bin/setup/bootstrap" --unattended
+    if ((attended)); then
+        "$HOME/.local/bin/setup/bootstrap" --check
+        "$HOME/.local/bin/setup/bootstrap"
+    else
+        "$HOME/.local/bin/setup/bootstrap" --check --unattended
+        "$HOME/.local/bin/setup/bootstrap" --unattended
+    fi
 }
 
 cmd_check() {
@@ -185,6 +258,9 @@ cmd_check() {
         esac
     done
     [[ -n $class ]] || die 'check needs --class'
+    if dropin_present; then
+        die "the temporary sudo drop-in $dropin is still there — a first bootstrap ended without deleting it. Delete it: sudo rm $dropin"
+    fi
     assert_class_profile "$class"
     echo '--- unmanaged packages (vendored custom PKGBUILDs are expected):'
     # metapac's own failure must not look like the gate finding drift: with

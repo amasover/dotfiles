@@ -91,11 +91,85 @@ $ rm -rf "$T"; echo done
 done
 $
 
+--attended (Story 5.8, the real VM's first bootstrap): one `sudo -v`, then a
+visudo-checked drop-in, mode 0440, staged under a dotted name (sudo ignores
+it) and renamed into place. bootstrap runs without --unattended while the
+drop-in exists, and a trap deletes it on success, on a failed bootstrap, and
+on HUP/TERM/INT. The stub sudo runs its command unprivileged, against a temp
+sudoers dir.
+
+$ G=.local/bin/setup/vm-harness-guest; A=$(mktemp -d); mkdir -p "$A/bin" "$A/sudoers" "$A/home/.local/bin/setup"; printf '%s\n' '#!/bin/sh' 'printf sudo >> "$GUEST_LOG"' 'for a; do printf " <%s>" "$a" >> "$GUEST_LOG"; done' 'printf "\n" >> "$GUEST_LOG"' '[ "$1" = -v ] && exit 0' '[ "$1" = -n ] && shift' 'exec "$@"' > "$A/bin/sudo"; printf '%s\n' '#!/bin/sh' '[ "$1" = -cf ] && grep -q " ALL=(ALL) NOPASSWD: ALL$" "$2"' > "$A/bin/visudo"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$A/bin/pacman"; printf '%s\n' '#!/bin/sh' '[ "$1" = rev-parse ] && exit 1' 'exit 0' > "$A/bin/yadm"; printf '%s\n' '#!/bin/sh' 'f=$VM_HARNESS_GUEST_SUDOERS_DIR/89-first-bootstrap' 'if [ -e "$f" ]; then printf "bootstrap <%s> drop-in %s: %s\n" "$*" "$(stat -c %a "$f")" "$(sed "s/^$(id -un) /USER /" "$f")"; else printf "bootstrap <%s> no drop-in\n" "$*"; fi' '[ -z "$1" ] || exit 0' 'case "${FAKE_BOOTSTRAP:-}" in fail) exit 7 ;; HUP | TERM | INT) kill -s "$FAKE_BOOTSTRAP" "$PPID" ;; esac' > "$A/home/.local/bin/setup/bootstrap"; chmod +x "$A/bin/"* "$A/home/.local/bin/setup/bootstrap"; RUN_ATT() { : > "$A/log"; PATH="$A/bin:$PATH" HOME="$A/home" GUEST_LOG="$A/log" VM_HARNESS_GUEST_SUDOERS_DIR="$A/sudoers" "$G" bootstrap --class work-vm --repo https://example.invalid/dotfiles.git "$@" 2>&1 | sed "s|$A|\$A|g" | grep -E '^(==> (sudo|Temporary)|bootstrap <|vm-harness-guest)'; echo "rc=${PIPESTATUS[0]} left: $(ls -A "$A/sudoers")"; }; echo ready
+ready
+$ RUN_ATT --attended
+==> sudo: type your password for this VM (asked once; the run then uses a temporary drop-in)
+==> Temporary password-free sudo for this run: $A/sudoers/89-first-bootstrap (deleted when the run ends)
+bootstrap <--check> drop-in 440: USER ALL=(ALL) NOPASSWD: ALL
+bootstrap <> drop-in 440: USER ALL=(ALL) NOPASSWD: ALL
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=0 left: 
+$ sed -E "s|$A|\$A|g; s|<[^>]*/tmp\.[A-Za-z0-9]+>|<TMP>|g" "$A/log"
+sudo <-v>
+sudo <visudo> <-cf> <TMP>
+sudo <install> <-m> <0440> <TMP> <$A/sudoers/.89-first-bootstrap.new>
+sudo <mv> <-f> <$A/sudoers/.89-first-bootstrap.new> <$A/sudoers/89-first-bootstrap>
+sudo <pacman> <-S> <--needed> <--noconfirm> <git> <base-devel> <yadm>
+sudo <-n> <test> <-e> <$A/sudoers/89-first-bootstrap>
+sudo <-n> <rm> <-f> <$A/sudoers/89-first-bootstrap> <$A/sudoers/.89-first-bootstrap.new>
+sudo <-n> <test> <-e> <$A/sudoers/89-first-bootstrap>
+$ FAKE_BOOTSTRAP=fail RUN_ATT --attended
+==> sudo: type your password for this VM (asked once; the run then uses a temporary drop-in)
+==> Temporary password-free sudo for this run: $A/sudoers/89-first-bootstrap (deleted when the run ends)
+bootstrap <--check> drop-in 440: USER ALL=(ALL) NOPASSWD: ALL
+bootstrap <> drop-in 440: USER ALL=(ALL) NOPASSWD: ALL
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=7 left: 
+$ for sig in HUP TERM INT; do FAKE_BOOTSTRAP=$sig RUN_ATT --attended | grep -E '^(==> Temporary sudo|rc=)'; done
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=129 left: 
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=143 left: 
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=130 left: 
+$
+
+A failed `sudo -v` (wrong password three times) stops before any drop-in is
+written; visudo rejecting the file stops before it is installed.
+
+$ cp "$A/bin/sudo" "$A/bin/sudo.ok"; printf '%s\n' '#!/bin/sh' '[ "$1" = -v ] && exit 1' 'exec "$(dirname "$0")/sudo.ok" "$@"' > "$A/bin/sudo"; chmod +x "$A/bin/sudo"; RUN_ATT --attended
+==> sudo: type your password for this VM (asked once; the run then uses a temporary drop-in)
+vm-harness-guest: FATAL: sudo -v failed — no drop-in installed
+rc=2 left: 
+$ mv "$A/bin/sudo.ok" "$A/bin/sudo"; printf '%s\n' '#!/bin/sh' 'exit 1' > "$A/bin/visudo"; RUN_ATT --attended
+==> sudo: type your password for this VM (asked once; the run then uses a temporary drop-in)
+vm-harness-guest: FATAL: visudo rejected the temporary sudo drop-in — nothing installed
+rc=2 left: 
+$
+
+Without --attended (every disposable run) nothing changes: no sudo -v, no
+drop-in, bootstrap gets --unattended.
+
+$ RUN_ATT; grep -cE '^sudo <(-v|visudo|install|mv)>' "$A/log"
+bootstrap <--check --unattended> no drop-in
+bootstrap <--unattended> no drop-in
+rc=0 left: 
+0
+$
+
+check refuses while the drop-in is still there (a run that died without its
+trap, e.g. a power cut).
+
+$ printf 'x ALL=(ALL) NOPASSWD: ALL\n' > "$A/sudoers/89-first-bootstrap"; PATH="$A/bin:$PATH" GUEST_LOG="$A/log" VM_HARNESS_GUEST_SUDOERS_DIR="$A/sudoers" "$G" check --class work-vm 2>&1 | sed "s|$A|\$A|g"; echo "rc=${PIPESTATUS[0]}"
+vm-harness-guest: FATAL: the temporary sudo drop-in $A/sudoers/89-first-bootstrap is still there — a first bootstrap ended without deleting it. Delete it: sudo rm $A/sudoers/89-first-bootstrap
+rc=2
+$ rm -rf "$A"; echo done
+done
+$
+
 The hard gate validates class/adapter/inbox and exclusive NetworkManager
 ownership before accepting package drift. Custom-PKGBUILD packages remain the
 only unmanaged exception; metapac failures stay distinct.
 
-$ G=.local/bin/setup/vm-harness-guest; U=$(mktemp -d); mkdir -p "$U/bin" "$U/home/.config/metapac/groups" "$U/tools" "$U/pkgbuilds/vendored"; printf 'pkgname=vendored\n' > "$U/pkgbuilds/vendored/PKGBUILD"; printf '%s\n' '#!/bin/sh' '[ -z "${FAKE_METAPAC_RC:-}" ] || exit "$FAKE_METAPAC_RC"' 'printf "%s\n" "${FAKE_UNMANAGED:-}"' > "$U/bin/metapac"; printf '%s\n' '#!/bin/sh' 'if [ "$1" = config ] && [ "$2" = local.class ]; then printf "%s\n" "${FAKE_CLASS:-qemu-harness}"; fi' > "$U/bin/yadm"; printf '%s\n' '#!/bin/sh' 'unit=' 'for arg; do unit=$arg; done' 'case "$1:$unit" in' '  is-enabled:NetworkManager) exit 0 ;;' '  is-active:NetworkManager) [ "${FAKE_NM_ACTIVE:-1}" = 1 ]; exit $? ;;' '  is-enabled:systemd-networkd|is-active:systemd-networkd) [ "${FAKE_NETWORKD:-0}" = 1 ]; exit $? ;;' '  is-enabled:sshd|status:--no-pager) exit 0 ;;' 'esac' 'exit 1' > "$U/bin/systemctl"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$U/bin/pacman"; chmod +x "$U/bin/metapac" "$U/bin/yadm" "$U/bin/systemctl" "$U/bin/pacman"; printf '[hostname_groups]\n"%s" = [\n  "guest-qemu",\n  "inbox-qemu-harness",\n]\n' "$(uname -n)" > "$U/home/.config/metapac/config.toml"; for group in guest-qemu inbox-qemu-harness; do printf '[arch]\npackages = [\n]\n' > "$U/home/.config/metapac/groups/$group.toml"; done; for tool in metapac-declared metapac-unmanaged-names custom-pkgs metapac-drift-report aur-quarantine; do ln -s "$PWD/.local/bin/tools/$tool" "$U/tools/$tool"; done; RUN_CHECK() { PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" "$G" check --class qemu-harness; }; echo ready
+$ G=.local/bin/setup/vm-harness-guest; U=$(mktemp -d); mkdir -p "$U/bin" "$U/home/.config/metapac/groups" "$U/tools" "$U/pkgbuilds/vendored"; printf 'pkgname=vendored\n' > "$U/pkgbuilds/vendored/PKGBUILD"; printf '%s\n' '#!/bin/sh' '[ -z "${FAKE_METAPAC_RC:-}" ] || exit "$FAKE_METAPAC_RC"' 'printf "%s\n" "${FAKE_UNMANAGED:-}"' > "$U/bin/metapac"; printf '%s\n' '#!/bin/sh' 'if [ "$1" = config ] && [ "$2" = local.class ]; then printf "%s\n" "${FAKE_CLASS:-qemu-harness}"; fi' > "$U/bin/yadm"; printf '%s\n' '#!/bin/sh' 'unit=' 'for arg; do unit=$arg; done' 'case "$1:$unit" in' '  is-enabled:NetworkManager) exit 0 ;;' '  is-active:NetworkManager) [ "${FAKE_NM_ACTIVE:-1}" = 1 ]; exit $? ;;' '  is-enabled:systemd-networkd|is-active:systemd-networkd) [ "${FAKE_NETWORKD:-0}" = 1 ]; exit $? ;;' '  is-enabled:sshd|status:--no-pager) exit 0 ;;' 'esac' 'exit 1' > "$U/bin/systemctl"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$U/bin/pacman"; printf '%s\n' '#!/bin/sh' '[ "$1" = -n ] && shift' 'exec "$@"' > "$U/bin/sudo"; chmod +x "$U/bin/metapac" "$U/bin/yadm" "$U/bin/systemctl" "$U/bin/pacman" "$U/bin/sudo"; printf '[hostname_groups]\n"%s" = [\n  "guest-qemu",\n  "inbox-qemu-harness",\n]\n' "$(uname -n)" > "$U/home/.config/metapac/config.toml"; for group in guest-qemu inbox-qemu-harness; do printf '[arch]\npackages = [\n]\n' > "$U/home/.config/metapac/groups/$group.toml"; done; for tool in metapac-declared metapac-unmanaged-names custom-pkgs metapac-drift-report aur-quarantine; do ln -s "$PWD/.local/bin/tools/$tool" "$U/tools/$tool"; done; RUN_CHECK() { PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" "$G" check --class qemu-harness; }; echo ready
 ready
 $ export METAPAC_TOOLS_DIR="$U/tools"; echo tools-ready
 tools-ready
