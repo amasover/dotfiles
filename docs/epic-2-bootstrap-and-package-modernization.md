@@ -38,7 +38,7 @@ The bootstrap material (`install.md`, `.local/bin/setup/install` + `update`, `.c
 - Installing or removing packages automatically
 - Rewriting the entire setup system in one pass
 - Migrating to a new dotfile manager
-- Building cross-platform support beyond the chosen Linux target
+- Supporting platforms other than Arch Linux and the macOS work host (Story 2.61)
 
 ---
 
