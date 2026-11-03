@@ -22,12 +22,15 @@
 #   4. alts     back up a regular file a Darwin alternate would replace
 #               (<file>.pre-yadm), run `yadm alt`, and turn auto-alt back on
 #   5. decrypt  offer `yadm decrypt` of the full archive; files it would
-#               overwrite are saved to ~/.local/state/dotfiles first
+#               overwrite are saved to ~/.local/state/dotfiles first. After a
+#               decrypt it records the archive's hash there, and later runs
+#               skip the offer until the archive changes
 #   6. mise     `mise bootstrap`, which asks before it changes anything
 #
-# Usage: bootstrap [--check] [--no-decrypt] [--no-mise]
+# Usage: bootstrap [--check] [--decrypt | --no-decrypt] [--no-mise]
 #   --check       report each step and change nothing (runs `mise bootstrap
 #                 --dry-run`)
+#   --decrypt     offer the decrypt even when this archive was decrypted before
 #   --no-decrypt  skip the decrypt offer
 #   --no-mise     stop before `mise bootstrap`
 #
@@ -60,6 +63,7 @@ run_mise=1
 for arg in "$@"; do
     case $arg in
         --check) check=1 ;;
+        --decrypt) decrypt=2 ;;
         --no-decrypt) decrypt=0 ;;
         --no-mise) run_mise=0 ;;
         -h | --help)
@@ -179,10 +183,13 @@ fi
 say "encrypted archive"
 archive=${XDG_DATA_HOME:-$HOME/.local/share}/yadm/archive
 state=${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles
+marker=$state/yadm-decrypted
 if ((! decrypt)); then
     echo "  skipped (--no-decrypt)"
 elif [[ ! -s $archive ]]; then
     echo "  no archive at $archive"
+elif ((decrypt == 1)) && [[ -r $marker && $(cat "$marker") == "$(git hash-object -- "$archive")" ]]; then
+    echo "  already decrypted (archive unchanged); --decrypt offers it again"
 elif ((check)); then
     echo "  would offer: yadm decrypt (the full archive)"
 elif [[ ! -t 0 && $test_mode != 1 ]]; then
@@ -211,6 +218,8 @@ else
         fi
         echo "  decrypting (passphrase 2 of 2)"
         yadm decrypt
+        git hash-object -- "$archive" >"$marker"
+        echo "  decrypted; later runs skip this until the archive changes"
     else
         echo "  skipped; run 'yadm bootstrap' again to decrypt later"
     fi

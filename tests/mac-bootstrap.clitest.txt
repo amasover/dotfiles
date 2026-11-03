@@ -73,6 +73,7 @@ Linking T/home/.gitconfig-os##os.Darwin to T/home/.gitconfig-os
   listing the archive (passphrase 1 of 2)
   saved 1 existing file(s) to ~/.local/state/dotfiles/pre-decrypt-STAMP.tar
   decrypting (passphrase 2 of 2)
+  decrypted; later runs skip this until the archive changes
 ==> mise bootstrap
   skipped (--no-mise)
 $
@@ -88,8 +89,8 @@ from archive
 $ snap > "$T/after1"; echo snapped
 snapped
 $
-# Second run: every step is already converged; answering no skips the decrypt
-$ echo n | BOOTSTRAP_TEST_MODE=1 bash "$B" --no-mise | sed "s|$T|T|g"
+# Second run: every step is already converged and the decrypt is not offered
+$ BOOTSTRAP_TEST_MODE=1 bash "$B" --no-mise < /dev/null | sed "s|$T|T|g"
 ==> machine class
   already work-mac
 ==> sparse checkout (.config/yadm/sparse/work-mac)
@@ -105,11 +106,20 @@ Linking T/home/.config/mise/config.toml##os.Darwin to T/home/.config/mise/config
 Linking T/home/.gitconfig-os##os.Darwin to T/home/.gitconfig-os
   linked (0 backup(s))
 ==> encrypted archive
-  skipped; run 'yadm bootstrap' again to decrypt later
+  already decrypted (archive unchanged); --decrypt offers it again
 ==> mise bootstrap
   skipped (--no-mise)
 $ snap | diff "$T/after1" - && wc -l < "$T/decrypted" | tr -d ' '
 1
+$
+# --decrypt offers it again; a changed archive is offered without the flag
+$ echo n | BOOTSTRAP_TEST_MODE=1 bash "$B" --decrypt --no-mise | sed -n '/encrypted archive/,/mise bootstrap/p'
+==> encrypted archive
+  skipped; run 'yadm bootstrap' again to decrypt later
+==> mise bootstrap
+$ echo 0000 > "$XDG_STATE_HOME/dotfiles/yadm-decrypted"; echo n | BOOTSTRAP_TEST_MODE=1 bash "$B" --check --no-mise | grep -A1 'encrypted archive'
+==> encrypted archive
+  would offer: yadm decrypt (the full archive)
 $
 $ cd /; rm -rf "$T"; echo done
 done
