@@ -54,7 +54,7 @@ Config lives in `.config/metapac/` (yadm-tracked → placed on every machine).
   override, but a per-invocation flag would have to reach every future script and hook
   and fails silently when forgotten — rejected), so the config it reads must contain the
   real hostname — but the repo never needs to. The tracked artifact is a **yadm template**,
-  `config.toml##template`; yadm renders the real `config.toml` (machine-local,
+  `config.toml##template,os.Linux`; yadm renders the real `config.toml` (machine-local,
   untracked) at checkout:
 
   ```toml

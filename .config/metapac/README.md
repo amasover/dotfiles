@@ -9,10 +9,12 @@ against what's declared here: `metapac sync` installs the declared set,
   time; no render step.
 - **`profiles/common.groups`** — the one shared 15-purpose list included by every
   class branch. Add a universal purpose group here once, not in three profiles.
-- **`config.toml##template`** — maps the rendered hostname to the selected class:
+- **`config.toml##template,os.Linux`** — maps the rendered hostname to the selected class:
   `workstation`, `daily-vm`, or `qemu-harness`. Each class adds exactly one
   hardware adapter and inbox. YADM renders `config.toml` on clone/pull/class
   change; hostnames and `$HOME` paths remain machine-local.
+  The `os.Linux` condition keeps yadm from rendering it on the Mac, whose
+  sparse checkout leaves the template out (`docs/decision-mac-host.md`).
 - **`~/.local/share/metapac/machine-local.toml`** — untracked group for
   never-publish package names only. Hardware belongs in tracked class adapters;
   bootstrap creates this file empty on fresh machines.
