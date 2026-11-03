@@ -1,0 +1,257 @@
+#!/usr/bin/env bash
+# openviking-server — converge the local OpenViking memory server.
+#
+# In local mode the memory server runs on this machine, on loopback, with
+# Ollama models, and starts with an empty store. Two tracked files in
+# ~/.config/dotfiles/openviking set it up:
+#   local.env      selects local mode: URL, pinned release and Python, and the
+#                  account and user the clients act as (yadm links it on macOS)
+#   ov.conf.json   the server configuration, without host, port, workspace
+#                  or root key
+# A machine without local.env skips this step.
+#
+# Apply, in order:
+#   1. installs the pinned openviking with uv on the pinned Python;
+#   2. checks that Ollama answers on 127.0.0.1:11434 and pulls the models
+#      ov.conf.json names;
+#   3. renders ~/.openviking/ov.conf (mode 600) on 127.0.0.1:1933 with the
+#      workspace ~/.openviking/data and a root key generated on the first run
+#      only, then restarts the LaunchAgent dev.mise.openviking after a change;
+#   4. waits for /health and /ready;
+#   5. mints the clients' user key through the Admin API and stores it in
+#      ~/.openviking/user.key (mode 600), where setup/openviking-memory reads
+#      it. A key the server still accepts is kept.
+#
+# Neither key reaches an argument list or the output.
+#
+# Usage:
+#   openviking-server [--check]
+#
+# --check reports what apply would do and changes nothing.
+# Exit: 0 converged, skipped or applied; 1 drift in --check; 2 failure.
+set -euo pipefail
+# The keys pass through variables; never trace them.
+set +x
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+}
+
+die() {
+    echo "openviking-server: FATAL: $*" >&2
+    exit 2
+}
+
+say() {
+    echo "OpenViking server: $*"
+}
+
+check=0
+while (($#)); do
+    case $1 in
+        --check) check=1 ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *) die "unknown argument: $1" ;;
+    esac
+    shift
+done
+
+settings=${OPENVIKING_SETTINGS_DIR:-"$HOME/.config/dotfiles/openviking"}
+root=$HOME/.openviking
+conf=$root/ov.conf
+keyfile=$root/user.key
+ollama=http://127.0.0.1:11434
+job=gui/$(id -u)/dev.mise.openviking
+wait_secs=${OPENVIKING_WAIT_SECONDS:-180}
+
+if [[ ! -f $settings/local.env ]]; then
+    say "no local.env on this machine - skipping (local server not selected)"
+    exit 0
+fi
+[[ -f $settings/ov.conf.json ]] || die "tracked settings missing: $settings/ov.conf.json"
+
+url='' version='' python='' account='' user=''
+while IFS= read -r line || [[ -n $line ]]; do
+    [[ -z $line || $line == \#* ]] && continue
+    [[ $line =~ ^([A-Z_]+)=([A-Za-z0-9:/._-]+)$ ]] \
+        || die "local.env: unsupported line (KEY=value, no quotes or spaces)"
+    value=${BASH_REMATCH[2]}
+    case ${BASH_REMATCH[1]} in
+        OPENVIKING_URL) url=${value%/} ;;
+        OPENVIKING_VERSION) version=$value ;;
+        OPENVIKING_PYTHON) python=$value ;;
+        OPENVIKING_ACCOUNT) account=$value ;;
+        OPENVIKING_USER) user=$value ;;
+        *) die "local.env: unknown key ${BASH_REMATCH[1]}" ;;
+    esac
+done <"$settings/local.env"
+[[ $url == http://127.0.0.1:1933 ]] || die "local.env: OPENVIKING_URL must be http://127.0.0.1:1933"
+[[ $version =~ ^[0-9]+(\.[0-9]+)+$ ]] || die "local.env: OPENVIKING_VERSION must be a release such as 0.5.3"
+[[ $python =~ ^3\.[0-9]+$ ]] || die "local.env: OPENVIKING_PYTHON must be a Python such as 3.13"
+[[ $account =~ ^[a-z0-9_-]+$ && $user =~ ^[a-z0-9_-]+$ ]] \
+    || die "local.env: OPENVIKING_ACCOUNT and OPENVIKING_USER must be lowercase ids"
+
+for tool in uv node curl ollama; do
+    command -v "$tool" >/dev/null || die "$tool is not installed"
+done
+
+drift=0
+# In --check, note what apply would do; return 1 so the caller skips the change.
+pending() {
+    ((check)) || return 0
+    say "would $*"
+    drift=1
+    return 1
+}
+
+mode_of() {
+    stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null
+}
+
+# The key reaches curl on stdin, never in its arguments; -q skips ~/.curlrc.
+key_accepted() {
+    printf 'X-API-Key: %s\n' "$1" \
+        | curl -q -fsS --max-time 10 -o /dev/null -H @- "$url/api/v1/stats/memories" 2>/dev/null
+}
+
+job_loaded() {
+    command -v launchctl >/dev/null && launchctl print "$job" >/dev/null 2>&1
+}
+
+# 1. The pinned release on the pinned Python.
+restart=0
+installed=$(uv tool list --show-python 2>/dev/null \
+    | sed -n 's/^openviking v\([^ ]*\) \[CPython \([0-9]*\.[0-9]*\)\..*/\1 on Python \2/p')
+if [[ $installed != "$version on Python $python" ]]; then
+    restart=1
+    if pending "install openviking $version on Python $python (now: ${installed:-not installed})"; then
+        uv tool install --quiet --reinstall --python "$python" "openviking==$version" >/dev/null
+        say "installed openviking $version on Python $python"
+    fi
+fi
+
+# 2. Ollama and the models the configuration names.
+curl -q -fsS --max-time 5 -o /dev/null "$ollama/api/version" 2>/dev/null \
+    || die "Ollama is not answering on $ollama (LaunchAgent dev.mise.ollama)"
+models=$(node -e '
+  const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  console.log(c.embedding.dense.model);
+  console.log(c.vlm.model.replace(/^ollama(_chat)?\//, ""));
+' "$settings/ov.conf.json")
+have=$(curl -q -fsS --max-time 10 "$ollama/api/tags" | node -e '
+  const t = JSON.parse(require("fs").readFileSync(0, "utf8"));
+  for (const m of t.models || []) console.log(m.name);
+')
+while IFS= read -r model; do
+    if ! grep -qxF "$model" <<<"$have" && pending "pull the Ollama model $model"; then
+        say "pulling the Ollama model $model"
+        OLLAMA_HOST=$ollama ollama pull "$model" >/dev/null 2>&1 || die "could not pull the Ollama model $model"
+    fi
+done <<<"$models"
+
+# 3. ov.conf from the tracked settings, with the root key from stdin.
+render_conf() {
+    node -e '
+      const fs = require("fs");
+      const [settings, workspace] = process.argv.slice(1);
+      const c = JSON.parse(fs.readFileSync(settings, "utf8"));
+      c.server = { ...c.server, host: "127.0.0.1", port: 1933, root_api_key: fs.readFileSync(0, "utf8") };
+      c.storage = { ...c.storage, workspace };
+      process.stdout.write(JSON.stringify(c, null, 2) + "\n");
+    ' "$settings/ov.conf.json" "$root/data"
+}
+
+root_key=
+if [[ -f $conf ]]; then
+    root_key=$(node -e '
+      try { process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).server.root_api_key || ""); } catch {}
+    ' "$conf")
+fi
+if [[ -z $root_key ]] && pending "generate a root key and render $conf"; then
+    root_key=$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("base64url"))')
+fi
+if [[ -n $root_key ]] \
+    && ! { [[ $(mode_of "$conf") == 600 ]] && [[ $(printf '%s' "$root_key" | render_conf) == "$(cat "$conf")" ]]; }; then
+    restart=1
+    if pending "render $conf"; then
+        mkdir -p "$root"
+        chmod 700 "$root"
+        (umask 077 && printf '%s' "$root_key" | render_conf >"$conf.tmp")
+        chmod 600 "$conf.tmp"
+        mv -f "$conf.tmp" "$conf"
+        say "rendered $conf"
+    fi
+fi
+
+# 4. The server answers and is ready.
+healthy() {
+    curl -q -fsS --max-time 5 "$url/health" 2>/dev/null | grep -q '"status": *"ok"' \
+        && curl -q -fsS --max-time 10 "$url/ready" 2>/dev/null | grep -q '"status": *"ready"'
+}
+up=0
+! healthy || up=1
+if ((restart || ! up)) && pending "$( ((up)) && echo restart || echo start) the server on $url"; then
+    job_loaded || die "the LaunchAgent dev.mise.openviking is not loaded (mise bootstrap)"
+    launchctl kickstart -k "$job"
+    say "restarted dev.mise.openviking"
+    for ((i = 0; i < wait_secs; i += 2)); do
+        healthy && break
+        sleep 2
+    done
+    healthy || die "the server is not ready on $url after ${wait_secs}s (~/Library/Logs/openviking.log)"
+    up=1
+fi
+
+# 5. The clients' user key, minted with the root key.
+work=$(umask 077 && mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# A root-key Admin API call: prints the HTTP status; the body lands in $work.
+admin() {
+    local -a args=(-q -sS --max-time 30 -o "$work/body" -w '%{http_code}' -X "$1" -H @-)
+    [[ -z ${3:-} ]] || args+=(-H 'Content-Type: application/json' -d "$3")
+    printf 'X-API-Key: %s\n' "$root_key" | curl "${args[@]}" "$url$2" || true
+}
+
+key=
+if [[ -f $keyfile ]]; then
+    key=$(tr -d '\r\n' <"$keyfile")
+    if ((up)) && ! key_accepted "$key"; then
+        say "the key in $keyfile is no longer accepted"
+        key=
+    fi
+fi
+if [[ -n $key && $(mode_of "$keyfile") != 600 ]] && pending "make $keyfile private"; then
+    chmod 600 "$keyfile"
+fi
+if [[ -z $key ]] && pending "mint the user key for $account/$user"; then
+    base=/api/v1/admin/accounts
+    case $(admin GET "$base/$account") in
+        200)
+            case $(admin GET "$base/$account/users/$user") in
+                200) status=$(admin POST "$base/$account/users/$user/key" '{}') ;;
+                404) status=$(admin POST "$base/$account/users" "{\"user_id\":\"$user\",\"role\":\"user\"}") ;;
+                *) die "could not look up the user $account/$user" ;;
+            esac
+            ;;
+        404) status=$(admin POST "$base" "{\"account_id\":\"$account\",\"admin_user_id\":\"$user\"}") ;;
+        *) die "could not look up the account $account (is the root key accepted?)" ;;
+    esac
+    [[ $status == 2?? ]] || die "the Admin API refused to mint the key for $account/$user (HTTP $status)"
+    (umask 077 && node -e '
+      const b = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+      process.stdout.write((b.result || b).user_key || "");
+    ' "$work/body" >"$keyfile.tmp")
+    rm -f "$work/body"
+    [[ -s $keyfile.tmp ]] || die "the Admin API returned no user key"
+    chmod 600 "$keyfile.tmp"
+    mv -f "$keyfile.tmp" "$keyfile"
+    key_accepted "$(cat "$keyfile")" || die "the server refused the key it minted"
+    say "minted the user key for $account/$user"
+fi
+
+((! drift)) || exit 1
+say "ready (openviking $version on $url, clients act as $account/$user)"

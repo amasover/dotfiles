@@ -1,0 +1,141 @@
+# setup/openviking-server — converge the local OpenViking server from the
+# tracked local.env and ov.conf.json. Host-independent: a scratch HOME and stubs
+# for curl (Ollama, the server and its Admin API), uv, ollama and launchctl that
+# log every argv to a trace; node is the real one. Neither the root key nor the
+# user key may reach an argv, the trace or the output.
+#
+# Run from the repo root: clitest tests/openviking-server.clitest.txt
+
+$ t=$PWD/.local/bin/setup/openviking-server; OVT=$(mktemp -d); S=$OVT/stub; export OVT TRACE=$OVT/trace HOME=$OVT/home PATH="$OVT/stub:$PATH"; D=$HOME/.config/dotfiles/openviking; mkdir -p "$S" "$D"; cp .config/dotfiles/openviking/ov.conf.json "$D/"; touch "$OVT/account"; : > "$TRACE"; : > "$OVT/out"; echo ready
+ready
+$ printf '%s\n' '#!/bin/sh' 'echo "curl $*" >> "$TRACE"' 'hdr=; case " $* " in *" -H @- "*) hdr=$(cat) ;; esac' 'out=; w=; m=GET; p=' 'for a; do case $p in -o) out=$a ;; -X) m=$a ;; -w) w=1 ;; esac; p=$a; done' 'root=$(sed -n "s/.*\"root_api_key\": \"\(.*\)\".*/\1/p" "$HOME/.openviking/ov.conf" 2>/dev/null)' 'mint() { n=$(($(cat "$OVT/n" 2>/dev/null || echo 0) + 1)); echo "$n" > "$OVT/n"; printf "ov-user-%s" "$n" > "$OVT/user-key"; touch "$OVT/user"; body="{\"status\":\"ok\",\"result\":{\"user_key\":\"ov-user-$n\"}}"; }' 'code=200; body=' 'case $a in' '  */api/version) [ -f "$OVT/ollama-down" ] && exit 7; body="{\"version\":\"0.40.13\"}" ;;' '  */api/tags) body="{\"models\":["; sep=; while read -r name; do body="$body$sep{\"name\":\"$name\"}"; sep=,; done < "$OVT/models"; body="$body]}" ;;' '  */health) [ -f "$OVT/up" ] || exit 7; body="{\"status\":\"ok\",\"healthy\":true,\"version\":\"0.5.3\"}" ;;' '  */ready) [ -f "$OVT/up" ] || exit 7; body="{\"status\":\"ready\"}" ;;' '  */api/v1/stats/memories) [ "$hdr" = "X-API-Key: $(cat "$OVT/user-key" 2>/dev/null)" ] || exit 22 ;;' '  */api/v1/admin/*)' '    if [ -z "$root" ] || [ "$hdr" != "X-API-Key: $root" ]; then code=401; else case "$m $a" in' '      "GET "*/accounts/default) [ -f "$OVT/account" ] || code=404 ;;' '      "POST "*/accounts) touch "$OVT/account"; mint ;;' '      "GET "*/users/agent) [ -f "$OVT/user" ] || code=404 ;;' '      "POST "*/users/agent/key | "POST "*/users) mint ;;' '    esac; fi ;;' 'esac' 'if [ -n "$out" ]; then printf "%s" "$body" > "$out"; else printf "%s" "$body"; fi' '[ -z "$w" ] || printf "%s" "$code"' > "$S/curl"; touch "$OVT/models"
+$ printf '%s\n' '#!/bin/sh' 'echo "uv $*" >> "$TRACE"' 'case "$1 $2" in' '  "tool list") [ ! -f "$OVT/uv-installed" ] || echo "openviking v$(cat "$OVT/uv-installed") [CPython 3.13.18]" ;;' '  "tool install") for a; do case $a in openviking==*) echo "${a#openviking==}" > "$OVT/uv-installed" ;; esac; done ;;' 'esac' > "$S/uv"; printf '%s\n' '#!/bin/sh' 'echo "ollama $*" >> "$TRACE"' '[ "$1" != pull ] || echo "$2" >> "$OVT/models"' > "$S/ollama"
+$ printf '%s\n' '#!/bin/sh' 'echo "launchctl $*" >> "$TRACE"' 'case $1 in' '  print) [ -f "$OVT/loaded" ] ;;' '  kickstart) touch "$OVT/up" ;;' 'esac' > "$S/launchctl"; chmod +x "$S"/*; echo stubs
+stubs
+$
+
+A machine without local.env skips the step:
+
+$ $t; echo "rc=$?"
+OpenViking server: no local.env on this machine - skipping (local server not selected)
+rc=0
+$
+
+local.env is parsed, never sourced, and only the loopback URL is accepted:
+
+$ printf '%s\n' 'OPENVIKING_URL=$(touch pwned)' > "$D/local.env"; $t; echo "rc=$?"; test ! -e pwned; echo "not run=$?"
+openviking-server: FATAL: local.env: unsupported line (KEY=value, no quotes or spaces)
+rc=2
+not run=0
+$ printf '%s\n' 'OPENVIKING_URL=http://0.0.0.0:1933' > "$D/local.env"; $t; echo "rc=$?"
+openviking-server: FATAL: local.env: OPENVIKING_URL must be http://127.0.0.1:1933
+rc=2
+$ cp .config/dotfiles/openviking/local.env##os.Darwin "$D/local.env"; echo tracked
+tracked
+$
+
+Without Ollama the step fails; check mode lists everything apply would do and changes nothing:
+
+$ touch "$OVT/ollama-down"; $t --check 2>&1; echo "rc=$?"; rm "$OVT/ollama-down"
+OpenViking server: would install openviking 0.5.3 on Python 3.13 (now: not installed)
+openviking-server: FATAL: Ollama is not answering on http://127.0.0.1:11434 (LaunchAgent dev.mise.ollama)
+rc=2
+$ $t --check | sed "s|$HOME|~|"; test ! -e "$HOME/.openviking"; echo "untouched=$?"
+OpenViking server: would install openviking 0.5.3 on Python 3.13 (now: not installed)
+OpenViking server: would pull the Ollama model qwen3-embedding:0.6b
+OpenViking server: would pull the Ollama model qwen3.5:4b
+OpenViking server: would generate a root key and render ~/.openviking/ov.conf
+OpenViking server: would start the server on http://127.0.0.1:1933
+OpenViking server: would mint the user key for default/agent
+untouched=0
+$
+
+Apply installs, pulls and renders, but needs the LaunchAgent to start the server:
+
+$ { $t; echo "rc=$?"; } 2>&1 | sed "s|$HOME|~|" | tee -a "$OVT/out"
+OpenViking server: installed openviking 0.5.3 on Python 3.13
+OpenViking server: pulling the Ollama model qwen3-embedding:0.6b
+OpenViking server: pulling the Ollama model qwen3.5:4b
+OpenViking server: rendered ~/.openviking/ov.conf
+openviking-server: FATAL: the LaunchAgent dev.mise.openviking is not loaded (mise bootstrap)
+rc=2
+$ grep -E '^(uv tool install|ollama)' "$TRACE"
+uv tool install --quiet --reinstall --python 3.13 openviking==0.5.3
+ollama pull qwen3-embedding:0.6b
+ollama pull qwen3.5:4b
+$
+
+With the agent loaded it starts the server and registers the clients' user:
+
+$ touch "$OVT/loaded"; : > "$TRACE"; { $t; echo "rc=$?"; } 2>&1 | tee -a "$OVT/out"
+OpenViking server: restarted dev.mise.openviking
+OpenViking server: minted the user key for default/agent
+OpenViking server: ready (openviking 0.5.3 on http://127.0.0.1:1933, clients act as default/agent)
+rc=0
+$ grep -o '/api/v1/admin/[^ ]*' "$TRACE"
+/api/v1/admin/accounts/default
+/api/v1/admin/accounts/default/users/agent
+/api/v1/admin/accounts/default/users
+$ ls -l "$HOME/.openviking/ov.conf" "$HOME/.openviking/user.key" | cut -c1-10; ls -ld "$HOME/.openviking" | cut -c1-10
+-rw-------
+-rw-------
+drwx------
+$ node -p 'const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); [c.server.host, c.server.port, c.server.auth_mode, c.storage.workspace === process.argv[2], c.server.root_api_key.length >= 40, c.vlm.extra_request_body.num_ctx, c.vlm.extra_request_body.think].join(" ")' "$HOME/.openviking/ov.conf" "$HOME/.openviking/data"
+127.0.0.1 1933 api_key true true 16384 false
+$
+
+A second run changes nothing:
+
+$ cp "$HOME/.openviking/ov.conf" "$OVT/ov.conf.first"; : > "$TRACE"; $t; echo "rc=$?"; grep -cE '^(uv tool install|ollama|launchctl kickstart)|/admin/' "$TRACE"; cmp -s "$OVT/ov.conf.first" "$HOME/.openviking/ov.conf"; echo "same=$?"
+OpenViking server: ready (openviking 0.5.3 on http://127.0.0.1:1933, clients act as default/agent)
+rc=0
+0
+same=0
+$
+
+A changed tracked setting re-renders ov.conf with the same root key and restarts the server:
+
+$ node -e 'const fs = require("fs"); const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); c.vlm.max_concurrent = 2; fs.writeFileSync(process.argv[1], JSON.stringify(c))' "$D/ov.conf.json"; $t --check | sed "s|$HOME|~|"
+OpenViking server: would render ~/.openviking/ov.conf
+OpenViking server: would restart the server on http://127.0.0.1:1933
+$ $t | sed "s|$HOME|~|" | tee -a "$OVT/out"
+OpenViking server: rendered ~/.openviking/ov.conf
+OpenViking server: restarted dev.mise.openviking
+OpenViking server: ready (openviking 0.5.3 on http://127.0.0.1:1933, clients act as default/agent)
+$ node -p 'const r = (f) => JSON.parse(require("fs").readFileSync(f, "utf8")); const [a, b] = process.argv.slice(1).map(r); [a.server.root_api_key === b.server.root_api_key, b.vlm.max_concurrent].join(" ")' "$OVT/ov.conf.first" "$HOME/.openviking/ov.conf"
+true 2
+$
+
+A user key readable beyond its owner is drift; apply makes it private again:
+
+$ chmod 644 "$HOME/.openviking/user.key"; $t --check | sed "s|$HOME|~|"; $t > /dev/null; ls -l "$HOME/.openviking/user.key" | cut -c1-10
+OpenViking server: would make ~/.openviking/user.key private
+-rw-------
+$
+
+A user key the server no longer accepts is replaced by a new one for the same user:
+
+$ echo revoked > "$OVT/user-key"; : > "$TRACE"; $t | sed "s|$HOME|~|" | tee -a "$OVT/out"; grep -o '/api/v1/admin/[^ ]*' "$TRACE" | tail -1
+OpenViking server: the key in ~/.openviking/user.key is no longer accepted
+OpenViking server: minted the user key for default/agent
+OpenViking server: ready (openviking 0.5.3 on http://127.0.0.1:1933, clients act as default/agent)
+/api/v1/admin/accounts/default/users/agent/key
+$ cmp -s "$OVT/user-key" "$HOME/.openviking/user.key"; echo "stored=$?"
+stored=0
+$
+
+A pin bump in local.env reinstalls the release:
+
+$ sed 's/^OPENVIKING_VERSION=.*/OPENVIKING_VERSION=0.5.4/' .config/dotfiles/openviking/local.env##os.Darwin > "$D/local.env"; $t --check; echo "rc=$?"
+OpenViking server: would install openviking 0.5.4 on Python 3.13 (now: 0.5.3 on Python 3.13)
+OpenViking server: would restart the server on http://127.0.0.1:1933
+rc=1
+$
+
+Neither key reached an argument list, the trace, or the output:
+
+$ cat "$OVT/out" "$TRACE" | grep -c -e "$(sed -n 's/.*"root_api_key": "\(.*\)".*/\1/p' "$HOME/.openviking/ov.conf")" -e ov-user-
+0
+$ rm -rf "$OVT"; echo done
+done
+$

@@ -1,0 +1,45 @@
+# setup/openviking-launchd — what the openviking LaunchAgent runs: idle until
+# converged, clear a stale pid file (upstream #4210), then exec the server.
+# Host-independent: a scratch HOME, a stub server that prints how it was
+# started, and stubs for ps (pid 4242 is an OpenViking server, 4343 is not,
+# any other pid is gone) and curl (Ollama answers).
+#
+# Run from the repo root: clitest tests/openviking-launchd.clitest.txt
+
+$ t=$PWD/.local/bin/setup/openviking-launchd; OVT=$(mktemp -d); export HOME=$OVT/home PATH="$OVT/stub:$PATH" OPENVIKING_SERVER_BIN=$OVT/server; P=$HOME/.openviking/data/.openviking.pid; mkdir -p "$OVT/stub" "$HOME/.openviking/data"; echo ready
+ready
+$ printf '%s\n' '#!/bin/sh' 'echo "server $* (in $PWD)"' > "$OVT/server"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$OVT/stub/curl"; printf '%s\n' '#!/bin/sh' 'case $2 in' '  4242) echo "/usr/bin/python3 /x/bin/openviking-server --config c" ;;' '  4343) echo /usr/libexec/mdwrite ;;' '  *) exit 1 ;;' 'esac' > "$OVT/stub/ps"; chmod +x "$OVT/server" "$OVT/stub"/*; echo stubs
+stubs
+$
+
+Before setup/openviking-server has rendered ov.conf the agent exits 0, so launchd leaves it idle:
+
+$ $t; echo "rc=$?"
+openviking-launchd: not converged yet (setup/openviking-server) - idle
+rc=0
+$
+
+Converged, it execs the server on ov.conf from ~/.openviking:
+
+$ echo '{}' > "$HOME/.openviking/ov.conf"; $t | sed "s|$HOME|~|g"
+server --config ~/.openviking/ov.conf (in ~/.openviking)
+$
+
+A pid file left by an unclean shutdown is removed when its pid now belongs to another process, or to none:
+
+$ echo 4343 > "$P"; $t | sed "s|$HOME|~|g"; test ! -e "$P"; echo "removed=$?"
+openviking-launchd: removing stale pid file (pid 4343 is not an OpenViking server)
+server --config ~/.openviking/ov.conf (in ~/.openviking)
+removed=0
+$ echo 31337 > "$P"; $t > /dev/null; test ! -e "$P"; echo "removed=$?"
+removed=0
+$
+
+A pid file held by a running OpenViking server stays; that server owns the workspace:
+
+$ echo 4242 > "$P"; $t | sed "s|$HOME|~|g"; test -e "$P"; echo "kept=$?"
+server --config ~/.openviking/ov.conf (in ~/.openviking)
+kept=0
+$ rm -rf "$OVT"; echo done
+done
+$

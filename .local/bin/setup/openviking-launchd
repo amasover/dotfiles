@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# openviking-launchd — the program the openviking LaunchAgent runs (macOS).
+#
+# Starts the local OpenViking server from ~/.openviking/ov.conf, which
+# setup/openviking-server renders and then restarts this agent. Until ov.conf
+# and the server exist it exits 0, so launchd, which restarts only failures,
+# leaves the agent idle instead of looping.
+#
+# Upstream #4210: a server killed by an unclean shutdown can leave
+# <workspace>/.openviking.pid behind, and after a reboot an unrelated process
+# may hold that pid; the server then exits 3 at every start. A pid file whose
+# process is not an OpenViking server is removed first. (0.5.3 locks the
+# workspace with flock and writes no pid file; then the check finds nothing.)
+#
+# It waits up to a minute for Ollama, so the server never starts its own.
+# launchd's PATH gives it macOS's /bin/bash 3.2; keep it to that dialect.
+#
+# Usage:
+#   openviking-launchd
+set -euo pipefail
+
+say() {
+    echo "openviking-launchd: $*"
+}
+
+root=$HOME/.openviking
+conf=$root/ov.conf
+pidfile=$root/data/.openviking.pid
+server=${OPENVIKING_SERVER_BIN:-"$HOME/.local/bin/openviking-server"}
+ollama=http://127.0.0.1:11434
+
+if [[ ! -f $conf || ! -x $server ]]; then
+    say "not converged yet (setup/openviking-server) - idle"
+    exit 0
+fi
+
+if [[ -f $pidfile ]]; then
+    pid=$(tr -dc 0-9 <"$pidfile")
+    holder=
+    [[ -n $pid ]] && holder=$(ps -p "$pid" -o command= 2>/dev/null || true)
+    if [[ $holder != *openviking* ]]; then
+        say "removing stale pid file (pid ${pid:-none} is not an OpenViking server)"
+        rm -f "$pidfile"
+    fi
+fi
+
+for _ in {1..60}; do
+    curl -q -fsS --max-time 2 -o /dev/null "$ollama/api/version" 2>/dev/null && break
+    sleep 1
+done
+
+cd "$root"
+exec "$server" --config "$conf"

@@ -1,0 +1,45 @@
+# OpenViking agent memory on macOS: a local server on 127.0.0.1:1933 with
+# Ollama models, and the omp and Claude Code clients wired to it. mise reads
+# every ~/.config/mise/conf.d/*.toml as global config, so `mise bootstrap`
+# applies this file beside config.toml. yadm links it on macOS only.
+#
+# Run order: packages, then the two LaunchAgents, then the final hook. The
+# hook converges the server (pinned openviking, models, ov.conf, the client
+# key) and then installs the clients; both scripts are safe to repeat.
+
+[bootstrap.packages]
+"brew:ollama" = "latest"
+"brew:uv" = "latest"
+
+# The model server, loopback only. One request at a time and two resident
+# models (embedding + VLM) keep memory flat; idle models unload after 5 min.
+[bootstrap.macos.launchd.agents.ollama]
+program = "/opt/homebrew/opt/ollama/bin/ollama"
+args = ["serve"]
+run_at_load = true
+keep_alive = true
+throttle_interval = 10
+environment = { OLLAMA_HOST = "127.0.0.1:11434", OLLAMA_NUM_PARALLEL = "1", OLLAMA_MAX_LOADED_MODELS = "2", OLLAMA_FLASH_ATTENTION = "1", OLLAMA_KV_CACHE_TYPE = "q8_0" }
+stdout_path = "~/Library/Logs/ollama.log"
+stderr_path = "~/Library/Logs/ollama.log"
+
+# The memory server. setup/openviking-launchd clears a stale pid file left by
+# an unclean shutdown (upstream #4210) before it execs the server, and exits 0
+# until ov.conf exists, so launchd retries only real failures, at most every
+# 30 s. PATH leaves out Homebrew, so the server cannot spawn a second Ollama.
+[bootstrap.macos.launchd.agents.openviking]
+program = "~/.local/bin/setup/openviking-launchd"
+run_at_load = true
+keep_alive_on_failure = true
+throttle_interval = 30
+environment = { PATH = "/usr/bin:/bin:/usr/sbin:/sbin" }
+stdout_path = "~/Library/Logs/openviking.log"
+stderr_path = "~/Library/Logs/openviking.log"
+
+# Hooks run in mise's environment; `mise exec` puts [tools] node on PATH.
+[bootstrap.hooks.final]
+description = "OpenViking: converge the local server, then wire omp and Claude Code to it"
+run = [
+    "mise exec -- ~/.local/bin/setup/openviking-server",
+    "mise exec -- ~/.local/bin/setup/openviking-memory --no-login",
+]
