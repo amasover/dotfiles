@@ -17,7 +17,7 @@
 #   3. renders ~/.openviking/ov.conf (mode 600) on 127.0.0.1:1933 with the
 #      workspace ~/.openviking/data and a root key generated on the first run
 #      only, then restarts the LaunchAgent dev.mise.openviking after a change;
-#   4. waits for /health and /ready;
+#   4. waits for /health and /ready (at most 180 s after a restart);
 #   5. mints the clients' user key through the Admin API and stores it in
 #      ~/.openviking/user.key (mode 600), where setup/openviking-memory reads
 #      it. A key the server still accepts is kept.
@@ -29,6 +29,11 @@
 #
 # --check reports what apply would do and changes nothing.
 # Exit: 0 converged, skipped or applied; 1 drift in --check; 2 failure.
+#
+# Environment, both optional:
+#   OPENVIKING_SETTINGS_DIR   the tracked settings, as for setup/openviking-memory
+#                             (default ~/.config/dotfiles/openviking)
+#   OPENVIKING_WAIT_SECONDS   how long to wait for /ready after a restart (180)
 set -euo pipefail
 # The keys pass through variables; never trace them.
 set +x

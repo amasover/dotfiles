@@ -93,6 +93,13 @@ rc=0
 same=0
 $
 
+OPENVIKING_SETTINGS_DIR moves the tracked settings; one without local.env skips:
+
+$ mkdir "$OVT/elsewhere"; OPENVIKING_SETTINGS_DIR=$OVT/elsewhere $t; echo "rc=$?"
+OpenViking server: no local.env on this machine - skipping (local server not selected)
+rc=0
+$
+
 A changed tracked setting re-renders ov.conf with the same root key and restarts the server:
 
 $ node -e 'const fs = require("fs"); const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); c.vlm.max_concurrent = 2; fs.writeFileSync(process.argv[1], JSON.stringify(c))' "$D/ov.conf.json"; $t --check | sed "s|$HOME|~|"
