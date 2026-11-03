@@ -396,8 +396,11 @@ when:
 3. **boot** (seconds, then you): type the disk password in the VMware window. The
    terminal waits up to 30 minutes for ssh. Every later boot asks for it there too.
 4. **bootstrap**, at its start: in the terminal, your VM user password once for
-   `sudo`, then the archive passphrase for `yadm decrypt` (three attempts; a third
-   wrong one stops the run before the long part). The `sudo` password puts a temporary
+   `sudo`, then the archive passphrase for `yadm decrypt` at a plain
+   `Enter passphrase:` line. Nothing appears as you type, not even `*`. You get three
+   attempts; a third wrong one stops the run before the long part. The run stops
+   before asking if `yadm.gpg-program` is set or `gpg-agent.conf` has
+   `no-allow-loopback-pinentry`; the message names the fix. The `sudo` password puts a temporary
    password-free drop-in at `/etc/sudoers.d/89-first-bootstrap`; it is deleted when
    bootstrap ends, also on failure or Ctrl-C. Before the prompts, the Mac's AUR trust
    baseline, time zone and GitHub token are copied in.

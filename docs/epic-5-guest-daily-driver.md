@@ -411,6 +411,22 @@ Harness targets keep `console=tty0 console=ttyS0`, serial last on purpose. A VM
 installed before the fix: [Create the real work
 VM](./runbook-vm-validation.md#create-the-real-work-vm-attended-macos).
 
+**Passphrase length in the bootstrap recording (2026-11-03):** the host's
+bootstrap session log of the real `work-vm` held `Passphrase: ` followed by one
+`*` per typed character, so it gave away the archive passphrase's length.
+`yadm decrypt` asked gpg-agent's default pinentry, which on the guest (no
+DISPLAY) is pinentry-curses, and it draws a `*` per character. The earlier test
+used pinentry-tty, which prints nothing, so it missed this. Fix: the guest
+glue's attended decrypt runs gpg with `--pinentry-mode loopback`, through a
+temporary wrapper put first on yadm's PATH for that decrypt only. gpg then asks
+on the terminal with echo off and prints nothing per character. No gpg or
+gpg-agent config is written, and the wrapper is deleted on exit or signal. A
+set `yadm.gpg-program` or `no-allow-loopback-pinentry` stops the run before
+asking, with no fallback to an echoing pinentry. A test drives a pinentry stub
+that draws `*` per character and checks that a wrong and then a right
+passphrase leave no `*` and no passphrase in the recording. The log from that
+run was redacted by hand.
+
 **Acceptance criteria:**
 
 - `vm-harness-vmware.ps1` runs under PowerShell 7 on macOS (`$IsMacOS`) against
