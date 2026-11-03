@@ -358,12 +358,12 @@ changes in attended mode:
 | | Disposable | Attended (`work-vm`) |
 | --- | --- | --- |
 | Seed target, VM name | `vmware-aarch64`, `arch-harness` | `work-vm`, `work-vm` (`VM_HARNESS_NAME`) |
-| VM directory | `<work dir>/vm` | `~/vms/work-vm` (`VM_HARNESS_VM_DIR`), seed and logs inside |
+| VM directory | `<work dir>/vm` | `~/vms/work-vm` (`VM_HARNESS_VM_DIR`, ending in the VM name), seed and logs inside |
 | Disk, vcpus, RAM | 80 GiB, 8, 12288 MiB | 300 GiB, 10, 12288 MiB |
 | Passwords | user `vm`, password-free sudo | typed by you; LUKS root; normal sudo |
-| ssh key | `VM_HARNESS_SSH_KEY` or `~/.ssh/id_*.pub` | always your `~/.ssh/id_*.pub` |
+| ssh key | `VM_HARNESS_SSH_KEY` or `~/.ssh/id_*.pub` | always yours: `~/.ssh/id_ed25519.pub`, else the first `id_*.pub` |
 | VMware window | per `VM_HARNESS_GUI` | always open |
-| Bootstrap | `--unattended` | prompts, over `ssh -t` in your terminal |
+| Bootstrap | `--unattended` | sudo password and archive passphrase first (`ssh -t`, your terminal), then `--unattended` |
 | GitHub token | never copied | `~/.config/dotfiles/github-token` copied at 0600, if present |
 | `destroy` | no questions | type the VM name, or `VM_HARNESS_DESTROY_REAL=work-vm` |
 
@@ -426,8 +426,12 @@ pwsh .local/bin/setup/vm-harness-vmware.ps1 tail bootstrap
 Logs are in `~/vms/work-vm/logs`. If `check` reports the sudo drop-in (a run cut off
 by a power loss), delete it in the VM: `sudo rm /etc/sudoers.d/89-first-bootstrap`.
 
-`destroy` on this VM asks you to type its name; non-interactively it needs
-`VM_HARNESS_DESTROY_REAL=work-vm`. It deletes `~/vms/work-vm`, logs included.
+`create` (and `up` resuming at it) refuses a VM directory that holds anything but its
+`logs/` and `seed/`, so it never replaces an existing disk. `destroy` on this VM asks
+you to type its name; non-interactively it needs `VM_HARNESS_DESTROY_REAL=work-vm`.
+It deletes `~/vms/work-vm`, logs included. There is no standalone `seed` in attended
+mode: `create` writes the seed, and `install` (or a failed or interrupted `create`)
+deletes it.
 
 ## Resetting
 
