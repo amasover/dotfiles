@@ -1,0 +1,29 @@
+# .zshrc and the read-only GitHub API token (~/.config/dotfiles/github-token).
+# Runs the real .zshrc in an interactive zsh under a scratch HOME, with an
+# empty oh-my-zsh standing in for the real one; the token is a fake value.
+#
+# Run from the repo root: clitest tests/github-token-env.clitest.txt
+
+$ H=$(mktemp -d); mkdir -p "$H/.oh-my-zsh" "$H/.config/dotfiles"; : > "$H/.oh-my-zsh/oh-my-zsh.sh"; cp .zshrc "$H/.zshrc"; Z() { env -u TENV_GITHUB_TOKEN -u MISE_GITHUB_TOKEN -u GITHUB_TOKEN -u GH_TOKEN HOME="$H" TERM=dumb zsh -i -c "$1" 2>/dev/null; }; echo ok
+ok
+$
+# no token file: nothing is exported and startup still ends with status 0
+$ Z 'print -r -- "tenv=${TENV_GITHUB_TOKEN-unset} mise=${MISE_GITHUB_TOKEN-unset}"; exit'; echo "rc=$?"
+tenv=unset mise=unset
+rc=0
+$
+# an empty file counts as no token
+$ : > "$H/.config/dotfiles/github-token"; Z 'print -r -- "tenv=${TENV_GITHUB_TOKEN-unset} mise=${MISE_GITHUB_TOKEN-unset}"'
+tenv=unset mise=unset
+$
+# a token feeds tenv and mise only, never GITHUB_TOKEN or GH_TOKEN (gh would
+# prefer it over its keyring login)
+$ printf 'fake-token-123\r\n' > "$H/.config/dotfiles/github-token"; Z 'print -r -- "tenv=$TENV_GITHUB_TOKEN mise=$MISE_GITHUB_TOKEN github=${GITHUB_TOKEN-unset} gh=${GH_TOKEN-unset} temp=${github_api_token-unset}"'
+tenv=fake-token-123 mise=fake-token-123 github=unset gh=unset temp=unset
+$
+# a value already in the environment wins
+$ env -u TENV_GITHUB_TOKEN HOME="$H" TERM=dumb MISE_GITHUB_TOKEN=mine zsh -i -c 'print -r -- "tenv=$TENV_GITHUB_TOKEN mise=$MISE_GITHUB_TOKEN"' 2>/dev/null
+tenv=fake-token-123 mise=mine
+$ rm -rf "$H"; echo done
+done
+$

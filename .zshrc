@@ -417,6 +417,22 @@ if [[ $OSTYPE == darwin* ]]; then
     fi
 fi
 
+# Read-only GitHub API token (yadm-encrypted; public repos, no permissions) for
+# tools that would otherwise share GitHub's 60-an-hour anonymous limit. Only the
+# tool-specific names: GITHUB_TOKEN or GH_TOKEN would make gh drop its keyring
+# login for this token, and `gh pr create` or a push through gh would fail.
+# A value already set wins. $(<file) reads without forking or touching the
+# network.
+if [[ -r ~/.config/dotfiles/github-token && -s ~/.config/dotfiles/github-token ]]; then
+    github_api_token=$(<~/.config/dotfiles/github-token)
+    github_api_token=${${github_api_token%%$'\n'*}%$'\r'}
+    if [[ -n $github_api_token ]]; then
+        export TENV_GITHUB_TOKEN=${TENV_GITHUB_TOKEN:-$github_api_token}
+        export MISE_GITHUB_TOKEN=${MISE_GITHUB_TOKEN:-$github_api_token}
+    fi
+    unset github_api_token
+fi
+
 # machine-local shell config (untracked; machine/site-specific aliases live there).
 # An `if`, not `&&`: without the file, `&&` left the rc file's status at 1.
 if [[ -r ~/.zshrc.local ]]; then
