@@ -26,11 +26,13 @@ declaration() {
 {
   "extraKnownMarketplaces": {
     "mattpocock": { "source": { "source": "github", "repo": "mattpocock/skills" } },
-    "i-have-adhd": { "source": { "source": "github", "repo": "ayghri/i-have-adhd" } }
+    "i-have-adhd": { "source": { "source": "github", "repo": "ayghri/i-have-adhd" } },
+    "pstack-claude": { "source": { "source": "github", "repo": "michael-denyer/pstack-claude" } }
   },
   "enabledPlugins": {
     "mattpocock-skills@mattpocock": true,
-    "i-have-adhd@i-have-adhd": true
+    "i-have-adhd@i-have-adhd": true,
+    "pstack@pstack-claude": true
   }
 }
 EOF
