@@ -390,12 +390,22 @@ if [[ $OSTYPE != darwin* ]]; then
         source $HOME/.config/broot/launcher/bash/br
     fi
 
-    source $HOME/.tenv.completion.zsh
+    # Written by bootstrap's shell-caches step when tenv is installed.
+    if [[ -r $HOME/.tenv.completion.zsh ]]; then
+        source $HOME/.tenv.completion.zsh
+    fi
 
-    tf_version=$(tenv tf detect -q | cut -d ' ' -f2)
-    tg_version=$(tenv tg detect -q | cut -d ' ' -f2)
-    complete -o nospace -C /home/aaron/.tenv/Terraform/${tf_version}/terraform terraform
-    complete -o nospace -C /home/aaron/.tenv/Terragrunt/${tg_version}/terragrunt terragrunt
+    # terraform/terragrunt completion runs the newest version tenv installed,
+    # found on disk. `tenv tf detect` used to pick it, but with no version file
+    # around it asks GitHub for the latest release, so every new shell hit the
+    # network (and its rate limit). tenv reads TENV_GITHUB_TOKEN itself.
+    for tenv_tool in terraform terragrunt; do
+        tenv_bin=($HOME/.tenv/${(C)tenv_tool}/*/$tenv_tool(N*nOn[1]))
+        if (( $#tenv_bin )); then
+            complete -o nospace -C $tenv_bin[1] $tenv_tool
+        fi
+    done
+    unset tenv_tool tenv_bin
 fi
 
 # macOS (class work-mac): mise activation.

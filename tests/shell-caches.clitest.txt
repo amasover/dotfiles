@@ -11,6 +11,7 @@ $
 $ "$SC" --check; echo "rc=$?"
   antibody: not installed; skipped
   broot: not installed; skipped
+  tenv: not installed; skipped
 rc=0
 $
 # antibody: the stub "clones" by creating the cache file the bundle sources
@@ -19,6 +20,7 @@ stub
 $ "$SC" --check | sed "s|$T|T|g"; echo "rc=${PIPESTATUS[0]}"; test -e "$HOME/antibody.log" || echo "nothing cloned"
   antibody: would run: antibody bundle < ~/.zsh_plugins.txt
   broot: not installed; skipped
+  tenv: not installed; skipped
 rc=1
 nothing cloned
 $
@@ -26,16 +28,20 @@ $
 $ touch "$HOME/offline"; "$SC" 2>&1; echo "rc=$?"; rm "$HOME/offline"
   antibody: bundle failed (offline?); re-run shell-caches later
   broot: not installed; skipped
+  tenv: not installed; skipped
 rc=0
 $
 # apply clones, keeps the tracked bundle as it is, and a second run is a no-op
 $ "$SC"; "$SC"; "$SC" --check; echo "rc=$?"; wc -l < "$HOME/antibody.log" | tr -d ' '; sed "s|$T|T|g" "$HOME/.zsh_plugins.sh"
   antibody: cloned the plugins
   broot: not installed; skipped
+  tenv: not installed; skipped
   antibody: plugins in place
   broot: not installed; skipped
+  tenv: not installed; skipped
   antibody: plugins in place
   broot: not installed; skipped
+  tenv: not installed; skipped
 rc=0
 2
 source T/home/.cache/antibody/zsh-syntax-highlighting/plugin.zsh
@@ -44,6 +50,7 @@ $
 $ echo "source /nonexistent/plugin.zsh" > "$HOME/.zsh_plugins.sh"; "$SC" 2>&1; echo "rc=$?"
   antibody: bundled, but ~/.zsh_plugins.sh names paths still missing; regenerate it: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
   broot: not installed; skipped
+  tenv: not installed; skipped
 rc=0
 $
 # broot: write the launcher from --print-shell-function, never `broot --install`
@@ -57,6 +64,18 @@ broot --print-shell-function bash
 broot --set-install-state installed
 br() { :; }
 br
+$
+# tenv: the zsh completion comes from `tenv completion zsh`, which needs no network
+$ printf '%s\n' '#!/bin/sh' 'echo "tenv $*" >> "$HOME/tenv.log"' '[ -f "$HOME/tenv-broken" ] && exit 1' '[ "$1 $2" = "completion zsh" ] && echo "#compdef tenv"' 'exit 0' > "$T/bin/tenv"; chmod +x "$T/bin/tenv"; "$SC" --check 2>/dev/null | grep tenv
+  tenv: would write ~/.tenv.completion.zsh
+$ touch "$HOME/tenv-broken"; "$SC" 2>&1 >/dev/null | grep tenv; ls -A "$HOME" | grep -c '^\.tenv' ; rm "$HOME/tenv-broken" "$HOME/tenv.log"
+  tenv: could not write the zsh completion; re-run shell-caches later
+0
+$ "$SC" 2>/dev/null | grep tenv; "$SC" 2>/dev/null | grep tenv; cat "$HOME/.tenv.completion.zsh" "$HOME/tenv.log"
+  tenv: wrote the zsh completion
+  tenv: zsh completion in place
+#compdef tenv
+tenv completion zsh
 $
 # unknown argument fails loudly
 $ "$SC" frobnicate 2>&1; echo "rc=$?"

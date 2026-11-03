@@ -9,6 +9,7 @@
 #             `broot --install` would also edit the tracked .zshrc, so this
 #             writes the same function with `broot --print-shell-function` and
 #             marks it installed, so broot never offers to install it.
+#   tenv      ~/.tenv.completion.zsh, from `tenv completion zsh` (offline).
 #
 # A part whose tool is not installed is skipped. A part that is already in
 # place is left alone. A part that fails (no network, say) warns, and apply
@@ -90,6 +91,26 @@ else
     else
         rm -f "$tmp"
         echo "  broot: could not write the br launcher; re-run shell-caches later" >&2
+    fi
+fi
+
+# --- tenv ---------------------------------------------------------------------
+completion=$HOME/.tenv.completion.zsh
+if ! command -v tenv >/dev/null; then
+    echo "  tenv: not installed; skipped"
+elif [[ -s $completion ]]; then
+    echo "  tenv: zsh completion in place"
+elif ((check)); then
+    echo "  tenv: would write ~/.tenv.completion.zsh"
+    drift=1
+else
+    tmp=$(mktemp "$HOME/.tenv.completion.XXXXXX")
+    if tenv completion zsh >"$tmp" && [[ -s $tmp ]]; then
+        mv "$tmp" "$completion"
+        echo "  tenv: wrote the zsh completion"
+    else
+        rm -f "$tmp"
+        echo "  tenv: could not write the zsh completion; re-run shell-caches later" >&2
     fi
 fi
 
