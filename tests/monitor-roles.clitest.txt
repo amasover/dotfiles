@@ -54,14 +54,33 @@ MONITOR_MAIN=DP1-1
 MONITOR_EXTRA=DP1-2~1
 $
 
-a fourth monitor has no role and is warned about, never silently dropped:
+a fourth monitor beyond MAIN/LEFT/EXTRA overflows; the three roles are
+unchanged and no warning is printed:
 
-$ printf 'Monitors: 4\n 0: +*A 1920/1x1080/1+1920+0  A\n 1: B 1920/1x1080/1+0+0  B\n 2: C 1920/1x1080/1+3840+0  C\n 3: D 1920/1x1080/1+5760+0  D\n' | $t assign 2>/dev/null
+$ printf 'Monitors: 4\n 0: +*A 1920/1x1080/1+1920+0  A\n 1: B 1920/1x1080/1+0+0  B\n 2: C 1920/1x1080/1+3840+0  C\n 3: D 1920/1x1080/1+5760+0  D\n' | $t assign 2>&1
 MONITOR_MAIN=A
 MONITOR_LEFT=B
 MONITOR_EXTRA=C
-$ printf 'Monitors: 4\n 0: +*A 1920/1x1080/1+1920+0  A\n 1: B 1920/1x1080/1+0+0  B\n 2: C 1920/1x1080/1+3840+0  C\n 3: D 1920/1x1080/1+5760+0  D\n' | $t assign 2>&1 >/dev/null
-monitor-roles: no role for D after override resolution
+MONITOR_OVERFLOW='D'
+$
+
+a VM spanning three host displays with MAIN leftmost (no LEFT): EXTRA takes
+the nearest, the rest overflow left to right regardless of listing order:
+
+$ printf 'Monitors: 4\n 0: +Virtual-1 3024/1x1964/1+0+0  Virtual-1\n 1: Virtual-4 1920/1x1080/1+10704+0  Virtual-4\n 2: Virtual-2 3840/1x2160/1+3024+0  Virtual-2\n 3: Virtual-3 3840/1x2160/1+6864+0  Virtual-3\n' | $t assign 2>&1
+MONITOR_MAIN=Virtual-1
+MONITOR_EXTRA=Virtual-2
+MONITOR_OVERFLOW='Virtual-3 Virtual-4'
+$
+
+with an override there is no overflow: a monitor it leaves unclaimed is
+warned about, never silently given a bar:
+
+$ f=$(mktemp) && printf 'MONITOR_EXTRA=\n' > "$f"
+$ printf 'Monitors: 2\n 0: +*eDP-1 1920/294x1080/165+0+0  eDP-1\n 1: DP-1 2560/597x1440/336+1920+0  DP-1\n' | $t assign "$f" 2>/dev/null
+MONITOR_MAIN=eDP-1
+$ printf 'Monitors: 2\n 0: +*eDP-1 1920/294x1080/165+0+0  eDP-1\n 1: DP-1 2560/597x1440/336+1920+0  DP-1\n' | $t assign "$f" 2>&1 >/dev/null; rm -f "$f"
+monitor-roles: no role for DP-1 after override resolution
 $
 
 output is eval'd, so a name with shell metacharacters is dropped, loudly:

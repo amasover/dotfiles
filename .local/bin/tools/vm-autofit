@@ -6,7 +6,19 @@
 # environments react to that and apply the mode; a bare i3/xinit session has
 # no reactor, so the screen stays at the old size (Story 5.4, #151).
 #
-#   vm-autofit apply [output]   apply the pending hint once (xrandr --auto)
+# Several host displays (Fusion's "Use All Displays in Full Screen") arrive
+# as several connected Virtual-N outputs. open-vm-tools' resolutionKMS plugin
+# passes the host topology to vmwgfx (DRM_VMW_UPDATE_LAYOUT); vmwgfx sets each
+# connector's preferred mode AND its immutable 'suggested X'/'suggested Y'
+# properties, then fires the uevent (vmw_du_update_layout in
+# drivers/gpu/drm/vmwgfx/vmwgfx_kms.c). Xorg's modesetting driver re-reads
+# those properties on every probe, so `xrandr --prop` shows where the host
+# wants each output. apply places every output there, so i3 sees the host's
+# side-by-side layout and follows dock/undock.
+#
+#   vm-autofit apply [output]   apply the pending hint once (xrandr --auto,
+#                               plus --pos at the suggested offsets when no
+#                               output is named)
 #   vm-autofit react [output]   apply once, then once more per stdin burst
 #   vm-autofit watch [output]   react to drm change uevents until killed
 #
@@ -30,6 +42,50 @@ out=${2-}
 
 connected_outputs() {
     xrandr -q | awk '/ connected/ {print $1}'
+}
+
+# One line per output that needs a command, from `xrandr --prop`:
+#   on NAME XxY|-   connected; XxY = suggested offset, - when the driver
+#                   exposes none (non-vmwgfx guests keep plain --auto)
+#   off NAME        disconnected but still holding a CRTC (undocked display)
+layout_plan() {
+    xrandr --prop | awk '
+        function flush() {
+            if (name == "") return
+            if (status == "connected") {
+                pos = (sx ~ /^[0-9]+$/ && sy ~ /^[0-9]+$/) ? sx "x" sy : "-"
+                print "on", name, pos
+            } else if (status == "disconnected" && active) {
+                print "off", name
+            }
+            name = ""
+        }
+        /^[^ \t]+ (connected|disconnected) / {
+            flush()
+            name = $1; status = $2; sx = ""; sy = ""
+            active = ($3 ~ /^[0-9]+x[0-9]+\+/ || $4 ~ /^[0-9]+x[0-9]+\+/)
+            next
+        }
+        /^[^ \t]/ { flush(); next }
+        name != "" && /^\tsuggested X:/ { sx = $3 }
+        name != "" && /^\tsuggested Y:/ { sy = $3 }
+        END { flush() }
+    '
+}
+
+# After a topology change (output set or position, not a plain resize — the
+# nord-arrow bars follow those via screenchange-reload) polybar's roles are
+# stale; nothing else relaunches it in a VM (no autorandr profile matches
+# Virtual-N, so autorandr's postswitch hook never fires). Only running bars
+# are relaunched: the first apply at login usually beats i3's exec_always,
+# which then starts the bars on the settled layout itself.
+bars_layout=none
+relaunch_bars() {
+    [ "$1" = "$bars_layout" ] && return 0
+    bars_layout=$1
+    pgrep -u "$UID" -x polybar >/dev/null 2>&1 || return 0
+    launcher="$HOME/.config/polybar/launch.sh"
+    [ -x "$launcher" ] && "$launcher" </dev/null >/dev/null
 }
 
 # SPICE/QEMU guests only: after a resolution change an absolute-pointer
@@ -63,9 +119,24 @@ apply() {
     else
         # bare `xrandr --auto` never re-modes an output that is already
         # enabled, so the new preferred mode must be applied per output.
-        connected_outputs | while read -r o; do
-            xrandr --output "$o" --auto
-        done
+        # One xrandr call for all of them: moving outputs one at a time
+        # would pass through overlapping intermediate layouts.
+        args=()
+        topology=
+        while read -r verb o pos; do
+            case "$verb" in
+                on)
+                    args+=(--output "$o" --auto)
+                    [ "$pos" = - ] || args+=(--pos "$pos")
+                    topology="$topology $o@$pos"
+                    ;;
+                off)
+                    args+=(--output "$o" --off)
+                    ;;
+            esac
+        done < <(layout_plan)
+        [ ${#args[@]} -eq 0 ] || xrandr "${args[@]}"
+        relaunch_bars "$topology"
     fi
     calibrate_pointer
 }

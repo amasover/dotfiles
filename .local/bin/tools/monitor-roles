@@ -5,9 +5,14 @@
 #   MONITOR_MAIN   the primary monitor ('*' flag), else the first listed
 #   MONITOR_LEFT   the leftmost monitor positioned left of MAIN, if any
 #   MONITOR_EXTRA  the next remaining monitor, if any
+#   MONITOR_OVERFLOW  every monitor still left over, left to right, as one
+#                  quoted space-separated list (heuristic only; launch.sh gives
+#                  each one the EXTRA bars, so every monitor gets a bar)
 # A per-autorandr-profile override may replace or clear those roles and assign
 # MONITOR_SPLIT_TOP/BOTTOM. Warnings are computed after that merge, so logical
-# monitors claimed by split roles are not falsely reported as unassigned.
+# monitors claimed by split roles are not falsely reported as unassigned. With
+# an override there is no overflow: a monitor it leaves unclaimed is warned
+# about, since an emptied role must keep its bar off.
 #
 # Output is eval'd by launch.sh, so emitted values are restricted to
 # [A-Za-z0-9._~-]; unsafe monitor names and override lines are dropped loudly.
@@ -36,6 +41,7 @@ assign() {
                 key = substr($0, 9, equals - 9)
                 overrides[key] = substr($0, equals + 1)
                 overridden[key] = 1
+                has_override = 1
                 next
             }
             if ($0 ~ /^[[:space:]]*#/ || $0 ~ /^[[:space:]]*$/) next
@@ -88,6 +94,21 @@ assign() {
                     printf "MONITOR_%s=%s\n", key, roles[key]
                     claimed[roles[key]] = 1
                 }
+            }
+
+            # Left to right among the unclaimed (stable insertion sort).
+            m = 0
+            if (!has_override)
+                for (i = 1; i <= n; i++) {
+                    if (names[i] in claimed) continue
+                    for (j = ++m; j > 1 && xs[over[j - 1]] > xs[i]; j--) over[j] = over[j - 1]
+                    over[j] = i
+                }
+            if (m) {
+                list = names[over[1]]
+                for (j = 2; j <= m; j++) list = list " " names[over[j]]
+                printf "MONITOR_OVERFLOW='\''%s'\''\n", list
+                for (j = 1; j <= m; j++) claimed[names[over[j]]] = 1
             }
 
             for (i = 1; i <= n; i++)

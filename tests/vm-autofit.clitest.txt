@@ -1,10 +1,34 @@
 # vm-autofit (Story 5.4, #151) — the resolution-hint reactor's testable seams.
 # Stubbed xrandr + xinput on PATH record calls; no X server involved. The
-# xinput stub lists a tablet only when XINPUT_TABLET is set, so calibration
-# stays deterministic on any machine the suite runs on.
+# xrandr stub answers -q and --prop from the fixture at $XRANDR_OUT, so a
+# test swaps topologies by copying a fixture there. The xinput stub lists a
+# tablet only when XINPUT_TABLET is set, so calibration stays deterministic
+# on any machine the suite runs on. HOME points at a stub polybar launcher
+# that only logs, so bar relaunches are observable; the pgrep stub reports
+# running bars only when POLYBAR_UP is set.
 
-$ d=$(mktemp -d) && printf '#!/bin/sh\necho "xrandr $*" >> "$XLOG"\nif [ "$1" = -q ]; then\n  echo "Screen 0: minimum 320 x 200, current 1280 x 800, maximum 8192 x 8192"\n  echo "Virtual-1 connected 1280x800+0+0 (normal) 0mm x 0mm"\n  echo "VGA-1 disconnected (normal)"\nfi\n' > "$d/xrandr" && chmod +x "$d/xrandr"
-$ printf '#!/bin/sh\necho "xinput $*" >> "$XLOG"\ncase "$1" in\n  list) [ -n "${XINPUT_TABLET-}" ] && echo "$XINPUT_TABLET" ;;\n  list-props) [ -n "${XINPUT_TABLET-}" ] && echo "  Evdev Axis Calibration (270): 0, 1279, 0, 799" ;;\nesac\nexit 0\n' > "$d/xinput" && chmod +x "$d/xinput" && export XLOG="$d/calls.log" PATH="$d:$PATH"
+$ d=$(mktemp -d) && printf '#!/bin/sh\necho "xrandr $*" >> "$XLOG"\ncase "$1" in -q|--prop) cat "$XRANDR_OUT" ;; esac\n' > "$d/xrandr" && chmod +x "$d/xrandr"
+$ printf '#!/bin/sh\necho "xinput $*" >> "$XLOG"\ncase "$1" in\n  list) [ -n "${XINPUT_TABLET-}" ] && echo "$XINPUT_TABLET" ;;\n  list-props) [ -n "${XINPUT_TABLET-}" ] && echo "  Evdev Axis Calibration (270): 0, 1279, 0, 799" ;;\nesac\nexit 0\n' > "$d/xinput" && chmod +x "$d/xinput" && export XLOG="$d/calls.log" XRANDR_OUT="$d/out" PATH="$d:$PATH"
+$ mkdir -p "$d/home/.config/polybar" && printf '#!/bin/sh\necho launch.sh >> "$XLOG"\n' > "$d/home/.config/polybar/launch.sh" && chmod +x "$d/home/.config/polybar/launch.sh" && export HOME="$d/home"
+$ printf '#!/bin/sh\n[ -n "${POLYBAR_UP-}" ]\n' > "$d/pgrep" && chmod +x "$d/pgrep"
+$
+
+A plain guest whose driver exposes no offset properties (the pre-multi-
+display fixture): one connected output, one disconnected and idle:
+
+$ printf 'Screen 0: minimum 320 x 200, current 1280 x 800, maximum 8192 x 8192\nVirtual-1 connected 1280x800+0+0 (normal) 0mm x 0mm\nVGA-1 disconnected (normal)\n' > "$d/plain" && cp "$d/plain" "$XRANDR_OUT"
+$
+
+vmwgfx fixtures as Xorg's modesetting driver prints them under `xrandr
+--prop`: every connector carries the immutable 'suggested X'/'suggested Y'
+range properties, and the host's topology sets them. vout NAME STATUS X Y ID
+prints one output block:
+
+$ vout() { printf '%s %s (normal left inverted right x axis y axis) 0mm x 0mm\n\thotplug_mode_update: 1 \n\t\trange: (0, 1)\n\tsuggested X: %s \n\t\trange: (0, -1)\n\tsuggested Y: %s \n\t\trange: (0, -1)\n\tCONNECTOR_ID: %s \n\t\tsupported: %s\n\tnon-desktop: 0 \n\t\trange: (0, 1)\n' "$1" "$2" "$3" "$4" "$5" "$5"; }
+$ { echo 'Screen 0: minimum 1 x 1, current 1920 x 1200, maximum 16384 x 16384'; vout Virtual-1 'connected 1920x1200+0+0' 0 0 38; echo '   1920x1200     60.00*+'; vout Virtual-2 disconnected 0 0 39; } > "$d/vmw1"
+$ { echo 'Screen 0: minimum 1 x 1, current 3024 x 1964, maximum 16384 x 16384'; vout Virtual-1 'connected 3024x1964+0+0' 0 0 38; echo '   3024x1964     60.00*+'; vout Virtual-2 connected 3024 0 39; echo '   3840x2160     60.00 +'; vout Virtual-3 disconnected 0 0 40; } > "$d/vmw2"
+$ { echo 'Screen 0: minimum 1 x 1, current 6864 x 2160, maximum 16384 x 16384'; vout Virtual-1 'connected primary 3024x1964+0+0' 0 196 38; echo '   3024x1964     60.00*+'; vout Virtual-2 'connected 3840x2160+3024+0' 3024 0 39; echo '   3840x2160     60.00*+'; vout Virtual-3 connected 6864 0 40; echo '   3840x2160     60.00 +'; } > "$d/vmw3"
+$ { echo 'Screen 0: minimum 1 x 1, current 6864 x 2160, maximum 16384 x 16384'; vout Virtual-1 'connected 3024x1964+0+0' 0 0 38; echo '   3024x1964     60.00*+'; vout Virtual-2 'disconnected 3840x2160+3024+0' 0 0 39; } > "$d/undock"
 $
 
 apply with an explicit output targets it; with no tablet listed, calibration
@@ -17,12 +41,63 @@ $
 
 apply without an output enumerates connected outputs and re-modes each
 per-output (bare --auto would skip already-enabled ones); disconnected
-outputs are left alone:
+outputs are left alone, and with no offset properties there is no --pos:
 
 $ : > "$XLOG"; .local/bin/tools/vm-autofit apply; cat "$XLOG"
-xrandr -q
+xrandr --prop
 xrandr --output Virtual-1 --auto
 xinput list --name-only
+$
+
+a single vmwgfx output (Fusion windowed, or one host display) is pinned at
+its suggested origin:
+
+$ cp "$d/vmw1" "$XRANDR_OUT"; : > "$XLOG"; .local/bin/tools/vm-autofit apply; cat "$XLOG"
+xrandr --prop
+xrandr --output Virtual-1 --auto --pos 0x0
+xinput list --name-only
+$
+
+Fusion spanning two host displays: the newly connected Virtual-2 (no mode
+yet) goes to the host's offset, in the same xrandr call as Virtual-1:
+
+$ cp "$d/vmw2" "$XRANDR_OUT"; : > "$XLOG"; .local/bin/tools/vm-autofit apply; grep -- --output "$XLOG"
+xrandr --output Virtual-1 --auto --pos 0x0 --output Virtual-2 --auto --pos 3024x0
+$
+
+three displays, already enabled, with a vertical offset and a primary flag
+in the header — every output moves to its suggested position:
+
+$ cp "$d/vmw3" "$XRANDR_OUT"; : > "$XLOG"; .local/bin/tools/vm-autofit apply; grep -- --output "$XLOG"
+xrandr --output Virtual-1 --auto --pos 0x196 --output Virtual-2 --auto --pos 3024x0 --output Virtual-3 --auto --pos 6864x0
+$
+
+undock: a display that went away but still holds a CRTC is switched off:
+
+$ cp "$d/undock" "$XRANDR_OUT"; : > "$XLOG"; .local/bin/tools/vm-autofit apply; grep -- --output "$XLOG"
+xrandr --output Virtual-1 --auto --pos 0x0 --output Virtual-2 --off
+$
+
+react relaunches running bars whenever the topology (outputs and positions)
+differs from the last apply — including the first, in case the bars came up
+on a stale layout — and a repeat of the same layout leaves them alone:
+
+$ cp "$d/vmw1" "$XRANDR_OUT"; : > "$XLOG"; { sleep 1; cp "$d/vmw2" "$XRANDR_OUT"; printf 'e1\n'; sleep 1; printf 'e2\n'; sleep 1; cp "$d/undock" "$XRANDR_OUT"; printf 'e3\n'; } | POLYBAR_UP=1 .local/bin/tools/vm-autofit react; grep -e ' --output ' -e '^launch' "$XLOG"
+xrandr --output Virtual-1 --auto --pos 0x0
+launch.sh
+xrandr --output Virtual-1 --auto --pos 0x0 --output Virtual-2 --auto --pos 3024x0
+launch.sh
+xrandr --output Virtual-1 --auto --pos 0x0 --output Virtual-2 --auto --pos 3024x0
+xrandr --output Virtual-1 --auto --pos 0x0 --output Virtual-2 --off
+launch.sh
+$
+
+with no bars running (login, before i3's exec_always starts them) nothing is
+launched — i3 owns startup:
+
+$ cp "$d/vmw1" "$XRANDR_OUT"; : > "$XLOG"; { sleep 1; cp "$d/vmw2" "$XRANDR_OUT"; printf 'e1\n'; } | .local/bin/tools/vm-autofit react; grep -c '^launch' "$XLOG"
+0
+$ cp "$d/plain" "$XRANDR_OUT"
 $
 
 with a SPICE tablet present (and evdev exposing the calibration property),
