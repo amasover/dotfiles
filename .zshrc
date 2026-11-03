@@ -82,7 +82,20 @@ if [[ $OSTYPE == darwin* ]]; then
     done
     unset zsh_plugin
 else
-    source /usr/share/nvm/init-nvm.sh
+    if [[ -r /usr/share/nvm/init-nvm.sh ]]; then
+        # init-nvm.sh makes $NVM_DIR and its two links with `mkdir -v`/`ln -v`,
+        # which print in every new shell on a fresh HOME and fail with "File
+        # exists" when two shells start at once. Make them quietly first, so
+        # its own checks find them; a lost race is harmless and stays silent.
+        nvm_dir=${NVM_DIR:-${XDG_CONFIG_HOME:+$XDG_CONFIG_HOME/nvm}}
+        nvm_dir=${nvm_dir:-$HOME/.nvm}
+        mkdir -p "$nvm_dir"
+        for nvm_file in nvm.sh nvm-exec; do
+            [[ -e $nvm_dir/$nvm_file ]] || ln -s /usr/share/nvm/$nvm_file "$nvm_dir/$nvm_file" 2>/dev/null
+        done
+        unset nvm_dir nvm_file
+        source /usr/share/nvm/init-nvm.sh
+    fi
     source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
     source ~/.zsh_plugins.sh
 fi
