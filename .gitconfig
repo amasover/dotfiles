@@ -72,3 +72,8 @@
 	helper = !/usr/bin/gh auth git-credential
 [credential "https://dev.azure.com"]
 	useHttpPath = true
+# OS-specific overrides: a yadm alternate (.gitconfig-os##os.Darwin) on the Mac,
+# absent on Linux, where git skips a missing include. Kept last so its empty
+# `helper =` lines clear the Linux credential helpers above.
+[include]
+    path = ~/.gitconfig-os
