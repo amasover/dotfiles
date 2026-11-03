@@ -40,15 +40,12 @@ Supporting choices, decided together:
   The tracked files own mise activation, so the config sets
   `mise_shell_activate zsh = false`: otherwise mise would write marker blocks into
   yadm-tracked files that Linux shares.
-- **Plain `omp` runs `omp-mode claude`'s roles on the Mac.** The Darwin branch of
-  `.zprofile` exports `PI_CONFIG_FILES=~/.omp/agent/modes/claude.yml` when nothing else
-  set it. It is the overlay mechanism `omp-mode` already uses, so `omp-mode openai`
-  still wins (its overlay comes last). Every login shell reads `.zprofile`, including
-  non-interactive ones such as `zsh -l -c omp`, and interactive shells inherit the
-  variable, so Orca's agents get it too. A process that starts without any login shell
-  (a launchd job, an app opened from Finder) does not: only `.zshenv` reaches those,
-  and that file is encrypted, machine-specific state. Linux and Windows keep their
-  defaults.
+- **Plain `omp` runs `omp-mode claude`'s roles, on every machine.** The tracked
+  `.omp/agent/config.yml` carries the same model roles and agent overrides as
+  `.omp/agent/modes/claude.yml`, so a bare `omp`, however it is started (an Orca agent,
+  a login or non-login shell, launchd), gets Opus 5.5 primary and the cheaper worker
+  models with no environment variable. `omp-mode copilot|openai|openrouter` still
+  layers its mode on top through `PI_CONFIG_FILES`, which outranks `config.yml`.
 - **Never declare employer-managed apps.** Jamf installs and updates Zoom, Slack,
   1Password, Cisco Secure Client, Duo, the EDR agent, Jamf Protect, the employer's Self
   Service app, and the App Store's Pages, Numbers, Keynote, iMovie and GarageBand.

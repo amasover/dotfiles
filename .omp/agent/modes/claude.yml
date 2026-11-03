@@ -6,8 +6,9 @@
 # Sonnet 5, the only Sonnet measured, was the weakest Anthropic config (48% at
 # high), so reviews stay on Opus; Sonnet 5.5 is half Opus 5.5's price a token if
 # that is still too much. Pinning `task` keeps workers off the primary's xhigh.
-# On the Windows workstation, ~/.omp/agent/config.yml carries the same roles, so a
-# bare `omp` there (Orca's own agent launch) runs this mode too.
+# The tracked ~/.omp/agent/config.yml carries these same roles, so a bare `omp`
+# (Orca's own agent launch included) runs this mode on every machine; keep the
+# two in step. `omp-mode <other>` layers another mode on top of it.
 modelRoles:
   default: anthropic/claude-opus-5-5:xhigh
   task: anthropic/claude-opus-5-5:medium

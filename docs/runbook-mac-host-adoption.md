@@ -85,7 +85,7 @@ yadm status                       # clean
 zsh -i -c exit                    # nothing on stderr
 mise bootstrap status --missing   # exit 0
 brew-drift-report                 # every section [ok]
-omp config get modelRoles         # Opus 5.5 xhigh default (omp-mode claude's roles)
+omp config get modelRoles         # Opus 5.5 xhigh default, from the tracked config.yml
 ```
 
 Open a new terminal: the agnoster prompt, autosuggestions and syntax highlighting all

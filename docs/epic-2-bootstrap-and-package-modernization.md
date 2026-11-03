@@ -2075,8 +2075,8 @@ undeclared, and the sparse rules for those paths (`Library/LaunchAgents/**` and 
 - Given the shared `.zshrc`, `.zprofile`, `.profile`, `.bashrc` and `.gitconfig`, then
   Linux behavior is unchanged and an interactive zsh on Darwin starts with nothing on
   stderr
-- Given a plain `omp` on the Mac, then it runs `omp-mode claude`'s roles, and
-  `omp-mode <other>` still overrides them
+- Given a plain `omp` on any machine, then the tracked `config.yml` gives it
+  `omp-mode claude`'s roles, and `omp-mode <other>` still overrides them
 - Given `brew-drift-report`, then it lists installed formulae and casks that no mise
   config file (conf.d included) declares, and declared ones that are missing, without
   changing anything
