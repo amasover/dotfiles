@@ -292,6 +292,11 @@ function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
     }
     $script:PhaseWriter = $proc.StandardInput
     $script:PhaseWriter.AutoFlush = $true
+    # CRLF on every host. `ssh -t` leaves the console tty raw (no \n -> \r\n),
+    # and PowerShell's native pipeline strips the guest's own CRs, so bare-LF
+    # lines staircase across the screen. Windows' NewLine is already CRLF; this
+    # makes pwsh on macOS write the same bytes (seen live 2026-11-02).
+    $script:PhaseWriter.NewLine = "`r`n"
     $script:SinkDied = $false
     $rc = 0
     try {
