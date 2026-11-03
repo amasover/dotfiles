@@ -40,6 +40,7 @@ packages = [
   "oh-my-pi-bin",
   "nuget",
   "openbao",  # bao CLI: setup/openviking-memory reads the memory server's key with a passkey sign-in
+  "orca-ide-bin",  # Orca agent workspace IDE: upstream aarch64 + x86_64 builds; every dev machine
   "playwright",
   "podman",
   "podman-compose",

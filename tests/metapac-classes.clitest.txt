@@ -162,7 +162,7 @@ through metapac on both architectures:
 $ for arch in x86_64 aarch64; do for class in work-vm daily-vm qemu-harness portable; do RENDER "$class" "$arch"; DECLARED >/dev/null || exit; done; done; echo all-render
 all-render
 $ for group in arch-x86_64 arch-aarch64 hardware-portable guest-vmware guest-vmware-x86_64 guest-qemu work inbox-work-vm inbox-daily-vm inbox-qemu-harness inbox-portable; do test -f ".config/metapac/groups/$group.toml" || echo "missing $group"; done
-$ for group in hardware-intel-laptop inbox-workstation; do test -e ".config/metapac/groups/$group.toml" && echo "retired $group still present"; done; echo retired-gone
+$ test -f .config/metapac/groups/hardware-intel-laptop.toml || echo "missing hardware-intel-laptop"; test -e .config/metapac/groups/inbox-workstation.toml && echo "retired inbox-workstation still present"; echo retired-gone
 retired-gone
 $ rm -rf "$CLITMP"; echo done
 done

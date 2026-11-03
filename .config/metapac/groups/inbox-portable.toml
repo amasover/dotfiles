@@ -10,6 +10,5 @@ packages = [
   "paseo-bin",
   "autofs",
   "stably-orca-bin",
-  "orca-ide-bin",
   "kiro-cli",
 ]
