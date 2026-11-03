@@ -2053,6 +2053,12 @@ Issue: [#284](https://github.com/amasover/dotfiles/issues/284) · Origin: 2026-1
 [runbook-mac-host-adoption.md](./runbook-mac-host-adoption.md). Independent of the
 daily-VM work: it changes no Linux behavior.
 
+Merge order: `conf.d/openviking.toml` (ollama, uv and the OpenViking LaunchAgents)
+arrives with PR [#283](https://github.com/amasover/dotfiles/pull/283). Until it lands,
+nothing on the Mac declares ollama or uv, so `brew-drift-report` lists them as
+undeclared, and the sparse rules for those paths (`Library/LaunchAgents/**` and the
+`conf.d/` part of `.config/mise/**`) match no tracked file.
+
 **Acceptance criteria:**
 
 - Given `.config/yadm/sparse/work-mac`, when a Mac adopts the repo, then only shared
