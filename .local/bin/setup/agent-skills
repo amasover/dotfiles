@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# agent-skills — clone or update the personal agent-skills repo and link it
+# into omp (Story 4.13).
+#
+# agent-skills is an OMP plugin package (skills/<name>/SKILL.md plus
+# package.json#omp.extensions). `omp plugin link` points omp at the working
+# tree, so after the first link a fast-forward pull is the whole update.
+#
+# The repo lives on a LAN-only Forgejo, and this repository is public, so the
+# clone URL comes from a per-machine settings file that rides the yadm-encrypted
+# archive (.config/yadm/encrypt), never from a tracked file:
+#   ~/.config/dotfiles/agent-skills/remote.env
+#     AGENT_SKILLS_URL=ssh://git@forgejo.example:222/owner/agent-skills.git
+#
+# Without that file, off the LAN, or when the key is refused, it prints one
+# warning and exits 0, so the bootstrap that called it carries on. The probe
+# runs ssh with BatchMode=yes and a connect timeout: it never prompts and never
+# hangs on a dead route. It never prints the URL.
+#
+# A clone with local changes, another origin, or a branch that diverged from
+# origin is left alone with a warning: it never stashes, resets or merges.
+#
+# Usage:
+#   agent-skills [apply]   clone or fast-forward, then link into omp
+#   agent-skills --check   report reachability, clone and link state; change
+#                          nothing. Exit 1 when apply would change something
+#
+# Environment (test seams): AGENT_SKILLS_ENV (settings file), AGENT_SKILLS_DIR
+# (clone path, default ~/.local/share/agent-skills), AGENT_SKILLS_TIMEOUT
+# (ssh connect timeout in seconds, default 5).
+set -euo pipefail
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+}
+
+say() {
+    echo "agent-skills: $*"
+}
+
+settings=${AGENT_SKILLS_ENV:-${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/agent-skills/remote.env}
+dir=${AGENT_SKILLS_DIR:-$HOME/.local/share/agent-skills}
+timeout=${AGENT_SKILLS_TIMEOUT:-5}
+rerun="re-run \`mise bootstrap\` (\`update\` on Linux) on the LAN"
+
+check=0
+case "${1:-apply}" in
+    apply) ;;
+    --check) check=1 ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        echo "agent-skills: unknown argument: $1   (try: agent-skills -h)" >&2
+        exit 2
+        ;;
+esac
+
+# Every git call that may reach the remote: no prompts, bounded connect.
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=$timeout"
+
+url=
+if [[ -r $settings ]]; then
+    url=$(sed -n 's/^AGENT_SKILLS_URL=//p' "$settings" | tail -n 1)
+fi
+if [[ -z $url ]]; then
+    say "skipped: no AGENT_SKILLS_URL on this machine ($settings); decrypt the yadm archive or create it, then $rerun"
+    exit 0
+fi
+
+if ! git ls-remote --heads "$url" >/dev/null 2>&1; then
+    say "skipped: the agent-skills host is unreachable or refused this machine's key; $rerun"
+    exit 0
+fi
+
+# Linked when omp's plugin entry resolves to this clone.
+linked() {
+    local name path
+    name=$(jq -r '.name // empty' "$dir/package.json" 2>/dev/null) || return 1
+    [[ -n $name ]] || return 1
+    path=$(omp plugin list --json 2>/dev/null \
+        | jq -r --arg n "$name" '.npm[]? | select(.name == $n) | .path') || return 1
+    [[ -n $path && -d $path ]] || return 1
+    [[ $(cd "$path" && pwd -P) == $(cd "$dir" && pwd -P) ]]
+}
+
+link() {
+    if linked; then
+        say "linked into omp"
+    elif ((check)); then
+        say "would: omp plugin link $dir"
+        drift=1
+    else
+        omp plugin link "$dir" >/dev/null
+        say "linked $dir into omp"
+    fi
+}
+
+drift=0
+if [[ ! -e $dir ]]; then
+    if ((check)); then
+        say "would: clone into $dir, then link it into omp"
+        exit 1
+    fi
+    git clone --quiet "$url" "$dir"
+    say "cloned into $dir"
+    link
+    exit 0
+fi
+
+if [[ $(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) != "$(cd "$dir" && pwd -P)" ]]; then
+    say "refusing: $dir exists but is not a git checkout; move it aside and $rerun"
+    exit 0
+fi
+if [[ $(git -C "$dir" remote get-url origin 2>/dev/null) != "$url" ]]; then
+    say "refusing: $dir has another origin than AGENT_SKILLS_URL; fix it by hand"
+    exit 0
+fi
+if [[ -n $(git -C "$dir" status --porcelain) ]]; then
+    say "refusing to pull: $dir has local changes; commit or discard them first"
+    link
+    exit "$drift"
+fi
+
+head=$(git -C "$dir" rev-parse HEAD)
+branch=$(git -C "$dir" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null) || {
+    say "refusing to pull: $dir's branch tracks no upstream"
+    link
+    exit "$drift"
+}
+if ((check)); then
+    # No fetch: --check leaves even the remote-tracking refs alone.
+    remote=$(git ls-remote "$url" "refs/heads/${branch#origin/}" | cut -f1)
+    if [[ $remote == "$head" ]]; then
+        say "up to date"
+    else
+        say "would: fetch and fast-forward $dir unless it has diverged"
+        drift=1
+    fi
+    link
+    exit "$drift"
+fi
+
+git -C "$dir" fetch --quiet origin
+upstream=$(git -C "$dir" rev-parse '@{upstream}')
+if [[ $head == "$upstream" ]]; then
+    say "up to date"
+elif git -C "$dir" merge-base --is-ancestor "$head" "$upstream"; then
+    git -C "$dir" merge --quiet --ff-only "$upstream"
+    say "fast-forwarded"
+elif git -C "$dir" merge-base --is-ancestor "$upstream" "$head"; then
+    say "ahead of origin; nothing to pull (push your commits)"
+else
+    say "refusing to pull: $dir has diverged from origin; reconcile it by hand"
+fi
+link
+exit "$drift"
