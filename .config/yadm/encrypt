@@ -11,3 +11,7 @@
 .config/dotfiles/openviking/server.env
 # The LAN Forgejo clone URL for agent-skills (setup/agent-skills, Story 4.13).
 .config/dotfiles/agent-skills/remote.env
+# Read-only GitHub API token: a fine-grained PAT for public repositories with
+# no permissions, only to lift the anonymous API rate limit (custom-pkgs, mise,
+# tenv). Never GITHUB_TOKEN/GH_TOKEN; see runbook-fresh-machine-bootstrap.md.
+.config/dotfiles/github-token
