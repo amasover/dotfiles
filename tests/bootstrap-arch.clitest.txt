@@ -100,29 +100,40 @@ $ rm -rf "$D"; echo done
 done
 $
 
-VMware guests without the vmware X driver (aarch64 has none) resize only
-through resolutionKMS, so bootstrap links the tracked tools.conf that enables
-it. Guests with the driver and other machines are left alone:
+Every VMware guest gets vmware-vmblock-fuse enabled (open-vm-tools ships it
+disabled; without it the session agent gets no file drag-and-drop). Guests
+without the vmware X driver (aarch64 has none) also resize only through
+resolutionKMS, so bootstrap links the tracked tools.conf that enables it.
+Guests with the driver keep their tools.conf; other machines are left alone.
+A stub systemctl answers the readiness probes and traces what apply runs:
 
-$ export BOOTSTRAP_TEST_MODE=1; D=$(mktemp -d); mkdir -p "$D/bin" "$D/home/.config/dotfiles/vmware-tools"; : > "$D/home/.config/dotfiles/vmware-tools/tools.conf"; printf '%s\n' '#!/bin/sh' '[ -n "${XF86:-}" ]' > "$D/bin/pacman"; printf '%s\n' '#!/bin/sh' 'echo "systemctl $*" >> "$DISPLAY_TRACE"' > "$D/bin/systemctl"; printf '%s\n' '#!/bin/sh' 'exec "$@"' > "$D/bin/sudo"; chmod +x "$D/bin/"*; TOOLS() { : > "$D/trace"; HOME="$D/home" PATH="$D/bin:$PATH" DISPLAY_TRACE="$D/trace" TOOLS_CONF="$D/etc/tools.conf" .local/bin/setup/bootstrap --vmware-display "$@" 2>&1 | sed "s|$D|D|g"; cat "$D/trace"; }; echo ready
+$ export BOOTSTRAP_TEST_MODE=1; D=$(mktemp -d); mkdir -p "$D/bin" "$D/home/.config/dotfiles/vmware-tools"; : > "$D/home/.config/dotfiles/vmware-tools/tools.conf"; printf '%s\n' '#!/bin/sh' '[ -n "${XF86:-}" ]' > "$D/bin/pacman"; printf '%s\n' '#!/bin/sh' 'echo "systemctl $*" >> "$TOOLS_TRACE"' 'case "$1" in is-enabled|is-active) [ -n "${VMBLOCK_ON:-}" ] ;; *) exit 0 ;; esac' > "$D/bin/systemctl"; printf '%s\n' '#!/bin/sh' 'exec "$@"' > "$D/bin/sudo"; chmod +x "$D/bin/"*; TOOLS() { : > "$D/trace"; HOME="$D/home" PATH="$D/bin:$PATH" TOOLS_TRACE="$D/trace" TOOLS_CONF="$D/etc/tools.conf" .local/bin/setup/bootstrap --vmware-tools "$@" 2>&1 | sed "s|$D|D|g"; grep -v ' is-' "$D/trace"; }; echo ready
 ready
 $ TOOLS apply none
   skipped: not a VMware guest
-$ XF86=1 TOOLS apply vmware
-  skipped: the vmware X driver applies display layouts
 $ TOOLS check vmware
+  would: systemctl enable --now vmware-vmblock-fuse
   would: symlink D/etc/tools.conf -> D/home/.config/dotfiles/vmware-tools/tools.conf, then restart vmtoolsd
+$ XF86=1 TOOLS apply vmware
+  vmware-vmblock-fuse enabled and active
+  a vmusr agent started before this gets file drag-and-drop at its next start (X login)
+  resolutionKMS skipped: the vmware X driver applies display layouts
+systemctl enable --now vmware-vmblock-fuse
 $ TOOLS apply vmware; readlink "$D/etc/tools.conf" | sed "s|$D|D|"
+  vmware-vmblock-fuse enabled and active
+  a vmusr agent started before this gets file drag-and-drop at its next start (X login)
   resolutionKMS enabled: D/etc/tools.conf -> D/home/.config/dotfiles/vmware-tools/tools.conf
   a vmusr agent started before this backs off at its next start (X login)
+systemctl enable --now vmware-vmblock-fuse
 systemctl restart vmtoolsd
 D/home/.config/dotfiles/vmware-tools/tools.conf
-$ TOOLS apply vmware
+$ VMBLOCK_ON=1 TOOLS apply vmware
+  vmware-vmblock-fuse enabled and active
   resolutionKMS already enabled: D/etc/tools.conf
-$ rm "$D/home/.config/dotfiles/vmware-tools/tools.conf"; TOOLS check vmware | grep -o 'FATAL: tracked tools.conf missing'
+$ rm "$D/home/.config/dotfiles/vmware-tools/tools.conf"; VMBLOCK_ON=1 TOOLS check vmware | grep -o 'FATAL: tracked tools.conf missing'
 FATAL: tracked tools.conf missing
 $ BOOTSTRAP_TEST_MODE=0 TOOLS check vmware | grep FATAL
-bootstrap: FATAL: vmware-display seam is test-only
+bootstrap: FATAL: vmware-tools seam is test-only
 $ rm -rf "$D"; echo done
 done
 $

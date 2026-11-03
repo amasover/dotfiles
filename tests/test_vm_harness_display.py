@@ -154,7 +154,7 @@ class TestStepFor:
 
     def test_every_current_post_reconcile_stage_is_mapped_in_order(self):
         cases = [
-            ("VMware guest display", "guest-display"),
+            ("VMware guest tools", "guest-tools"),
             ("Normalizing install reasons", "retag"),
             ("Package-removal hook", "removal-hook"),
             ("Vendored packages", "vendored"),
