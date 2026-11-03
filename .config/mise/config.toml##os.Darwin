@@ -17,6 +17,14 @@
 [bootstrap.mise_shell_activate]
 zsh = false
 
+# The read-only GitHub API token from the encrypted archive, for mise's own
+# GitHub API calls (github and ubi backends, release lookups) when `mise
+# bootstrap` or `mise install` runs outside an interactive shell. Interactive
+# shells also export it as MISE_GITHUB_TOKEN, which mise checks first. No file
+# prints nothing, and mise stays anonymous.
+[settings.github]
+credential_command = 'cat "$HOME/.config/dotfiles/github-token" 2>/dev/null || true'
+
 # The apps below were installed by hand before mise managed them. Adopt them
 # instead of replacing the bundles, which would drop their macOS privacy grants.
 # Self-updating apps (Firefox, Orca) are adopted as they are.
