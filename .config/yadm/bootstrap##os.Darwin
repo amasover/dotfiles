@@ -34,9 +34,11 @@
 #   --no-decrypt  skip the decrypt offer
 #   --no-mise     stop before `mise bootstrap`
 #
-# Test seam: BOOTSTRAP_TEST_MODE=1 (tests/mac-bootstrap.clitest.txt), as in
-# setup/bootstrap, lets the Linux CI run this past the Darwin guard and answer
-# the decrypt prompt from a pipe.
+# Test seam: MAC_BOOTSTRAP_TEST=1 (tests/mac-bootstrap.clitest.txt) lets the
+# Linux CI run this past the Darwin guard and answer the decrypt prompt from a
+# pipe. Its own name on purpose: setup/bootstrap's suites export
+# BOOTSTRAP_TEST_MODE=1 into the shell clitest shares across test files, and
+# that must never let this run on Linux.
 #
 # Runs under macOS's /bin/bash 3.2 too: no mapfile, no associative arrays.
 set -euo pipefail
@@ -74,7 +76,7 @@ for arg in "$@"; do
     esac
 done
 
-test_mode=${BOOTSTRAP_TEST_MODE:-0}
+test_mode=${MAC_BOOTSTRAP_TEST:-0}
 [[ $(uname -s) == Darwin || $test_mode == 1 ]] \
     || die "this bootstrap is for macOS; Linux uses .local/bin/setup/bootstrap"
 command -v yadm >/dev/null || die "yadm not found (brew install yadm)"
