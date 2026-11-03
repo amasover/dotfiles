@@ -6,11 +6,15 @@
 # ov.conf and the server exist it exits 0, so launchd, which restarts only
 # failures, leaves the agent idle instead of looping.
 #
-# Upstream #4210: a server killed by an unclean shutdown can leave
-# <workspace>/.openviking.pid behind, and after a reboot an unrelated process
-# may hold that pid; the server then exits 3 at every start. A pid file whose
-# process is not an OpenViking server is removed first. (0.5.3 locks the
-# workspace with flock and writes no pid file; then the check finds nothing.)
+# Upstream #4210: releases that write <workspace>/.openviking.pid can leave it
+# behind after an unclean shutdown, and after a reboot an unrelated process may
+# hold that pid; the server then exits 3 at every start. A pid file whose
+# process is not an OpenViking server is removed first.
+#
+# The pinned 0.5.3 writes no pid file: it takes an OS lock on
+# data/.openviking.lock, which the kernel releases when the process dies. On
+# that release this guard is a no-op; it stays for releases that write
+# .openviking.pid.
 #
 # It waits up to a minute for Ollama, so the server never starts its own.
 # launchd's PATH gives it macOS's /bin/bash 3.2; keep it to that dialect.
