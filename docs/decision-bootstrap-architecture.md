@@ -71,15 +71,17 @@ Config lives in `.config/metapac/` (yadm-tracked → placed on every machine).
 
 - **`yadm.class` is the concrete machine-profile selector**: a public-safe label
   that chooses the shared purpose set, one real hardware adapter, and one inbox.
-  Story 2.30 establishes `workstation` (Intel laptop), `daily-vm` (VMware), and
-  `qemu-harness` (libvirt/QEMU). New hardware gets a new adapter/class instead of
-  a caller-injected package list.
+  Story 2.30 established `workstation` (Intel laptop), `daily-vm` (VMware), and
+  `qemu-harness` (libvirt/QEMU); `workstation` has since retired with its laptop,
+  and `work-vm` (Mac-hosted Fusion, aarch64) joined per
+  [decision-work-vm.md](./decision-work-vm.md). New hardware gets a new
+  adapter/class instead of a caller-injected package list.
   Class labels stay public-safe; the real hostname exists only in rendered,
   untracked config.
 
 - **Groups** (`groups/*.toml`) keep the Story 2.2 fine-grained purpose taxonomy.
   Story 2.30 centralizes 15 universal purposes in `profiles/common.groups`, adds
-  `work` only to the physical workstation, and composes one hardware adapter plus
+  `work` only to the physical workstation (now to `work-vm` instead), and composes one hardware adapter plus
   one inbox per concrete class. Fine groups remain independently reusable when a
   future profile needs a smaller purpose set. Bootstrap reconciles NetworkManager
   enabled/active and systemd-networkd disabled/inactive after package reconcile;

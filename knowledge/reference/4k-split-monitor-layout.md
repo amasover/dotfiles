@@ -2,9 +2,10 @@
 
 Captured 2026-08-22, when the untracked pre-5.5 autorandr hooks were archived
 so the laptop could converge to main (the 5.5 postswitch). This is the record
-of how the 4K docking setups were built, for the [Story 3.17](../../docs/epic-3-shell-editor-desktop-cleanup.md#story-317-migrate-monitor-names-after-the-modesetting-driver-switch)
-([#129](https://github.com/amasover/dotfiles/issues/129)) rebuild. Do not
-extend these hooks as-is — see "Rebuild guidance" below.
+of how the 4K docking setups were built, for the [Story 3.17](../../docs/epic-3-shell-editor-desktop-cleanup.md#story-317-migrate-monitor-names-after-the-modesetting-driver-switch-)
+([#129](https://github.com/amasover/dotfiles/issues/129)) rebuild. That story
+closed 2026-11-02 when the laptop retired; the tracked profiles and hooks are
+gone. Do not extend these hooks as-is — see "Rebuild guidance" below.
 
 ## The idea
 

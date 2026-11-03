@@ -695,6 +695,11 @@ included 15-group purpose list; only `workstation` adds `work`. Each class names
 exactly one `inbox-<class>`, and yay resolves that inbox from rendered
 `hostname_groups` rather than counting every tracked inbox file.
 
+Retired 2026-11-02: the laptop was wiped and returned, so `workstation`,
+`hardware-intel-laptop` and `inbox-workstation` are gone; `work-vm` (Mac-hosted
+Fusion, aarch64) now carries `work`. See
+[decision-work-vm.md](./decision-work-vm.md). The record below is historical.
+
 The Intel adapter owns ACPI, refind, Intel media, and 64/32-bit Intel Vulkan.
 `linux-firmware` remains shared because archinstall installs it explicitly on
 every guest. AMD and VESA DDX/Vulkan packages are retired; built-in Xorg
@@ -850,7 +855,7 @@ display (`tools/vm-harness-display`); bash survives only in the guest-side
 scripts (bootstrap invocation, check assertions), extracted from the libvirt
 harness and shared. Pester is permitted opportunistically where PowerShell
 logic is unavoidable; the default is moving logic to Python. **Decoupled from
-Story 2.30:** runs use the `workstation` class (`qemu-guest-agent` is inert
+Story 2.30:** runs used the then-live `workstation` class (`qemu-guest-agent` is inert
 under VMware, mirroring 2.30's "harmless under QEMU" note); the
 `daily-vm`-class-under-VMware proof belongs to Story 2.37. Install
 observability is seed-driven — installer output redirected to serial (VMware
@@ -904,7 +909,7 @@ story. Slice-3 decisions:
   raw phase logs; the pty question returns with slice 4's display work.
 - Driver env vars `VM_HARNESS_REPO`/`BRANCH`/`CLASS` get wired through to the
   guest glue (defaults: public GitHub URL / repo default branch /
-  `workstation`).
+  `workstation`; now `daily-vm`, or `work-vm` on macOS).
 
 Slice-4 decisions (2026-08-15 build):
 

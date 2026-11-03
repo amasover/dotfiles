@@ -54,8 +54,8 @@ their numbers and homes; nothing is renumbered.
 ### Out of Scope
 
 - Bootstrap/package convergence mechanics (Epic 2).
-- Host desktop cleanup — the host monitor-name migration stays with
-  [3.17](./epic-3-shell-editor-desktop-cleanup.md).
+- Host desktop cleanup — Story 3.17's host monitor-name migration closed when
+  its laptop retired; [3.17](./epic-3-shell-editor-desktop-cleanup.md) keeps the record.
 - Graduating the guest to the actual daily driver (2.37 owns that call).
 
 ---
@@ -299,6 +299,48 @@ fell back safely to Software WebRender.
 
 ---
 
+### Story 5.8: The Mac work VM is the daily driver
+
+As the repo owner,
+I want an aarch64 Arch guest under VMware Fusion on the work Mac, provisioned and
+bootstrapped by the repo's harness,
+So that the employer machine runs my real environment across every display.
+
+Issue: TBD · Origin: [decision-work-vm.md](./decision-work-vm.md) (2026-11-02,
+work-laptop replacement).
+
+**Current state (2026-11-02):** no guest exists yet. archiso-aarch64 ships
+cloud-init and `archinstall-aarch64`, but nobody has reported it booting in a VM.
+The Arch Linux Ports (drzee) repos lack `xf86-video-vmware`, so Xorg runs
+modesetting on vmwgfx.
+
+**Acceptance criteria:**
+
+- `vm-harness-vmware.ps1` runs under PowerShell 7 on macOS (`$IsMacOS`) against
+  Fusion's `vmrun`/`vmcli`, defaulting to class `work-vm` and seed target
+  `vmware-aarch64`. Its Python tools gain host-independent tests for the macOS
+  paths. A disposable run ends `=== bootstrap done rc=0` + `=== check done rc=0`.
+- `provision-seed --target work-vm` produces the LUKS-root aarch64 recipe; the
+  real VM is installed from it and decrypts the full archive.
+- Class `work-vm` renders `guest-vmware`, `work`, `inbox-work-vm`, and
+  `arch-aarch64`; metapac unmanaged and missing are both empty on the guest.
+  Shared purpose groups stay architecture-neutral; x86-only packages live in
+  `arch-x86_64`, and bootstrap still fails loudly on a genuinely missing package.
+- Multi-display: in Fusion's "Use All Displays in Full Screen" mode, the guest
+  gets one output per Mac display (panel + external 4K, later a second 4K).
+  Polybar roles and i3 workspaces follow without an autorandr profile.
+- HiDPI: a recorded choice between Fusion's full-resolution Retina mode with a
+  guest `Xft.dpi` and scaled (non-Retina) mode. Text is sharp and consistently
+  sized on both the Retina panel and the 4K.
+- Later, for Slacky huddles: the Mac camera and microphone reach the guest
+  through Fusion, shown by a test call from the guest.
+
+**Evidence artifact:** the disposable harness log set, the `work-vm` metapac
+render and check output, and `xrandr --listactivemonitors` plus a screenshot
+across all displays in full screen.
+
+---
+
 ## Risks
 
 ### Risk: Credentials accumulate in disposable guests
@@ -311,4 +353,5 @@ privacy pass on every PR as usual.
 
 Polybar/resolution work brushes against epic 3's territory. Mitigation: the
 boundary rule above, and explicit coordination notes in 5.4/5.5 pointing at
-3.17 and 2.30 instead of duplicating them.
+3.17 and 2.30 instead of duplicating them. Since 3.17 closed, guest display
+layout (5.8) belongs to this epic.

@@ -207,15 +207,15 @@ YADM are already present. Clone and select the concrete class before bootstrap:
 ```bash
 nmtui                                # Wi-Fi only; wired comes up on its own
 yadm clone https://github.com/amasover/dotfiles.git
-yadm config local.class workstation  # or portable: see the class table
+yadm config local.class portable    # or another class from the class table
 yadm alt
 ```
 
 The class must match the machine. A fixed install takes the class of its hardware;
-the only fixed physical adapter tracked is `workstation`/`hardware-intel-laptop`, so
-add another class before provisioning different hardware. A portable drive takes
-`portable` whatever machine it is first booted on. Resolve any checkout conflict
-before continuing.
+no fixed physical adapter is tracked since the `workstation` class retired with
+its laptop, so add a class and adapter before provisioning a fixed machine. A
+portable drive takes `portable` whatever machine it is first booted on. Resolve
+any checkout conflict before continuing.
 
 ## Run
 
@@ -266,7 +266,7 @@ What it does, in order:
    images whose embedded merged configuration differs from the post-link configuration.
    A machine whose running command line still carries `cryptdevice=` is reported and
    skipped; see [systemd initramfs migration](#systemd-initramfs-migration).
-10. **rEFInd boot configuration** — `workstation` and `portable` only. Reconciles tracked portable policy,
+10. **rEFInd boot configuration** — `portable` only. Reconciles tracked portable policy,
    generated machine scan/kernel entries, and package-owned Nord assets. Production access
    gets a separate `pkexec` approval; existing files are backed up outside the ESP before
    any write. Unmanaged files stop normal apply rather than being replaced.
@@ -335,19 +335,26 @@ All classes include the same 15 purpose groups from
 
 | Class | Intended machine | Added groups |
 | --- | --- | --- |
-| `workstation` | Managed physical Intel laptop | `work`, `hardware-intel-laptop`, `inbox-workstation` |
-| `daily-vm` | Windows-hosted VMware daily driver | `guest-vmware`, `inbox-daily-vm` |
-| `qemu-harness` | Disposable libvirt validation guest | `guest-qemu`, `inbox-qemu-harness` |
-| `portable` | Portable drive booting any x86_64 UEFI machine | `hardware-portable`, `inbox-portable` |
+| `work-vm` | Mac-hosted VMware Fusion aarch64 work VM | `guest-vmware`, `work`, `inbox-work-vm`, `arch-aarch64` |
+| `daily-vm` | Windows-hosted VMware daily driver | `guest-vmware`, `guest-vmware-x86_64`, `inbox-daily-vm`, `arch-x86_64` |
+| `qemu-harness` | Disposable libvirt validation guest | `guest-qemu`, `inbox-qemu-harness`, `arch-x86_64` |
+| `portable` | Portable drive booting any x86_64 UEFI machine | `hardware-portable`, `inbox-portable`, `arch-x86_64` |
 
-Each concrete class selects exactly one hardware adapter and one inbox. To add a
+The `arch-*` adapter is not chosen per class: the template includes the one
+matching `yadm.arch` (`uname -m`) for every class. Shared purpose groups stay
+architecture-neutral; x86-only packages live in `arch-x86_64` and their aarch64
+substitutes in `arch-aarch64`. The `workstation` class, its
+`hardware-intel-laptop` adapter and `inbox-workstation` were retired with the
+old work laptop (wiped and returned); `work-vm` carries the `work` group now.
+
+Each concrete class selects exactly one hardware or guest adapter and one inbox. To add a
 machine profile, add its guarded template branch, adapter, and inbox; set
 `yadm config local.class <class>`, then run `yadm alt`. Bootstrap enables
 NetworkManager for every class after package reconcile.
 
 `portable` leaves out `work`. Its adapter carries microcode, firmware, and GPU
 userspace for Intel, AMD, and NVIDIA (nouveau/NVK), because the drive meets
-chassis it was never installed on. Its inbox started as a copy of
+chassis it was never installed on. Its inbox started as a copy of the retired
 `inbox-workstation`'s untriaged set, since the drive succeeded that laptop.
 
 ## Bare-metal hibernation storage
