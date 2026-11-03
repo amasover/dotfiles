@@ -15,3 +15,6 @@
 # no permissions, only to lift the anonymous API rate limit (custom-pkgs, mise,
 # tenv). Never GITHUB_TOKEN/GH_TOKEN; see runbook-fresh-machine-bootstrap.md.
 .config/dotfiles/github-token
+# This machine's time zone, one IANA name (bootstrap step 2b). Installs run
+# UTC and the repo never names a zone; only this file says where it lives.
+.config/dotfiles/timezone

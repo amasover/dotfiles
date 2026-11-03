@@ -4,7 +4,8 @@ Run from repo root: clitest tests/autorandr-hooks.clitest.txt
 
 The preswitch hook removes arbitrary virtual monitors while preserving physical
 ones; xrandr failures remain visible. The home postswitch hook recreates its
-logical split and stable i3 workspace map.
+logical split and stable i3 workspace map through tools/monitor-split and the
+tracked home.layout (HOME is the repo root, so both are the tracked files).
 
 $ hook=.config/autorandr/preswitch.d/10-clear-virtual-monitors; CLITMP=$(mktemp -d); mkdir -p "$CLITMP/bin"; printf '%s\n' '#!/bin/sh' 'case "${1-}" in' '    --listmonitors) cat "$XRANDR_MONITORS"; exit "${XRANDR_LIST_RC:-0}" ;;' '    --delmonitor) printf "%s\\n" "$2" >> "$XRANDR_LOG" ;;' '    *) exit 2 ;;' 'esac' > "$CLITMP/bin/xrandr"; chmod +x "$CLITMP/bin/xrandr"; export PATH="$CLITMP/bin:$PATH" XRANDR_MONITORS="$CLITMP/monitors" XRANDR_LOG="$CLITMP/deleted"; echo ready
 ready
@@ -30,11 +31,18 @@ $ XRANDR_LIST_RC=23 "$hook" >/dev/null 2>&1; echo "rc=$?"
 rc=23
 $
 
-the home hook creates both logical halves before issuing its workspace map:
+the home hook carves DP-1-1 into both logical halves (the first owns the
+output, the second takes none; 600x340mm split in proportion) and keeps
+DP-1-2 whole as main, then issues the old workspace map once i3 lists the
+new monitors. The xrandr stub answers queries from fixtures:
 
-$ home_hook=.config/autorandr/home/postswitch.d/10-split-monitor; export HOOK_LOG="$CLITMP/hook-calls"; printf '%s\n' '#!/bin/sh' 'printf "xrandr %s\\n" "$*" >> "$HOOK_LOG"' > "$CLITMP/bin/xrandr"; printf '%s\n' '#!/bin/sh' 'printf "i3-msg %s\\n" "$*" >> "$HOOK_LOG"' > "$CLITMP/bin/i3-msg"; chmod +x "$CLITMP/bin/xrandr" "$CLITMP/bin/i3-msg"; : > "$HOOK_LOG"; "$home_hook"; cat "$HOOK_LOG"
+$ home_hook=.config/autorandr/home/postswitch.d/10-split-monitor; export HOOK_LOG="$CLITMP/hook-calls" XRANDR_Q="$CLITMP/q"; printf '%s\n' '#!/bin/sh' 'printf "xrandr %s\\n" "$*" >> "$HOOK_LOG"' 'case "$1" in -q) cat "$XRANDR_Q" ;; --listmonitors) cat "$XRANDR_MONITORS" ;; esac' > "$CLITMP/bin/xrandr"; printf '%s\n' '#!/bin/sh' 'printf "i3-msg %s\\n" "$*" >> "$HOOK_LOG"' '[ "$1" = -t ] && echo "[{\"name\":\"DP-1-1~1\",\"active\":true},{\"name\":\"DP-1-1~2\",\"active\":true}]"' 'exit 0' > "$CLITMP/bin/i3-msg"; chmod +x "$CLITMP/bin/xrandr" "$CLITMP/bin/i3-msg"; echo ready
+ready
+$ printf '%s\n' 'Screen 0: minimum 8 x 8, current 5760 x 2540, maximum 32767 x 32767' 'eDP-1 connected primary 1920x1080+0+1460 (normal left inverted right x axis y axis) 344mm x 194mm' 'DP-1-1 connected 1920x2160+3840+0 (normal left inverted right x axis y axis) 600mm x 340mm' 'DP-1-2 connected 1920x2160+1920+0 (normal left inverted right x axis y axis) 600mm x 340mm' 'DP-1-3 disconnected (normal left inverted right x axis y axis)' > "$XRANDR_Q"; printf 'Monitors: 3\n 0: +*eDP-1 1920/344x1080/194+0+1460  eDP-1\n 1: +DP-1-2 1920/600x2160/340+1920+0  DP-1-2\n 2: +DP-1-1 1920/600x2160/340+3840+0  DP-1-1\n' > "$XRANDR_MONITORS"; : > "$HOOK_LOG"; HOME=$PWD "$home_hook"; echo "rc=$?"; grep -v -e '^xrandr -q' -e '^xrandr --listmonitors' "$HOOK_LOG"
+rc=0
 xrandr --setmonitor DP-1-1~1 1920/600x1080/170+3840+0 DP-1-1
-xrandr --setmonitor DP-1-1~2 1920/600x1080/170+3840+1080 DP-1-1
+xrandr --setmonitor DP-1-1~2 1920/600x1080/170+3840+1080 none
+i3-msg -t get_outputs
 i3-msg [workspace="^1:"] move workspace to output "DP-1-2"
 i3-msg [workspace="^2:"] move workspace to output "DP-1-1~2"
 i3-msg [workspace="^[35]:"] move workspace to output "DP-1-1~1"

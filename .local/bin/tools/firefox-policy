@@ -3,20 +3,25 @@
 #
 # Firefox reads one system policy file, /etc/firefox/policies/policies.json.
 # It is composed from the tracked policies.json (default extensions and
-# preferences, every machine) and, on a VMware guest only, policies-vmware.json.
+# preferences, every machine) and, on a VMware guest only, policies-vmware.json
+# plus policies-vmware-<arch>.json for the machine's `uname -m`.
 # Firefox 154 sees Mesa's SVGA driver as software GL and blocklists hardware
-# WebRender. The guest works through GLX when hardware WebRender is forced;
-# Firefox's default EGL path fails to create a WebRender context.
+# WebRender. Every VMware guest selects GLX, because Firefox's default EGL path
+# fails to create a WebRender context, and forces layer acceleration.
+# x86_64 guests (Workstation) then force hardware WebRender. aarch64 guests
+# (Fusion on Apple Silicon) draw black rectangles over page content with it, so
+# they lock Software WebRender; WebGL still runs on SVGA3D.
 #
 # The composed file is written below ~/.local/state and /etc links to it, so a
 # tracked change reaches Firefox on the next run without root. Only creating
 # or moving the link needs sudo. Anything else at /etc is left to its owner.
 #
 # Usage:
-#   firefox-policy reconcile [--check] [--root DIR] [--virt NAME]
+#   firefox-policy reconcile [--check] [--root DIR] [--virt NAME] [--arch NAME]
 #
-# Production detects virtualization and writes below /. Tests inject a fixture
-# root and virtualization name; fixture roots never invoke sudo.
+# Production detects virtualization and architecture and writes below /. Tests
+# inject a fixture root, virtualization and architecture; fixture roots never
+# invoke sudo.
 set -euo pipefail
 
 usage() {
@@ -38,6 +43,7 @@ shift
 check=0
 root=/
 virt=
+arch=
 while (($#)); do
     case $1 in
         --check)
@@ -54,6 +60,11 @@ while (($#)); do
             virt=$2
             shift 2
             ;;
+        --arch)
+            (($# >= 2)) || die "--arch needs a name"
+            arch=$2
+            shift 2
+            ;;
         -h | --help)
             usage
             exit 0
@@ -67,6 +78,7 @@ if [[ -z $virt ]]; then
     virt=$(systemd-detect-virt 2>/dev/null || true)
     [[ -n $virt ]] || virt=none
 fi
+[[ -n $arch ]] || arch=$(uname -m)
 
 src_dir=${FIREFOX_POLICY_SOURCE_DIR:-"$HOME/.config/dotfiles/firefox"}
 generated=${FIREFOX_POLICY_STATE:-"${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/firefox/policies.json"}
@@ -77,13 +89,16 @@ sudo_cmd=()
 [[ $root == / ]] && sudo_cmd=(sudo)
 
 sources=("$src_dir/policies.json")
-[[ $virt == vmware ]] && sources+=("$legacy")
+fragment="without the VMware fragments"
+if [[ $virt == vmware ]]; then
+    sources+=("$legacy" "$src_dir/policies-vmware-$arch.json")
+    fragment="with the VMware $arch fragments"
+fi
 for source in "${sources[@]}"; do
     [[ -f $source ]] || die "tracked policy missing: $source"
 done
 desired=$(jq -S -s 'reduce .[] as $part ({}; . * $part)' "${sources[@]}") \
     || die "tracked policy is not valid JSON"
-fragment=$([[ $virt == vmware ]] && echo "with the VMware fragment" || echo "without the VMware fragment")
 
 current=$(readlink "$dst" 2>/dev/null || true)
 if [[ $current != "$generated" && $current != "$legacy" ]] && [[ -e $dst || -L $dst ]]; then

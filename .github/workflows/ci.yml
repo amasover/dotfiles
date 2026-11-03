@@ -71,7 +71,7 @@ jobs:
         run: |
           pkgbuild=.config/dotfiles/pkgbuilds/betterleaks/PKGBUILD
           version=$(sed -n 's/^pkgver=//p' "$pkgbuild")
-          sha256=$(sed -n "s/^sha256sums=('\([0-9a-f]\{64\}\)').*/\1/p" "$pkgbuild")
+          sha256=$(sed -n "s/^sha256sums_x86_64=('\([0-9a-f]\{64\}\)').*/\1/p" "$pkgbuild")
           [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ $sha256 =~ ^[0-9a-f]{64}$ ]]
 

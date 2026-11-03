@@ -473,7 +473,7 @@ acceleration. Diagnosis: [knowledge/errors/mesa-i965-override-forces-llvmpipe.md
 
 ---
 
-### Story 3.17: Migrate monitor names after the modesetting driver switch
+### Story 3.17: Migrate monitor names after the modesetting driver switch ✅
 
 As the repo owner,
 I want the desktop's monitor-layout configs to use the `modesetting` driver's
@@ -481,7 +481,7 @@ dashed output names,
 So that autorandr auto-switching and the polybar multi-monitor layouts work
 again after the 3.16 driver change.
 
-Issue: [#129](https://github.com/amasover/dotfiles/issues/129) · Origin: fallout from
+Issue: [#129](https://github.com/amasover/dotfiles/issues/129) (closed, PR #282) · Origin: fallout from
 Story 3.16 (#126, PR #127), found during post-reboot verification. Not a regression to
 reverse — the driver switch was correct; the rename has to be followed through.
 
@@ -529,6 +529,16 @@ Polybar relaunching a global autorandr concern.
 **Evidence artifact:** matching `autorandr --detected`/`--current` output plus
 `xrandr --listactivemonitors`, Polybar process placement, and i3 workspace
 placement after each retained setup is reconnected.
+
+**Closed 2026-11-02: the remaining work sites are unreachable.** The old work laptop
+is wiped and gone, so the offsite work-4K, office, and DisplayLink setups can no
+longer be reconnected. The tracked profiles (`home`, `laptop`, `office`), the `home`
+split hook, and the `.screenlayout` scripts stay: a planned personal Linux laptop may
+reuse them once it captures its own `eDP-1` fingerprint. The 4K monitor is driven
+through the Mac work VM for now ([decision-work-vm.md](./decision-work-vm.md)); no
+profile matches there, so i3's session-start `autorandr --change --force` applies
+nothing and `exec --no-startup-id` ignores its exit status. VM display layout belongs
+to Epic 5 Story 5.8.
 
 ---
 

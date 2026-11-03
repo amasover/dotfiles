@@ -9,8 +9,8 @@
 # colorpicker: build-rot relic (2017 GTK, no longer compiles) — machine-local on the
 # workstation; gpick (declared here) is the live alternative (2.7 VM finding).
 # Machine-specific GPU, firmware, and boot packages live in concrete hardware
-# adapters; generic linux-firmware remains shared in base. The Intel laptop and
-# both guests use Xorg's built-in or dedicated driver; no generic fallback lives here.
+# adapters; generic linux-firmware remains shared in base. Every class uses
+# Xorg's built-in or dedicated driver; no generic fallback lives here.
 [arch]
 packages = [
   "adobe-source-code-pro-fonts",
@@ -36,7 +36,6 @@ packages = [
   "i3lock",
   "ibus-chewing",
   "kwallet5",
-  "lib32-glu",
   "lightdm-webkit-theme-litarvan",
   "lxappearance",
   "lxqt-policykit",

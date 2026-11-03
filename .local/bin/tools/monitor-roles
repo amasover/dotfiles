@@ -5,23 +5,38 @@
 #   MONITOR_MAIN   the primary monitor ('*' flag), else the first listed
 #   MONITOR_LEFT   the leftmost monitor positioned left of MAIN, if any
 #   MONITOR_EXTRA  the next remaining monitor, if any
+#   MONITOR_OVERFLOW  every monitor still left over, left to right, as one
+#                  quoted space-separated list (heuristic only; launch.sh gives
+#                  each one the EXTRA bars, so every monitor gets a bar)
+# Pinned roles come first: `monitor-split roles` names the monitors of a
+# split it carved (the work VM's home 4K split). A pinned monitor keeps its
+# role, a pinned MAIN anchors LEFT, and the heuristic fills the remaining
+# roles from the unpinned monitors only. A pin naming an inactive monitor is
+# ignored loudly.
 # A per-autorandr-profile override may replace or clear those roles and assign
 # MONITOR_SPLIT_TOP/BOTTOM. Warnings are computed after that merge, so logical
-# monitors claimed by split roles are not falsely reported as unassigned.
+# monitors claimed by split roles are not falsely reported as unassigned. With
+# an override there is no overflow: a monitor it leaves unclaimed is warned
+# about, since an emptied role must keep its bar off.
 #
 # Output is eval'd by launch.sh, so emitted values are restricted to
 # [A-Za-z0-9._~-]; unsafe monitor names and override lines are dropped loudly.
 #
 #   monitor-roles                       query xrandr and assign heuristically
-#   monitor-roles resolve [OVERRIDE]    query xrandr, then merge OVERRIDE
-#   monitor-roles assign [OVERRIDE]     read listactivemonitors text on stdin
-#                                      (test seam), then merge OVERRIDE
+#   monitor-roles resolve [OVERRIDE]    query xrandr and monitor-split's pins,
+#                                      then merge OVERRIDE
+#   monitor-roles assign [--pins FILE] [OVERRIDE]
+#                                      read listactivemonitors text on stdin
+#                                      (test seam), pins from FILE, then
+#                                      merge OVERRIDE
 
 usage() {
-    echo "usage: monitor-roles [resolve [OVERRIDE] | assign [OVERRIDE]]" >&2
+    echo "usage: monitor-roles [resolve [OVERRIDE] | assign [--pins FILE] [OVERRIDE]]" >&2
     exit 2
 }
 
+# $1 = override file (optional); pinned roles in $pins, as MONITOR_<ROLE>=NAME
+# lines (the override file's syntax).
 assign() {
     override_file=${1:-/dev/null}
     [ -r "$override_file" ] || {
@@ -29,13 +44,24 @@ assign() {
         exit 1
     }
 
-    awk '
+    MONITOR_ROLES_PINS=${pins-} awk '
+        BEGIN {
+            np = split(ENVIRON["MONITOR_ROLES_PINS"], pl, "\n")
+            for (i = 1; i <= np; i++) {
+                if (pl[i] ~ /^MONITOR_(MAIN|LEFT|EXTRA|SPLIT_TOP|SPLIT_BOTTOM)=[A-Za-z0-9._~-]+$/) {
+                    equals = index(pl[i], "=")
+                    pin[substr(pl[i], 9, equals - 9)] = substr(pl[i], equals + 1)
+                } else if (pl[i] != "")
+                    print "monitor-roles: pin ignoring line: " pl[i] > "/dev/stderr"
+            }
+        }
         FILENAME != "-" {
             if ($0 ~ /^MONITOR_(MAIN|LEFT|EXTRA|SPLIT_TOP|SPLIT_BOTTOM)=[A-Za-z0-9._~-]*$/) {
                 equals = index($0, "=")
                 key = substr($0, 9, equals - 9)
                 overrides[key] = substr($0, equals + 1)
                 overridden[key] = 1
+                has_override = 1
                 next
             }
             if ($0 ~ /^[[:space:]]*#/ || $0 ~ /^[[:space:]]*$/) next
@@ -61,18 +87,35 @@ assign() {
                 exit 1
             }
 
-            main = 1
-            for (i = 1; i <= n; i++) if (prim[i]) { main = i; break }
-            roles["MAIN"] = names[main]
+            main = 0
+            for (key in pin) {
+                found = 0
+                for (i = 1; i <= n; i++) if (names[i] == pin[key]) found = i
+                if (!found) {
+                    printf "monitor-roles: pinned %s monitor %s is not active; ignoring\n", key, pin[key] > "/dev/stderr"
+                    continue
+                }
+                pinned[found] = 1
+                roles[key] = pin[key]
+                if (key == "MAIN") main = found
+            }
+
+            if (!main) {
+                for (i = 1; i <= n; i++) if (!pinned[i] && prim[i]) { main = i; break }
+                for (i = 1; i <= n && !main; i++) if (!pinned[i]) main = i
+                if (main) roles["MAIN"] = names[main]
+            }
 
             left = 0
-            for (i = 1; i <= n; i++)
-                if (i != main && xs[i] < xs[main] && (!left || xs[i] < xs[left])) left = i
+            if (main && roles["LEFT"] == "")
+                for (i = 1; i <= n; i++)
+                    if (i != main && !pinned[i] && xs[i] < xs[main] && (!left || xs[i] < xs[left])) left = i
             if (left) roles["LEFT"] = names[left]
 
             extra = 0
-            for (i = 1; i <= n; i++)
-                if (i != main && i != left && (!extra || xs[i] < xs[extra])) extra = i
+            if (roles["EXTRA"] == "")
+                for (i = 1; i <= n; i++)
+                    if (i != main && i != left && !pinned[i] && (!extra || xs[i] < xs[extra])) extra = i
             if (extra) roles["EXTRA"] = names[extra]
 
             for (key in overridden) roles[key] = overrides[key]
@@ -90,6 +133,21 @@ assign() {
                 }
             }
 
+            # Left to right among the unclaimed (stable insertion sort).
+            m = 0
+            if (!has_override)
+                for (i = 1; i <= n; i++) {
+                    if (names[i] in claimed) continue
+                    for (j = ++m; j > 1 && xs[over[j - 1]] > xs[i]; j--) over[j] = over[j - 1]
+                    over[j] = i
+                }
+            if (m) {
+                list = names[over[1]]
+                for (j = 2; j <= m; j++) list = list " " names[over[j]]
+                printf "MONITOR_OVERFLOW='\''%s'\''\n", list
+                for (j = 1; j <= m; j++) claimed[names[over[j]]] = 1
+            }
+
             for (i = 1; i <= n; i++)
                 if (!(names[i] in claimed))
                     printf "monitor-roles: no role for %s after override resolution\n", names[i] > "/dev/stderr"
@@ -98,6 +156,9 @@ assign() {
 }
 
 resolve() {
+    pins=
+    split_tool="$(dirname "$0")/monitor-split"
+    [ -x "$split_tool" ] && pins=$("$split_tool" roles)
     xrandr --listactivemonitors | assign "${1-}"
 }
 
@@ -106,9 +167,20 @@ case "${1-}" in
         [ $# -eq 0 ] || usage
         resolve
         ;;
-    resolve | assign)
+    resolve)
         [ $# -le 2 ] || usage
-        "$1" "${2-}"
+        resolve "${2-}"
+        ;;
+    assign)
+        shift
+        pins=
+        if [ "${1-}" = --pins ]; then
+            [ $# -ge 2 ] || usage
+            pins=$(cat "$2") || exit 1
+            shift 2
+        fi
+        [ $# -le 1 ] || usage
+        assign "${1-}"
         ;;
     *) usage ;;
 esac

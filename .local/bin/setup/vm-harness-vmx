@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""vm-harness-vmx — .vmx authoring for the VMware Workstation harness (2.36, #119).
+"""vm-harness-vmx — .vmx authoring for the VMware harness (2.36, #119).
 
 Generates the VM definition the way the libvirt harness's virt-install call
-does, translated to Workstation: UEFI firmware (systemd-boot needs it — the
-bash harness learned this from the retired legacy-BIOS win10 VM), NVMe disk
-(the seed's archinstall config targets /dev/nvme0n1), two SATA CD drives
-(arch ISO + NoCloud seed), NAT nic, and a serial port logging to a file — the
-install phase's observability channel, since VMware has no direct-kernel-boot
-serial trick.
+does, translated to VMware (Workstation on Windows, Fusion on an Apple-silicon
+Mac — `--arch` picks the hardware table): UEFI firmware (systemd-boot needs
+it — the bash harness learned this from the retired legacy-BIOS win10 VM),
+NVMe disk (the seed's archinstall config targets /dev/nvme0n1), two SATA CD
+drives (arch ISO + NoCloud seed), NAT nic, and a serial port logging to a
+file — the install phase's observability channel, since VMware has no
+direct-kernel-boot serial trick.
 
 `eject` rewrites the vmx so later boots hit the disk: with the ISO still
 attached, the EFI firmware would boot the installer again instead of the
@@ -20,26 +21,96 @@ installed system — the Workstation equivalent of the bash harness's
 answers where `up` starts — or refuses (dead-install / install-running),
 because `up` never destroys and never re-runs a died install unasked.
 
+`ports-iso` picks the archiso-aarch64 ISO and its published sha256 out of a
+Codeberg release (JSON on stdin) for the macOS driver's `fetch`, which keeps
+the download and the hash check against the file.
+
 Logic is pure (text in/text out); only main() touches files. Tests:
 tests/test_vm_harness_vmx.py.
 """
 
 import argparse
+import json
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+
+
+# Per-architecture hardware. x86_64 is the Workstation (Windows host) VM and
+# stays exactly as validated there; aarch64 is the Fusion (Apple-silicon Mac)
+# VM. Fusion runs arm64 guests only, and its arm platform has no PS/2 or
+# vmmouse — keyboard and mouse are USB devices on the XHCI controller, which
+# Broadcom KB 315602 names as the supported arm input path (EHCI/UHCI "not
+# fully supported"). guestOS/virtualHW were read off a scratch VM made by
+# Fusion 26H1's own `vmcli VM Create` (virtualHW 22); the 7.x id comes from
+# the same build's guest table ("Other Linux 7.x and later kernel 64-bit
+# Arm") because the Ports kernel is 7.x.
+#
+# "extra" holds the keys only one architecture writes, appended after the
+# shared set in this order.
+ARCH_HW = {
+    "x86_64": {"virtualHW": "21", "guestOS": "other6xlinux-64", "usb": "FALSE",
+               "extra": []},
+    "aarch64": {
+        "virtualHW": "22", "guestOS": "arm-other7xlinux-64", "usb": "TRUE",
+        "extra": [
+            ("usb_xhci.present", "TRUE"),
+            # Multi-monitor ("Use All Displays in Full Screen") depends on SVGA
+            # autodetect, which is on by default — pinned so a hand edit can't
+            # silently cap it. At power-on Fusion sizes the display memory
+            # from the host's display topology (vmware.log, 2026-11-02:
+            # "SVGA-GFB: Max wh(6688, 5016), number of displays: 10", then
+            # writes svga.vramSize itself); the guest's vmwgfx screen-target
+            # unit exposes Virtual-1..8 connectors. Fixed svga.maxWidth/
+            # maxHeight/numDisplays/vramSize would only cap that, so none are
+            # set. The rest is guest-side: vmtoolsd running (Fusion refuses
+            # multimon otherwise — "must have up-to-date VMware Tools").
+            ("svga.autodetect", "TRUE"),
+            # 3D memory (the GUI's "Shared graphics memory"): Fusion's default
+            # is 256 MiB (same log), and the Mac panel plus two 4K heads take
+            # ~100 MiB of that as bare 32-bpp framebuffers. 2 GiB leaves room
+            # for compositor and WebRender surfaces; verified honoured live
+            # (vmware.log: "SVGA: graphicsMemoryKB=2097152").
+            ("svga.graphicsMemoryKB", "2097152"),
+            # Fusion's sound default is es1371, which the arm vmx refuses at
+            # power-on ("es1371 is not valid device type for sound"); hdaudio
+            # powers on and binds the host's default output and input
+            # (scratch VM, 2026-11-03). The guest driver is snd-hda-intel.
+            ("sound.virtualDev", "hdaudio"),
+            # The Mac's camera as a virtual UVC device ("Add Device > Camera"
+            # in the GUI, Fusion Pro 26H1 guide): Fusion streams the host's
+            # default AVCapture camera into it. Port 5 is the one Fusion
+            # leaves free beside its own HID (4) and hubs (6, 7).
+            ("usb_xhci:5.present", "TRUE"),
+            ("usb_xhci:5.deviceType", "video"),
+            ("usb_xhci:5.port", "5"),
+            ("usb_xhci:5.parent", "-1"),
+            # Drag-and-drop off, clipboard on (copy/paste keys untouched).
+            # Live on the work VM (2026-11-03): guest-to-host drags never leave
+            # the VM window; host-to-guest drops deliver the file, but each
+            # drag leaves a 32x32 override-redirect window owned by
+            # vmware-user (vmtoolsd -n vmusr) mapped at +0+0, which i3 cannot
+            # manage — six had piled up over polybar. Files move through the
+            # shared folders (--share) instead.
+            ("isolation.tools.dnd.disable", "TRUE"),
+        ],
+    },
+}
 
 
 def build_vmx(
     *, name: str, disk: str, iso: str, seed_iso: str, serial_log: str,
-    ram_mib: int, cpus: int,
+    ram_mib: int, cpus: int, arch: str = "x86_64",
+    shares: Sequence[tuple[str, str]] = (),
 ) -> str:
+    hw = ARCH_HW[arch]
     entries = [
         (".encoding", "UTF-8"),
         ("config.version", "8"),
-        ("virtualHW.version", "21"),
+        ("virtualHW.version", hw["virtualHW"]),
         ("displayName", name),
-        ("guestOS", "other6xlinux-64"),
+        ("guestOS", hw["guestOS"]),
         ("firmware", "efi"),
         # Without this the guest exposes only legacy SVGA and Mesa falls back
         # to llvmpipe; Firefox hardware WebRender needs SVGA3D (5.7, #189).
@@ -89,15 +160,60 @@ def build_vmx(
         ("tools.syncTime", "FALSE"),
         # Headless runs must never block on a dialog.
         ("msg.autoAnswer", "TRUE"),
-        ("sound.present", "FALSE"),
-        ("usb.present", "FALSE"),
+        # Workstation's sound device is on by default and covers Linux guests
+        # (Workstation Pro 26H1 guide, "Virtual Machine Sound Support"); the
+        # card type is left to each product's guest-OS default except where
+        # that default fails (aarch64: see ARCH_HW).
+        ("sound.present", "TRUE"),
+        ("usb.present", hw["usb"]),
         # VMware presents a floppy controller unless told otherwise; the guest
         # kernel probes the empty drive and logs "I/O error, dev fd0" on every
         # boot (seen after the 26H1 upgrade, 2026-08-21).
         ("floppy0.present", "FALSE"),
         ("vmci0.present", "TRUE"),
-    ]
+    ] + hw["extra"] + share_entries(shares)
     return "".join(f'{k} = "{v}"\n' for k, v in entries)
+
+
+def parse_shares(specs: list[str]) -> list[tuple[str, str]]:
+    """`NAME=HOSTPATH` specs -> [(name, hostpath)], split at the first `=`.
+    Raises ValueError naming the bad spec: no `=`, an empty name or path, or
+    a name given twice (each name is one directory under the guest mount)."""
+    shares: list[tuple[str, str]] = []
+    for spec in specs:
+        name, sep, path = spec.partition("=")
+        if not sep:
+            raise ValueError(f"share {spec!r}: expected NAME=HOSTPATH")
+        if not name:
+            raise ValueError(f"share {spec!r}: empty name")
+        if not path:
+            raise ValueError(f"share {spec!r}: empty host path")
+        if any(name == seen for seen, _ in shares):
+            raise ValueError(f"share {spec!r}: name {name!r} given twice")
+        shares.append((name, path))
+    return shares
+
+
+# Shared folders (HGFS): the keys `vmrun enableSharedFolders` and
+# `vmrun addSharedFolder` wrote on Fusion 26H1 (2026-11-03), share by share,
+# then the count. The guest mounts every share with `vmhgfs-fuse .host:/`
+# (.config/systemd/user/mac-shares.service). No shares, no keys: HGFS stays
+# at VMware's default (off).
+def share_entries(shares: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
+    if not shares:
+        return []
+    entries = [("isolation.tools.hgfs.disable", "FALSE")]
+    for i, (name, path) in enumerate(shares):
+        entries += [
+            (f"sharedFolder{i}.present", "TRUE"),
+            (f"sharedFolder{i}.enabled", "TRUE"),
+            (f"sharedFolder{i}.readAccess", "TRUE"),
+            (f"sharedFolder{i}.writeAccess", "TRUE"),
+            (f"sharedFolder{i}.hostPath", path),
+            (f"sharedFolder{i}.guestName", name),
+            (f"sharedFolder{i}.expiration", "never"),
+        ]
+    return entries + [("sharedFolder.maxNum", str(len(shares)))]
 
 
 def eject_media(vmx_text: str) -> str:
@@ -148,6 +264,34 @@ def generated_mac(vmx_text: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
+# archiso-aarch64 ships one ISO per Codeberg release, hosted off-site, with no
+# checksum asset: the sha256 sits in the release notes as `<hex>  <name>`.
+PORTS_ISO_NAME = re.compile(r"^archlinux-\d{4}\.\d{2}\.\d{2}-aarch64\.iso$",
+                            re.IGNORECASE)
+
+
+def ports_iso(release: dict) -> tuple[str, str, str]:
+    """Pick the ISO asset out of a Codeberg release (the API's JSON object)
+    and the sha256 its notes publish for it: (name, url, sha256). Raises
+    ValueError naming the gap. The hash must sit next to the exact asset
+    name — the 2026-08-03 notes listed other build dates than their assets,
+    so a near-match must not pass. Both come from the same release, so this
+    catches a bad download or a swapped bucket object, not a compromised
+    release."""
+    tag = release.get("tag_name") or ""
+    assets = [a for a in release.get("assets") or []
+              if PORTS_ISO_NAME.search(a.get("name") or "")]
+    if len(assets) != 1:
+        raise ValueError(f"release {tag}: expected one "
+                         f"archlinux-<date>-aarch64.iso asset, found {len(assets)}")
+    name = assets[0]["name"]
+    m = re.search(rf"([0-9a-fA-F]{{64}})\s+{re.escape(name)}",
+                  release.get("body") or "")
+    if not m:
+        raise ValueError(f"release {tag} publishes no sha256 for {name}")
+    return name, assets[0].get("browser_download_url") or "", m.group(1)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="vm-harness-vmx", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -161,6 +305,11 @@ def main(argv: list[str] | None = None) -> int:
     gen.add_argument("--serial-log", required=True)
     gen.add_argument("--ram", type=int, default=12288, metavar="MIB")
     gen.add_argument("--cpus", type=int, default=16)
+    gen.add_argument("--arch", choices=sorted(ARCH_HW), default="x86_64",
+                     help="guest architecture (Fusion on Apple silicon: aarch64)")
+    gen.add_argument("--share", action="append", default=[], metavar="NAME=HOSTPATH",
+                     help="share HOSTPATH into the guest as NAME (repeatable; "
+                     "the guest sees it under .host:/NAME)")
 
     ej = sub.add_parser("eject", help="detach installer + seed media in place")
     ej.add_argument("--vmx", required=True)
@@ -177,11 +326,20 @@ def main(argv: list[str] | None = None) -> int:
     mac = sub.add_parser("mac", help="print the generated nic MAC")
     mac.add_argument("--vmx", required=True)
 
+    sub.add_parser("ports-iso", help="read a Codeberg release (JSON) on stdin; "
+                   "print the ISO's name, release name, url and sha256, one per line")
+
     args = ap.parse_args(argv)
     if args.cmd == "generate":
+        try:
+            shares = parse_shares(args.share)
+        except ValueError as e:
+            print(f"vm-harness-vmx: {e}", file=sys.stderr)
+            return 2
         text = build_vmx(
             name=args.name, disk=args.disk, iso=args.iso, seed_iso=args.seed_iso,
             serial_log=args.serial_log, ram_mib=args.ram, cpus=args.cpus,
+            arch=args.arch, shares=shares,
         )
         Path(args.out).write_text(text, newline="\n")
         print(args.out)
@@ -203,6 +361,14 @@ def main(argv: list[str] | None = None) -> int:
             print("no generatedAddress yet (VM never powered on?)", file=sys.stderr)
             return 1
         print(m)
+    elif args.cmd == "ports-iso":
+        try:
+            release = json.load(sys.stdin.buffer)
+            name, url, sha256 = ports_iso(release)
+        except ValueError as e:  # json.JSONDecodeError is one too
+            print(e, file=sys.stderr)
+            return 1
+        print(name, release.get("name") or "", url, sha256, sep="\n")
     return 0
 
 

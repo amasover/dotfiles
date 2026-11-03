@@ -1,0 +1,20 @@
+# The home 4K split (knowledge/reference/4k-split-monitor-layout.md), read by
+# tools/monitor-split. One 3840x2160 canvas: a single 4K output (one cable),
+# or the two 1920x2160 picture-by-picture inputs side by side (two cables).
+# An area that exactly covers an output stays that output; any other area is
+# carved out of the output holding it as an xrandr virtual monitor OUTPUT~N,
+# numbered per output in the order listed here.
+#
+#   canvas WxH
+#   area NAME WxH+X+Y ROLE          offsets relative to the canvas; ROLE is a
+#                                   polybar MONITOR_* role, or - for none
+#   workspaces AREA N...            i3 workspaces moved there, in this order
+#   focus N...                      workspaces shown last, the final one focused
+canvas 3840x2160
+area main 1920x2160+0+0 MAIN
+area top 1920x1080+1920+0 SPLIT_TOP
+area bottom 1920x1080+1920+1080 SPLIT_BOTTOM
+workspaces main 1
+workspaces bottom 2
+workspaces top 3 5
+focus 3 1

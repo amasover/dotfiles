@@ -361,8 +361,10 @@ for_window [class="trust"] floating enable
 ## startup applications
 exec_always --no-startup-id sh -c "~/.config/polybar/launch.sh"
 # polybar-reload (laptop-era): polls root geometry, polybar-msg restart on
-# change. Superseded by the autorandr postswitch hook; in a VM it would fire
-# on every vm-autofit resize. Re-enable on the laptop if the hook isn't enough.
+# change. Superseded by the autorandr postswitch hook on hardware and, in a
+# VM, by tools/vm-autofit (it reruns launch.sh when the Virtual-N topology
+# changes; resizes are left to screenchange-reload). Polling would fire on
+# every vm-autofit resize. Re-enable on a laptop if the hook isn't enough.
 # exec --no-startup-id ~/.local/bin/polybar-reload
 exec --no-startup-id emacs
 exec --no-startup-id parcellite
@@ -377,6 +379,10 @@ exec --no-startup-id lxqt-policykit-agent
 #exec --no-startup-id virt-viewer -c qemu:///system win10 -a
 exec --no-startup-id ibus-daemon -dr
 exec --no-startup-id nm-applet --indicator
+# Applies a saved profile matching the connected EDIDs. A VM has none (its
+# Virtual-N outputs are laid out by vm-autofit), so there this exits
+# non-zero and does nothing; never save an autorandr profile inside the VM,
+# or it will fight vm-autofit over the host's layout.
 exec --no-startup-id autorandr --change --force
             
 #exec_always --no-startup-id xset dpms 0 0 1200

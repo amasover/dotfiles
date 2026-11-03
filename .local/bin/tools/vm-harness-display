@@ -15,7 +15,8 @@ scrub -> state-log leg). All rendering happens on the terminal device
   row 2: bootstrap step strip — bootstrap's `==>` say-lines are ours and the
          whole step list is known up front, so every step renders as its own
          breadcrumb (done green / CURRENT bold / pending dim); on terminals
-         too narrow for all names it degrades to a dot meter (●●●▶○○ n/m NAME).
+         too narrow for all names it degrades to a dot meter (●●●▶○○ n/m NAME),
+         and below that to ▶ n/m NAME.
          Blank outside the bootstrap phase.
   row 3: the latest parsed anchor (pacman transaction steps, AUR builds,
          HARNESS-* markers) — the fast-moving detail, on its own row
@@ -152,10 +153,14 @@ ANCHORS = [
 # per step, in execution order. Prefix match; the LONGEST matching prefix
 # wins ("oh-my-zsh custom theme" must beat "oh-my-zsh").
 BOOTSTRAP_STEPS = [
-    ("connect", ("Waiting for ssh", "Trust baseline", "Running repo bootstrap")),
+    ("connect", ("Waiting for ssh", "Trust baseline", "Host time zone",
+                 "Running repo bootstrap")),
     ("secrets", ("Secrets",)),
     ("profile", ("Profile guard",)),
+    ("skel", ("Fresh-install skel files",)),
+    ("timezone", ("Time zone",)),
     ("local-group", ("Machine-local group",)),
+    ("guest-dns", ("VMware guest DNS",)),
     ("mirrors", ("Pacman mirrors",)),
     ("sync", ("System sync",)),
     ("pins", ("Provider pins",)),
@@ -167,6 +172,7 @@ BOOTSTRAP_STEPS = [
     ("preflight", ("Quarantine pre-flight",)),
     ("cache-warm", ("AUR PKGBUILD cache warm",)),
     ("reconcile", ("Package reconcile",)),
+    ("guest-tools", ("VMware guest tools",)),
     ("retag", ("Normalizing install reasons",)),
     ("removal-hook", ("Package-removal hook",)),
     ("vendored", ("Vendored packages",)),
@@ -184,6 +190,10 @@ BOOTSTRAP_STEPS = [
     ("firefox", ("Firefox defaults",)),
     ("login-shell", ("Login shell",)),
 ]
+
+# Narrow-terminal row-2 shapes, widest first: (dot meter shown, name window
+# radius). The last keeps only ▶ + counter + current name.
+FALLBACKS = ((True, 3), (True, 2), (True, 1), (True, 0), (False, 0))
 
 
 def step_for(say_text):
@@ -253,7 +263,8 @@ def make_render():
         def row2(step_idx, cols):
             # Responsive: full names when they fit; otherwise dot meter (global
             # position) + a window of names around the current step, shrinking
-            # the window until it fits; last resort is meter + counter + name.
+            # the window until it fits; last resort drops the dots, keeping
+            # ▶ + counter + name (the dots alone outgrow narrow terminals).
             if step_idx is None:
                 return ""
             n = len(BOOTSTRAP_STEPS)
@@ -265,12 +276,14 @@ def make_render():
                 _step_name(text, i, step_idx)
             if text.cell_len <= cols - 1:
                 return to_ansi(text, cols)
-            for win in (3, 2, 1, 0):
+            for dots, win in FALLBACKS:
                 text = Text()
                 text.append("   ")
-                text.append("●" * step_idx, style="green")
+                if dots:
+                    text.append("●" * step_idx, style="green")
                 text.append("▶", style="bold yellow")
-                text.append("○" * (n - step_idx - 1), style="dim")
+                if dots:
+                    text.append("○" * (n - step_idx - 1), style="dim")
                 text.append(f" {step_idx + 1}/{n}  ", style="dim")
                 lo, hi = max(0, step_idx - win), min(n, step_idx + win + 1)
                 if lo > 0:
@@ -281,7 +294,7 @@ def make_render():
                     _step_name(text, i, step_idx)
                 if hi < n:
                     text.append(" …", style="dim")
-                if text.cell_len <= cols - 1 or win == 0:
+                if text.cell_len <= cols - 1 or not dots:
                     return to_ansi(text, cols)
 
         def row3(detail, cols):
@@ -319,13 +332,14 @@ def make_render():
             line = "   " + " · ".join(names)
             if len(line) <= cols - 1:
                 return line
-            meter = "●" * step_idx + "▶" + "○" * (n - step_idx - 1) + f" {step_idx + 1}/{n}  "
-            for win in (3, 2, 1, 0):
+            for dots, win in FALLBACKS:
+                meter = (("●" * step_idx + "▶" + "○" * (n - step_idx - 1)) if dots else "▶") \
+                    + f" {step_idx + 1}/{n}  "
                 lo, hi = max(0, step_idx - win), min(n, step_idx + win + 1)
                 window = " · ".join(names[lo:hi])
                 line = ("   " + meter + ("… " if lo > 0 else "")
                         + window + (" …" if hi < n else ""))
-                if len(line) <= cols - 1 or win == 0:
+                if len(line) <= cols - 1 or not dots:
                     return line[: max(cols - 1, 8)]
 
         def row3(detail, cols):

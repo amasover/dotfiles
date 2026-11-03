@@ -1,0 +1,48 @@
+# Fresh-install skel files: bootstrap puts a tracked file back over the
+# /etc/skel copy useradd left in $HOME (yadm clone never overwrites an existing
+# file), and only that. Host-independent: a stub yadm is git on a scratch
+# home, and the skel directory is a scratch tree.
+#
+# Run from the repo root: clitest tests/skel-files.clitest.txt
+
+The scratch home tracks .bashrc, .bash_profile and .zshrc. .bashrc is still
+the skel copy, .bash_profile carries a local edit, and .zshrc (no skel
+counterpart) is modified too:
+
+$ export BOOTSTRAP_TEST_MODE=1; D=$(mktemp -d); mkdir -p "$D/bin" "$D/home" "$D/skel"; printf '%s\n' '#!/bin/sh' 'exec git -C "$HOME" "$@"' > "$D/bin/yadm"; chmod +x "$D/bin/yadm"; G() { git -C "$D/home" -c user.name=t -c user.email=t@example.invalid "$@"; }; G init -q; for f in .bashrc .bash_profile .zshrc; do echo "tracked $f" > "$D/home/$f"; done; G add .bashrc .bash_profile .zshrc; G commit -q -m init; for f in .bashrc .bash_profile .bash_logout; do echo "skel $f" > "$D/skel/$f"; done; cp "$D/skel/.bashrc" "$D/home/.bashrc"; echo "my edit" > "$D/home/.bash_profile"; echo "my edit" >> "$D/home/.zshrc"; SKEL() { HOME="$D/home" PATH="$D/bin:$PATH" .local/bin/setup/bootstrap --skel-files "$1" "$D/skel" 2>&1 | sed "s|$D|D|g"; }; echo ready
+ready
+$ SKEL check; G status --short
+  left alone: .bash_profile differs from both the tracked file and D/skel/.bash_profile (yadm diff -- .bash_profile)
+  would: yadm checkout -- .bashrc   (still the D/skel copies)
+ M .bash_profile
+ M .bashrc
+ M .zshrc
+$
+
+Apply restores exactly the skel copy; the edited files keep their edits:
+
+$ SKEL apply; G status --short; cat "$D/home/.bashrc"
+  left alone: .bash_profile differs from both the tracked file and D/skel/.bash_profile (yadm diff -- .bash_profile)
+  restored tracked .bashrc (were the D/skel copies)
+ M .bash_profile
+ M .zshrc
+tracked .bashrc
+$ SKEL apply
+  left alone: .bash_profile differs from both the tracked file and D/skel/.bash_profile (yadm diff -- .bash_profile)
+  no tracked file is still its D/skel copy
+$
+
+Both skel copies at once (the fresh-install case), then a clean home:
+
+$ cp "$D/skel/.bash_profile" "$D/home/.bash_profile"; cp "$D/skel/.bashrc" "$D/home/.bashrc"; SKEL check
+  would: yadm checkout -- .bash_profile .bashrc   (still the D/skel copies)
+$ SKEL apply; G checkout -q -- .zshrc; SKEL check
+  restored tracked .bash_profile .bashrc (were the D/skel copies)
+  no tracked file is still its D/skel copy
+$ BOOTSTRAP_TEST_MODE=0 SKEL check | grep FATAL
+bootstrap: FATAL: skel-files seam is test-only
+$ SKEL fix | grep FATAL
+bootstrap: FATAL: skel-files mode must be check or apply
+$ rm -rf "$D"; echo done
+done
+$

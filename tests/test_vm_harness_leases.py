@@ -192,3 +192,17 @@ class TestCli:
                           "--leases", str(tmp_path / "nope.leases")])
         assert rc == 1
         assert "cannot read leases file" in capsys.readouterr().err
+
+
+class TestDefaultLeasesPath:
+    # Each host's NAT DHCP server writes its own file; the default follows
+    # the platform the tool is imported on.
+    def test_fusion_on_macos(self, monkeypatch):
+        monkeypatch.setattr("sys.platform", "darwin")
+        mod = load_tool("vm_harness_leases_mac", "vm-harness-leases")
+        assert mod.DEFAULT_LEASES == "/var/db/vmware/vmnet-dhcpd-vmnet8.leases"
+
+    def test_workstation_on_windows(self, monkeypatch):
+        monkeypatch.setattr("sys.platform", "win32")
+        mod = load_tool("vm_harness_leases_win", "vm-harness-leases")
+        assert mod.DEFAULT_LEASES == r"C:\ProgramData\VMware\vmnetdhcp.leases"

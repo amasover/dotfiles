@@ -54,8 +54,8 @@ their numbers and homes; nothing is renumbered.
 ### Out of Scope
 
 - Bootstrap/package convergence mechanics (Epic 2).
-- Host desktop cleanup — the host monitor-name migration stays with
-  [3.17](./epic-3-shell-editor-desktop-cleanup.md).
+- Host desktop cleanup — Story 3.17's host monitor-name migration closed when
+  its laptop retired; [3.17](./epic-3-shell-editor-desktop-cleanup.md) keeps the record.
 - Graduating the guest to the actual daily driver (2.37 owns that call).
 
 ---
@@ -299,6 +299,125 @@ fell back safely to Software WebRender.
 
 ---
 
+### Story 5.8: The Mac work VM is the daily driver
+
+As the repo owner,
+I want an aarch64 Arch guest under VMware Fusion on the work Mac, provisioned and
+bootstrapped by the repo's harness,
+So that the employer machine runs my real environment across every display.
+
+Issue: [#281](https://github.com/amasover/dotfiles/issues/281) · Origin: [decision-work-vm.md](./decision-work-vm.md) (2026-11-02,
+work-laptop replacement).
+
+**Current state (2026-11-02):** a disposable `vmware-aarch64` guest installs
+unattended from archiso-aarch64, boots, and converges as class `work-vm` under
+Fusion, driven by the harness on macOS: `bootstrap done rc=0`, `check done rc=0`
+(unmanaged none, declared-but-missing none). The LUKS `work-vm` install is next.
+The Arch Linux Ports (drzee) repos lack `xf86-video-vmware`, so Xorg runs
+modesetting on vmwgfx.
+
+**Firefox on aarch64 (2026-11-02):** Fusion 26H1 gives the guest the same
+SVGA3D/OpenGL 4.3 that Story 5.7 found under Workstation, and Xorg GLAMOR runs
+on it. Story 5.7's VMware policy (hardware WebRender forced through GLX) draws
+black rectangles over page content in Firefox 159, for example Gmail's landing
+hero. Turning off DMA-BUF and hardware video, partial present
+(`gfx.webrender.max-partial-present-rects=0`), or accelerated canvas did not
+help. Allowing EGL avoids the glitch only because Firefox then fails to create
+the hardware WebRender context and falls back to software, as in Story 5.7. So
+the VMware fragment is now per architecture: x86_64 keeps Story 5.7's policy
+byte for byte, and aarch64 drops `gfx.webrender.all` for a locked
+`gfx.webrender.software`, still selecting GLX and forcing layer acceleration.
+The tradeoff is CPU compositing on aarch64; WebGL 2 keeps hardware, and
+`about:support` reports its renderer as `VMware, Inc. -- SVGA3D`.
+
+**Known limitation:** aarch64 guests composite Firefox in software. When Mesa's
+svga driver or Fusion updates, retry hardware WebRender by swapping
+`gfx.webrender.software` for `gfx.webrender.all` in `policies-vmware-aarch64.json`.
+
+**Multi-display (2026-11-02):** on the disposable guest, Fusion's "Use All
+Displays in Full Screen" sent `DisplayTopology_Set 2 , 1512 0 3840 2160 , 0
+1495 1512 949`. `vm-autofit` placed the outputs and `monitor-split auto`
+carved `Virtual-1~1` (1920x2160+1512+0), `~2` (1920x1080+3432+0) and `~3`
+(1920x1080+3432+1080) beside the panel `Virtual-2`. i3 put workspace 1 on
+`~1`, 3 on `~2` and 2 on `~3`. Polybar launched main, main-bottom, left,
+split-one and split-two (`auto: Virtual-1~1 left=Virtual-2 top=Virtual-1~2
+bottom=Virtual-1~3`). Leaving full screen cleared the split, and entering it
+again rebuilt it with no manual step.
+
+**Sound, camera, clipboard and drag-and-drop (2026-11-03):** the generated vmx
+had `sound.present = "FALSE"`, so the guest had no sound card. With sound on,
+Fusion picks es1371, and the arm vmx refuses it at power-on ("es1371 is not
+valid device type for sound"); `sound.virtualDev = "hdaudio"` powers on and
+binds the Mac's default output and input. The Mac's camera reaches the guest as
+Fusion's virtual UVC camera (`usb_xhci:5.deviceType = "video"`, the GUI's
+"Add Device > Camera"), backed by the host's default AVCapture camera. Both
+were proven on a scratch Fusion VM; `vm-harness-vmx` now writes them for
+aarch64. Fusion 13.6 removed Bluetooth sharing, so Bluetooth headsets stay on
+the Mac and reach the guest as its sound input/output; USB devices (security
+keys, USB headsets) pass through on the XHCI controller. Clipboard already
+worked: vmusr starts from `.xinitrc` at login (the VMX logged `toolbox-dnd`
+two seconds after `startx`). File drag-and-drop from the Mac did not, because
+`vmware-vmblock-fuse.service` ships disabled and vmusr then starts without
+`--blockFd`; bootstrap step "VMware guest tools" and the seed now enable it.
+
+**Live on the work VM (2026-11-03):** after a power cycle with the new vmx
+keys, the speaker and microphone (the `hdaudio` card) and the virtual camera
+work in the guest, and the clipboard works both ways. Drag-and-drop works only
+from the Mac into the guest: a file dropped from Finder arrived and opened. A
+drag out of the guest never leaves the VM window. Every drag also leaves a
+32x32 override-redirect window owned by vmware-user (`vmtoolsd -n vmusr`)
+mapped at +0+0, over polybar's top-left, which i3 cannot manage; six had piled
+up. **Decision:** drag-and-drop is off for aarch64 Fusion VMs
+(`isolation.tools.dnd.disable = "TRUE"` in the vmx; the copy and paste keys
+stay unset, so the clipboard stays on). x86_64 output is unchanged; Workstation
+was not tested.
+
+**Shared folders are the file route (2026-11-03):** Fusion shares the Mac's
+`~/vmshare` and `~/Downloads` with the guest (HGFS; VMware has no 9p). The
+attended `work-vm` create sets them with `VM_HARNESS_SHARES`, and `vmrun
+enableSharedFolders`/`addSharedFolder` add them to an existing VM. In the
+guest, the user unit `mac-shares.service` mounts every share under `~/mac` with
+`vmhgfs-fuse` (bootstrap enables it on VMware guests only), so files move both
+ways through `~/mac/vmshare` and `~/mac/Downloads`. Proven live: the unit
+mounted both, a file written in the guest appeared on the Mac, and stop and
+start unmounted and remounted `~/mac`.
+
+**Acceptance criteria:**
+
+- `vm-harness-vmware.ps1` runs under PowerShell 7 on macOS (`$IsMacOS`) against
+  Fusion's `vmrun`/`vmcli`, defaulting to class `work-vm` and seed target
+  `vmware-aarch64`. Its Python tools gain host-independent tests for the macOS
+  paths. A disposable run ends `=== bootstrap done rc=0` + `=== check done rc=0`.
+- `provision-seed --target work-vm` produces the LUKS-root aarch64 recipe; the
+  real VM is installed from it and decrypts the full archive.
+- Class `work-vm` renders `guest-vmware`, `work`, `inbox-work-vm`, and
+  `arch-aarch64`; metapac unmanaged and missing are both empty on the guest.
+  Shared purpose groups stay architecture-neutral; x86-only packages live in
+  `arch-x86_64`, and bootstrap still fails loudly on a genuinely missing package.
+- Multi-display: in Fusion's "Use All Displays in Full Screen" mode, the guest
+  gets one output per Mac display (panel + external 4K, later a second 4K).
+  The 3840x2160 4K output is carved into the old home split by
+  `tools/monitor-split` (left 1920x2160 main, right-top and right-bottom
+  1920x1080; workspaces 1 → main, 2 → bottom, 3 and 5 → top). It is opted in
+  for class `work-vm` by `.config/monitor-split/policy##class.work-vm` and
+  rebuilt by `vm-autofit` on every full-screen toggle and dock/undock.
+  Polybar gives the main bar to the left half, split bars to top/bottom, and
+  LEFT to the panel. Roles and i3 workspaces follow without an autorandr
+  profile ([4k-split-monitor-layout.md](../knowledge/reference/4k-split-monitor-layout.md)).
+- HiDPI: a recorded choice between Fusion's full-resolution Retina mode with a
+  guest `Xft.dpi` and scaled (non-Retina) mode. Text is sharp and consistently
+  sized on both the Retina panel and the 4K.
+- Slack huddles: speaker and microphone through the `hdaudio` card, and the Mac
+  camera as `/dev/video0` in the guest, shown by a test call from the guest.
+  Clipboard works both ways. Files move both ways through the shared folders
+  under `~/mac`; drag-and-drop is off by decision.
+
+**Evidence artifact:** the disposable harness log set, the `work-vm` metapac
+render and check output, and `xrandr --listactivemonitors` plus a screenshot
+across all displays in full screen.
+
+---
+
 ## Risks
 
 ### Risk: Credentials accumulate in disposable guests
@@ -311,4 +430,5 @@ privacy pass on every PR as usual.
 
 Polybar/resolution work brushes against epic 3's territory. Mitigation: the
 boundary rule above, and explicit coordination notes in 5.4/5.5 pointing at
-3.17 and 2.30 instead of duplicating them.
+3.17 and 2.30 instead of duplicating them. Since 3.17 closed, guest display
+layout (5.8) belongs to this epic.

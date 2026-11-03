@@ -4,9 +4,7 @@
 [arch]
 packages = [
   "bitlbee",
-  "discord",
   "signal-desktop",
   "teams-for-linux-bin",
   "weechat",
-  "zoom",
 ]

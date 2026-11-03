@@ -7,13 +7,16 @@
 $ CP=.local/bin/setup/claude-plugins; CLITMP=$(mktemp -d); echo ok
 ok
 $
-# merge on empty settings: both declaration keys land, ids use each repo's
+# merge on empty settings: every declaration key lands, ids use each repo's
 # own marketplace name
 $ echo '{}' | $CP merge | jq -r '.enabledPlugins | keys[]' | sort
 i-have-adhd@i-have-adhd
 mattpocock-skills@mattpocock
+pstack@pstack-claude
 $ echo '{}' | $CP merge | jq -r '.extraKnownMarketplaces["mattpocock"].source.repo'
 mattpocock/skills
+$ echo '{}' | $CP merge | jq -r '.extraKnownMarketplaces["pstack-claude"].source.repo'
+michael-denyer/pstack-claude
 $ echo '{}' | $CP merge | jq -r '.extraKnownMarketplaces["i-have-adhd"].source.source'
 github
 $
@@ -23,7 +26,7 @@ opus dark
 $
 # pre-existing plugin entries we don't declare are preserved alongside ours
 $ echo '{"enabledPlugins":{"other@somewhere":true},"extraKnownMarketplaces":{"mine":{"source":{"source":"github","repo":"me/mine"}}}}' | $CP merge | jq -r '.enabledPlugins | keys | length'
-3
+4
 $ echo '{"enabledPlugins":{"other@somewhere":true}}' | $CP merge | jq -r '.enabledPlugins["other@somewhere"]'
 true
 $

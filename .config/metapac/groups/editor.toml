@@ -15,8 +15,7 @@ packages = [
   "nano",
   "neovim",
   "npm",  # installs the pinned Emacs Copilot language server during bootstrap
-  "omnisharp-roslyn-bin",
-  "powershell-editor-services-bin",
+  "powershell-editor-services-bin",  # arch-neutral .NET zip; builds anywhere with --ignorearch
   "pyright",  # system server used by .spacemacs lsp-pyright
   "ruff",
   "typescript-language-server",

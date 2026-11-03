@@ -8,13 +8,28 @@ against what's declared here: `metapac sync` installs the declared set,
   adapters and one inbox per class. Plain tracked files, read directly at sync
   time; no render step.
 - **`profiles/common.groups`** — the one shared 15-purpose list included by every
-  class branch. Add a universal purpose group here once, not in three profiles.
-- **`config.toml##template,os.Linux`** — maps the rendered hostname to the selected class:
-  `workstation`, `daily-vm`, or `qemu-harness`. Each class adds exactly one
-  hardware adapter and inbox. YADM renders `config.toml` on clone/pull/class
-  change; hostnames and `$HOME` paths remain machine-local.
+  class branch. Add a universal purpose group here once, not in every profile.
+- **`config.toml##template,os.Linux`** — maps the rendered hostname to the selected class
+  and adds the architecture adapter `arch-{{ yadm.arch }}` to every class.
+  YADM renders `config.toml` on clone/pull/class change; hostnames and `$HOME`
+  paths remain machine-local.
   The `os.Linux` condition keeps yadm from rendering it on the Mac, whose
   sparse checkout leaves the template out (`docs/decision-mac-host.md`).
+
+  | Class | Machine | Added groups |
+  | --- | --- | --- |
+  | `work-vm` | Mac-hosted VMware Fusion aarch64 work VM | `guest-vmware`, `work`, `inbox-work-vm` |
+  | `daily-vm` | Windows-hosted VMware daily driver | `guest-vmware`, `guest-vmware-x86_64`, `inbox-daily-vm` |
+  | `qemu-harness` | Disposable libvirt validation guest | `guest-qemu`, `inbox-qemu-harness` |
+  | `portable` | Portable drive booting any x86_64 UEFI machine | `hardware-portable`, `inbox-portable` |
+
+- **`groups/arch-x86_64.toml` / `groups/arch-aarch64.toml`** — architecture
+  adapters. Shared purpose groups stay architecture-neutral: a package that
+  exists only as an x86_64 binary (prebuilt `-bin` artifacts, chaotic-aur,
+  every `lib32-*`) lives in `arch-x86_64`, and its aarch64 substitute, if any,
+  in `arch-aarch64` (Arch Linux Ports repos). AUR source builds whose `arch=()`
+  merely omits aarch64 stay shared: aarch64 builds them with
+  `makepkg --ignorearch`. Bootstrap still fails loudly on a missing package.
 - **`~/.local/share/metapac/machine-local.toml`** — untracked group for
   never-publish package names only. Hardware belongs in tracked class adapters;
   bootstrap creates this file empty on fresh machines.

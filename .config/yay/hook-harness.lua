@@ -369,7 +369,7 @@ host_pipe:close()
 write_file(inbox_dir .. "/config.toml", string.format([[
 [hostname_groups]
 "wrong-host" = [
-  "inbox-workstation",
+  "inbox-work-vm",
 ]
 "%s" = [
   "base",
@@ -382,7 +382,7 @@ packages = [
   "declared-pkg",
 ]
 ]])
-for _, name in ipairs({ "workstation", "daily-vm", "qemu-harness" }) do
+for _, name in ipairs({ "work-vm", "daily-vm", "qemu-harness" }) do
   write_file(inbox_dir .. "/groups/inbox-" .. name .. ".toml", "[arch]\npackages = [\n]\n")
 end
 hooks["PostInstall"]({ data = { packages = {
@@ -397,10 +397,10 @@ local function slurp(path)
   return text
 end
 local daily = slurp(inbox_dir .. "/groups/inbox-daily-vm.toml")
-local workstation = slurp(inbox_dir .. "/groups/inbox-workstation.toml")
+local work = slurp(inbox_dir .. "/groups/inbox-work-vm.toml")
 local qemu = slurp(inbox_dir .. "/groups/inbox-qemu-harness.toml")
 if daily:match('"captured%-pkg"') and not daily:match('"declared%-pkg"')
-    and not workstation:match('"captured%-pkg"') and not qemu:match('"captured%-pkg"') then
+    and not work:match('"captured%-pkg"') and not qemu:match('"captured%-pkg"') then
   print("ok   inbox: rendered class selection")
 else
   print("FAIL inbox: rendered class selection")

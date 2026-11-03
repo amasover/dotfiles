@@ -1,0 +1,39 @@
+# Time zone: bootstrap sets the zone named in the private, untracked
+# ~/.config/dotfiles/timezone and never one of its own. Host-independent: stub
+# timedatectl and sudo, a scratch home and a scratch zoneinfo tree.
+#
+# Run from the repo root: clitest tests/timezone.clitest.txt
+
+$ export BOOTSTRAP_TEST_MODE=1; D=$(mktemp -d); mkdir -p "$D/bin" "$D/home/.config/dotfiles" "$D/zoneinfo/Europe" "$D/zoneinfo/Etc"; : > "$D/zoneinfo/Europe/Oslo"; : > "$D/zoneinfo/Etc/UTC"; printf '%s\n' '#!/bin/sh' 'case "$1" in show) echo "$TZ_NOW" ;; *) echo "timedatectl $*" >> "$TZ_TRACE" ;; esac' > "$D/bin/timedatectl"; printf '%s\n' '#!/bin/sh' 'exec "$@"' > "$D/bin/sudo"; chmod +x "$D/bin/"*; TZF="$D/home/.config/dotfiles/timezone"; TZ() { : > "$D/trace"; HOME="$D/home" PATH="$D/bin:$PATH" TZ_TRACE="$D/trace" .local/bin/setup/bootstrap --timezone "$1" "$D/zoneinfo" 2>&1 | sed "s|$D|D|g"; cat "$D/trace"; }; echo ready
+ready
+$
+
+No file: the zone stays whatever the install set (UTC):
+
+$ TZ_NOW=Etc/UTC TZ apply
+  no D/home/.config/dotfiles/timezone — time zone left as it is
+$
+
+A named zone that differs is set through sudo; one already in place is left:
+
+$ echo Europe/Oslo > "$TZF"; TZ_NOW=Etc/UTC TZ check
+  would: timedatectl set-timezone Europe/Oslo   (now Etc/UTC)
+$ TZ_NOW=Etc/UTC TZ apply
+  time zone set: Europe/Oslo (was Etc/UTC)
+timedatectl set-timezone Europe/Oslo
+$ TZ_NOW=Europe/Oslo TZ apply
+  time zone already Europe/Oslo
+$
+
+Names are checked against the zoneinfo tree, and a path that climbs out of
+it never reaches the check:
+
+$ echo Mars/Olympus > "$TZF"; TZ_NOW=Etc/UTC TZ check | grep FATAL
+bootstrap: FATAL: D/home/.config/dotfiles/timezone names 'Mars/Olympus', which is not a zone under D/zoneinfo
+$ echo ../zoneinfo/Etc/UTC > "$TZF"; TZ_NOW=Etc/UTC TZ check | grep -o 'FATAL: .* names .\.\./zoneinfo/Etc/UTC.'
+FATAL: D/home/.config/dotfiles/timezone names '../zoneinfo/Etc/UTC'
+$ BOOTSTRAP_TEST_MODE=0 TZ check | grep FATAL
+bootstrap: FATAL: timezone seam is test-only
+$ rm -rf "$D"; echo done
+done
+$

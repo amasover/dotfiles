@@ -6,6 +6,10 @@ host package state, or its libvirt installation. GitHub issues and the project b
 remain status sources; this file records why work belongs on this machine and useful
 ordering.
 
+**Retired 2026-11-02:** the laptop was wiped and returned. Entries below are
+historical; re-home any still-wanted story on the Mac work VM
+([decision-work-vm.md](./decision-work-vm.md)).
+
 ## Working rules
 
 - Capture read-only evidence before changing live state.
@@ -22,25 +26,10 @@ ordering.
 
 ### 1. Capture current home and hardware state
 
-#### Story 3.17 — monitor-name migration ([#129](https://github.com/amasover/dotfiles/issues/129))
+#### Story 3.17 — monitor-name migration ([#129](https://github.com/amasover/dotfiles/issues/129)) ✅
 
-**Why laptop-only:** each autorandr profile must be rebuilt with its physical monitor
-EDIDs and current `modesetting` output names. Polybar roles and i3 workspace placement
-need real dock/undock verification.
-
-**Current state:** laptop and home-4K profiles are captured under current dashed
-names. Both tracked profiles match `autorandr --detected` and `--current` on
-their hardware. Home's right panel is split through a profile `postswitch.d`
-hook; five Polybar bars and the 1/2/3/5 workspace map were visually confirmed.
-Story 5.5 already removed Polybar's connector-name table, so this story resolves
-the profile override together with the positional roles instead of restoring
-layout matching in `launch.sh`.
-
-**Remaining:** all legacy setups still matter, but their hardware is offsite.
-Reconnect the work-4K pair and each DisplayLink-era combination to rebuild from
-real EDIDs. Reconnect the recently saved three-screen office setup to verify its
-staged neutral-name profile. Then retire only superseded manual scripts and old
-local profile copies; do not infer new fingerprints by renaming stale keys.
+Closed 2026-11-02 with the work laptop: its work-site setups can no longer be
+reconnected. The profiles and `.screenlayout` scripts stay for a planned personal laptop.
 
 #### Story 3.2 — classify editor configs ✅ ([#29](https://github.com/amasover/dotfiles/issues/29))
 

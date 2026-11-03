@@ -1,7 +1,8 @@
 # setup/openviking-memory — OpenViking clients for omp and Claude Code, wired
-# from the per-machine server.env. Host-independent: a scratch HOME and stubs
-# for curl, bao, git, npm and claude that log every argv to a trace; node is
-# the real one. The key must never reach an argv, the trace or the output.
+# from the per-machine server.env (LAN) or the tracked local.env (local server).
+# Host-independent: a scratch HOME and stubs for curl, bao, git, npm and claude
+# that log every argv to a trace; node is the real one. No key may reach an
+# argv, the trace or the output.
 #
 # Run from the repo root: clitest tests/openviking-memory.clitest.txt
 
@@ -60,8 +61,8 @@ $ grep -E '^bao|^revoked' "$TRACE"
 bao login -method=oidc -token-only role=admin
 bao kv get -mount=kv -field=key agents/workstation/openviking
 revoked
-$ stat -c %a "$HOME/.openviking/ovcli.conf"; node -p 'const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); [c.url, c.api_key === process.argv[2], c.plugin.peerSource].join(" ")' "$HOME/.openviking/ovcli.conf" "$KEY"
-600
+$ ls -l "$HOME/.openviking/ovcli.conf" | cut -c1-10; node -p 'const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); [c.url, c.api_key === process.argv[2], c.plugin.peerSource].join(" ")' "$HOME/.openviking/ovcli.conf" "$KEY"
+-rw-------
 https://memory.example.invalid true none
 $ test -f "$HOME/.omp/agent/extensions/openviking/index.ts" && cat "$HOME/.openviking/installed-release"
 v0.5.0
@@ -80,8 +81,8 @@ A key file readable beyond its owner is drift; apply makes it private again:
 $ chmod 644 "$HOME/.openviking/ovcli.conf"; $t --check; echo "rc=$?"
 OpenViking memory: would install the clients for OpenViking v0.5.0
 rc=1
-$ $t > /dev/null; stat -c %a "$HOME/.openviking/ovcli.conf"
-600
+$ $t > /dev/null; ls -l "$HOME/.openviking/ovcli.conf" | cut -c1-10
+-rw-------
 $
 
 A server upgrade reinstalls with the accepted key and drops the old release's source:
@@ -104,9 +105,59 @@ rc=2
 no conf=0
 $
 
-The key never reached an argument list, the trace, or the output:
+Without GNU timeout the sign-in runs under coreutils' gtimeout, and without that
+under perl's alarm. A PATH of stubs and only the tools the script needs, with no
+timeout, picks each branch:
 
-$ cat "$OVT/out" "$TRACE" | grep -c "$KEY"
+$ B=$OVT/bin; G=$OVT/gt; mkdir -p "$B" "$G"; for x in bash cat chmod cp grep mkdir mktemp mv node rm sed stat tr; do ln -s "$(command -v "$x")" "$B/$x"; done; printf '%s\n' '#!/bin/sh' 'echo "gtimeout $*" >> "$TRACE"' 'shift' 'exec "$@"' > "$G/gtimeout"; printf '%s\n' '#!/bin/sh' 'echo "perl alarm" >> "$TRACE"' "exec $(command -v perl) \"\$@\"" > "$B/perl"; chmod +x "$G/gtimeout" "$B/perl"; echo "$KEY" > "$OVT/bao-key"; echo restricted
+restricted
+$ : > "$TRACE"; PATH="$S:$G:$B" $t > /dev/null; echo "rc=$?"; grep -E '^(gtimeout|perl|bao login)' "$TRACE"
+rc=0
+gtimeout 300 bao login -method=oidc -token-only role=admin
+bao login -method=oidc -token-only role=admin
+$ rm "$HOME/.openviking/ovcli.conf"; : > "$TRACE"; PATH="$S:$B" $t > /dev/null; echo "rc=$?"; grep -E '^(gtimeout|perl|bao login)' "$TRACE"
+rc=0
+perl alarm
+bao login -method=oidc -token-only role=admin
+$
+
+Local mode: local.env selects it even beside server.env. Only the loopback URL
+is accepted, the key is the one setup/openviking-local-server stored, and OpenBao is
+never asked:
+
+$ L=$HOME/.config/dotfiles/openviking/local.env; LKEY=ov-user-77c2; printf '%s\n' 'OPENVIKING_URL=http://192.0.2.1:1933' > "$L"; $t; echo "rc=$?"
+openviking-memory: FATAL: local.env: OPENVIKING_URL must be http://127.0.0.1:1933
+rc=2
+$ cp .config/dotfiles/openviking/local.env##os.Darwin "$L"; : > "$TRACE"; { $t; echo "rc=$?"; } 2>&1 | sed "s|$HOME|~|"
+openviking-memory: FATAL: no user key in ~/.openviking/user.key (setup/openviking-local-server)
+rc=2
+$ { $t --check; echo "rc=$?"; } | sed "s|$HOME|~|"
+OpenViking memory: no user key in ~/.openviking/user.key - would install the clients after setup/openviking-local-server
+rc=1
+$ (umask 077 && echo "$LKEY" > "$HOME/.openviking/user.key"); { $t; echo "rc=$?"; } 2>&1 | sed "s|$HOME|~|"
+openviking-memory: FATAL: the server refuses the key in ~/.openviking/user.key (setup/openviking-local-server)
+rc=2
+$ echo "$LKEY" > "$OVT/good-key"; touch "$OVT/down"; $t; echo "rc=$?"; $t --check; echo "rc=$?"; rm "$OVT/down"
+openviking-memory: FATAL: the local server is not answering on http://127.0.0.1:1933 (setup/openviking-local-server)
+rc=2
+OpenViking memory: the local server is not answering on http://127.0.0.1:1933 - would install the clients after setup/openviking-local-server
+rc=1
+$ $t --check; echo "rc=$?"
+OpenViking memory: would install the clients for OpenViking v0.5.1
+rc=1
+$ $t | tee -a "$OVT/out"; node -p 'const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); [c.url, c.api_key === process.argv[2]].join(" ")' "$HOME/.openviking/ovcli.conf" "$LKEY"
+OpenViking memory: omp extension 0.4.13 (OpenViking v0.5.1)
+OpenViking memory: Claude Code openviking-memory 0.7.6 (OpenViking v0.5.1)
+http://127.0.0.1:1933 true
+$ $t --no-login; echo "rc=$?"; grep -c '^bao' "$TRACE"
+OpenViking memory: up to date (OpenViking v0.5.1)
+rc=0
+0
+$
+
+Neither key reached an argument list, the trace, or the output:
+
+$ cat "$OVT/out" "$TRACE" | grep -c -e "$KEY" -e "$LKEY"
 0
 $ rm -rf "$OVT"; echo done
 done

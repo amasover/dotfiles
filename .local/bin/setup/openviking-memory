@@ -9,10 +9,16 @@
 # The clients come from the release the server reports on /health, so they never
 # speak a newer API than the server does.
 #
-# Optional and per machine: ~/.config/dotfiles/openviking/server.env names the
-# server and the OpenBao that holds its key. It rides the yadm-encrypted archive,
-# so neither host is in the public repository. A machine without it, or off the
-# LAN, skips this step.
+# Optional and per machine, in one of two modes:
+#   LAN    ~/.config/dotfiles/openviking/server.env names the server and the
+#          OpenBao that holds its key. It rides the yadm-encrypted archive, so
+#          neither host is in the public repository. A machine without it, or
+#          off the LAN, skips this step.
+#   local  ~/.config/dotfiles/openviking/local.env (tracked; yadm links it on
+#          macOS) selects the server setup/openviking-local-server runs on
+#          http://127.0.0.1:1933. The key is the user key that script stores
+#          in ~/.openviking/user.key; OpenBao is never asked. local.env wins
+#          over server.env.
 #
 # The key never lands in a tracked file, an argument list or the output. On a
 # machine that already has an accepted key in ovcli.conf, it is reused.
@@ -68,32 +74,51 @@ settings=${OPENVIKING_SETTINGS_DIR:-"$HOME/.config/dotfiles/openviking"}
 root=$HOME/.openviking
 conf=$root/ovcli.conf
 marker=$root/installed-release
+keyfile=$root/user.key
 ext=$HOME/.omp/agent/extensions/openviking
 repo=${OPENVIKING_REPO:-https://github.com/volcengine/OpenViking.git}
 
-if [[ ! -f $settings/server.env ]]; then
+local_mode=0
+if [[ -f $settings/local.env ]]; then
+    local_mode=1
+elif [[ ! -f $settings/server.env ]]; then
     say "no server.env on this machine - skipping (optional feature)"
     exit 0
 fi
 [[ -f $settings/plugin.json ]] || die "tracked settings missing: $settings/plugin.json"
 
 url='' bao_addr='' bao_path=agents/workstation/openviking bao_field=key bao_role=admin
-while IFS= read -r line || [[ -n $line ]]; do
-    [[ -z $line || $line == \#* ]] && continue
-    [[ $line =~ ^([A-Z_]+)=([A-Za-z0-9:/._@%+-]+)$ ]] \
-        || die "server.env: unsupported line (KEY=value, no quotes or spaces)"
-    value=${BASH_REMATCH[2]}
-    case ${BASH_REMATCH[1]} in
-        OPENVIKING_URL) url=${value%/} ;;
-        BAO_ADDR) bao_addr=${value%/} ;;
-        OPENVIKING_BAO_PATH) bao_path=$value ;;
-        OPENVIKING_BAO_FIELD) bao_field=$value ;;
-        OPENVIKING_BAO_ROLE) bao_role=$value ;;
-        *) die "server.env: unknown key ${BASH_REMATCH[1]}" ;;
-    esac
-done <"$settings/server.env"
-[[ $url == https://* ]] || die "server.env: OPENVIKING_URL must be an https URL"
-[[ $bao_addr == https://* ]] || die "server.env: BAO_ADDR must be an https URL"
+if ((local_mode)); then
+    while IFS= read -r line || [[ -n $line ]]; do
+        [[ -z $line || $line == \#* ]] && continue
+        [[ $line =~ ^([A-Z_]+)=([A-Za-z0-9:/._-]+)$ ]] \
+            || die "local.env: unsupported line (KEY=value, no quotes or spaces)"
+        case ${BASH_REMATCH[1]} in
+            OPENVIKING_URL) url=${BASH_REMATCH[2]%/} ;;
+            # setup/openviking-local-server's settings.
+            OPENVIKING_VERSION | OPENVIKING_PYTHON | OPENVIKING_ACCOUNT | OPENVIKING_USER) ;;
+            *) die "local.env: unknown key ${BASH_REMATCH[1]}" ;;
+        esac
+    done <"$settings/local.env"
+    [[ $url == http://127.0.0.1:1933 ]] || die "local.env: OPENVIKING_URL must be http://127.0.0.1:1933"
+else
+    while IFS= read -r line || [[ -n $line ]]; do
+        [[ -z $line || $line == \#* ]] && continue
+        [[ $line =~ ^([A-Z_]+)=([A-Za-z0-9:/._@%+-]+)$ ]] \
+            || die "server.env: unsupported line (KEY=value, no quotes or spaces)"
+        value=${BASH_REMATCH[2]}
+        case ${BASH_REMATCH[1]} in
+            OPENVIKING_URL) url=${value%/} ;;
+            BAO_ADDR) bao_addr=${value%/} ;;
+            OPENVIKING_BAO_PATH) bao_path=$value ;;
+            OPENVIKING_BAO_FIELD) bao_field=$value ;;
+            OPENVIKING_BAO_ROLE) bao_role=$value ;;
+            *) die "server.env: unknown key ${BASH_REMATCH[1]}" ;;
+        esac
+    done <"$settings/server.env"
+    [[ $url == https://* ]] || die "server.env: OPENVIKING_URL must be an https URL"
+    [[ $bao_addr == https://* ]] || die "server.env: BAO_ADDR must be an https URL"
+fi
 
 for tool in git node npm curl; do
     if ! command -v "$tool" >/dev/null; then
@@ -102,7 +127,18 @@ for tool in git node npm curl; do
     fi
 done
 
+# Local mode needs setup/openviking-local-server to have run: drift in --check,
+# a failure in apply.
+local_unready() {
+    if ((check)); then
+        say "$1 - would install the clients after setup/openviking-local-server"
+        exit 1
+    fi
+    die "$1 (setup/openviking-local-server)"
+}
+
 if ! health=$(curl -q -fsS --max-time 10 "$url/health" 2>/dev/null); then
+    ((! local_mode)) || local_unready "the local server is not answering on $url"
     say "server unreachable (off the LAN?) - skipping"
     exit 0
 fi
@@ -134,8 +170,27 @@ render_conf() {
     ' "$url" "$settings/plugin.json"
 }
 
+mode_of() {
+    stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null
+}
+
+# GNU timeout; macOS has it only as coreutils' gtimeout, else perl's alarm.
+with_timeout() {
+    if command -v timeout >/dev/null; then
+        timeout "$@"
+    elif command -v gtimeout >/dev/null; then
+        gtimeout "$@"
+    else
+        perl -e 'alarm shift; exec @ARGV or die "exec: $!\n"' "$@"
+    fi
+}
+
 key=
-if [[ -f $conf ]]; then
+if ((local_mode)); then
+    [[ -s $keyfile ]] || local_unready "no user key in $keyfile"
+    key=$(tr -d '\r\n' <"$keyfile")
+    key_accepted "$key" || local_unready "the server refuses the key in $keyfile"
+elif [[ -f $conf ]]; then
     key=$(node -e '
       try { process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).api_key || ""); } catch {}
     ' "$conf")
@@ -151,7 +206,7 @@ claude_current() {
 }
 
 if [[ -n $key && -f $ext/index.ts && $(cat "$marker" 2>/dev/null) == "$version" ]] \
-    && [[ $(stat -c %a "$conf") == 600 ]] \
+    && [[ $(mode_of "$conf") == 600 ]] \
     && [[ $(printf '%s' "$key" | render_conf) == "$(cat "$conf")" ]] && claude_current; then
     say "up to date (OpenViking $version)"
     exit 0
@@ -183,7 +238,7 @@ if [[ -z $key ]]; then
     }
     trap 'revoke; rm -rf "$work"' EXIT
     say "OpenBao sign-in: a browser opens; sign in with your passkey. The token reads one key and is revoked at once."
-    BAO_ADDR=$bao_addr timeout 300 bao login -method=oidc -token-only "role=$bao_role" >"$work/token" \
+    BAO_ADDR=$bao_addr with_timeout 300 bao login -method=oidc -token-only "role=$bao_role" >"$work/token" \
         || die "OpenBao sign-in failed"
     [[ -s $work/token ]] || die "OpenBao sign-in returned no token"
     key=$(BAO_ADDR=$bao_addr BAO_TOKEN=$(cat "$work/token") bao kv get -mount=kv -field="$bao_field" "$bao_path") \
@@ -202,7 +257,8 @@ if [[ ! -d $src/.git ]]; then
     git -c advice.detachedHead=false clone -q --depth 1 --branch "$version" --filter=blob:none \
         --sparse "$repo" "$src.tmp"
     git -C "$src.tmp" sparse-checkout set examples agent-plugins
-    mv -T "$src.tmp" "$src"
+    rm -rf "$src"
+    mv "$src.tmp" "$src"
 fi
 # The clients import shared modules and skills that git does not hold; this generates them.
 node "$src/examples/memory-plugin-shared/sync.mjs" >/dev/null
@@ -210,7 +266,7 @@ node "$src/examples/memory-plugin-shared/sync.mjs" >/dev/null
 mkdir -p "$root"
 (umask 077 && printf '%s' "$key" | render_conf >"$conf.tmp")
 chmod 600 "$conf.tmp"
-mv -T "$conf.tmp" "$conf"
+mv -f "$conf.tmp" "$conf"
 
 version_of() { node -p 'require(process.argv[1]).version' "$1"; }
 
@@ -222,7 +278,7 @@ cp -R "$src/examples/pi-coding-agent-extension" "$stage"
 npm ci --prefix "$stage" --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null
 mkdir -p "${ext%/*}"
 rm -rf "$ext"
-mv -T "$stage" "$ext"
+mv "$stage" "$ext"
 say "omp extension $(version_of "$ext/package.json") (OpenViking $version)"
 
 # Claude Code installs from a marketplace; this one is the release's own

@@ -4,9 +4,7 @@
 # sedutil: keep-for-now (inventory open item).
 [arch]
 packages = [
-  "1password",
   "1password-cli",
   "gitleaks",
   "pwgen",
-  "sedutil",
 ]

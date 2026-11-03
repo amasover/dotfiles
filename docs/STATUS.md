@@ -23,20 +23,17 @@ Disposable handoff for active work. GitHub issues own durable detail; the
 
 ## In flight
 
-- **2.29 provisioning recipe** ([#95](https://github.com/amasover/dotfiles/issues/95)):
-  active on `story/2.29-metal-provisioning`. One generator now owns disposable
-  QEMU/VMware recipes, the LUKS-encrypted `daily-vm` recipe, and the attended
-  LVM-on-LUKS/rEFInd recipe for a different blank laptop—never this workstation.
-  Host-independent tests cover target selection, credentials, destructive preflight,
-  and cleanup. Next: the required Windows-host daily-VM creation record; the later
-  laptop run revalidates the metal path.
+- **Mac work VM** ([#281](https://github.com/amasover/dotfiles/issues/281);
+  [decision-work-vm.md](./decision-work-vm.md), Epic 5 Story 5.8): first daily-driver
+  rebuild target is now aarch64 Arch Ports under VMware Fusion, class `work-vm`, with
+  `arch-*` adapter groups. A disposable guest installs, bootstraps and checks green
+  under the macOS harness. Next: the attended LUKS `work-vm` install.
 
-- **3.17 monitor-name migration** ([#129](https://github.com/amasover/dotfiles/issues/129)):
-  laptop and home-4K profiles now match current modesetting names; home split
-  bars and workspace placement are live-verified. Story 5.5 already removed the
-  obsolete `launch.sh` layout table, so remaining work is hardware profile
-  capture, not launcher name replacement. Next: reconnect offsite work-4K,
-  office, and DisplayLink setups; all remain relevant.
+- **2.29 provisioning recipe** ([#95](https://github.com/amasover/dotfiles/issues/95)):
+  one generator owns disposable QEMU/VMware recipes, the LUKS `daily-vm` recipe,
+  and the attended metal recipe; `vmware-aarch64` and `work-vm` targets join it.
+  The Windows daily-VM record is now a later, optional variant. Next: the
+  `work-vm` creation record.
 
 - **3.30 Spacemacs modernization** ([#210](https://github.com/amasover/dotfiles/issues/210)):
   active in another agent session. Preserve Spacemacs, Vim-style interaction,

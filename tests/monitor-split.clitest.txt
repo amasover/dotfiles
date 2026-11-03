@@ -1,0 +1,138 @@
+monitor-split (Story 5.8) — the home 4K split carved from tracked config.
+
+Run from repo root: clitest tests/monitor-split.clitest.txt
+
+HOME is a scratch dir whose ~/.config/monitor-split links the TRACKED
+home.layout (and, once opted in, the work-vm policy), so these cases pin the
+real definition. Stubbed xrandr answers -q from $Q and --listmonitors from $M
+and logs everything; the i3-msg stub logs and lists the carved monitors as
+active outputs.
+
+$ S=$PWD/.local/bin/tools/monitor-split; m=$(mktemp -d); mkdir -p "$m/bin" "$m/home/.config/monitor-split"; ln -s "$PWD/.config/monitor-split/home.layout" "$m/home/.config/monitor-split/home.layout"; printf '%s\n' '#!/bin/sh' 'echo "xrandr $*" >> "$LOG"' 'case "$1" in -q) cat "$Q" ;; --listmonitors) cat "$M" ;; --setmonitor) echo "output list $4" ;; esac' > "$m/bin/xrandr"; printf '%s\n' '#!/bin/sh' 'echo "i3-msg $*" >> "$LOG"' '[ "$1" = -t ] && echo "[{\"name\":\"Virtual-1~1\",\"active\":true},{\"name\":\"Virtual-1~2\",\"active\":true},{\"name\":\"Virtual-1~3\",\"active\":true}]"' 'exit 0' > "$m/bin/i3-msg"; chmod +x "$m/bin/"*; export PATH="$m/bin:$PATH" HOME="$m/home" LOG="$m/log" Q="$m/q" M="$m/m"; echo ready
+ready
+$
+
+Fusion "Use All Displays in Full Screen": the 4K is one 3840x2160 output with
+the Mac panel at the left, lower down (DisplayTopology_Set 2 , 1512 0 3840
+2160 , 0 1495 1512 949). Neither reports a physical size:
+
+$ printf '%s\n' 'Screen 0: minimum 1 x 1, current 5352 x 2444, maximum 16384 x 16384' 'Virtual-1 connected primary 3840x2160+1512+0 (normal left inverted right x axis y axis) 0mm x 0mm' '   3840x2160     60.00*+' 'Virtual-2 connected 1512x949+0+1495 (normal left inverted right x axis y axis) 0mm x 0mm' '   1512x949      60.00*+' 'Virtual-3 disconnected (normal left inverted right x axis y axis)' > "$m/fusion4k"; printf 'Monitors: 2\n 0: +*Virtual-1 3840/1016x2160/572+1512+0  Virtual-1\n 1: +Virtual-2 1512/400x949/251+0+1495  Virtual-2\n' > "$m/plain-mons"; printf 'Monitors: 4\n 0: Virtual-1~1 1920/508x2160/572+1512+0  Virtual-1\n 1: Virtual-1~2 1920/508x1080/286+3432+0 \n 2: Virtual-1~3 1920/508x1080/286+3432+1080 \n 3: +Virtual-2 1512/400x949/251+0+1495  Virtual-2\n' > "$m/split-mons"; cp "$m/fusion4k" "$Q"; cp "$m/plain-mons" "$M"; echo ready
+ready
+$
+
+Without a policy file (every machine but class work-vm) auto and roles touch
+nothing, not even a query:
+
+$ : > "$LOG"; "$S" auto; echo "rc=$?"; "$S" roles; echo "rc=$?"; wc -l < "$LOG"
+rc=0
+rc=0
+0
+$
+
+Opting in: the policy is the tracked yadm alternate for class work-vm. No
+split is in place yet, so roles pins nothing:
+
+$ ln -s "$PWD/.config/monitor-split/policy##class.work-vm" "$HOME/.config/monitor-split/policy"; "$S" roles; echo "rc=$?"
+rc=0
+$
+
+auto carves the 4K: left 1920x2160 main owns Virtual-1, right-top and
+right-bottom take none; 0mm outputs get 96-DPI sizes. Then the old home
+workspace map (1 main, 2 bottom, 3+5 top) once i3 lists the monitors, and
+the carved names on stdout:
+
+$ : > "$LOG"; "$S" auto; echo "rc=$?"; grep -v -e '^xrandr -q' -e '^xrandr --listmonitors' "$LOG"
+Virtual-1~1 Virtual-1~2 Virtual-1~3
+rc=0
+xrandr --setmonitor Virtual-1~1 1920/508x2160/572+1512+0 Virtual-1
+xrandr --setmonitor Virtual-1~2 1920/508x1080/286+3432+0 none
+xrandr --setmonitor Virtual-1~3 1920/508x1080/286+3432+1080 none
+i3-msg -t get_outputs
+i3-msg [workspace="^1:"] move workspace to output "Virtual-1~1"
+i3-msg [workspace="^2:"] move workspace to output "Virtual-1~3"
+i3-msg [workspace="^[35]:"] move workspace to output "Virtual-1~2"
+i3-msg workspace number 3; workspace number 1
+$
+
+with the split in place, roles pins the home roles, and a repeat auto (the
+next drm event) changes nothing — workspaces the user moved stay put:
+
+$ cp "$m/split-mons" "$M"; "$S" roles
+MONITOR_MAIN=Virtual-1~1
+MONITOR_SPLIT_TOP=Virtual-1~2
+MONITOR_SPLIT_BOTTOM=Virtual-1~3
+$ : > "$LOG"; "$S" auto; grep -c -e setmonitor -e delmonitor -e i3-msg "$LOG"
+Virtual-1~1 Virtual-1~2 Virtual-1~3
+0
+$
+
+stale split monitors (the 4K moved, so the geometry differs) are deleted
+before the split is rebuilt:
+
+$ sed 's/+1512+0 /+0+0 /; s/Virtual-2 connected 1512x949+0+1495/Virtual-2 connected 1512x949+3840+1495/' "$m/fusion4k" > "$Q"; : > "$LOG"; "$S" auto >/dev/null; grep -e setmonitor -e delmonitor "$LOG"
+xrandr --delmonitor Virtual-1~1
+xrandr --delmonitor Virtual-1~2
+xrandr --delmonitor Virtual-1~3
+xrandr --setmonitor Virtual-1~1 1920/508x2160/572+0+0 Virtual-1
+xrandr --setmonitor Virtual-1~2 1920/508x1080/286+1920+0 none
+xrandr --setmonitor Virtual-1~3 1920/508x1080/286+1920+1080 none
+$
+
+leaving full screen (Virtual-1 back to a window size): no output matches, so
+the split is cleared, nothing is printed, and roles pins nothing:
+
+$ printf '%s\n' 'Virtual-1 connected primary 1280x800+0+0 (normal left inverted right x axis y axis) 0mm x 0mm' 'Virtual-2 disconnected (normal left inverted right x axis y axis)' > "$Q"; : > "$LOG"; "$S" auto; echo "rc=$?"; grep -e setmonitor -e delmonitor -e i3-msg "$LOG"; "$S" roles
+rc=0
+xrandr --delmonitor Virtual-1~1
+xrandr --delmonitor Virtual-1~2
+xrandr --delmonitor Virtual-1~3
+$
+
+two 4Ks: only the first matching output is split; the second stays whole:
+
+$ printf '%s\n' 'Virtual-1 connected primary 3840x2160+0+0 (normal) 0mm x 0mm' 'Virtual-2 connected 3840x2160+3840+0 (normal) 0mm x 0mm' > "$Q"; printf 'Monitors: 0\n' > "$M"; : > "$LOG"; "$S" auto; grep -c setmonitor "$LOG"
+Virtual-1~1 Virtual-1~2 Virtual-1~3
+3
+$
+
+the policy only matches its glob: a 3840x2160 output with another name is
+left alone:
+
+$ printf '%s\n' 'DP-1 connected primary 3840x2160+0+0 (normal) 600mm x 340mm' > "$Q"; : > "$LOG"; "$S" auto; grep -c setmonitor "$LOG"
+0
+$
+
+apply refuses outputs that do not span the canvas, and unconnected outputs,
+loudly and without touching the monitors:
+
+$ cp "$m/fusion4k" "$Q"; : > "$LOG"; "$S" apply home Virtual-2; echo "rc=$?"; grep -c -e setmonitor -e delmonitor "$LOG"
+monitor-split: outputs span 1512x949, layout canvas is 3840x2160
+rc=1
+0
+$ "$S" apply home Virtual-3; echo "rc=$?"
+monitor-split: output Virtual-3 is not connected with a mode
+rc=1
+$ { "$S" apply nope Virtual-1 2>&1; echo "rc=$?"; } | sed "s|$HOME|~|"
+monitor-split: no layout ~/.config/monitor-split/nope.layout
+rc=1
+$
+
+a malformed layout line is fatal, with file and line:
+
+$ printf 'canvas 3840x2160\narea main 1920x2160+0+0 MAIN\nworkspaces main 10\n' > "$HOME/.config/monitor-split/bad.layout"; { "$S" apply bad Virtual-1 2>&1; echo "rc=$?"; } | sed "s|$HOME|~|"
+monitor-split: ~/.config/monitor-split/bad.layout:3: workspace numbers are single digits
+rc=1
+$
+
+usage errors:
+
+$ "$S" apply home 2>&1; echo "rc=$?"; "$S" bogus 2>&1; echo "rc=$?"
+usage: monitor-split apply LAYOUT OUTPUT... | auto | roles
+rc=2
+usage: monitor-split apply LAYOUT OUTPUT... | auto | roles
+rc=2
+$
+
+$ rm -rf "$m"; echo done
+done
+$

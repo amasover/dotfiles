@@ -130,10 +130,13 @@ Questions below before manifests are split. Native = official repos; **bold** = 
   `noto-fonts-emoji` `awesome-terminal-fonts` `adobe-source-code-pro-fonts`
   `papirus-icon-theme` `opendesktop-fonts` **arc-gtk-theme** **arc-solid-gtk-theme**
   **noto-fonts-sc** **noto-fonts-tc**) · login (`lightdm-webkit-theme-litarvan`)
-- **hardware-intel-laptop** — ACPI, `intel-ucode`, `refind` + theme,
-  `intel-media-driver`, `vulkan-intel`, and `lib32-vulkan-intel`; Xorg uses
-  built-in modesetting
+- **hardware-intel-laptop** (unused since 2026-11-02; kept for a planned personal Intel laptop) — ACPI,
+  `intel-ucode`, `refind` + theme, `intel-media-driver`, `vulkan-intel`, and
+  `lib32-vulkan-intel`; Xorg used built-in modesetting
 - **guest-vmware / guest-qemu** — hypervisor agent/display packages + zram
+  (`xf86-video-vmware` in `guest-vmware-x86_64`, `daily-vm` only)
+- **arch-x86_64 / arch-aarch64** — architecture adapters: x86-only packages and
+  their aarch64 substitutes, included by `yadm.arch` for every class
 - **development** — languages/runtimes (`go` `go-tools` `rustup` `python-pip` `python-pipx`
   `pyenv` `uv` `nodejs` `npm` `groovy` `mono-msbuild` `nuget` **golangci-lint-bin**
   **dotnet-sdk-bin** **dotnet-sdk-9.0-bin** **aspnet-runtime-bin** **aspnet-runtime-9.0-bin**

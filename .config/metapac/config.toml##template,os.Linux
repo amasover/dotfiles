@@ -2,6 +2,10 @@
 # Do not edit ~/.config/metapac/config.toml directly: edit this template and
 # re-render (yadm alt). The hostname key and $HOME path are filled at render
 # time, so neither reaches the repo (see docs/decision-bootstrap-architecture.md).
+# Every class also gets the architecture adapter named by yadm.arch (uname -m,
+# or local.arch): groups/arch-x86_64.toml or groups/arch-aarch64.toml. Any
+# other architecture renders a group file that does not exist, which metapac
+# rejects loudly.
 enabled_backends = ["arch"]
 hostname_groups_enabled = true
 
@@ -10,13 +14,14 @@ hostname_groups_enabled = true
 package_manager = "yay"
 
 [hostname_groups]
-{% if yadm.class == "workstation" %}
-# Physical Intel laptop: shared purposes + work + its concrete hardware adapter.
+{% if yadm.class == "work-vm" %}
+# Mac-hosted VMware Fusion work VM (aarch64): shared purposes + work.
 "{{ yadm.hostname }}" = [
 {% include "profiles/common.groups" %}
+  "arch-{{ yadm.arch }}",
+  "guest-vmware",
   "work",
-  "hardware-intel-laptop",
-  "inbox-workstation",
+  "inbox-work-vm",
   "{{ env.HOME }}/.local/share/metapac/machine-local.toml",
 ]
 {% endif %}
@@ -24,7 +29,9 @@ package_manager = "yay"
 # Windows-hosted VMware daily driver: no work or metal hardware packages.
 "{{ yadm.hostname }}" = [
 {% include "profiles/common.groups" %}
+  "arch-{{ yadm.arch }}",
   "guest-vmware",
+  "guest-vmware-x86_64",
   "inbox-daily-vm",
   "{{ env.HOME }}/.local/share/metapac/machine-local.toml",
 ]
@@ -33,6 +40,7 @@ package_manager = "yay"
 # Disposable libvirt validation guest: daily-VM purposes with QEMU tools.
 "{{ yadm.hostname }}" = [
 {% include "profiles/common.groups" %}
+  "arch-{{ yadm.arch }}",
   "guest-qemu",
   "inbox-qemu-harness",
   "{{ env.HOME }}/.local/share/metapac/machine-local.toml",
@@ -42,6 +50,7 @@ package_manager = "yay"
 # Portable USB drive: shared purposes, every x86_64 chassis it may boot, no work.
 "{{ yadm.hostname }}" = [
 {% include "profiles/common.groups" %}
+  "arch-{{ yadm.arch }}",
   "hardware-portable",
   "inbox-portable",
   "{{ env.HOME }}/.local/share/metapac/machine-local.toml",

@@ -30,7 +30,7 @@ $
 
 bootstrap validates before acting — missing requireds never touch the system.
 
-$ .local/bin/setup/vm-harness-guest bootstrap --class workstation 2>&1; echo rc=$?
+$ .local/bin/setup/vm-harness-guest bootstrap --class work-vm 2>&1; echo rc=$?
 vm-harness-guest: FATAL: bootstrap needs --class and --repo
 rc=2
 $
@@ -52,8 +52,9 @@ $
 Existing checkout refresh names one remote branch explicitly; it never asks
 `git pull` to infer multiple fetched branches.
 
-$ G=.local/bin/setup/vm-harness-guest; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home/.local/bin/setup" "$T/home/.local/share/metapac"; printf old > "$T/branch"; printf '%s\n' '# machine-local metapac group — untracked, never published' '# harness-owned guest hardware set, rewritten every bootstrap' '# (interim home until the Story 2.30 class/hardware split, #96)' '[arch]' 'packages = [' '  "private-pkg",' '  "qemu-guest-agent",' '  "zram-generator",' ']' > "$T/home/.local/share/metapac/machine-local.toml"; printf '%s\n' '#!/bin/sh' 'printf yadm >> "$GUEST_LOG"' 'for arg; do printf " <%s>" "$arg" >> "$GUEST_LOG"; done' 'printf "\n" >> "$GUEST_LOG"' 'if [ "$1" = rev-parse ]; then [ "$2" = --git-dir ] && echo .git || cat "$YADM_BRANCH"; fi' 'if [ "$1" = checkout ]; then printf "%s\n" "$2" > "$YADM_BRANCH"; fi' 'exit 0' > "$T/bin/yadm"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$T/bin/sudo"; printf '%s\n' '#!/bin/sh' 'printf "bootstrap <%s> <%s>\n" "$1" "$2" >> "$GUEST_LOG"' > "$T/home/.local/bin/setup/bootstrap"; chmod +x "$T/bin/yadm" "$T/bin/sudo" "$T/home/.local/bin/setup/bootstrap"; PATH="$T/bin:$PATH" HOME="$T/home" GUEST_LOG="$T/log" YADM_BRANCH="$T/branch" "$G" bootstrap --class ci --repo https://example.invalid/dotfiles.git --branch feature/new >/dev/null; grep '^yadm' "$T/log"
+$ G=.local/bin/setup/vm-harness-guest; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home/.local/bin/setup" "$T/home/.local/share/metapac"; printf old > "$T/branch"; printf '%s\n' https://example.invalid/dotfiles.git > "$T/origin"; printf '%s\n' '# machine-local metapac group — untracked, never published' '# harness-owned guest hardware set, rewritten every bootstrap' '# (interim home until the Story 2.30 class/hardware split, #96)' '[arch]' 'packages = [' '  "private-pkg",' '  "qemu-guest-agent",' '  "zram-generator",' ']' > "$T/home/.local/share/metapac/machine-local.toml"; printf '%s\n' '#!/bin/sh' 'printf yadm >> "$GUEST_LOG"' 'for arg; do printf " <%s>" "$arg" >> "$GUEST_LOG"; done' 'printf "\n" >> "$GUEST_LOG"' 'if [ "$1" = rev-parse ]; then [ "$2" = --git-dir ] && echo .git || cat "$YADM_BRANCH"; fi' 'if [ "$1" = checkout ]; then printf "%s\n" "$2" > "$YADM_BRANCH"; fi' 'if [ "$1" = remote ] && [ "$2" = get-url ]; then cat "$YADM_ORIGIN"; fi' 'if [ "$1" = remote ] && [ "$2" = set-url ]; then printf "%s\n" "$4" > "$YADM_ORIGIN"; fi' 'exit 0' > "$T/bin/yadm"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$T/bin/sudo"; printf '%s\n' '#!/bin/sh' 'printf "bootstrap <%s> <%s>\n" "$1" "$2" >> "$GUEST_LOG"' > "$T/home/.local/bin/setup/bootstrap"; chmod +x "$T/bin/yadm" "$T/bin/sudo" "$T/home/.local/bin/setup/bootstrap"; PATH="$T/bin:$PATH" HOME="$T/home" GUEST_LOG="$T/log" YADM_BRANCH="$T/branch" YADM_ORIGIN="$T/origin" "$G" bootstrap --class ci --repo https://example.invalid/dotfiles.git --branch feature/new >/dev/null; grep '^yadm' "$T/log"
 yadm <rev-parse> <--git-dir>
+yadm <remote> <get-url> <origin>
 yadm <fetch> <--prune> <origin>
 yadm <rev-parse> <--abbrev-ref> <HEAD>
 yadm <checkout> <feature/new>
@@ -71,6 +72,19 @@ bootstrap <--unattended> <>
 packages = [
   "private-pkg",
 ]
+$
+
+A resumed guest also honours a CHANGED --repo: a checkout first cloned from
+GitHub, then handed a VM_HARNESS_BUNDLE path, points origin at the bundle
+before fetching, so the unpushed branch it carries can be checked out.
+
+$ : > "$T/log"; PATH="$T/bin:$PATH" HOME="$T/home" GUEST_LOG="$T/log" YADM_BRANCH="$T/branch" YADM_ORIGIN="$T/origin" "$G" bootstrap --class ci --repo /tmp/vm-harness/dotfiles.bundle --branch feature/unpushed >/dev/null; grep -E '^yadm <(remote|fetch|checkout|merge)>' "$T/log"; cat "$T/origin"
+yadm <remote> <get-url> <origin>
+yadm <remote> <set-url> <origin> </tmp/vm-harness/dotfiles.bundle>
+yadm <fetch> <--prune> <origin>
+yadm <checkout> <feature/unpushed>
+yadm <merge> <--ff-only> <origin/feature/unpushed>
+/tmp/vm-harness/dotfiles.bundle
 $
 
 $ rm -rf "$T"; echo done
@@ -91,8 +105,8 @@ OK
 NetworkManager enabled and active; systemd-networkd disabled and inactive
  [ok] inbox: empty
 rc=0
-$ out=$(FAKE_CLASS=workstation RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
-vm-harness-guest: FATAL: expected yadm class 'qemu-harness', found 'workstation'
+$ out=$(FAKE_CLASS=work-vm RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
+vm-harness-guest: FATAL: expected yadm class 'qemu-harness', found 'work-vm'
 rc=2
 $ out=$(FAKE_NM_ACTIVE=0 RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
 vm-harness-guest: FATAL: NetworkManager is not active
@@ -105,6 +119,26 @@ stale-pkg
 rc=1
 $ out=$(FAKE_METAPAC_RC=9 RUN_CHECK 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
 vm-harness-guest: FATAL: metapac unmanaged failed (rc=9) — the gate did not run
+rc=2
+$
+
+work-vm shares daily-vm's guest-vmware adapter with its own inbox. Groups
+named for an architecture (guest-vmware-x86_64 on daily-vm, and the arch-*
+groups) add to that adapter; they do not count as a second one:
+
+$ RUN_CLASS() { printf '[hostname_groups]\n"%s" = [\n' "$(uname -n)" > "$U/home/.config/metapac/config.toml"; for group in "${@:2}"; do printf '[arch]\npackages = [\n]\n' > "$U/home/.config/metapac/groups/$group.toml"; printf '  "%s",\n' "$group" >> "$U/home/.config/metapac/config.toml"; done; printf ']\n' >> "$U/home/.config/metapac/config.toml"; PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" FAKE_CLASS="$1" "$G" check --class "$1"; }; echo ready
+ready
+$ out=$(RUN_CLASS work-vm guest-vmware arch-aarch64 inbox-work-vm 2>&1); rc=$?; printf '%s\n' "$out" | grep -E '^--- class profile|FATAL'; echo "rc=$rc"
+--- class profile: work-vm (guest-vmware, inbox-work-vm)
+rc=0
+$ out=$(RUN_CLASS daily-vm guest-vmware guest-vmware-x86_64 arch-x86_64 inbox-daily-vm 2>&1); rc=$?; printf '%s\n' "$out" | grep -E '^--- class profile|FATAL'; echo "rc=$rc"
+--- class profile: daily-vm (guest-vmware, inbox-daily-vm)
+rc=0
+$ out=$(RUN_CLASS work-vm guest-vmware guest-qemu inbox-work-vm 2>&1); rc=$?; printf '%s\n' "$out" | grep -E '^--- class profile|FATAL'; echo "rc=$rc"
+vm-harness-guest: FATAL: class 'work-vm' expected adapter 'guest-vmware'; active: guest-qemu (count 2)
+rc=2
+$ out=$(RUN_CLASS workstation guest-vmware inbox-workstation 2>&1); rc=$?; printf '%s\n' "$out" | grep FATAL; echo "rc=$rc"
+vm-harness-guest: FATAL: unsupported machine class 'workstation'
 rc=2
 $
 

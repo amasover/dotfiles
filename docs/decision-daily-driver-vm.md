@@ -1,7 +1,9 @@
 # Decision: the first daily-driver rebuild is a VM on the Windows personal machine
 
 **Date:** 2026-07-10
-**Status:** Accepted
+**Status:** Superseded in part by [decision-work-vm.md](./decision-work-vm.md)
+(2026-11-02: the first rebuild target is now the Mac work VM; the Windows VM and
+the Story 1.8 exit condition are no longer first/required.)
 **Origin:** repo-direction grill, 2026-07-10 (Q1–Q7)
 **Related:** [CONTEXT.md](../CONTEXT.md) era terms · [prd.md](./prd.md) ·
 [runbook-fresh-machine-bootstrap.md](./runbook-fresh-machine-bootstrap.md) (acceptance checklist) ·
@@ -24,11 +26,13 @@ Supporting choices, decided together:
   xrdp session hack); VirtualBox rejected (weak 3D); WSL2 rejected (runs apps, not
   the platform — no archinstall, bootloader, or full session to rehearse).
 - **Class model:** Story 2.30 finalized three concrete profiles at the
-  `yadm.class` seam. `workstation` adds `work` plus the Intel-laptop adapter;
+  `yadm.class` seam. `workstation` added `work` plus the Intel-laptop adapter
+  (retired 2026-11-02 with that laptop; `work-vm` now carries `work`);
   `daily-vm` adds VMware tools; `qemu-harness` adds QEMU tools. All share one
   purpose-group list, while each owns a distinct inbox. The VMware adapter
-  declares `open-vm-tools`, `xf86-video-vmware`, and `zram-generator`; Intel
-  boot/GPU packages stay only on the laptop, while archinstall-owned
+  declared `open-vm-tools`, `xf86-video-vmware`, and `zram-generator`
+  (`xf86-video-vmware` later moved to `guest-vmware-x86_64`); Intel
+  boot/GPU packages stayed only on the laptop, while archinstall-owned
   `linux-firmware` remains shared. Harnesses pass a class, never an ad hoc
   hardware package list.
 - **Secrets: full archive, host trusted.** The VM decrypts the real archive; the
