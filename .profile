@@ -17,7 +17,7 @@ export PATH="$GOPATH/bin:$PATH"
 export PATH=/usr/bin/robo3t/bin:$PATH
 
 ## vimgolf
-export PATH="$PATH:/home/$USER/.gem/ruby/2.5.0/gems/vimgolf-0.4.8/bin"
+export PATH="$PATH:$HOME/.gem/ruby/2.5.0/gems/vimgolf-0.4.8/bin"
 ## end vimgolf
 
 export PATH=~/.local/bin/work:$PATH
@@ -39,7 +39,7 @@ export MANPAGER="/bin/sh -c \"col -b | vim -c 'set ft=man ts=8 nomod nolist nonu
 
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
-export PATH=$PATH:/home/$USER/.local/bin
+export PATH=$PATH:$HOME/.local/bin
 
 export TOOLS="$HOME/.local/bin/tools"
 

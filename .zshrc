@@ -58,13 +58,33 @@ plugins=(
     vi-mode
     archlinux)
 
+# macOS (class work-mac): Homebrew's prefix. mise's brew: manager installs
+# there too, with or without Homebrew itself, so no `brew shellenv`. Set before
+# oh-my-zsh so its compinit sees Homebrew's completions.
+if [[ $OSTYPE == darwin* && -d /opt/homebrew/bin ]]; then
+    typeset -U path fpath
+    path=(/opt/homebrew/bin /opt/homebrew/sbin $path)
+    fpath=(/opt/homebrew/share/zsh/site-functions $fpath)
+fi
+
 source $ZSH/oh-my-zsh.sh
 
 # Package-owned shell integrations (Story 2.13). NVM changes versions only on
 # explicit `nvm use`; directory changes never install or switch Node.
-source /usr/share/nvm/init-nvm.sh
-source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-source ~/.zsh_plugins.sh
+if [[ $OSTYPE == darwin* ]]; then
+    # Homebrew packages the plugins pacman supplies on Linux; mise owns Node
+    # (both declared in .config/mise/config.toml##os.Darwin).
+    for zsh_plugin in zsh-autosuggestions zsh-syntax-highlighting; do
+        if [[ -r /opt/homebrew/share/$zsh_plugin/$zsh_plugin.zsh ]]; then
+            source /opt/homebrew/share/$zsh_plugin/$zsh_plugin.zsh
+        fi
+    done
+    unset zsh_plugin
+else
+    source /usr/share/nvm/init-nvm.sh
+    source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+    source ~/.zsh_plugins.sh
+fi
 
 #############################
 #     USER CONFIGURATION    #
@@ -80,12 +100,14 @@ source ~/.zsh_plugins.sh
 if [[ -n $SSH_CONNECTION ]]; then
   export EDITOR='vim'
 else
-  export ARCHFLAGS="-arch x86_64"
+  [[ $OSTYPE == darwin* ]] || export ARCHFLAGS="-arch x86_64"
   export EDITOR='vim'
 fi
 
-# Compilation flags
-export ARCHFLAGS="-arch x86_64"
+# Compilation flags (Linux x86_64 only: on Apple Silicon this forces Intel builds)
+if [[ $OSTYPE != darwin* ]]; then
+    export ARCHFLAGS="-arch x86_64"
+fi
 
 function pe() {
     echo "ERROR: $1" >&2
@@ -139,9 +161,12 @@ function push_upstream () {
     git push -u origin $(git branch | grep "*" | awk -F " " '{print $NF}')
 }
 alias gpu=push_upstream
-alias sctl="sudo systemctl"
-alias pbcopy="xclip -selection clipboard"
-alias pbpaste="xclip -selection clipboard -o"
+if [[ $OSTYPE != darwin* ]]; then
+    # macOS ships its own pbcopy/pbpaste and has no systemd
+    alias sctl="sudo systemctl"
+    alias pbcopy="xclip -selection clipboard"
+    alias pbpaste="xclip -selection clipboard -o"
+fi
 alias restart="shutdown -r now"
 ## reload xresources
 alias xrl="xrdb ~/.Xresources"
@@ -182,8 +207,14 @@ alias npmis="npm install --save"
 alias npmisd="npm install --save-dev"
 
 alias cat="bat"
-alias ls="exa"
-alias ll="exa -la"
+if [[ $OSTYPE == darwin* ]]; then
+    # Homebrew has only exa's maintained fork
+    alias ls="eza"
+    alias ll="eza -la"
+else
+    alias ls="exa"
+    alias ll="exa -la"
+fi
 alias gimme="sudo pacman -S"
 
 alias c="cd ~/code && ll"
@@ -324,17 +355,35 @@ export ANSIBLE_PLAYBOOKS_DIR=~/code/ansible-playbooks
 
 export PATH=$PATH:/home/han/.local/bin
 
-export DOTNET_ROOT="/usr/share/dotnet"
+if [[ $OSTYPE != darwin* ]]; then
+    export DOTNET_ROOT="/usr/share/dotnet"
 
-source /home/aaron/.config/broot/launcher/bash/br
+    source /home/aaron/.config/broot/launcher/bash/br
+fi
 
 autoload -U +X bashcompinit && bashcompinit
-source $HOME/.tenv.completion.zsh
+if [[ $OSTYPE != darwin* ]]; then
+    source $HOME/.tenv.completion.zsh
 
-tf_version=$(tenv tf detect -q | cut -d ' ' -f2)
-tg_version=$(tenv tg detect -q | cut -d ' ' -f2)
-complete -o nospace -C /home/aaron/.tenv/Terraform/${tf_version}/terraform terraform
-complete -o nospace -C /home/aaron/.tenv/Terragrunt/${tg_version}/terragrunt terragrunt
+    tf_version=$(tenv tf detect -q | cut -d ' ' -f2)
+    tg_version=$(tenv tg detect -q | cut -d ' ' -f2)
+    complete -o nospace -C /home/aaron/.tenv/Terraform/${tf_version}/terraform terraform
+    complete -o nospace -C /home/aaron/.tenv/Terragrunt/${tg_version}/terragrunt terragrunt
+fi
+
+# macOS (class work-mac): mise activation and the default omp mode.
+if [[ $OSTYPE == darwin* ]]; then
+    # This tracked file owns activation: config.toml##os.Darwin sets
+    # mise_shell_activate zsh = false, so mise never writes its block here.
+    if (( $+commands[mise] )); then
+        eval "$(mise activate zsh)"
+    fi
+    # A plain `omp` runs omp-mode claude's roles (docs/decision-mac-host.md).
+    # omp-mode appends its own mode after this overlay, and the last one wins.
+    if [[ -z ${PI_CONFIG_FILES:-} && -r $HOME/.omp/agent/modes/claude.yml ]]; then
+        export PI_CONFIG_FILES=$HOME/.omp/agent/modes/claude.yml
+    fi
+fi
 
 # machine-local shell config (untracked; machine/site-specific aliases live there)
 [[ -r ~/.zshrc.local ]] && source ~/.zshrc.local
