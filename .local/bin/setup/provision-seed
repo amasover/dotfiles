@@ -452,6 +452,7 @@ def build_user_data(
     user_credentials: dict | None,
     live_ssh_pubkey: str | None,
     run_install_sh: str,
+    arch: str = "x86_64",
 ) -> str:
     """Build cloud-init data for an unattended first-boot install."""
     files: list[tuple[str, bytes, str | None]] = [
@@ -484,8 +485,11 @@ def build_user_data(
     if live_ssh_pubkey:
         # archiso-aarch64's cloud.cfg ships `disable_root: true`, which turns
         # the root key into a "login as the user arch" refusal (seen live
-        # 2026-11-02); the live-ISO exec channel is root by contract.
-        lines += ["disable_root: false", "ssh_authorized_keys:", f"  - {live_ssh_pubkey}"]
+        # 2026-11-02); the live-ISO exec channel is root by contract. The x86
+        # archiso already allows it, so its user-data stays as it was.
+        if arch == "aarch64":
+            lines.append("disable_root: false")
+        lines += ["ssh_authorized_keys:", f"  - {live_ssh_pubkey}"]
 
     lines += [
         "bootcmd:",
@@ -591,6 +595,7 @@ def _create_seed(args, parser: argparse.ArgumentParser) -> int:
         user_credentials=credentials,
         live_ssh_pubkey=request.pubkey if args.live_ssh else None,
         run_install_sh=run_install,
+        arch=request.target.arch,
     )
 
     out = Path(args.out)

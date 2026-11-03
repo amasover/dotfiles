@@ -184,6 +184,7 @@ class TestUserData:
             ),
             live_ssh_pubkey=live_ssh_pubkey,
             run_install_sh=seed.build_run_install(),
+            arch=request.target.arch,
         )
 
     def test_embedded_config_roundtrips(self):
@@ -209,10 +210,15 @@ class TestUserData:
         assert "ssh_authorized_keys:" not in ud
         assert "systemctl, start, sshd" not in ud
 
-    def test_live_ssh_reenables_root_login(self):
+    def test_live_ssh_reenables_root_login_on_aarch64(self):
         # archiso-aarch64's cloud.cfg ships disable_root: true.
-        ud = self._ud(live_ssh_pubkey="ssh-ed25519 AAAA test")
+        ud = self._ud(target="vmware-aarch64", live_ssh_pubkey="ssh-ed25519 AAAA test")
         assert "disable_root: false" in ud
+
+    def test_live_ssh_leaves_x86_root_login_alone(self):
+        # The x86 archiso already allows root keys; its user-data is unchanged.
+        ud = self._ud(live_ssh_pubkey="ssh-ed25519 AAAA test")
+        assert "disable_root" not in ud
 
     def test_install_driver_stops_serial_getty_before_opening_the_line(self):
         script = seed.build_run_install()
