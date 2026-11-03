@@ -31,6 +31,10 @@
 #   --no-decrypt  skip the decrypt offer
 #   --no-mise     stop before `mise bootstrap`
 #
+# Test seam: BOOTSTRAP_TEST_MODE=1 (tests/mac-bootstrap.clitest.txt), as in
+# setup/bootstrap, lets the Linux CI run this past the Darwin guard and answer
+# the decrypt prompt from a pipe.
+#
 # Runs under macOS's /bin/bash 3.2 too: no mapfile, no associative arrays.
 set -euo pipefail
 
@@ -66,7 +70,9 @@ for arg in "$@"; do
     esac
 done
 
-[[ $(uname -s) == Darwin ]] || die "this bootstrap is for macOS; Linux uses .local/bin/setup/bootstrap"
+test_mode=${BOOTSTRAP_TEST_MODE:-0}
+[[ $(uname -s) == Darwin || $test_mode == 1 ]] \
+    || die "this bootstrap is for macOS; Linux uses .local/bin/setup/bootstrap"
 command -v yadm >/dev/null || die "yadm not found (brew install yadm)"
 # yadm resolves pathspecs from the current directory; work from the worktree.
 cd "$HOME"
@@ -172,32 +178,36 @@ fi
 # --- 5. decrypt ---------------------------------------------------------------
 say "encrypted archive"
 archive=${XDG_DATA_HOME:-$HOME/.local/share}/yadm/archive
+state=${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles
 if ((! decrypt)); then
     echo "  skipped (--no-decrypt)"
 elif [[ ! -s $archive ]]; then
     echo "  no archive at $archive"
 elif ((check)); then
     echo "  would offer: yadm decrypt (the full archive)"
-elif [[ ! -t 0 ]]; then
+elif [[ ! -t 0 && $test_mode != 1 ]]; then
     echo "  skipped: no terminal for the passphrase; run 'yadm bootstrap' in one"
 else
-    read -r -p "  Decrypt the full archive into \$HOME now? [y/N] " answer
+    answer=
+    read -r -p "  Decrypt the full archive into \$HOME now? [y/N] " answer || true
     if [[ $answer == [yY]* ]]; then
         # Save what the archive would overwrite (it carries .ssh/ and the like).
         echo "  listing the archive (passphrase 1 of 2)"
         list=$(yadm decrypt -l)
         stamp=$(date +%Y%m%d-%H%M%S)
-        backup=$HOME/.local/state/dotfiles/pre-decrypt-$stamp.tar
+        backup=$state/pre-decrypt-$stamp.tar
         existing=$(printf '%s\n' "$list" | while IFS= read -r path; do
             [[ -n $path && -f $path ]] && printf '%s\n' "$path"
         done || true)
+        mkdir -p "$state"
         if [[ -n $existing ]]; then
-            mkdir -p "${backup%/*}"
             (
                 umask 077
                 printf '%s\n' "$existing" | tar -cf "$backup" -T -
             )
-            echo "  saved $(printf '%s\n' "$existing" | wc -l | tr -d ' ') existing file(s) to ${backup/#$HOME/\~}"
+            # A variable keeps the ~ literal across bash 3.2 and 5.2's patsub rules.
+            tilde='~'
+            echo "  saved $(printf '%s\n' "$existing" | wc -l | tr -d ' ') existing file(s) to ${backup/#$HOME/$tilde}"
         fi
         echo "  decrypting (passphrase 2 of 2)"
         yadm decrypt
