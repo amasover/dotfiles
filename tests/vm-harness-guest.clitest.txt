@@ -122,9 +122,9 @@ vm-harness-guest: FATAL: metapac unmanaged failed (rc=9) — the gate did not ru
 rc=2
 $
 
-work-vm shares daily-vm's guest-vmware adapter with its own inbox. An
-architecture supplement (guest-vmware-x86_64 on daily-vm) and the arch-*
-adapters ride beside the one adapter instead of counting as a second:
+work-vm shares daily-vm's guest-vmware adapter with its own inbox. Groups
+named for an architecture (guest-vmware-x86_64 on daily-vm, and the arch-*
+groups) add to that adapter; they do not count as a second one:
 
 $ RUN_CLASS() { printf '[hostname_groups]\n"%s" = [\n' "$(uname -n)" > "$U/home/.config/metapac/config.toml"; for group in "${@:2}"; do printf '[arch]\npackages = [\n]\n' > "$U/home/.config/metapac/groups/$group.toml"; printf '  "%s",\n' "$group" >> "$U/home/.config/metapac/config.toml"; done; printf ']\n' >> "$U/home/.config/metapac/config.toml"; PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" FAKE_CLASS="$1" "$G" check --class "$1"; }; echo ready
 ready
