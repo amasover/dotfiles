@@ -382,6 +382,19 @@ ways through `~/mac/vmshare` and `~/mac/Downloads`. Proven live: the unit
 mounted both, a file written in the guest appeared on the Mac, and stop and
 start unmounted and remounted `~/mac`.
 
+**Attended creation path (2026-11-03):** `VM_HARNESS_TARGET=work-vm` makes the macOS
+harness build the real VM: seed target `work-vm` (LUKS root, no harness sudo or serial
+getty), VM `work-vm` in `~/vms/work-vm`, 300 GiB, 10 vcpus, 12 GiB, the two shares, and
+the window always open for the disk password. The user and disk passwords are typed
+twice at `create` and reach `provision-seed` only through its environment; the seed is
+deleted when the install ends. Bootstrap runs from GitHub `main` without
+`--unattended` over `ssh -t`, so `yadm decrypt` prompts, behind a temporary
+password-free sudo drop-in the guest glue deletes on exit or signal; `check` fails
+while it exists. `destroy` needs the VM name typed. Steps: [Create the real work
+VM](./runbook-vm-validation.md#create-the-real-work-vm-attended-macos). Proven
+against stubs and with a scratch `seed` + `create`; the real VM's creation record is
+still pending.
+
 **Acceptance criteria:**
 
 - `vm-harness-vmware.ps1` runs under PowerShell 7 on macOS (`$IsMacOS`) against
