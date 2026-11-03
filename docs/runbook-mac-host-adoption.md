@@ -66,7 +66,9 @@ links the alternates, offers to decrypt the archive, and runs `mise bootstrap`.
   twice: once to list the archive, once to extract it. Every existing file the
   archive would overwrite, `~/.ssh/config` included, is saved first to
   `~/.local/state/dotfiles/pre-decrypt-<time>.tar`. Check that your Mac's SSH keys
-  and config still work afterwards; restore from the tar if they don't.
+  and config still work afterwards; restore from the tar if they don't. After a
+  decrypt, later runs skip the offer until the archive changes; run
+  `bash ~/.config/yadm/bootstrap --decrypt` to be asked again.
 - **mise.** `mise bootstrap` shows what it will do and asks before it changes anything.
   It installs the declared formulae, adopts the already-installed Firefox, Orca and
   Feishin (`adopt = true` keeps their privacy grants), clones oh-my-zsh, writes the
