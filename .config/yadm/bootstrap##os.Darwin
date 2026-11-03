@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# yadm bootstrap for the Mac (machine class work-mac). yadm links it to
+# ~/.config/yadm/bootstrap on Darwin only and offers to run it after a clone;
+# Linux keeps its own entry point, .local/bin/setup/bootstrap.
+#
+# First run, from a clone made without a checkout, so no Linux file ever lands.
+# Turn yadm's automatic alternate linking off first: a clone links every
+# alternate at once and would replace a live file (say ~/.config/mise/
+# config.toml) before step 4 can save it. Step 4 turns it back on.
+#   yadm config yadm.auto-alt false
+#   yadm clone --no-checkout --no-bootstrap https://github.com/amasover/dotfiles.git
+#   bash <(yadm show 'HEAD:.config/yadm/bootstrap##os.Darwin') --check
+#   bash <(yadm show 'HEAD:.config/yadm/bootstrap##os.Darwin')
+# Later runs: `yadm bootstrap` (it passes no options; it runs everything).
+# See docs/runbook-mac-host-adoption.md.
+#
+# Steps, each skipped when already converged:
+#   1. class    yadm config local.class work-mac
+#   2. sparse   the .config/yadm/sparse/work-mac rules, read from HEAD
+#   3. files    check out tracked files missing from $HOME; files that already
+#               exist with other content are listed and left alone
+#   4. alts     back up a regular file a Darwin alternate would replace
+#               (<file>.pre-yadm), run `yadm alt`, and turn auto-alt back on
+#   5. decrypt  offer `yadm decrypt` of the full archive; files it would
+#               overwrite are saved to ~/.local/state/dotfiles first
+#   6. mise     `mise bootstrap`, which asks before it changes anything
+#
+# Usage: bootstrap [--check] [--no-decrypt] [--no-mise]
+#   --check       report each step and change nothing (runs `mise bootstrap
+#                 --dry-run`)
+#   --no-decrypt  skip the decrypt offer
+#   --no-mise     stop before `mise bootstrap`
+#
+# Runs under macOS's /bin/bash 3.2 too: no mapfile, no associative arrays.
+set -euo pipefail
+
+class=work-mac
+rules_path=.config/yadm/sparse/$class
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+}
+
+say() {
+    echo "==> $*"
+}
+
+die() {
+    echo "bootstrap: FATAL: $*" >&2
+    exit 1
+}
+
+check=0
+decrypt=1
+run_mise=1
+for arg in "$@"; do
+    case $arg in
+        --check) check=1 ;;
+        --no-decrypt) decrypt=0 ;;
+        --no-mise) run_mise=0 ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *) die "unknown argument: $arg (try: --help)" ;;
+    esac
+done
+
+[[ $(uname -s) == Darwin ]] || die "this bootstrap is for macOS; Linux uses .local/bin/setup/bootstrap"
+command -v yadm >/dev/null || die "yadm not found (brew install yadm)"
+# yadm resolves pathspecs from the current directory; work from the worktree.
+cd "$HOME"
+# Plain git on yadm's repo: yadm's passthrough re-runs `yadm alt` after every
+# git command, which --check must not do. Step 4 runs `yadm alt` once.
+repo=$(yadm introspect repo)
+ygit() {
+    git --git-dir="$repo" --work-tree="$HOME" "$@"
+}
+ygit rev-parse --verify --quiet HEAD >/dev/null || die "no yadm repo; clone it first (see the header)"
+
+# --- 1. class -----------------------------------------------------------------
+say "machine class"
+current=$(ygit config local.class || true)
+if [[ $current == "$class" ]]; then
+    echo "  already $class"
+elif [[ -n $current ]]; then
+    die "local.class is '$current', not '$class'; this bootstrap is for $class only"
+elif ((check)); then
+    echo "  would: yadm config local.class $class"
+else
+    ygit config local.class "$class"
+    echo "  set to $class"
+fi
+
+# --- 2. sparse-checkout rules -------------------------------------------------
+say "sparse checkout ($rules_path)"
+rules=$(ygit show "HEAD:$rules_path") || die "HEAD has no $rules_path"
+# git stores the rules without their comments and blank lines.
+patterns=$(printf '%s\n' "$rules" | sed -e '/^#/d' -e '/^[[:space:]]*$/d')
+if [[ $(ygit config --bool core.sparseCheckout || true) == true ]] \
+    && [[ $(ygit sparse-checkout list 2>/dev/null) == "$patterns" ]]; then
+    echo "  already applied"
+elif ((check)); then
+    echo "  would: yadm sparse-checkout set --no-cone (rules from HEAD)"
+else
+    # Paths outside the rules become skip-worktree; clean copies of them in
+    # $HOME are removed, edited ones are kept and reported by git.
+    printf '%s\n' "$rules" | ygit sparse-checkout set --no-cone --stdin
+    echo "  applied"
+fi
+
+# --- 3. tracked files missing from $HOME --------------------------------------
+say "tracked files"
+if ((check)) && [[ $(ygit config --bool core.sparseCheckout || true) != true ]]; then
+    # Until the rules apply, every tracked file would show up as missing.
+    echo "  would check out what the rules select and \$HOME lacks"
+else
+    missing=0
+    while IFS= read -r -d '' file; do
+        missing=$((missing + 1))
+        if ((check)); then
+            echo "  would check out: $file"
+        else
+            ygit checkout -- ":/$file"
+        fi
+    done < <(ygit ls-files -z --deleted)
+    ((check)) || echo "  checked out $missing missing file(s)"
+fi
+# --modified also lists deleted files; keep only those present with other content.
+modified=$(LC_ALL=C comm -23 <(ygit ls-files --modified | LC_ALL=C sort) \
+    <(ygit ls-files --deleted | LC_ALL=C sort))
+if [[ -n $modified ]]; then
+    echo "  left alone (already in \$HOME with other content):"
+    printf '%s\n' "$modified" | sed 's/^/    /'
+    echo "  review each with 'yadm diff -- ~/<path>'; keep yours or take the"
+    echo "  repo's with 'yadm checkout -- ~/<path>'"
+fi
+
+# --- 4. alternates ------------------------------------------------------------
+say "alternates"
+backups=0
+while IFS= read -r -d '' entry; do
+    # ls-files -t tags each path; H = checked out, S = skip-worktree.
+    [[ ${entry:0:2} == "H " ]] || continue
+    target=${entry:2}
+    target=${target%%##*}
+    if [[ -f $target && ! -L $target ]]; then
+        backups=$((backups + 1))
+        if ((check)); then
+            echo "  would back up $target to $target.pre-yadm before linking"
+        elif [[ -e $target.pre-yadm ]]; then
+            die "$target.pre-yadm already exists; move it aside first"
+        else
+            mv "$target" "$target.pre-yadm"
+            echo "  backed up $target to $target.pre-yadm"
+        fi
+    fi
+done < <(ygit ls-files -z -t -- '*##*')
+if ((check)); then
+    echo "  would: yadm alt"
+else
+    yadm alt
+    echo "  linked ($backups backup(s))"
+    # The first clone ran with auto-alt off (see the header); from here on,
+    # yadm relinks alternates itself after each checkout, pull or merge.
+    if [[ $(yadm config yadm.auto-alt || true) == false ]]; then
+        yadm config --unset yadm.auto-alt
+        echo "  turned yadm.auto-alt back on"
+    fi
+fi
+
+# --- 5. decrypt ---------------------------------------------------------------
+say "encrypted archive"
+archive=${XDG_DATA_HOME:-$HOME/.local/share}/yadm/archive
+if ((! decrypt)); then
+    echo "  skipped (--no-decrypt)"
+elif [[ ! -s $archive ]]; then
+    echo "  no archive at $archive"
+elif ((check)); then
+    echo "  would offer: yadm decrypt (the full archive)"
+elif [[ ! -t 0 ]]; then
+    echo "  skipped: no terminal for the passphrase; run 'yadm bootstrap' in one"
+else
+    read -r -p "  Decrypt the full archive into \$HOME now? [y/N] " answer
+    if [[ $answer == [yY]* ]]; then
+        # Save what the archive would overwrite (it carries .ssh/ and the like).
+        echo "  listing the archive (passphrase 1 of 2)"
+        list=$(yadm decrypt -l)
+        stamp=$(date +%Y%m%d-%H%M%S)
+        backup=$HOME/.local/state/dotfiles/pre-decrypt-$stamp.tar
+        existing=$(printf '%s\n' "$list" | while IFS= read -r path; do
+            [[ -n $path && -f $path ]] && printf '%s\n' "$path"
+        done || true)
+        if [[ -n $existing ]]; then
+            mkdir -p "${backup%/*}"
+            (
+                umask 077
+                printf '%s\n' "$existing" | tar -cf "$backup" -T -
+            )
+            echo "  saved $(printf '%s\n' "$existing" | wc -l | tr -d ' ') existing file(s) to ${backup/#$HOME/\~}"
+        fi
+        echo "  decrypting (passphrase 2 of 2)"
+        yadm decrypt
+    else
+        echo "  skipped; run 'yadm bootstrap' again to decrypt later"
+    fi
+fi
+
+# --- 6. mise bootstrap --------------------------------------------------------
+say "mise bootstrap"
+mise=$(command -v mise || true)
+[[ -n $mise || ! -x $HOME/.local/bin/mise ]] || mise=$HOME/.local/bin/mise
+if ((! run_mise)); then
+    echo "  skipped (--no-mise)"
+elif [[ -z $mise ]]; then
+    die "mise not found; install it (https://mise.jdx.dev/installing-mise.html), then run 'yadm bootstrap'"
+elif ((check)); then
+    "$mise" bootstrap --dry-run
+else
+    "$mise" bootstrap
+fi

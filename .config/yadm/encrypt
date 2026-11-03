@@ -9,3 +9,5 @@
 # OpenViking memory server and OpenBao addresses (setup/openviking-memory). The
 # mechanism and plugin.json are public; only these hosts stay out of the repo.
 .config/dotfiles/openviking/server.env
+# The LAN Forgejo clone URL for agent-skills (setup/agent-skills, Story 4.13).
+.config/dotfiles/agent-skills/remote.env
