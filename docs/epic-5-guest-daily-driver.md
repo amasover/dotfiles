@@ -397,6 +397,20 @@ VM](./runbook-vm-validation.md#create-the-real-work-vm-attended-macos). Proven
 against stubs and with a scratch `seed` + `create`; the real VM's creation record is
 still pending.
 
+**Disk password prompt on the serial port (2026-11-03):** the first boot of the
+real `work-vm` showed a black VMware window; "Enter passphrase for
+/dev/nvme0n1p2:" appeared only in the serial log. Fusion's arm64 firmware has an
+ACPI SPCR table, and Linux on arm64 makes that serial port /dev/console unless
+the command line names a `console=`. The `work-vm` entry had none, so the
+`encrypt` hook asked on the serial port. A `console=` on the command line is
+parsed after SPCR and wins. Adding `console=tty0` at the systemd-boot editor
+put the prompt in the window, and the disk unlocked. Fix: `provision-seed` now
+adds `console=tty0` to the boot entry of every encrypted target (`daily-vm`,
+`work-vm`). On x86_64 tty0 is already the console, so nothing changes there.
+Harness targets keep `console=tty0 console=ttyS0`, serial last on purpose. A VM
+installed before the fix: [Create the real work
+VM](./runbook-vm-validation.md#create-the-real-work-vm-attended-macos).
+
 **Acceptance criteria:**
 
 - `vm-harness-vmware.ps1` runs under PowerShell 7 on macOS (`$IsMacOS`) against

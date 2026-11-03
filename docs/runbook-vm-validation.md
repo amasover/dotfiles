@@ -426,6 +426,14 @@ pwsh .local/bin/setup/vm-harness-vmware.ps1 tail bootstrap
 Logs are in `~/vms/work-vm/logs`. If `check` reports the sudo drop-in (a run cut off
 by a power loss), delete it in the VM: `sudo rm /etc/sudoers.d/89-first-bootstrap`.
 
+If the VMware window stays black at boot on a VM installed before the
+`console=tty0` fix (Story 5.8), the disk password prompt went to the serial port:
+
+1. For one boot: at the systemd-boot menu press `e`, add ` console=tty0` at the end
+   of the line, then press Enter. The prompt appears in the window.
+2. To make it permanent, run inside the VM:
+   `sudo sed -i 's|^options |options console=tty0 |' /boot/loader/entries/*.conf`.
+
 `create` (and `up` resuming at it) refuses a VM directory that holds anything but its
 `logs/` and `seed/`, so it never replaces an existing disk. `destroy` on this VM asks
 you to type its name; non-interactively it needs `VM_HARNESS_DESTROY_REAL=work-vm`.
