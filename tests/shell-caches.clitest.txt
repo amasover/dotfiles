@@ -4,7 +4,7 @@
 #
 # Run from the repo root: clitest tests/shell-caches.clitest.txt
 
-$ T=$(mktemp -d); mkdir -p "$T/bin" "$T/tools" "$T/home"; for t in bash sh sed cat mkdir mv rm tr wc touch chmod mktemp; do ln -s "$(command -v $t)" "$T/tools/$t"; done; printf '%s\n' '#!/bin/sh' "PATH=$T/bin:$T/tools exec $PWD/.local/bin/setup/shell-caches \"\$@\"" > "$T/sc"; chmod +x "$T/sc"; SC=$T/sc; export HOME=$T/home; echo ok
+$ saved_env=$(for v in HOME; do if eval "[ -n \"\${$v+x}\" ]"; then eval "printf 'export %s=%q\n' $v \"\$$v\""; else printf 'unset %s\n' $v; fi; done); T=$(mktemp -d); mkdir -p "$T/bin" "$T/tools" "$T/home"; for t in bash sh sed cat mkdir mv rm tr wc touch chmod mktemp; do ln -s "$(command -v $t)" "$T/tools/$t"; done; printf '%s\n' '#!/bin/sh' "PATH=$T/bin:$T/tools exec $PWD/.local/bin/setup/shell-caches \"\$@\"" > "$T/sc"; chmod +x "$T/sc"; SC=$T/sc; export HOME=$T/home; echo ok
 ok
 $
 # no tool installed: every part is skipped and nothing is missing
@@ -88,6 +88,6 @@ $
 $ "$SC" frobnicate 2>&1; echo "rc=$?"
 shell-caches: unknown argument: frobnicate   (try: shell-caches -h)
 rc=2
-$ rm -rf "$T"; echo done
+$ rm -rf "$T"; eval "$saved_env"; unset saved_env; echo done
 done
 $

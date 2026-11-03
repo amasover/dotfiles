@@ -5,7 +5,7 @@
 #
 # Run from the repo root: clitest tests/custom-pkgs-github-token.clitest.txt
 
-$ CP=$PWD/.local/bin/tools/custom-pkgs; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home/.config/dotfiles" "$T/pkgbuilds/alpha"; printf 'pkgname=alpha\npkgver=1.0.0\npkgrel=1\nurl="https://github.com/acme/alpha"\n' > "$T/pkgbuilds/alpha/PKGBUILD"; echo ok
+$ saved_env=$(for v in T; do if eval "[ -n \"\${$v+x}\" ]"; then eval "printf 'export %s=%q\n' $v \"\$$v\""; else printf 'unset %s\n' $v; fi; done); CP=$PWD/.local/bin/tools/custom-pkgs; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home/.config/dotfiles" "$T/pkgbuilds/alpha"; printf 'pkgname=alpha\npkgver=1.0.0\npkgrel=1\nurl="https://github.com/acme/alpha"\n' > "$T/pkgbuilds/alpha/PKGBUILD"; echo ok
 ok
 $ printf '%s\n' '#!/bin/sh' 'echo "curl $*" >> "$T/argv"' 'cat > "$T/headers"' 'echo "{\"tag_name\":\"v2.0.0\",\"published_at\":\"2026-01-01T00:00:00Z\"}"' > "$T/bin/curl"; chmod +x "$T/bin/curl"; export T; CPX() { HOME="$T/home" CUSTOM_PKGS_DIR="$T/pkgbuilds" PATH="$T/bin:$PATH" "$@"; }; echo stub
 stub
@@ -36,6 +36,6 @@ $
 # an empty file counts as no token
 $ : > "$T/home/.config/dotfiles/github-token"; CPX "$CP" outdated > /dev/null; wc -c < "$T/headers" | tr -d ' '
 0
-$ rm -rf "$T"; echo done
+$ rm -rf "$T"; eval "$saved_env"; unset saved_env; unset -f CPX; echo done
 done
 $

@@ -4,7 +4,7 @@
 #
 # Run from the repo root: clitest tests/omp-mode.clitest.txt
 
-$ OM=$PWD/.local/bin/tools/omp-mode; T=$(mktemp -d); mkdir -p "$T/a" "$T/b"; printf '%s\n' '#!/bin/sh' 'echo "$0 $* | $PI_CONFIG_FILES"' > "$T/b/omp"; chmod +x "$T/b/omp"; export HOME=$T; unset PI_CONFIG_FILES; echo ok
+$ saved_env=$(for v in HOME PI_CONFIG_FILES; do if eval "[ -n \"\${$v+x}\" ]"; then eval "printf 'export %s=%q\n' $v \"\$$v\""; else printf 'unset %s\n' $v; fi; done); OM=$PWD/.local/bin/tools/omp-mode; T=$(mktemp -d); mkdir -p "$T/a" "$T/b"; printf '%s\n' '#!/bin/sh' 'echo "$0 $* | $PI_CONFIG_FILES"' > "$T/b/omp"; chmod +x "$T/b/omp"; export HOME=$T; unset PI_CONFIG_FILES; echo ok
 ok
 $
 # the first executable candidate runs, with the mode overlay last
@@ -32,6 +32,6 @@ $
 $ "$OM" frobnicate 2>&1; echo "rc=$?"
 omp-mode: unknown mode: frobnicate (try: omp-mode --help)
 rc=2
-$ rm -rf "$T"; echo done
+$ rm -rf "$T"; eval "$saved_env"; unset saved_env; echo done
 done
 $

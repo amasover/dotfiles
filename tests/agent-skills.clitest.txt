@@ -4,7 +4,7 @@
 #
 # Run from the repo root: clitest tests/agent-skills.clitest.txt
 
-$ AS=$PWD/.local/bin/setup/agent-skills; T=$(mktemp -d); export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid; echo ok
+$ saved_env=$(for v in PATH ST GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL AGENT_SKILLS_ENV AGENT_SKILLS_DIR; do if eval "[ -n \"\${$v+x}\" ]"; then eval "printf 'export %s=%q\n' $v \"\$$v\""; else printf 'unset %s\n' $v; fi; done); AS=$PWD/.local/bin/setup/agent-skills; T=$(mktemp -d); export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid; echo ok
 ok
 $ mkdir -p "$T/bin" && printf '%s\n' '#!/bin/sh' 'case "$1 $2" in' '  "plugin list") if [ -f "$ST/linked" ]; then printf "{\"npm\":[{\"name\":\"agent-skills\",\"path\":\"%s\"}]}\n" "$(cat "$ST/linked")"; else echo "{\"npm\":[]}"; fi ;;' '  "plugin link") echo "$3" > "$ST/linked"; echo "omp $*" >> "$ST/trace" ;;' 'esac' > "$T/bin/omp" && chmod +x "$T/bin/omp"; export PATH="$T/bin:$PATH" ST=$T; echo stub
 stub
@@ -97,6 +97,6 @@ $
 $ "$AS" frobnicate 2>&1; echo "rc=$?"
 agent-skills: unknown argument: frobnicate   (try: agent-skills -h)
 rc=2
-$ rm -rf "$T"; echo done
+$ rm -rf "$T"; eval "$saved_env"; unset saved_env; echo done
 done
 $

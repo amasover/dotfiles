@@ -6,7 +6,7 @@
 #
 # Run from the repo root: clitest tests/brew-drift-report.clitest.txt
 
-$ BD=$PWD/.local/bin/tools/brew-drift-report; T=$(mktemp -d); mkdir "$T/bin"; echo ok
+$ saved_env=$(for v in PATH MISE_JSON; do if eval "[ -n \"\${$v+x}\" ]"; then eval "printf 'export %s=%q\n' $v \"\$$v\""; else printf 'unset %s\n' $v; fi; done); BD=$PWD/.local/bin/tools/brew-drift-report; T=$(mktemp -d); mkdir "$T/bin"; echo ok
 ok
 $ printf '%s\n' '#!/bin/sh' 'case "$*" in' '  leaves) printf "%s\n" gh ollama uv yadm wget ;;' '  "list --cask -1") printf "%s\n" font-hack-nerd-font orca stray-app ;;' 'esac' > "$T/bin/brew"; printf '%s\n' '#!/bin/sh' '[ "$*" = "bootstrap packages status --json" ] || exit 9' '[ "$PWD" = "$HOME" ] || exit 8' 'exec cat "$MISE_JSON" 2>/dev/null' > "$T/bin/mise"; chmod +x "$T/bin"/*; export PATH="$T/bin:$PATH"; echo stubs
 stubs
@@ -52,6 +52,6 @@ $
 $ "$BD" --frobnicate 2>&1; echo "rc=$?"
 brew-drift-report: unknown argument: --frobnicate   (try: brew-drift-report -h)
 rc=2
-$ rm -rf "$T"; echo done
+$ rm -rf "$T"; eval "$saved_env"; unset saved_env; echo done
 done
 $
