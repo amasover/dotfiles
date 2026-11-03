@@ -1374,7 +1374,7 @@ else
     ln -sf "$theme_src" "$theme_dst"
 fi
 
-# --- 8b2. shell caches (antibody plugin clones) ---------------------------------
+# --- 8b2. shell caches (antibody plugins, broot's br) ---------------------------
 # Per-user files .zshrc sources that the repo can't track; without them a fresh
 # machine's first shell printed missing-file errors. A failed clone warns and
 # bootstrap goes on, since .zshrc skips what is missing.

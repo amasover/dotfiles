@@ -10,6 +10,7 @@ $
 # no tool installed: every part is skipped and nothing is missing
 $ "$SC" --check; echo "rc=$?"
   antibody: not installed; skipped
+  broot: not installed; skipped
 rc=0
 $
 # antibody: the stub "clones" by creating the cache file the bundle sources
@@ -17,19 +18,24 @@ $ printf '%s\n' '#!/bin/sh' 'cat > /dev/null' 'echo clone >> "$HOME/antibody.log
 stub
 $ "$SC" --check | sed "s|$T|T|g"; echo "rc=${PIPESTATUS[0]}"; test -e "$HOME/antibody.log" || echo "nothing cloned"
   antibody: would run: antibody bundle < ~/.zsh_plugins.txt
+  broot: not installed; skipped
 rc=1
 nothing cloned
 $
 # offline: apply warns and still exits 0, so bootstrap goes on
 $ touch "$HOME/offline"; "$SC" 2>&1; echo "rc=$?"; rm "$HOME/offline"
   antibody: bundle failed (offline?); re-run shell-caches later
+  broot: not installed; skipped
 rc=0
 $
 # apply clones, keeps the tracked bundle as it is, and a second run is a no-op
 $ "$SC"; "$SC"; "$SC" --check; echo "rc=$?"; wc -l < "$HOME/antibody.log" | tr -d ' '; sed "s|$T|T|g" "$HOME/.zsh_plugins.sh"
   antibody: cloned the plugins
+  broot: not installed; skipped
   antibody: plugins in place
+  broot: not installed; skipped
   antibody: plugins in place
+  broot: not installed; skipped
 rc=0
 2
 source T/home/.cache/antibody/zsh-syntax-highlighting/plugin.zsh
@@ -37,7 +43,20 @@ $
 # a bundle naming paths antibody did not create (another user's HOME) is reported
 $ echo "source /nonexistent/plugin.zsh" > "$HOME/.zsh_plugins.sh"; "$SC" 2>&1; echo "rc=$?"
   antibody: bundled, but ~/.zsh_plugins.sh names paths still missing; regenerate it: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
+  broot: not installed; skipped
 rc=0
+$
+# broot: write the launcher from --print-shell-function, never `broot --install`
+$ printf '%s\n' '#!/bin/sh' 'echo "broot $*" >> "$HOME/broot.log"' '[ "$1" = --print-shell-function ] && echo "br() { :; }"' 'exit 0' > "$T/bin/broot"; chmod +x "$T/bin/broot"; "$SC" --check | grep broot; echo "rc=$?"
+  broot: would write the br launcher to ~/.config/broot/launcher/bash/br
+rc=0
+$ "$SC" 2>/dev/null | grep broot; "$SC" 2>/dev/null | grep broot; cat "$HOME/broot.log"; cat "$HOME/.config/broot/launcher/bash/br"; ls -A "$HOME/.config/broot/launcher/bash"
+  broot: wrote the br launcher
+  broot: br launcher in place
+broot --print-shell-function bash
+broot --set-install-state installed
+br() { :; }
+br
 $
 # unknown argument fails loudly
 $ "$SC" frobnicate 2>&1; echo "rc=$?"

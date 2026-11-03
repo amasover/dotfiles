@@ -385,7 +385,10 @@ autoload -U +X bashcompinit && bashcompinit
 if [[ $OSTYPE != darwin* ]]; then
     export DOTNET_ROOT="/usr/share/dotnet"
 
-    source /home/aaron/.config/broot/launcher/bash/br
+    # Written by bootstrap's shell-caches step when broot is installed.
+    if [[ -r $HOME/.config/broot/launcher/bash/br ]]; then
+        source $HOME/.config/broot/launcher/bash/br
+    fi
 
     source $HOME/.tenv.completion.zsh
 

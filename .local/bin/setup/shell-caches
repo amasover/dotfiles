@@ -5,6 +5,10 @@
 #   antibody  ~/.zsh_plugins.sh (tracked) sources plugins from antibody's
 #             cache; `antibody bundle < ~/.zsh_plugins.txt` clones them there.
 #             Needs the network (GitHub).
+#   broot     ~/.config/broot/launcher/bash/br, the `br` shell function.
+#             `broot --install` would also edit the tracked .zshrc, so this
+#             writes the same function with `broot --print-shell-function` and
+#             marks it installed, so broot never offers to install it.
 #
 # A part whose tool is not installed is skipped. A part that is already in
 # place is left alone. A part that fails (no network, say) warns, and apply
@@ -65,6 +69,27 @@ else
             "regenerate it: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh" >&2
     else
         echo "  antibody: cloned the plugins"
+    fi
+fi
+
+# --- broot --------------------------------------------------------------------
+launcher=$HOME/.config/broot/launcher/bash/br
+if ! command -v broot >/dev/null; then
+    echo "  broot: not installed; skipped"
+elif [[ -r $launcher ]]; then
+    echo "  broot: br launcher in place"
+elif ((check)); then
+    echo "  broot: would write the br launcher to ~/.config/broot/launcher/bash/br"
+    drift=1
+else
+    mkdir -p "${launcher%/*}"
+    tmp=$(mktemp "${launcher%/*}/.br.XXXXXX")
+    if broot --print-shell-function bash >"$tmp" && broot --set-install-state installed; then
+        mv "$tmp" "$launcher"
+        echo "  broot: wrote the br launcher"
+    else
+        rm -f "$tmp"
+        echo "  broot: could not write the br launcher; re-run shell-caches later" >&2
     fi
 fi
 
