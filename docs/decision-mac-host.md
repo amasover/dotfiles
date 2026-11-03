@@ -24,11 +24,11 @@ Supporting choices, decided together:
   casks no mise config declares, plus declared ones that are missing.
 - **yadm places the files, with a sparse checkout.** The Mac applies
   `.config/yadm/sparse/work-mac`, an allowlist of git non-cone patterns. Only the
-  shared shell, git, yadm, mise, omp and OpenViking files and a few cross-platform
-  tools land; the Linux desktop, services, package-manager files and the repo's docs and
-  tests stay skip-worktree entries. An allowlist, not a denylist, so a new Linux file
-  stays off the Mac until someone lists it. `tests/mac-sparse.clitest.txt` checks what
-  lands.
+  shared shell, git, yadm, mise, omp and OpenViking files and a few tools that run on
+  both Linux and macOS land; the Linux desktop, services, package-manager files and the
+  repo's docs and tests stay skip-worktree entries. An allowlist, not a denylist, so a
+  new Linux file stays off the Mac until someone lists it.
+  `tests/mac-sparse.clitest.txt` checks what lands.
 - **Mac-only files are `##os.Darwin` alternates.** The mise config, the yadm bootstrap
   entry point (`.config/yadm/bootstrap##os.Darwin`) and the git credential helpers
   (`.gitconfig-os##os.Darwin`, included last by `.gitconfig`). The one Linux template,

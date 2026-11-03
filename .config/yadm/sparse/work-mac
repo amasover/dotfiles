@@ -33,7 +33,7 @@
 # The patched agnoster theme that oh-my-zsh links in.
 /.config/dotfiles/oh-my-zsh-custom/
 
-# Cross-platform setup and tools.
+# Setup scripts and tools that run on both Linux and macOS.
 /.local/bin/setup/agent-skills
 /.local/bin/tools/brew-drift-report
 /.local/bin/tools/omp-mode

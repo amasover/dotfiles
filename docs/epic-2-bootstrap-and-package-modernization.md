@@ -2056,9 +2056,9 @@ daily-VM work: it changes no Linux behavior.
 **Acceptance criteria:**
 
 - Given `.config/yadm/sparse/work-mac`, when a Mac adopts the repo, then only shared
-  shell, git, yadm, mise, omp, OpenViking and cross-platform tool files land, every
-  `##os.Darwin` alternate is linked, and no Linux desktop, service, package-manager,
-  docs or test file reaches `$HOME`
+  shell, git, yadm, mise, omp and OpenViking files and tools that run on both Linux
+  and macOS land, every `##os.Darwin` alternate is linked, and no Linux desktop,
+  service, package-manager, docs or test file reaches `$HOME`
 - Given a Mac clone made without a checkout, when `.config/yadm/bootstrap##os.Darwin`
   runs, then it sets the class, applies the sparse rules, checks out only missing
   files, backs up any regular file an alternate replaces, offers a full-archive
