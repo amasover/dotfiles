@@ -1,8 +1,8 @@
 # metapac architecture adapter: aarch64 machines (Arch Linux Ports, drzee.net
-# core/extra/forge). config.toml##template renders "arch-{{ yadm.arch }}" into
-# every class. Each line substitutes an arch-x86_64.toml package whose role
-# would otherwise be lost; an arch-x86_64 package with no line here has no
-# aarch64 route.
+# core/extra/forge). config.toml##template,os.Linux renders
+# "arch-{{ yadm.arch }}" into every class. Each line substitutes an
+# arch-x86_64.toml package whose role would otherwise be lost; an arch-x86_64
+# package with no line here has no aarch64 route.
 [arch]
 packages = [
   # Ports signs its packages with this keyring (forge repo); declared so the

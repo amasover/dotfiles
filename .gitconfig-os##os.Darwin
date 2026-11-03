@@ -1,0 +1,12 @@
+# macOS credential helpers (class work-mac), included last by ~/.gitconfig.
+# Each empty `helper =` clears the helpers configured before it, so the Linux
+# git-credential-manager and /usr/bin/gh entries never run here.
+[credential]
+	helper =
+	helper = osxkeychain
+[credential "https://github.com"]
+	helper =
+	helper = !/opt/homebrew/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper =
+	helper = !/opt/homebrew/bin/gh auth git-credential

@@ -171,6 +171,7 @@ class TestStepFor:
             ("AUR quarantine baseline", "baseline"),
             ("oh-my-zsh", "omz"),
             ("oh-my-zsh custom theme", "theme"),
+            ("Shell caches", "shell-caches"),
             ("Spacemacs checkout", "spacemacs"),
             ("Emacs Copilot language server", "emacs-copilot"),
             ("Claude Code plugins", "claude-plugins"),

@@ -64,6 +64,21 @@ test_suites() {
     .config/dotfiles/tests/chaotic-quarantine-gate-test
 }
 
+# The suites for code that runs on the Mac (class work-mac), under macOS's own
+# /bin/bash 3.2 and BSD tools ahead of Homebrew's, as on a fresh Mac. The Linux
+# job runs them too; this catches what only macOS breaks. One clitest call, so
+# they share a shell the way `test` does.
+test_macos() {
+    PATH="/bin:/usr/bin:$PATH" clitest \
+        tests/agent-skills.clitest.txt \
+        tests/brew-drift-report.clitest.txt \
+        tests/github-token-env.clitest.txt \
+        tests/mac-bootstrap.clitest.txt \
+        tests/mac-sparse.clitest.txt \
+        tests/meridian-config.clitest.txt \
+        tests/omp-mode.clitest.txt
+}
+
 scan_range() {
     local base=${1:-} head=${2:-} log_opts
     [[ $head =~ ^[0-9a-f]{40,64}$ ]] || fail "invalid head commit: ${head:-<empty>}"
@@ -90,9 +105,10 @@ scan_range() {
 case "${1:-}" in
     lint) lint ;;
     test) test_suites ;;
+    test-macos) test_macos ;;
     scan-range)
         shift
         scan_range "$@"
         ;;
-    *) fail "usage: .github/scripts/ci lint|test|scan-range BASE HEAD" ;;
+    *) fail "usage: .github/scripts/ci lint|test|test-macos|scan-range BASE HEAD" ;;
 esac

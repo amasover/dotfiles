@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# shell-caches — build the per-user files .zshrc sources but the repo can't
+# track, so a fresh Linux machine's first shell starts quietly.
+#
+#   antibody  ~/.zsh_plugins.sh, generated here from the tracked
+#             ~/.zsh_plugins.txt with `antibody bundle`. The bundle names
+#             absolute paths in this user's antibody cache, so it is per machine
+#             and untracked. Cloning needs the network (GitHub); sourcing it at
+#             shell startup does not.
+#   broot     ~/.config/broot/launcher/bash/br, the `br` shell function.
+#             `broot --install` would also edit the tracked .zshrc, so this
+#             writes the same function with `broot --print-shell-function` and
+#             marks it installed, so broot never offers to install it.
+#   tenv      ~/.tenv.completion.zsh, from `tenv completion zsh` (offline).
+#
+# A part whose tool is not installed is skipped. A part that is already in
+# place is left alone. A part that fails (no network, say) warns, and apply
+# still exits 0: .zshrc skips what is missing, so the shell stays usable.
+#
+# Usage:
+#   shell-caches [apply]   build what is missing
+#   shell-caches --check   report what apply would do; change nothing.
+#                          Exit 1 when something is missing
+set -euo pipefail
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+}
+
+check=0
+case "${1:-apply}" in
+    apply) ;;
+    --check) check=1 ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        echo "shell-caches: unknown argument: $1   (try: shell-caches -h)" >&2
+        exit 2
+        ;;
+esac
+
+drift=0
+
+# --- antibody -----------------------------------------------------------------
+# Converged when the bundle is no older than the plugin list and every file it
+# sources exists.
+bundle=$HOME/.zsh_plugins.sh
+plugins=$HOME/.zsh_plugins.txt
+bundle_ok() { # $1 = bundle file
+    local path
+    [[ -s $1 && ! $plugins -nt $1 ]] || return 1
+    while IFS= read -r path; do
+        [[ -e $path ]] || return 1
+    done < <(sed -n 's/^source //p' "$1")
+}
+if ! command -v antibody >/dev/null; then
+    echo "  antibody: not installed; skipped"
+elif [[ ! -r $plugins ]]; then
+    echo "  antibody: no ~/.zsh_plugins.txt; skipped"
+elif bundle_ok "$bundle"; then
+    echo "  antibody: plugin bundle in place"
+elif ((check)); then
+    echo "  antibody: would run: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh"
+    drift=1
+else
+    tmp=$(mktemp "$HOME/.zsh_plugins.XXXXXX")
+    if ! antibody bundle <"$plugins" >"$tmp"; then
+        rm -f "$tmp"
+        echo "  antibody: bundle failed (offline?); re-run shell-caches later" >&2
+    elif ! bundle_ok "$tmp"; then
+        rm -f "$tmp"
+        echo "  antibody: antibody bundle named plugin files that do not exist; ~/.zsh_plugins.sh left as it was" >&2
+    else
+        mv "$tmp" "$bundle"
+        echo "  antibody: wrote ~/.zsh_plugins.sh"
+    fi
+fi
+
+# --- broot --------------------------------------------------------------------
+launcher=$HOME/.config/broot/launcher/bash/br
+if ! command -v broot >/dev/null; then
+    echo "  broot: not installed; skipped"
+elif [[ -r $launcher ]]; then
+    echo "  broot: br launcher in place"
+elif ((check)); then
+    echo "  broot: would write the br launcher to ~/.config/broot/launcher/bash/br"
+    drift=1
+else
+    mkdir -p "${launcher%/*}"
+    tmp=$(mktemp "${launcher%/*}/.br.XXXXXX")
+    if broot --print-shell-function bash >"$tmp" && broot --set-install-state installed; then
+        mv "$tmp" "$launcher"
+        echo "  broot: wrote the br launcher"
+    else
+        rm -f "$tmp"
+        echo "  broot: could not write the br launcher; re-run shell-caches later" >&2
+    fi
+fi
+
+# --- tenv ---------------------------------------------------------------------
+completion=$HOME/.tenv.completion.zsh
+if ! command -v tenv >/dev/null; then
+    echo "  tenv: not installed; skipped"
+elif [[ -s $completion ]]; then
+    echo "  tenv: zsh completion in place"
+elif ((check)); then
+    echo "  tenv: would write ~/.tenv.completion.zsh"
+    drift=1
+else
+    tmp=$(mktemp "$HOME/.tenv.completion.XXXXXX")
+    if tenv completion zsh >"$tmp" && [[ -s $tmp ]]; then
+        mv "$tmp" "$completion"
+        echo "  tenv: wrote the zsh completion"
+    else
+        rm -f "$tmp"
+        echo "  tenv: could not write the zsh completion; re-run shell-caches later" >&2
+    fi
+fi
+
+((check)) && exit "$drift"
+exit 0

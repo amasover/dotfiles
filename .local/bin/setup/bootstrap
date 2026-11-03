@@ -716,7 +716,7 @@ fi
 # map, but hostnames shouldn't be committed to a public repo, and a fresh
 # machine's hostname isn't knowable in advance anyway. yadm already owns the
 # "render machine-specific files from tracked templates" problem
-# (config.toml##template + yadm alt), so metapac just reads the rendered result
+# (config.toml##template,os.Linux + yadm alt), so metapac just reads the rendered result
 # — and any future per-class dotfile (work-vs-home shell config, say) reuses
 # the same single knob instead of growing a second profile mechanism.
 #
@@ -741,7 +741,7 @@ cfg="$HOME/.config/metapac/config.toml"
 grep -q "^\"$(uname -n)\" = \[" "$cfg" \
     || die "no [hostname_groups] entry for host '$(uname -n)' in $cfg.
     The template only renders known classes — check the class ('$class') against
-    config.toml##template's branches, then: yadm alt   and re-run"
+    config.toml##template,os.Linux's branches, then: yadm alt   and re-run"
 echo "  hostname entry: present"
 
 # --- 2a. fresh-install skel files ---------------------------------------------
@@ -766,7 +766,7 @@ fi
 # --- 3. machine-local group (untracked, never published) ----------------------
 # The one group file living outside the repo; hostname_groups references it by
 # absolute path and metapac hard-errors if it's missing, so a fresh machine
-# needs it to exist (empty is fine). Must match config.toml##template's path —
+# needs it to exist (empty is fine). Must match config.toml##template,os.Linux's path —
 # if they drift, metapac's own error names the missing path.
 say "Machine-local group"
 ml="$HOME/.local/share/metapac/machine-local.toml"
@@ -1678,6 +1678,17 @@ elif [[ $CHECK -eq 1 ]]; then
 else
     mkdir -p "${theme_dst%/*}"
     ln -sf "$theme_src" "$theme_dst"
+fi
+
+# --- 8b2. shell caches (antibody plugins, broot's br, tenv completion) ----------
+# Per-user files .zshrc sources that the repo can't track; without them a fresh
+# machine's first shell printed missing-file errors. A failed clone warns and
+# bootstrap goes on, since .zshrc skips what is missing.
+say "Shell caches"
+if [[ $CHECK -eq 1 ]]; then
+    "${BASH_SOURCE[0]%/*}/shell-caches" --check || true
+else
+    "${BASH_SOURCE[0]%/*}/shell-caches" apply
 fi
 
 # --- 8c. Spacemacs checkout (Story 2.13) --------------------------------------

@@ -58,13 +58,60 @@ plugins=(
     vi-mode
     archlinux)
 
+# macOS (class work-mac): Homebrew's prefix, set here only, so every interactive
+# shell gets it, login or not. mise's brew: manager installs there too, with or
+# without Homebrew itself, so no `brew shellenv`. Set before oh-my-zsh so its
+# compinit sees Homebrew's completions.
+if [[ $OSTYPE == darwin* && -d /opt/homebrew/bin ]]; then
+    typeset -U path fpath
+    path=(/opt/homebrew/bin /opt/homebrew/sbin $path)
+    fpath=(/opt/homebrew/share/zsh/site-functions $fpath)
+fi
+
 source $ZSH/oh-my-zsh.sh
 
 # Package-owned shell integrations (Story 2.13). NVM changes versions only on
 # explicit `nvm use`; directory changes never install or switch Node.
-source /usr/share/nvm/init-nvm.sh
-source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-source ~/.zsh_plugins.sh
+if [[ $OSTYPE == darwin* ]]; then
+    # Homebrew packages the plugins pacman supplies on Linux; mise owns Node
+    # (both declared in .config/mise/config.toml##os.Darwin).
+    for zsh_plugin in zsh-autosuggestions zsh-syntax-highlighting; do
+        if [[ -r /opt/homebrew/share/$zsh_plugin/$zsh_plugin.zsh ]]; then
+            source /opt/homebrew/share/$zsh_plugin/$zsh_plugin.zsh
+        fi
+    done
+    unset zsh_plugin
+else
+    if [[ -r /usr/share/nvm/init-nvm.sh ]]; then
+        # init-nvm.sh makes $NVM_DIR and its two links with `mkdir -v`/`ln -v`,
+        # which print in every new shell on a fresh HOME and fail with "File
+        # exists" when two shells start at once. Make them quietly first, so
+        # its own checks find them; a lost race is harmless and stays silent.
+        nvm_dir=${NVM_DIR:-${XDG_CONFIG_HOME:+$XDG_CONFIG_HOME/nvm}}
+        nvm_dir=${nvm_dir:-$HOME/.nvm}
+        mkdir -p "$nvm_dir"
+        for nvm_file in nvm.sh nvm-exec; do
+            [[ -e $nvm_dir/$nvm_file ]] || ln -s /usr/share/nvm/$nvm_file "$nvm_dir/$nvm_file" 2>/dev/null
+        done
+        unset nvm_dir nvm_file
+        source /usr/share/nvm/init-nvm.sh
+    fi
+    if [[ -r /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then
+        source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+    fi
+    # ~/.zsh_plugins.sh is antibody's bundle of ~/.zsh_plugins.txt, generated
+    # per machine by bootstrap's shell-caches step (it names absolute paths in
+    # antibody's cache). Source it only when every file it names exists, so a
+    # shell started before that starts quietly. $(<file) reads without forking.
+    if [[ -r ~/.zsh_plugins.sh ]]; then
+        zsh_bundle_ok=1
+        for zsh_plugin in ${${(M)${(f)"$(<~/.zsh_plugins.sh)"}:#source *}#source }; do
+            [[ -r $zsh_plugin ]] || zsh_bundle_ok=0
+        done
+        (( zsh_bundle_ok )) && source ~/.zsh_plugins.sh
+        unset zsh_bundle_ok zsh_plugin
+    fi
+fi
 
 #############################
 #     USER CONFIGURATION    #
@@ -80,12 +127,13 @@ source ~/.zsh_plugins.sh
 if [[ -n $SSH_CONNECTION ]]; then
   export EDITOR='vim'
 else
-  export ARCHFLAGS="-arch x86_64"
   export EDITOR='vim'
 fi
 
-# Compilation flags
-export ARCHFLAGS="-arch x86_64"
+# Compilation flags (Linux x86_64 only: on Apple Silicon this forces Intel builds)
+if [[ $OSTYPE != darwin* ]]; then
+    export ARCHFLAGS="-arch x86_64"
+fi
 
 function pe() {
     echo "ERROR: $1" >&2
@@ -139,9 +187,12 @@ function push_upstream () {
     git push -u origin $(git branch | grep "*" | awk -F " " '{print $NF}')
 }
 alias gpu=push_upstream
-alias sctl="sudo systemctl"
-alias pbcopy="xclip -selection clipboard"
-alias pbpaste="xclip -selection clipboard -o"
+if [[ $OSTYPE != darwin* ]]; then
+    # macOS ships its own pbcopy/pbpaste and has no systemd
+    alias sctl="sudo systemctl"
+    alias pbcopy="xclip -selection clipboard"
+    alias pbpaste="xclip -selection clipboard -o"
+fi
 alias restart="shutdown -r now"
 ## reload xresources
 alias xrl="xrdb ~/.Xresources"
@@ -182,8 +233,14 @@ alias npmis="npm install --save"
 alias npmisd="npm install --save-dev"
 
 alias cat="bat"
-alias ls="exa"
-alias ll="exa -la"
+if [[ $OSTYPE == darwin* ]]; then
+    # Homebrew has only exa's maintained fork
+    alias ls="eza"
+    alias ll="eza -la"
+else
+    alias ls="exa"
+    alias ll="exa -la"
+fi
 alias gimme="sudo pacman -S"
 
 alias c="cd ~/code && ll"
@@ -324,17 +381,60 @@ export ANSIBLE_PLAYBOOKS_DIR=~/code/ansible-playbooks
 
 export PATH=$PATH:/home/han/.local/bin
 
-export DOTNET_ROOT="/usr/share/dotnet"
-
-source /home/aaron/.config/broot/launcher/bash/br
-
 autoload -U +X bashcompinit && bashcompinit
-source $HOME/.tenv.completion.zsh
+if [[ $OSTYPE != darwin* ]]; then
+    export DOTNET_ROOT="/usr/share/dotnet"
 
-tf_version=$(tenv tf detect -q | cut -d ' ' -f2)
-tg_version=$(tenv tg detect -q | cut -d ' ' -f2)
-complete -o nospace -C /home/aaron/.tenv/Terraform/${tf_version}/terraform terraform
-complete -o nospace -C /home/aaron/.tenv/Terragrunt/${tg_version}/terragrunt terragrunt
+    # Written by bootstrap's shell-caches step when broot is installed.
+    if [[ -r $HOME/.config/broot/launcher/bash/br ]]; then
+        source $HOME/.config/broot/launcher/bash/br
+    fi
 
-# machine-local shell config (untracked; machine/site-specific aliases live there)
-[[ -r ~/.zshrc.local ]] && source ~/.zshrc.local
+    # Written by bootstrap's shell-caches step when tenv is installed.
+    if [[ -r $HOME/.tenv.completion.zsh ]]; then
+        source $HOME/.tenv.completion.zsh
+    fi
+
+    # terraform/terragrunt completion runs the newest version tenv installed,
+    # found on disk. `tenv tf detect` used to pick it, but with no version file
+    # around it asks GitHub for the latest release, so every new shell hit the
+    # network (and its rate limit). tenv reads TENV_GITHUB_TOKEN itself.
+    for tenv_tool in terraform terragrunt; do
+        tenv_bin=($HOME/.tenv/${(C)tenv_tool}/*/$tenv_tool(N*nOn[1]))
+        if (( $#tenv_bin )); then
+            complete -o nospace -C $tenv_bin[1] $tenv_tool
+        fi
+    done
+    unset tenv_tool tenv_bin
+fi
+
+# macOS (class work-mac): mise activation.
+if [[ $OSTYPE == darwin* ]]; then
+    # This tracked file owns activation: config.toml##os.Darwin sets
+    # mise_shell_activate zsh = false, so mise never writes its block here.
+    if (( $+commands[mise] )); then
+        eval "$(mise activate zsh)"
+    fi
+fi
+
+# Read-only GitHub API token (yadm-encrypted; public repos, no permissions) for
+# tools that would otherwise share GitHub's 60-an-hour anonymous limit. Only the
+# tool-specific names: GITHUB_TOKEN or GH_TOKEN would make gh drop its keyring
+# login for this token, and `gh pr create` or a push through gh would fail.
+# A value already set wins. $(<file) reads without forking or touching the
+# network.
+if [[ -r ~/.config/dotfiles/github-token && -s ~/.config/dotfiles/github-token ]]; then
+    github_api_token=$(<~/.config/dotfiles/github-token)
+    github_api_token=${${github_api_token%%$'\n'*}%$'\r'}
+    if [[ -n $github_api_token ]]; then
+        export TENV_GITHUB_TOKEN=${TENV_GITHUB_TOKEN:-$github_api_token}
+        export MISE_GITHUB_TOKEN=${MISE_GITHUB_TOKEN:-$github_api_token}
+    fi
+    unset github_api_token
+fi
+
+# machine-local shell config (untracked; machine/site-specific aliases live there).
+# An `if`, not `&&`: without the file, `&&` left the rc file's status at 1.
+if [[ -r ~/.zshrc.local ]]; then
+    source ~/.zshrc.local
+fi

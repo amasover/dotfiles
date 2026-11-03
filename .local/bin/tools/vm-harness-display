@@ -180,6 +180,7 @@ BOOTSTRAP_STEPS = [
     ("baseline", ("AUR quarantine baseline",)),
     ("omz", ("oh-my-zsh",)),
     ("theme", ("oh-my-zsh custom theme",)),
+    ("shell-caches", ("Shell caches",)),
     ("spacemacs", ("Spacemacs checkout",)),
     ("emacs-copilot", ("Emacs Copilot language server",)),
     ("claude-plugins", ("Claude Code plugins",)),

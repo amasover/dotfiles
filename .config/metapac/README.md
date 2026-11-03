@@ -9,10 +9,12 @@ against what's declared here: `metapac sync` installs the declared set,
   time; no render step.
 - **`profiles/common.groups`** — the one shared 15-purpose list included by every
   class branch. Add a universal purpose group here once, not in every profile.
-- **`config.toml##template`** — maps the rendered hostname to the selected class
+- **`config.toml##template,os.Linux`** — maps the rendered hostname to the selected class
   and adds the architecture adapter `arch-{{ yadm.arch }}` to every class.
   YADM renders `config.toml` on clone/pull/class change; hostnames and `$HOME`
   paths remain machine-local.
+  The `os.Linux` condition keeps yadm from rendering it on the Mac, whose
+  sparse checkout leaves the template out (`docs/decision-mac-host.md`).
 
   | Class | Machine | Added groups |
   | --- | --- | --- |

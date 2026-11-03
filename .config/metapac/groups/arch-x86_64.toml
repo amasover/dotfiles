@@ -1,6 +1,7 @@
-# metapac architecture adapter: x86_64 machines. config.toml##template renders
-# "arch-{{ yadm.arch }}" into every class, so this file holds the packages the
-# shared purpose groups would carry if they did not have to install on aarch64:
+# metapac architecture adapter: x86_64 machines. config.toml##template,os.Linux
+# renders "arch-{{ yadm.arch }}" into every class, so this file holds the
+# packages the shared purpose groups would carry if they did not have to
+# install on aarch64:
 # chaotic-aur and multilib (lib32-*) exist only for x86_64, and the AUR/repo
 # packages below ship prebuilt x86_64 binaries (or hardcode an x86_64 build
 # target). AUR source builds whose arch=() merely omits aarch64 stay shared:

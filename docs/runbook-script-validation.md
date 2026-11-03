@@ -10,9 +10,9 @@ same commands.
 
 ## Enforced workflow
 
-CI runs for every pull request and every push to `main`. One `archlinux:latest` job installs
-pacman-native validation tools, checks out full history with a commit-pinned
-`actions/checkout`, and runs these stages in order:
+CI runs for every pull request and every push to `main`. The `Validate` job, in an
+`archlinux:latest` container, installs pacman-native validation tools, checks out full
+history with a commit-pinned `actions/checkout`, and runs these stages in order:
 
 1. checksum-verified betterleaks installation from the version and SHA-256 pinned by the
    vendored [`PKGBUILD`](../.config/dotfiles/pkgbuilds/betterleaks/PKGBUILD);
@@ -25,6 +25,16 @@ Workflow permissions are `contents: read`. It uses `pull_request`, never
 `pull_request_target`, and receives no repository secrets. Story 4.7 changes no branch
 protection or ruleset: checks are reported, while the documented direct-to-`main` exception
 for small bookkeeping-only docs remains usable.
+
+A second job, `Validate (macOS)`, runs on a GitHub `macos-26` runner, the work Mac's
+release (Story 2.61). It installs clitest and yadm from Homebrew and runs
+`bash .github/scripts/ci test-macos`: the clitest suites for code that runs on the Mac
+(the yadm bootstrap and sparse rules, agent-skills, brew-drift-report, omp-mode,
+the omp models config and the shell's GitHub token export), with `/bin` and `/usr/bin`
+ahead of Homebrew, so they meet macOS's own `/bin/bash` 3.2 and BSD tools as a fresh Mac
+would. The Arch job runs the same suites too; this job catches what only macOS breaks.
+When a new suite covers Mac code, add it to `test_macos` as well as keeping it in
+`tests/`.
 
 ## Script lint contract
 
