@@ -796,8 +796,13 @@ function Cmd-Destroy {
         Say "Stopping $VmName"
         & $VmRun -T $VmRunType stop $Vmx hard 2>&1 | Out-Null
     }
+    # Delete through the hypervisor before touching the files: a Fusion or
+    # Workstation window that still holds the VM otherwise keeps a stale handle,
+    # and the next `create` at the same path cannot power on ("Cannot connect
+    # to the virtual machine", seen live 2026-11-02 after a VM_HARNESS_GUI run).
+    if (Test-Path $Vmx) { & $VmRun -T $VmRunType deleteVM $Vmx 2>&1 | Out-Null }
     Say 'Destroying VM directory (cached ISO + logs kept)'
-    Remove-Item -Recurse -Force $VmDir -Confirm:$false
+    if (Test-Path $VmDir) { Remove-Item -Recurse -Force $VmDir -Confirm:$false }
     if (Test-Path $SeedDir) { Remove-Item -Recurse -Force $SeedDir -Confirm:$false }
 }
 
