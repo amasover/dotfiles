@@ -306,11 +306,12 @@ I want an aarch64 Arch guest under VMware Fusion on the work Mac, provisioned an
 bootstrapped by the repo's harness,
 So that the employer machine runs my real environment across every display.
 
-Issue: TBD · Origin: [decision-work-vm.md](./decision-work-vm.md) (2026-11-02,
+Issue: [#281](https://github.com/amasover/dotfiles/issues/281) · Origin: [decision-work-vm.md](./decision-work-vm.md) (2026-11-02,
 work-laptop replacement).
 
-**Current state (2026-11-02):** no guest exists yet. archiso-aarch64 ships
-cloud-init and `archinstall-aarch64`, but nobody has reported it booting in a VM.
+**Current state (2026-11-02):** a disposable `vmware-aarch64` guest installs
+unattended from archiso-aarch64 and boots to an authenticated ssh login under
+Fusion, driven by the harness on macOS; the first repo bootstrap run is in progress.
 The Arch Linux Ports (drzee) repos lack `xf86-video-vmware`, so Xorg runs
 modesetting on vmwgfx.
 

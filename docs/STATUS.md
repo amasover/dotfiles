@@ -23,19 +23,17 @@ Disposable handoff for active work. GitHub issues own durable detail; the
 
 ## In flight
 
-- **Mac work VM** (issue TBD; [decision-work-vm.md](./decision-work-vm.md),
-  Epic 5 Story 5.8): first daily-driver rebuild target is now aarch64 Arch Ports
-  under VMware Fusion, class `work-vm`, with `arch-*` adapter groups. Next: the
-  Fusion harness run on macOS, then the LUKS `work-vm` install.
+- **Mac work VM** ([#281](https://github.com/amasover/dotfiles/issues/281);
+  [decision-work-vm.md](./decision-work-vm.md), Epic 5 Story 5.8): first daily-driver
+  rebuild target is now aarch64 Arch Ports under VMware Fusion, class `work-vm`, with
+  `arch-*` adapter groups. The disposable guest installs and boots under the macOS
+  harness. Next: a green bootstrap + check run, then the LUKS `work-vm` install.
 
 - **2.29 provisioning recipe** ([#95](https://github.com/amasover/dotfiles/issues/95)):
   one generator owns disposable QEMU/VMware recipes, the LUKS `daily-vm` recipe,
   and the attended metal recipe; `vmware-aarch64` and `work-vm` targets join it.
   The Windows daily-VM record is now a later, optional variant. Next: the
   `work-vm` creation record.
-
-- **3.17** closed: the laptop is gone; its autorandr profiles and
-  `.screenlayout` scripts are retired. Close [#129](https://github.com/amasover/dotfiles/issues/129).
 
 - **3.30 Spacemacs modernization** ([#210](https://github.com/amasover/dotfiles/issues/210)):
   active in another agent session. Preserve Spacemacs, Vim-style interaction,
