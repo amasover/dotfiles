@@ -142,6 +142,7 @@ class TestStepFor:
     def test_connect_aliases(self):
         for text in ("Waiting for ssh (up to ~2 min)",
                      "Trust baseline: injecting",
+                     "Host time zone: writing it into the VM (~/.config/dotfiles/timezone)",
                      "Running repo bootstrap inside the VM"):
             idx = display.step_for(text)
             assert display.BOOTSTRAP_STEPS[idx][0] == "connect"
@@ -151,6 +152,14 @@ class TestStepFor:
         dns = display.step_for("VMware guest DNS")
         assert names[dns] == "guest-dns"
         assert display.step_for("Machine-local group") < dns < display.step_for("Pacman mirrors")
+
+    def test_skel_and_timezone_sit_between_profile_and_local_group(self):
+        names = [name for name, _ in display.BOOTSTRAP_STEPS]
+        skel = display.step_for("Fresh-install skel files")
+        tz = display.step_for("Time zone")
+        assert (names[skel], names[tz]) == ("skel", "timezone")
+        assert (display.step_for("Profile guard") < skel < tz
+                < display.step_for("Machine-local group"))
 
     def test_every_current_post_reconcile_stage_is_mapped_in_order(self):
         cases = [

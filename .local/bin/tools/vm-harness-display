@@ -153,9 +153,12 @@ ANCHORS = [
 # per step, in execution order. Prefix match; the LONGEST matching prefix
 # wins ("oh-my-zsh custom theme" must beat "oh-my-zsh").
 BOOTSTRAP_STEPS = [
-    ("connect", ("Waiting for ssh", "Trust baseline", "Running repo bootstrap")),
+    ("connect", ("Waiting for ssh", "Trust baseline", "Host time zone",
+                 "Running repo bootstrap")),
     ("secrets", ("Secrets",)),
     ("profile", ("Profile guard",)),
+    ("skel", ("Fresh-install skel files",)),
+    ("timezone", ("Time zone",)),
     ("local-group", ("Machine-local group",)),
     ("guest-dns", ("VMware guest DNS",)),
     ("mirrors", ("Pacman mirrors",)),
