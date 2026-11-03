@@ -371,17 +371,12 @@ if [[ $OSTYPE != darwin* ]]; then
     complete -o nospace -C /home/aaron/.tenv/Terragrunt/${tg_version}/terragrunt terragrunt
 fi
 
-# macOS (class work-mac): mise activation and the default omp mode.
+# macOS (class work-mac): mise activation. .zprofile sets the default omp mode.
 if [[ $OSTYPE == darwin* ]]; then
     # This tracked file owns activation: config.toml##os.Darwin sets
     # mise_shell_activate zsh = false, so mise never writes its block here.
     if (( $+commands[mise] )); then
         eval "$(mise activate zsh)"
-    fi
-    # A plain `omp` runs omp-mode claude's roles (docs/decision-mac-host.md).
-    # omp-mode appends its own mode after this overlay, and the last one wins.
-    if [[ -z ${PI_CONFIG_FILES:-} && -r $HOME/.omp/agent/modes/claude.yml ]]; then
-        export PI_CONFIG_FILES=$HOME/.omp/agent/modes/claude.yml
     fi
 fi
 

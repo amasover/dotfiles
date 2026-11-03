@@ -41,10 +41,14 @@ Supporting choices, decided together:
   `mise_shell_activate zsh = false`: otherwise mise would write marker blocks into
   yadm-tracked files that Linux shares.
 - **Plain `omp` runs `omp-mode claude`'s roles on the Mac.** The Darwin branch of
-  `.zshrc` exports `PI_CONFIG_FILES=~/.omp/agent/modes/claude.yml` when nothing else
+  `.zprofile` exports `PI_CONFIG_FILES=~/.omp/agent/modes/claude.yml` when nothing else
   set it. It is the overlay mechanism `omp-mode` already uses, so `omp-mode openai`
-  still wins (its overlay comes last), and Orca's agents, which start from an
-  interactive login zsh, get it too. Linux and Windows keep their defaults.
+  still wins (its overlay comes last). Every login shell reads `.zprofile`, including
+  non-interactive ones such as `zsh -l -c omp`, and interactive shells inherit the
+  variable, so Orca's agents get it too. A process that starts without any login shell
+  (a launchd job, an app opened from Finder) does not: only `.zshenv` reaches those,
+  and that file is encrypted, machine-specific state. Linux and Windows keep their
+  defaults.
 - **Never declare employer-managed apps.** Jamf installs and updates Zoom, Slack,
   1Password, Cisco Secure Client, Duo, the EDR agent, Jamf Protect, the employer's Self
   Service app, and the App Store's Pages, Numbers, Keynote, iMovie and GarageBand.
