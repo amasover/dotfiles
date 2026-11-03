@@ -334,6 +334,22 @@ The tradeoff is CPU compositing on aarch64; WebGL 2 keeps hardware, and
 svga driver or Fusion updates, retry hardware WebRender by swapping
 `gfx.webrender.software` for `gfx.webrender.all` in `policies-vmware-aarch64.json`.
 
+**Sound, camera, clipboard and drag-and-drop (2026-11-03):** the generated vmx
+had `sound.present = "FALSE"`, so the guest had no sound card. With sound on,
+Fusion picks es1371, and the arm vmx refuses it at power-on ("es1371 is not
+valid device type for sound"); `sound.virtualDev = "hdaudio"` powers on and
+binds the Mac's default output and input. The Mac's camera reaches the guest as
+Fusion's virtual UVC camera (`usb_xhci:5.deviceType = "video"`, the GUI's
+"Add Device > Camera"), backed by the host's default AVCapture camera. Both
+were proven on a scratch Fusion VM; `vm-harness-vmx` now writes them for
+aarch64. Fusion 13.6 removed Bluetooth sharing, so Bluetooth headsets stay on
+the Mac and reach the guest as its sound input/output; USB devices (security
+keys, USB headsets) pass through on the XHCI controller. Clipboard already
+worked: vmusr starts from `.xinitrc` at login (the VMX logged `toolbox-dnd`
+two seconds after `startx`). File drag-and-drop from the Mac did not, because
+`vmware-vmblock-fuse.service` ships disabled and vmusr then starts without
+`--blockFd`; bootstrap step "VMware guest tools" and the seed now enable it.
+
 **Acceptance criteria:**
 
 - `vm-harness-vmware.ps1` runs under PowerShell 7 on macOS (`$IsMacOS`) against
@@ -352,8 +368,9 @@ svga driver or Fusion updates, retry hardware WebRender by swapping
 - HiDPI: a recorded choice between Fusion's full-resolution Retina mode with a
   guest `Xft.dpi` and scaled (non-Retina) mode. Text is sharp and consistently
   sized on both the Retina panel and the 4K.
-- Later, for Slacky huddles: the Mac camera and microphone reach the guest
-  through Fusion, shown by a test call from the guest.
+- Slack huddles: speaker and microphone through the `hdaudio` card, and the Mac
+  camera as `/dev/video0` in the guest, shown by a test call from the guest.
+  Clipboard works both ways, and files dragged from Finder land in the guest.
 
 **Evidence artifact:** the disposable harness log set, the `work-vm` metapac
 render and check output, and `xrandr --listactivemonitors` plus a screenshot

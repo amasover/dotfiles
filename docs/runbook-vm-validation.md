@@ -286,6 +286,13 @@ Fusion-specific facts, verified live on Fusion 26H1 (26.0.1), 2026-11-02:
   and vmwgfx exposes `Virtual-1..8`. `svga.graphicsMemoryKB` raises 3D memory from
   the 256 MiB default to 2 GiB. "Use All Displays in Full Screen" itself needs the
   Fusion GUI and running Tools — not exercised headless.
+- **Sound and camera (2026-11-03):** `sound.present` with `sound.virtualDev =
+  "hdaudio"`; Fusion's default `es1371` stops an arm power-on with
+  `msg.devicePowerOn.invalidDT`. The Mac's camera is the virtual UVC device
+  `usb_xhci:5.deviceType = "video"` (vid:pid `0e0f:000b`), fed by the host's default
+  AVCapture camera; Fusion still adds its own HID on port 4 and hubs on 6 and 7.
+  Both need macOS's camera and microphone permission for VMware Fusion (System
+  Settings > Privacy & Security).
 - **Serial console:** ACPI SPCR puts the kernel console on `ttyS0` (16550 MMIO), the
   VMware serial port; no `ttyAMA0`. The live ISO therefore spawns
   `serial-getty@ttyS0`, which the install driver stops before writing the line.
