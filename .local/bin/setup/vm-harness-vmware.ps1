@@ -95,6 +95,13 @@
 # VM_HARNESS_SSH_KEY names a private key to seed and log in with (its .pub is
 # the seeded key; ssh gets -i + IdentitiesOnly) — for hosts whose keys live in
 # an agent with no ~/.ssh/id_*.pub on disk, and for throwaway-key runs.
+# VM_HARNESS_GUI=1 powers the VM on with its console window open (vmrun's
+# `gui` mode) instead of headless, so an attended run can be watched; logging
+# and every phase gate are the same either way.
+# VM_HARNESS_BUNDLE names a host `git bundle` (e.g. `git bundle create
+# b.bundle my-branch`): bootstrap copies it into the guest and clones from it
+# instead of VM_HARNESS_REPO, so an unpushed branch can be validated; pair it
+# with VM_HARNESS_BRANCH.
 
 $ErrorActionPreference = 'Stop'
 
@@ -346,8 +353,9 @@ with tempfile.TemporaryFile() as out:
 sys.exit(rc)
 '@
 function Start-Vm {
-    if ($OnMac) { & $Python -c $DetachedStart $VmRun -T $VmRunType start $Vmx nogui 2>&1 }
-    else { & $VmRun -T $VmRunType start $Vmx nogui 2>&1 }
+    $mode = if ($env:VM_HARNESS_GUI) { 'gui' } else { 'nogui' }
+    if ($OnMac) { & $Python -c $DetachedStart $VmRun -T $VmRunType start $Vmx $mode 2>&1 }
+    else { & $VmRun -T $VmRunType start $Vmx $mode 2>&1 }
     if ($LASTEXITCODE -ne 0) { throw "vmrun start failed (rc=$LASTEXITCODE)" }
 }
 
@@ -626,10 +634,18 @@ function Cmd-Bootstrap {
         $ip = Wait-Ssh
         Assert-KeyAuth
         Send-TrustBaseline $ip
+        $guestRepo = $Repo
+        if ($env:VM_HARNESS_BUNDLE) {
+            if (-not (Test-Path $env:VM_HARNESS_BUNDLE)) { throw "VM_HARNESS_BUNDLE not found: $($env:VM_HARNESS_BUNDLE)" }
+            Say "Repo: copying the host bundle into the VM (clones the unpushed branch)"
+            & scp @BatchOpts -q $env:VM_HARNESS_BUNDLE "$VmUser@${ip}:dotfiles.bundle"
+            if ($LASTEXITCODE -ne 0) { throw "bundle scp failed (rc=$LASTEXITCODE)" }
+            $guestRepo = "/home/$VmUser/dotfiles.bundle"
+        }
         Say "Running repo bootstrap inside the VM (class: $Class, unattended; AUR builds take a while)"
         $cmd = 'bash vm-harness-guest bootstrap' +
                " --class $(ConvertTo-ShellQuoted $Class)" +
-               " --repo $(ConvertTo-ShellQuoted $Repo)"
+               " --repo $(ConvertTo-ShellQuoted $guestRepo)"
         if ($Branch) { $cmd += " --branch $(ConvertTo-ShellQuoted $Branch)" }
         Invoke-GuestGlue $ip $cmd
     }
