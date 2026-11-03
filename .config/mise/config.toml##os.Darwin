@@ -52,14 +52,11 @@ adopt = true
 "brew-cask:font-hack-nerd-font" = "latest"
 # The user's own apps. VMware Fusion and Meridian Desktop have no cask:
 # Homebrew dropped vmware-fusion when Broadcom put the download behind a login,
-# and Meridian ships only a GitHub release DMG.
+# and Meridian ships only a GitHub release DMG. Feishin stays manual too: its
+# only cask is a community tap with no checksum that strips the quarantine flag.
 "brew-cask:firefox" = "latest"
 # Orca's own tap, generated from the Orca repository.
 "brew-cask:stablyai/orca/orca" = "latest"
-# Community tap kept by a long-time Feishin contributor. Its cask has no
-# checksum (`sha256 :no_check`) and strips the quarantine flag after install,
-# because upstream does not notarize the app.
-"brew-cask:kgarner7/feishin/feishin" = "latest"
 
 # oh-my-zsh, which .zshrc sources. The official installer only clones this
 # repository when told to keep .zshrc and skip chsh, so a declared checkout
@@ -94,7 +91,7 @@ run = '"$HOME/.local/bin/setup/agent-skills" apply'
 
 [tools]
 node = "lts"
-# mise reads the two tap casks above from their Ruby definitions, so `status`,
+# mise reads the Orca tap cask above from its Ruby definition, so `status`,
 # `plan`, `--dry-run` and brew-drift-report need a Ruby 3. A real apply
 # fetches one itself on the first run.
 ruby = "3"

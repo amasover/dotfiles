@@ -49,10 +49,11 @@ Supporting choices, decided together:
 - **Never declare employer-managed apps.** Jamf installs and updates Zoom, Slack,
   1Password, Cisco Secure Client, Duo, the EDR agent, Jamf Protect, the employer's Self
   Service app, and the App Store's Pages, Numbers, Keynote, iMovie and GarageBand.
-  Declaring them would fight the MDM. The user's own apps are declared where a cask
-  exists (Firefox; Orca from its own tap; Feishin from a community tap), with
-  `adopt = true` so mise takes over the existing bundles instead of replacing them.
-  VMware Fusion and Meridian Desktop have no cask and stay manual.
+  Declaring them would fight the MDM. The user's own apps are declared where a
+  trustworthy cask exists (Firefox; Orca from its own tap), with `adopt = true` so mise
+  takes over the existing bundles instead of replacing them. VMware Fusion and Meridian
+  Desktop have no cask, and Feishin's only cask is a community tap with no checksum
+  that strips the quarantine flag, so those three stay manual.
 - **Secrets: full archive, host trusted.** The Mac decrypts the whole yadm archive. It
   is already inside the trust boundary: it holds the same identities and works on the
   same accounts. A Mac-only secret subset was rejected for the same reason the daily VM
@@ -88,6 +89,6 @@ Reversing any of it touches the shell files, the yadm layout and the docs at onc
 - The first `yadm clone` on a Mac runs with `yadm.auto-alt` off (the runbook says how),
   because a clone links every alternate at once and would replace a live
   `~/.config/mise/config.toml` before the bootstrap can save it.
-- `mise bootstrap` needs a Ruby 3 to read the Orca and Feishin tap casks, so the config
+- `mise bootstrap` needs a Ruby 3 to read the Orca tap cask, so the config
   declares `ruby = "3"`; `status`, `plan` and the drift report fail until it is
   installed (a real apply fetches one itself).

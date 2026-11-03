@@ -70,8 +70,8 @@ links the alternates, offers to decrypt the archive, and runs `mise bootstrap`.
   decrypt, later runs skip the offer until the archive changes; run
   `bash ~/.config/yadm/bootstrap --decrypt` to be asked again.
 - **mise.** `mise bootstrap` shows what it will do and asks before it changes anything.
-  It installs the declared formulae, adopts the already-installed Firefox, Orca and
-  Feishin (`adopt = true` keeps their privacy grants), clones oh-my-zsh, writes the
+  It installs the declared formulae, adopts the already-installed Firefox and Orca
+  (`adopt = true` keeps their privacy grants), clones oh-my-zsh, writes the
   macOS defaults, installs node and Ruby, then runs the agent-skills hook. Restart
   Finder (`killall Finder`) after it writes defaults.
 
@@ -94,7 +94,8 @@ load.
 ## What stays manual
 
 - **Employer-managed apps.** Jamf owns them; never declare or remove them from mise.
-- **VMware Fusion and Meridian Desktop.** No cask exists. Update them from their own
+- **VMware Fusion, Meridian Desktop and Feishin.** No cask exists for the first two;
+  Feishin's only cask is an unverified community tap. Update them from their own
   download pages.
 - **agent-skills setting.** Without `~/.config/dotfiles/agent-skills/remote.env` (it
   rides the encrypted archive once someone runs `yadm encrypt` with it present), the
