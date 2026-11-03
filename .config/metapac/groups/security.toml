@@ -7,5 +7,4 @@ packages = [
   "1password-cli",
   "gitleaks",
   "pwgen",
-  "sedutil",
 ]

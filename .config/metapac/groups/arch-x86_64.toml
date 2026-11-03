@@ -20,6 +20,7 @@ packages = [
   "git-credential-manager-bin",  # development: .gitconfig's credential helper
   "lib32-glu",  # desktop
   "omnisharp-roslyn-bin",  # editor: .spacemacs lsp-csharp server
+  "sedutil",  # security: its autotools build fails on aarch64, and its PBA image is x86 (linuxpba)
   "teensy-loader",  # optional
   "tidal-hifi-bin",  # media
   "zoom",  # comms
