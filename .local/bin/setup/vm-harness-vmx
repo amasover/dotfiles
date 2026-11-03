@@ -45,9 +45,35 @@ from pathlib import Path
 # Fusion 26H1's own `vmcli VM Create` (virtualHW 22); the 7.x id comes from
 # the same build's guest table ("Other Linux 7.x and later kernel 64-bit
 # Arm") because the Ports kernel is 7.x.
+#
+# "extra" holds the keys only one architecture writes, appended after the
+# shared set in this order.
 ARCH_HW = {
-    "x86_64": {"virtualHW": "21", "guestOS": "other6xlinux-64", "usb": "FALSE"},
-    "aarch64": {"virtualHW": "22", "guestOS": "arm-other7xlinux-64", "usb": "TRUE"},
+    "x86_64": {"virtualHW": "21", "guestOS": "other6xlinux-64", "usb": "FALSE",
+               "extra": []},
+    "aarch64": {
+        "virtualHW": "22", "guestOS": "arm-other7xlinux-64", "usb": "TRUE",
+        "extra": [
+            ("usb_xhci.present", "TRUE"),
+            # Multi-monitor ("Use All Displays in Full Screen") depends on SVGA
+            # autodetect, which is on by default — pinned so a hand edit can't
+            # silently cap it. At power-on Fusion sizes the display memory
+            # from the host's display topology (vmware.log, 2026-11-02:
+            # "SVGA-GFB: Max wh(6688, 5016), number of displays: 10", then
+            # writes svga.vramSize itself); the guest's vmwgfx screen-target
+            # unit exposes Virtual-1..8 connectors. Fixed svga.maxWidth/
+            # maxHeight/numDisplays/vramSize would only cap that, so none are
+            # set. The rest is guest-side: vmtoolsd running (Fusion refuses
+            # multimon otherwise — "must have up-to-date VMware Tools").
+            ("svga.autodetect", "TRUE"),
+            # 3D memory (the GUI's "Shared graphics memory"): Fusion's default
+            # is 256 MiB (same log), and the Mac panel plus two 4K heads take
+            # ~100 MiB of that as bare 32-bpp framebuffers. 2 GiB leaves room
+            # for compositor and WebRender surfaces; verified honoured live
+            # (vmware.log: "SVGA: graphicsMemoryKB=2097152").
+            ("svga.graphicsMemoryKB", "2097152"),
+        ],
+    },
 }
 
 
@@ -118,28 +144,7 @@ def build_vmx(
         # boot (seen after the 26H1 upgrade, 2026-08-21).
         ("floppy0.present", "FALSE"),
         ("vmci0.present", "TRUE"),
-    ]
-    if arch == "aarch64":
-        entries += [
-            ("usb_xhci.present", "TRUE"),
-            # Multi-monitor ("Use All Displays in Full Screen") rides on SVGA
-            # autodetect, which is on by default — pinned so a hand edit can't
-            # silently cap it. At power-on Fusion sizes the display memory
-            # from the host's display topology (vmware.log, 2026-11-02:
-            # "SVGA-GFB: Max wh(6688, 5016), number of displays: 10", then
-            # writes svga.vramSize itself); the guest's vmwgfx screen-target
-            # unit exposes Virtual-1..8 connectors. Fixed svga.maxWidth/
-            # maxHeight/numDisplays/vramSize would only cap that, so none are
-            # set. The rest is guest-side: vmtoolsd running (Fusion refuses
-            # multimon otherwise — "must have up-to-date VMware Tools").
-            ("svga.autodetect", "TRUE"),
-            # 3D memory (the GUI's "Shared graphics memory"): Fusion's default
-            # is 256 MiB (same log), and the Mac panel plus two 4K heads take
-            # ~100 MiB of that as bare 32-bpp framebuffers. 2 GiB leaves room
-            # for compositor and WebRender surfaces; verified honoured live
-            # (vmware.log: "SVGA: graphicsMemoryKB=2097152").
-            ("svga.graphicsMemoryKB", "2097152"),
-        ]
+    ] + hw["extra"]
     return "".join(f'{k} = "{v}"\n' for k, v in entries)
 
 

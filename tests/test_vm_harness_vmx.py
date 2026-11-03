@@ -110,6 +110,38 @@ class TestBuildVmxAarch64:
         assert len(keys) == len(set(keys))
 
 
+SHARED_KEYS = [
+    ".encoding", "config.version", "virtualHW.version", "displayName", "guestOS",
+    "firmware", "mks.enable3d", "memsize", "numvcpus",
+    "pciBridge0.present", "pciBridge4.present", "pciBridge4.virtualDev",
+    "pciBridge4.functions", "pciBridge5.present", "pciBridge5.virtualDev",
+    "pciBridge5.functions", "pciBridge6.present", "pciBridge6.virtualDev",
+    "pciBridge6.functions", "pciBridge7.present", "pciBridge7.virtualDev",
+    "pciBridge7.functions", "nvme0.present", "nvme0:0.present", "nvme0:0.fileName",
+    "sata0.present", "sata0:0.present", "sata0:0.deviceType", "sata0:0.fileName",
+    "sata0:1.present", "sata0:1.deviceType", "sata0:1.fileName",
+    "ethernet0.present", "ethernet0.connectionType", "ethernet0.virtualDev",
+    "ethernet0.addressType", "serial0.present", "serial0.fileType",
+    "serial0.fileName", "serial0.tryNoRxLoss", "rtc.diffFromUTC",
+    "tools.syncTime", "msg.autoAnswer", "sound.present", "usb.present",
+    "floppy0.present", "vmci0.present",
+]
+
+
+class TestFullKeySets:
+    # Every key each architecture writes, in order: one table (ARCH_HW) owns
+    # the difference, and x86_64 gains nothing from it.
+    def _keys(self, arch):
+        return [l.split(" = ")[0] for l in _build(arch=arch).splitlines()]
+
+    def test_x86_64(self):
+        assert self._keys("x86_64") == SHARED_KEYS
+
+    def test_aarch64(self):
+        assert self._keys("aarch64") == SHARED_KEYS + [
+            "usb_xhci.present", "svga.autodetect", "svga.graphicsMemoryKB"]
+
+
 class TestEjectMedia:
     def test_detaches_both_cd_drives_only(self):
         out = vmx.eject_media(_build())
