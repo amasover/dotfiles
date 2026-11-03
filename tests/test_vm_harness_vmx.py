@@ -116,6 +116,13 @@ class TestBuildVmxAarch64:
         assert 'sound.present = "TRUE"' in text
         assert 'sound.virtualDev = "hdaudio"' in text
 
+    def test_drag_and_drop_off_clipboard_on(self):
+        text = _build(arch="aarch64")
+        assert 'isolation.tools.dnd.disable = "TRUE"' in text
+        assert "isolation.tools.copy" not in text
+        assert "isolation.tools.paste" not in text
+        assert "isolation.tools.dnd" not in _build(arch="x86_64")
+
     def test_virtual_camera_on_free_xhci_port(self):
         text = _build(arch="aarch64")
         assert 'usb_xhci:5.deviceType = "video"' in text
@@ -161,7 +168,74 @@ class TestFullKeySets:
         assert self._keys("aarch64") == SHARED_KEYS + [
             "usb_xhci.present", "svga.autodetect", "svga.graphicsMemoryKB",
             "sound.virtualDev", "usb_xhci:5.present", "usb_xhci:5.deviceType",
-            "usb_xhci:5.port", "usb_xhci:5.parent"]
+            "usb_xhci:5.port", "usb_xhci:5.parent", "isolation.tools.dnd.disable"]
+
+
+SHARES = [("vmshare", "/Users/someone/vmshare"), ("Downloads", "/Users/someone/Downloads")]
+
+# What `vmrun enableSharedFolders` + two `addSharedFolder` calls wrote (Fusion 26H1).
+SHARE_LINES = """\
+isolation.tools.hgfs.disable = "FALSE"
+sharedFolder0.present = "TRUE"
+sharedFolder0.enabled = "TRUE"
+sharedFolder0.readAccess = "TRUE"
+sharedFolder0.writeAccess = "TRUE"
+sharedFolder0.hostPath = "/Users/someone/vmshare"
+sharedFolder0.guestName = "vmshare"
+sharedFolder0.expiration = "never"
+sharedFolder1.present = "TRUE"
+sharedFolder1.enabled = "TRUE"
+sharedFolder1.readAccess = "TRUE"
+sharedFolder1.writeAccess = "TRUE"
+sharedFolder1.hostPath = "/Users/someone/Downloads"
+sharedFolder1.guestName = "Downloads"
+sharedFolder1.expiration = "never"
+sharedFolder.maxNum = "2"
+"""
+
+
+class TestShares:
+    @pytest.mark.parametrize("arch", ["x86_64", "aarch64"])
+    def test_shares_append_vmrun_keys_after_hardware(self, arch):
+        assert _build(arch=arch, shares=SHARES) == _build(arch=arch) + SHARE_LINES
+
+    @pytest.mark.parametrize("arch", ["x86_64", "aarch64"])
+    def test_no_shares_leaves_hgfs_untouched(self, arch):
+        text = _build(arch=arch, shares=[])
+        assert text == _build(arch=arch)
+        assert "hgfs" not in text and "sharedFolder" not in text
+
+    def test_parse_splits_at_first_equals(self):
+        assert vmx.parse_shares(["a=/x=y", "Downloads=/d"]) == [
+            ("a", "/x=y"), ("Downloads", "/d")]
+
+    @pytest.mark.parametrize("spec, why", [
+        (["vmshare"], "expected NAME=HOSTPATH"),
+        (["=/Users/someone/vmshare"], "empty name"),
+        (["vmshare="], "empty host path"),
+        (["vmshare=/a", "vmshare=/b"], "name 'vmshare' given twice"),
+    ])
+    def test_bad_specs_name_the_problem(self, spec, why):
+        with pytest.raises(ValueError, match=why):
+            vmx.parse_shares(spec)
+
+    def test_cli_repeatable_share(self, tmp_path):
+        out = tmp_path / "t.vmx"
+        argv = ["generate", "--out", str(out), "--disk", "d", "--iso", "a",
+                "--seed-iso", "s", "--serial-log", "l", "--arch", "aarch64"]
+        for name, path in SHARES:
+            argv += ["--share", f"{name}={path}"]
+        assert vmx.main(argv) == 0
+        assert out.read_text().endswith(SHARE_LINES)
+
+    def test_cli_bad_share_fails_without_writing(self, tmp_path, capsys):
+        out = tmp_path / "t.vmx"
+        rc = vmx.main(["generate", "--out", str(out), "--disk", "d", "--iso", "a",
+                       "--seed-iso", "s", "--serial-log", "l",
+                       "--share", "a=/x", "--share", "a=/y"])
+        assert rc == 2 and not out.exists()
+        assert capsys.readouterr().err.strip() == (
+            "vm-harness-vmx: share 'a=/y': name 'a' given twice")
 
 
 class TestEjectMedia:

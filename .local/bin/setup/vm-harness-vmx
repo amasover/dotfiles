@@ -33,6 +33,7 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 
@@ -85,6 +86,14 @@ ARCH_HW = {
             ("usb_xhci:5.deviceType", "video"),
             ("usb_xhci:5.port", "5"),
             ("usb_xhci:5.parent", "-1"),
+            # Drag-and-drop off, clipboard on (copy/paste keys untouched).
+            # Live on the work VM (2026-11-03): guest-to-host drags never leave
+            # the VM window; host-to-guest drops deliver the file, but each
+            # drag leaves a 32x32 override-redirect window owned by
+            # vmware-user (vmtoolsd -n vmusr) mapped at +0+0, which i3 cannot
+            # manage — six had piled up over polybar. Files move through the
+            # shared folders (--share) instead.
+            ("isolation.tools.dnd.disable", "TRUE"),
         ],
     },
 }
@@ -93,6 +102,7 @@ ARCH_HW = {
 def build_vmx(
     *, name: str, disk: str, iso: str, seed_iso: str, serial_log: str,
     ram_mib: int, cpus: int, arch: str = "x86_64",
+    shares: Sequence[tuple[str, str]] = (),
 ) -> str:
     hw = ARCH_HW[arch]
     entries = [
@@ -161,8 +171,49 @@ def build_vmx(
         # boot (seen after the 26H1 upgrade, 2026-08-21).
         ("floppy0.present", "FALSE"),
         ("vmci0.present", "TRUE"),
-    ] + hw["extra"]
+    ] + hw["extra"] + share_entries(shares)
     return "".join(f'{k} = "{v}"\n' for k, v in entries)
+
+
+def parse_shares(specs: list[str]) -> list[tuple[str, str]]:
+    """`NAME=HOSTPATH` specs -> [(name, hostpath)], split at the first `=`.
+    Raises ValueError naming the bad spec: no `=`, an empty name or path, or
+    a name given twice (each name is one directory under the guest mount)."""
+    shares: list[tuple[str, str]] = []
+    for spec in specs:
+        name, sep, path = spec.partition("=")
+        if not sep:
+            raise ValueError(f"share {spec!r}: expected NAME=HOSTPATH")
+        if not name:
+            raise ValueError(f"share {spec!r}: empty name")
+        if not path:
+            raise ValueError(f"share {spec!r}: empty host path")
+        if any(name == seen for seen, _ in shares):
+            raise ValueError(f"share {spec!r}: name {name!r} given twice")
+        shares.append((name, path))
+    return shares
+
+
+# Shared folders (HGFS): the keys `vmrun enableSharedFolders` and
+# `vmrun addSharedFolder` wrote on Fusion 26H1 (2026-11-03), share by share,
+# then the count. The guest mounts every share with `vmhgfs-fuse .host:/`
+# (.config/systemd/user/mac-shares.service). No shares, no keys: HGFS stays
+# at VMware's default (off).
+def share_entries(shares: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
+    if not shares:
+        return []
+    entries = [("isolation.tools.hgfs.disable", "FALSE")]
+    for i, (name, path) in enumerate(shares):
+        entries += [
+            (f"sharedFolder{i}.present", "TRUE"),
+            (f"sharedFolder{i}.enabled", "TRUE"),
+            (f"sharedFolder{i}.readAccess", "TRUE"),
+            (f"sharedFolder{i}.writeAccess", "TRUE"),
+            (f"sharedFolder{i}.hostPath", path),
+            (f"sharedFolder{i}.guestName", name),
+            (f"sharedFolder{i}.expiration", "never"),
+        ]
+    return entries + [("sharedFolder.maxNum", str(len(shares)))]
 
 
 def eject_media(vmx_text: str) -> str:
@@ -256,6 +307,9 @@ def main(argv: list[str] | None = None) -> int:
     gen.add_argument("--cpus", type=int, default=16)
     gen.add_argument("--arch", choices=sorted(ARCH_HW), default="x86_64",
                      help="guest architecture (Fusion on Apple silicon: aarch64)")
+    gen.add_argument("--share", action="append", default=[], metavar="NAME=HOSTPATH",
+                     help="share HOSTPATH into the guest as NAME (repeatable; "
+                     "the guest sees it under .host:/NAME)")
 
     ej = sub.add_parser("eject", help="detach installer + seed media in place")
     ej.add_argument("--vmx", required=True)
@@ -277,10 +331,15 @@ def main(argv: list[str] | None = None) -> int:
 
     args = ap.parse_args(argv)
     if args.cmd == "generate":
+        try:
+            shares = parse_shares(args.share)
+        except ValueError as e:
+            print(f"vm-harness-vmx: {e}", file=sys.stderr)
+            return 2
         text = build_vmx(
             name=args.name, disk=args.disk, iso=args.iso, seed_iso=args.seed_iso,
             serial_log=args.serial_log, ram_mib=args.ram, cpus=args.cpus,
-            arch=args.arch,
+            arch=args.arch, shares=shares,
         )
         Path(args.out).write_text(text, newline="\n")
         print(args.out)
