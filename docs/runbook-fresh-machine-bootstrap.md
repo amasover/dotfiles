@@ -332,8 +332,14 @@ What it does, in order:
     which stays idle until `ov.conf` exists, removes a stale `.openviking.pid` left by
     an unclean shutdown (upstream #4210), and restarts only on failure, at most every
     30 s. Logs: `~/Library/Logs/openviking.log` and `~/Library/Logs/ollama.log`; restart
-    with `launchctl kickstart -k gui/$(id -u)/dev.mise.openviking`. In testing, the 4B
-    model wrapped its answer in a function that the default Python extraction protocol
+    with `launchctl kickstart -k gui/$(id -u)/dev.mise.openviking`. Only the embedding
+    model runs in Ollama: the VLM is Claude Haiku 5.5 through Meridian Desktop on
+    `127.0.0.1:3456` (`api_key` `x` is Meridian's placeholder), because the local 4B
+    model swapped and timed out under memory pressure. Memory extraction therefore needs
+    Meridian Desktop running and signed in; while it is down, extraction fails after two
+    retries, and `/ready` still passes because it never probes the VLM. Haiku 5.5
+    accepts only the default temperature, so `ov.conf.json` sets none. The 4B model also
+    wrapped its answer in a function that the default Python extraction protocol
     rejects, so `ov.conf.json` sets `memory.extraction_output_format` to `json`.
 17. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
     reconciles active `Plug` declarations; `--check` is read-only.
