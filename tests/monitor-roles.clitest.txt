@@ -1,6 +1,6 @@
-# monitor-roles (Stories 5.5/3.17) — topology plus profile role resolution.
-# The assign subcommand is the seam: listactivemonitors text and an optional
-# override file in, final roles and warnings out.
+# monitor-roles (Stories 5.5/3.17/5.8) — topology plus profile role resolution.
+# The assign subcommand is the seam: listactivemonitors text, optional pinned
+# roles and an optional override file in, final roles and warnings out.
 
 $ t=.local/bin/tools/monitor-roles
 $
@@ -139,12 +139,59 @@ monitor-roles: cannot read /nonexistent/roles.env
 rc=1
 $
 
+pinned roles (what `monitor-split roles` prints for the work VM's home split
+of Fusion's 3840x2160 output) are kept, and the heuristic places the rest
+around the pinned MAIN: the Mac panel left of it becomes LEFT, and no split
+monitor is offered as EXTRA:
+
+$ p=$(mktemp) && printf 'MONITOR_MAIN=Virtual-1~1\nMONITOR_SPLIT_TOP=Virtual-1~2\nMONITOR_SPLIT_BOTTOM=Virtual-1~3\n' > "$p"
+$ printf 'Monitors: 4\n 0: Virtual-1~1 1920/508x2160/572+1512+0  Virtual-1\n 1: Virtual-1~2 1920/508x1080/286+3432+0 \n 2: Virtual-1~3 1920/508x1080/286+3432+1080 \n 3: +Virtual-2 1512/400x949/251+0+1495  Virtual-2\n' | $t assign --pins "$p" 2>&1
+MONITOR_MAIN=Virtual-1~1
+MONITOR_LEFT=Virtual-2
+MONITOR_SPLIT_TOP=Virtual-1~2
+MONITOR_SPLIT_BOTTOM=Virtual-1~3
+$
+
+a second 4K right of the split is the next remaining monitor, so EXTRA:
+
+$ printf 'Monitors: 5\n 0: Virtual-1~1 1920/508x2160/572+1512+0  Virtual-1\n 1: Virtual-1~2 1920/508x1080/286+3432+0 \n 2: Virtual-1~3 1920/508x1080/286+3432+1080 \n 3: +Virtual-2 1512/400x949/251+0+1495  Virtual-2\n 4: +Virtual-3 3840/1016x2160/572+5352+0  Virtual-3\n' | $t assign --pins "$p" 2>&1
+MONITOR_MAIN=Virtual-1~1
+MONITOR_LEFT=Virtual-2
+MONITOR_EXTRA=Virtual-3
+MONITOR_SPLIT_TOP=Virtual-1~2
+MONITOR_SPLIT_BOTTOM=Virtual-1~3
+$
+
+a pin naming a monitor that is not active is ignored loudly, and the
+heuristic runs as if it were absent:
+
+$ printf 'Monitors: 2\n 0: +*Virtual-1 1280/339x800/212+0+0  Virtual-1\n 1: +Virtual-2 1512/400x949/251+1280+0  Virtual-2\n' | $t assign --pins "$p" 2>&1 | LC_ALL=C sort
+MONITOR_EXTRA=Virtual-2
+MONITOR_MAIN=Virtual-1
+monitor-roles: pinned MAIN monitor Virtual-1~1 is not active; ignoring
+monitor-roles: pinned SPLIT_BOTTOM monitor Virtual-1~3 is not active; ignoring
+monitor-roles: pinned SPLIT_TOP monitor Virtual-1~2 is not active; ignoring
+$
+
+a profile override still has the last word over pins:
+
+$ f=$(mktemp) && printf 'MONITOR_SPLIT_BOTTOM=\n' > "$f"
+$ printf 'Monitors: 4\n 0: Virtual-1~1 1920/508x2160/572+1512+0  Virtual-1\n 1: Virtual-1~2 1920/508x1080/286+3432+0 \n 2: Virtual-1~3 1920/508x1080/286+3432+1080 \n 3: +Virtual-2 1512/400x949/251+0+1495  Virtual-2\n' | $t assign --pins "$p" "$f" 2>"$f.err"; cat "$f.err"; rm -f "$p" "$f" "$f.err"
+MONITOR_MAIN=Virtual-1~1
+MONITOR_LEFT=Virtual-2
+MONITOR_SPLIT_TOP=Virtual-1~2
+monitor-roles: no role for Virtual-1~3 after override resolution
+$
+
 unknown subcommands and excess arguments are rejected:
 
 $ $t bogus 2>&1; echo "rc=$?"
-usage: monitor-roles [resolve [OVERRIDE] | assign [OVERRIDE]]
+usage: monitor-roles [resolve [OVERRIDE] | assign [--pins FILE] [OVERRIDE]]
 rc=2
 $ $t assign one two 2>&1; echo "rc=$?"
-usage: monitor-roles [resolve [OVERRIDE] | assign [OVERRIDE]]
+usage: monitor-roles [resolve [OVERRIDE] | assign [--pins FILE] [OVERRIDE]]
+rc=2
+$ $t assign --pins 2>&1; echo "rc=$?"
+usage: monitor-roles [resolve [OVERRIDE] | assign [--pins FILE] [OVERRIDE]]
 rc=2
 $

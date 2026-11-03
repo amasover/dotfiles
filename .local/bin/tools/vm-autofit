@@ -14,7 +14,10 @@
 # drivers/gpu/drm/vmwgfx/vmwgfx_kms.c). Xorg's modesetting driver re-reads
 # those properties on every probe, so `xrandr --prop` shows where the host
 # wants each output. apply places every output there, so i3 sees the host's
-# side-by-side layout and follows dock/undock.
+# side-by-side layout and follows dock/undock. After placing them, apply
+# hands the result to tools/monitor-split, which carves the tracked home
+# 4K split out of a 3840x2160 output when this machine's split policy says
+# so (class work-vm), and clears the split when that output goes away.
 #
 #   vm-autofit apply [output]   apply the pending hint once (xrandr --auto,
 #                               plus --pos at the suggested offsets when no
@@ -88,6 +91,8 @@ relaunch_bars() {
     [ -x "$launcher" ] && "$launcher" </dev/null >/dev/null
 }
 
+tools=$(dirname "$0")
+
 # SPICE/QEMU guests only: after a resolution change an absolute-pointer
 # tablet keeps the old axis range and the cursor drifts off-target. Recalibrate
 # it to the new size, then a no-op transform makes Xorg rebuild input maps.
@@ -136,7 +141,9 @@ apply() {
             esac
         done < <(layout_plan)
         [ ${#args[@]} -eq 0 ] || xrandr "${args[@]}"
-        relaunch_bars "$topology"
+        # A split change (made or cleared) is a topology change for the bars.
+        split=$("$tools/monitor-split" auto) || :
+        relaunch_bars "$topology${split:+ split:$split}"
     fi
     calibrate_pointer
 }

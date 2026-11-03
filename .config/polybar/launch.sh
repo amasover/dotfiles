@@ -6,7 +6,10 @@
 # split-4K MONITOR_SPLIT_TOP/BOTTOM) tell the theme's bars where to sit.
 # Role resolution:
 #   1. the positional heuristic in tools/monitor-roles: primary → MAIN, the
-#      leftmost monitor left of MAIN → LEFT, the next remaining → EXTRA;
+#      leftmost monitor left of MAIN → LEFT, the next remaining → EXTRA —
+#      after the roles tools/monitor-split pins for a split it carved by
+#      policy (the work VM's home 4K split: MAIN + SPLIT_TOP/BOTTOM, so the
+#      Mac panel left of it becomes LEFT);
 #   2. a per-autorandr-profile override, ~/.config/polybar/layouts/<profile>.env
 #      (profile from $AUTORANDR_CURRENT_PROFILE inside autorandr hooks, else
 #      `autorandr --current`), merged ON TOP of the heuristic — it overrides or
@@ -84,7 +87,7 @@ rm -f "$roles_err"
 if [[ -n $profile && -f $layout_env ]]; then
     mode="profile ${profile}"
 else
-    mode="auto: ${MONITOR_MAIN}${MONITOR_LEFT:+ left=${MONITOR_LEFT}}${MONITOR_EXTRA:+ extra=${MONITOR_EXTRA}}${MONITOR_OVERFLOW:+ overflow=${MONITOR_OVERFLOW}}"
+    mode="auto: ${MONITOR_MAIN}${MONITOR_LEFT:+ left=${MONITOR_LEFT}}${MONITOR_EXTRA:+ extra=${MONITOR_EXTRA}}${MONITOR_SPLIT_TOP:+ top=${MONITOR_SPLIT_TOP}}${MONITOR_SPLIT_BOTTOM:+ bottom=${MONITOR_SPLIT_BOTTOM}}${MONITOR_OVERFLOW:+ overflow=${MONITOR_OVERFLOW}}"
 fi
 
 if [[ -z ${MONITOR_MAIN:-} ]]; then

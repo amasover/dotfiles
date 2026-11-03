@@ -97,7 +97,34 @@ launched — i3 owns startup:
 
 $ cp "$d/vmw1" "$XRANDR_OUT"; : > "$XLOG"; { sleep 1; cp "$d/vmw2" "$XRANDR_OUT"; printf 'e1\n'; } | .local/bin/tools/vm-autofit react; grep -c '^launch' "$XLOG"
 0
-$ cp "$d/plain" "$XRANDR_OUT"
+$
+
+Every case above runs without a split policy (any machine but class work-vm),
+so tools/monitor-split never queried or touched anything. With the work-vm
+policy and the tracked home layout in place, apply hands the placed layout to
+monitor-split: Fusion's full-screen 4K (3840x2160 beside the Mac panel) is
+carved into the three home areas right after the placement call. The i3-msg
+stub lists the carved monitors as active:
+
+$ mkdir -p "$HOME/.config/monitor-split" && ln -s "$PWD/.config/monitor-split/home.layout" "$HOME/.config/monitor-split/home.layout" && ln -s "$PWD/.config/monitor-split/policy##class.work-vm" "$HOME/.config/monitor-split/policy" && printf '%s\n' '#!/bin/sh' 'echo "i3-msg $*" >> "$XLOG"' '[ "$1" = -t ] && echo "[{\"name\":\"Virtual-1~1\",\"active\":true},{\"name\":\"Virtual-1~2\",\"active\":true},{\"name\":\"Virtual-1~3\",\"active\":true}]"' 'exit 0' > "$d/i3-msg" && chmod +x "$d/i3-msg"
+$ { echo 'Screen 0: minimum 1 x 1, current 5352 x 2444, maximum 16384 x 16384'; vout Virtual-1 'connected primary 3840x2160+1512+0' 1512 0 38; echo '   3840x2160     60.00*+'; vout Virtual-2 'connected 1512x949+0+1495' 0 1495 39; echo '   1512x949      60.00*+'; } > "$d/fusion4k"; { echo 'Screen 0: minimum 1 x 1, current 3840 x 2160, maximum 16384 x 16384'; vout Virtual-1 'connected 3840x2160+0+0' 0 0 38; echo '   3840x2160     60.00*+'; vout Virtual-2 disconnected 0 0 39; } > "$d/4k1"
+$ cp "$d/fusion4k" "$XRANDR_OUT"; : > "$XLOG"; .local/bin/tools/vm-autofit apply; grep -e ' --output ' -e setmonitor "$XLOG"
+xrandr --output Virtual-1 --auto --pos 1512x0 --output Virtual-2 --auto --pos 0x1495
+xrandr --setmonitor Virtual-1~1 1920/508x2160/572+1512+0 Virtual-1
+xrandr --setmonitor Virtual-1~2 1920/508x1080/286+3432+0 none
+xrandr --setmonitor Virtual-1~3 1920/508x1080/286+3432+1080 none
+$
+
+the split is part of the bars' topology: Fusion full screen on the 4K alone
+keeps Virtual-1 at 0x0 like the window before it, yet the bars relaunch,
+because the split appeared:
+
+$ cp "$d/vmw1" "$XRANDR_OUT"; : > "$XLOG"; { sleep 1; cp "$d/4k1" "$XRANDR_OUT"; printf 'e1\n'; } | POLYBAR_UP=1 .local/bin/tools/vm-autofit react; grep -e ' --output ' -e '^launch' "$XLOG"
+xrandr --output Virtual-1 --auto --pos 0x0
+launch.sh
+xrandr --output Virtual-1 --auto --pos 0x0
+launch.sh
+$ rm -r "$HOME/.config/monitor-split" "$d/i3-msg"; cp "$d/plain" "$XRANDR_OUT"
 $
 
 with a SPICE tablet present (and evdev exposing the calibration property),
