@@ -1,0 +1,11 @@
+#!/bin/sh
+# Build logical halves before global postswitch relaunches Polybar.
+set -eu
+
+xrandr --setmonitor 'DP-1-1~1' 1920/600x1080/170+3840+0 DP-1-1
+xrandr --setmonitor 'DP-1-1~2' 1920/600x1080/170+3840+1080 DP-1-1
+
+i3-msg '[workspace="^1:"] move workspace to output "DP-1-2"' >/dev/null
+i3-msg '[workspace="^2:"] move workspace to output "DP-1-1~2"' >/dev/null
+i3-msg '[workspace="^[35]:"] move workspace to output "DP-1-1~1"' >/dev/null
+i3-msg 'workspace number 3; workspace number 1' >/dev/null
