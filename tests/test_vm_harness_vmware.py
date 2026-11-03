@@ -78,8 +78,10 @@ esac
 exit 0
 """
 
+# FAKE_VDISK=int: the user presses Ctrl-C while the disk is being created.
 VDISK = """#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE_RECORD/vdisk.log"
+if [ "${FAKE_VDISK:-}" = int ]; then kill -INT "$PPID"; sleep 5; exit 130; fi
 for last; do :; done
 : > "$last"
 """
@@ -450,3 +452,83 @@ class TestAttendedDestroyGuard:
         r = sb.run("destroy", attended=True, VM_HARNESS_DESTROY_REAL="work-vm")
         assert r.returncode == 0, r.stdout + r.stderr
         assert not _attended_vm(sb).exists()
+
+
+class TestAttendedNeverLosesTheDisk:
+    """create never deletes what may be the real VM; destroy stays the only way."""
+
+    def _lose_the_vmx(self, sb):
+        assert sb.run("create", attended=True, stdin=SECRETS).returncode == 0
+        vm = _attended_vm(sb)
+        (vm / "work-vm.vmx").unlink()
+        disk = vm / "disk.vmdk"
+        disk.write_bytes(b"the real disk")
+        return disk
+
+    def test_create_refuses_a_dir_holding_a_disk(self, sb):
+        disk = self._lose_the_vmx(sb)
+        r = sb.run("create", attended=True, stdin=SECRETS)
+        assert r.returncode == 1
+        assert "already holds a VM (disk.vmdk) — create never overwrites it" in r.stdout
+        assert disk.read_bytes() == b"the real disk"
+        assert len(sb.seed_calls()) == 1  # no passwords asked, no new seed
+
+    def test_up_resuming_at_create_keeps_the_disk(self, sb):
+        disk = self._lose_the_vmx(sb)
+        r = sb.run("up", attended=True, stdin=SECRETS)
+        assert r.returncode == 1
+        assert "already holds a VM (disk.vmdk)" in r.stdout
+        assert disk.read_bytes() == b"the real disk"
+
+    def test_failed_create_deletes_the_seed_keeps_the_disk(self, sb):
+        # vm-harness-vmx rejects the empty share name after the disk exists:
+        # the seed goes, the disk stays, and a re-run refuses to replace it.
+        r = sb.run("create", attended=True, stdin=SECRETS, VM_HARNESS_SHARES="=~/x")
+        assert r.returncode == 1
+        vm = _attended_vm(sb)
+        assert not (vm / "seed").exists()
+        assert (vm / "disk.vmdk").exists()
+        r = sb.run("create", attended=True, stdin=SECRETS)
+        assert r.returncode == 1
+        assert "already holds a VM (disk.vmdk)" in r.stdout
+
+
+class TestAttendedSeedNeverLingers:
+    def test_interrupted_create_deletes_the_seed(self, sb):
+        r = sb.run("create", attended=True, stdin=SECRETS, FAKE_VDISK="int")
+        # pwsh -File exits 0 after SIGINT; the missing rc trailer shows the stop.
+        assert "=== create done" not in r.stdout
+        assert "Seed deleted" in r.stdout
+        assert sb.seed_calls()  # the seed was written before the interrupt
+        assert not (_attended_vm(sb) / "seed").exists()
+
+    def test_no_standalone_seed(self, sb):
+        r = sb.run("seed", attended=True, stdin=SECRETS)
+        assert r.returncode == 1
+        assert "attended mode has no standalone seed" in r.stdout
+        assert not sb.seed_calls()
+
+
+class TestAttendedVmDir:
+    def test_must_end_in_the_vm_name(self, sb):
+        sb.vms.mkdir()
+        sibling = sb.vms / "other-vm.txt"
+        sibling.write_text("keep")
+        r = sb.run("destroy", attended=True, VM_HARNESS_VM_DIR=str(sb.vms),
+                   VM_HARNESS_DESTROY_REAL="work-vm")
+        assert r.returncode == 1
+        assert "must be the VM's own directory, ending in 'work-vm'" in r.stdout
+        assert sibling.read_text() == "keep"
+
+    def test_trailing_slash_is_fine(self, sb):
+        r = sb.run("create", attended=True, stdin=SECRETS,
+                   VM_HARNESS_VM_DIR=str(_attended_vm(sb)) + "/")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert (_attended_vm(sb) / "work-vm.vmx").exists()
+
+
+def test_attended_prefers_id_ed25519(sb):
+    (sb.home / ".ssh/id_ecdsa.pub").write_text("ecdsa-sha2-nistp256 AAAAecdsa me@mac\n")
+    assert sb.run("create", attended=True, stdin=SECRETS).returncode == 0
+    argv = sb.seed_calls()[0]["argv"]
+    assert argv[argv.index("--pubkey") + 1] == "ssh-ed25519 AAAAhomekey me@mac"
