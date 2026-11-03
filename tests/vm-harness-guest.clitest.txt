@@ -52,8 +52,9 @@ $
 Existing checkout refresh names one remote branch explicitly; it never asks
 `git pull` to infer multiple fetched branches.
 
-$ G=.local/bin/setup/vm-harness-guest; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home/.local/bin/setup" "$T/home/.local/share/metapac"; printf old > "$T/branch"; printf '%s\n' '# machine-local metapac group — untracked, never published' '# harness-owned guest hardware set, rewritten every bootstrap' '# (interim home until the Story 2.30 class/hardware split, #96)' '[arch]' 'packages = [' '  "private-pkg",' '  "qemu-guest-agent",' '  "zram-generator",' ']' > "$T/home/.local/share/metapac/machine-local.toml"; printf '%s\n' '#!/bin/sh' 'printf yadm >> "$GUEST_LOG"' 'for arg; do printf " <%s>" "$arg" >> "$GUEST_LOG"; done' 'printf "\n" >> "$GUEST_LOG"' 'if [ "$1" = rev-parse ]; then [ "$2" = --git-dir ] && echo .git || cat "$YADM_BRANCH"; fi' 'if [ "$1" = checkout ]; then printf "%s\n" "$2" > "$YADM_BRANCH"; fi' 'exit 0' > "$T/bin/yadm"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$T/bin/sudo"; printf '%s\n' '#!/bin/sh' 'printf "bootstrap <%s> <%s>\n" "$1" "$2" >> "$GUEST_LOG"' > "$T/home/.local/bin/setup/bootstrap"; chmod +x "$T/bin/yadm" "$T/bin/sudo" "$T/home/.local/bin/setup/bootstrap"; PATH="$T/bin:$PATH" HOME="$T/home" GUEST_LOG="$T/log" YADM_BRANCH="$T/branch" "$G" bootstrap --class ci --repo https://example.invalid/dotfiles.git --branch feature/new >/dev/null; grep '^yadm' "$T/log"
+$ G=.local/bin/setup/vm-harness-guest; T=$(mktemp -d); mkdir -p "$T/bin" "$T/home/.local/bin/setup" "$T/home/.local/share/metapac"; printf old > "$T/branch"; printf '%s\n' https://example.invalid/dotfiles.git > "$T/origin"; printf '%s\n' '# machine-local metapac group — untracked, never published' '# harness-owned guest hardware set, rewritten every bootstrap' '# (interim home until the Story 2.30 class/hardware split, #96)' '[arch]' 'packages = [' '  "private-pkg",' '  "qemu-guest-agent",' '  "zram-generator",' ']' > "$T/home/.local/share/metapac/machine-local.toml"; printf '%s\n' '#!/bin/sh' 'printf yadm >> "$GUEST_LOG"' 'for arg; do printf " <%s>" "$arg" >> "$GUEST_LOG"; done' 'printf "\n" >> "$GUEST_LOG"' 'if [ "$1" = rev-parse ]; then [ "$2" = --git-dir ] && echo .git || cat "$YADM_BRANCH"; fi' 'if [ "$1" = checkout ]; then printf "%s\n" "$2" > "$YADM_BRANCH"; fi' 'if [ "$1" = remote ] && [ "$2" = get-url ]; then cat "$YADM_ORIGIN"; fi' 'if [ "$1" = remote ] && [ "$2" = set-url ]; then printf "%s\n" "$4" > "$YADM_ORIGIN"; fi' 'exit 0' > "$T/bin/yadm"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$T/bin/sudo"; printf '%s\n' '#!/bin/sh' 'printf "bootstrap <%s> <%s>\n" "$1" "$2" >> "$GUEST_LOG"' > "$T/home/.local/bin/setup/bootstrap"; chmod +x "$T/bin/yadm" "$T/bin/sudo" "$T/home/.local/bin/setup/bootstrap"; PATH="$T/bin:$PATH" HOME="$T/home" GUEST_LOG="$T/log" YADM_BRANCH="$T/branch" YADM_ORIGIN="$T/origin" "$G" bootstrap --class ci --repo https://example.invalid/dotfiles.git --branch feature/new >/dev/null; grep '^yadm' "$T/log"
 yadm <rev-parse> <--git-dir>
+yadm <remote> <get-url> <origin>
 yadm <fetch> <--prune> <origin>
 yadm <rev-parse> <--abbrev-ref> <HEAD>
 yadm <checkout> <feature/new>
@@ -71,6 +72,19 @@ bootstrap <--unattended> <>
 packages = [
   "private-pkg",
 ]
+$
+
+A resumed guest also honours a CHANGED --repo: a checkout first cloned from
+GitHub, then handed a VM_HARNESS_BUNDLE path, points origin at the bundle
+before fetching, so the unpushed branch it carries can be checked out.
+
+$ : > "$T/log"; PATH="$T/bin:$PATH" HOME="$T/home" GUEST_LOG="$T/log" YADM_BRANCH="$T/branch" YADM_ORIGIN="$T/origin" "$G" bootstrap --class ci --repo /tmp/vm-harness/dotfiles.bundle --branch feature/unpushed >/dev/null; grep -E '^yadm <(remote|fetch|checkout|merge)>' "$T/log"; cat "$T/origin"
+yadm <remote> <get-url> <origin>
+yadm <remote> <set-url> <origin> </tmp/vm-harness/dotfiles.bundle>
+yadm <fetch> <--prune> <origin>
+yadm <checkout> <feature/unpushed>
+yadm <merge> <--ff-only> <origin/feature/unpushed>
+/tmp/vm-harness/dotfiles.bundle
 $
 
 $ rm -rf "$T"; echo done

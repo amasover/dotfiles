@@ -137,8 +137,16 @@ cmd_bootstrap() {
     # changes pre-merge, and a refresh arm that only fast-forwarded whatever
     # was cloned first would keep testing the old branch — the same stale
     # checkout bug one level up. Fetch, switch if asked, then fast-forward.
+    #
+    # The same goes for a CHANGED --repo: a guest first cloned from GitHub
+    # and later handed a VM_HARNESS_BUNDLE path must fetch from the bundle,
+    # or the unpushed branch it carries is never seen.
     if yadm rev-parse --git-dir >/dev/null 2>&1; then
         echo "==> Refreshing the existing yadm checkout"
+        if [[ $(yadm remote get-url origin 2>/dev/null || true) != "$repo" ]]; then
+            echo "==> Pointing origin at '$repo'"
+            yadm remote set-url origin "$repo"
+        fi
         yadm fetch --prune origin
         current_branch=$(yadm rev-parse --abbrev-ref HEAD)
         if [[ -n "$branch" && "$current_branch" != "$branch" ]]; then
