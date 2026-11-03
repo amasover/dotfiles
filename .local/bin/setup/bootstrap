@@ -230,6 +230,35 @@ reconcile_yay_mflags() {
     fi
 }
 
+# yadm clone leaves a file alone when $HOME already has one, so on a fresh
+# install the tracked .bashrc and .bash_profile never land: archinstall's
+# useradd copied /etc/skel's first and they stay "modified" in yadm status.
+# A tracked file still byte-identical to /etc/skel/<same path> is that copy and
+# gets the tracked version; any other local edit is reported, never
+# overwritten. $2 = the skel directory (a test points it at a scratch tree).
+reconcile_skel_files() {
+    local mode=${1:-} skel=${2:-/etc/skel} f
+    local restore=()
+    [[ $mode == check || $mode == apply ]] \
+        || die "skel-files mode must be check or apply"
+    while IFS= read -r f; do
+        [[ -f "$skel/$f" ]] || continue
+        if cmp -s -- "$HOME/$f" "$skel/$f"; then
+            restore+=("$f")
+        else
+            echo "  left alone: $f differs from both the tracked file and $skel/$f (yadm diff -- $f)"
+        fi
+    done < <(yadm diff --name-only --diff-filter=M)
+    if ((${#restore[@]} == 0)); then
+        echo "  no tracked file is still its $skel copy"
+    elif [[ $mode == check ]]; then
+        echo "  would: yadm checkout -- ${restore[*]}   (still the $skel copies)"
+    else
+        yadm checkout -- "${restore[@]}"
+        echo "  restored tracked ${restore[*]} (were the $skel copies)"
+    fi
+}
+
 # Step 8g's body (Story 3.24): tracked systemd user units, enabled
 # idempotently. meridian.service is useless until `claude login`, a
 # first-session step, so a failed start is tolerated (Restart=on-failure picks
@@ -575,6 +604,11 @@ if [[ "${1:-}" == "--yay-mflags" ]]; then
     reconcile_yay_mflags "${2:-}" "${3:-}" "${4:-}"
     exit 0
 fi
+if [[ "${1:-}" == "--skel-files" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "skel-files seam is test-only"
+    reconcile_skel_files "${2:-}" "${3:-}"
+    exit 0
+fi
 if [[ "${1:-}" == "--user-services" ]]; then
     [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "user-services seam is test-only"
     reconcile_user_services "${2:-}" "${3:-}"
@@ -675,6 +709,16 @@ grep -q "^\"$(uname -n)\" = \[" "$cfg" \
     The template only renders known classes — check the class ('$class') against
     config.toml##template's branches, then: yadm alt   and re-run"
 echo "  hostname entry: present"
+
+# --- 2a. fresh-install skel files ---------------------------------------------
+# Early and cheap: puts the tracked shell files over archinstall's /etc/skel
+# copies on a fresh install; see reconcile_skel_files.
+say "Fresh-install skel files"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_skel_files check
+else
+    reconcile_skel_files apply
+fi
 
 # --- 3. machine-local group (untracked, never published) ----------------------
 # The one group file living outside the repo; hostname_groups references it by
