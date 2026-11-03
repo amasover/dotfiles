@@ -113,6 +113,9 @@
 # a missing host folder is created, an existing one is left as it is. The
 # guest mounts them all under ~/mac (mac-shares.service). Unset (the
 # disposable default) shares nothing.
+# VM_HARNESS_TIMEZONE names the IANA zone `bootstrap` writes into the guest's
+# private ~/.config/dotfiles/timezone before running the repo bootstrap,
+# which sets it; unset, the host's own zone is used (see Get-HostTimeZone).
 
 $ErrorActionPreference = 'Stop'
 
@@ -497,6 +500,40 @@ function Send-TrustBaseline([string]$Ip) {
     if ($LASTEXITCODE -ne 0) { throw "trust baseline scp failed (rc=$LASTEXITCODE)" }
 }
 
+# The guest installs on UTC and bootstrap sets the zone named in its private
+# ~/.config/dotfiles/timezone (step "Time zone"); the repo never names one.
+# The host's own zone fills that file: macOS .NET reports the IANA id from
+# /etc/localtime (readlink as the fallback), Windows ids are mapped to IANA.
+# VM_HARNESS_TIMEZONE overrides. $null when nothing IANA-shaped turns up.
+function Get-HostTimeZone {
+    $zone = $env:VM_HARNESS_TIMEZONE
+    if (-not $zone) {
+        $id = [TimeZoneInfo]::Local.Id
+        if ($OnMac) {
+            $zone = $id
+            if ($zone -notmatch '/') {
+                $target = (Get-Item /etc/localtime -ErrorAction SilentlyContinue).Target
+                if ($target -match 'zoneinfo/(.+)$') { $zone = $Matches[1] }
+            }
+        } else {
+            $iana = $null
+            try { if ([TimeZoneInfo]::TryConvertWindowsIdToIanaId($id, [ref]$iana)) { $zone = $iana } } catch { }
+        }
+    }
+    if ($zone -cmatch '^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$' -and $zone -ne 'Local') { $zone } else { $null }
+}
+
+function Send-TimeZone([string]$Ip) {
+    $zone = Get-HostTimeZone
+    if (-not $zone) {
+        Say 'Host time zone: unknown (set VM_HARNESS_TIMEZONE) — guest keeps its zone'
+        return
+    }
+    Say 'Host time zone: writing it into the VM (~/.config/dotfiles/timezone)'
+    & ssh @BatchOpts "$VmUser@$Ip" "mkdir -p ~/.config/dotfiles && printf '%s\n' $(ConvertTo-ShellQuoted $zone) > ~/.config/dotfiles/timezone"
+    if ($LASTEXITCODE -ne 0) { throw "time zone write failed (rc=$LASTEXITCODE)" }
+}
+
 # Push the shared guest glue (fresh each run — the guest executes the host
 # checkout's version) and run one of its subcommands, streaming output.
 # Single `-t` (vm_ssh parity): a pty when the local console provides one, so
@@ -670,6 +707,7 @@ function Cmd-Bootstrap {
         $ip = Wait-Ssh
         Assert-KeyAuth
         Send-TrustBaseline $ip
+        Send-TimeZone $ip
         $guestRepo = $Repo
         if ($env:VM_HARNESS_BUNDLE) {
             if (-not (Test-Path $env:VM_HARNESS_BUNDLE)) { throw "VM_HARNESS_BUNDLE not found: $($env:VM_HARNESS_BUNDLE)" }

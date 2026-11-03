@@ -285,6 +285,35 @@ reconcile_user_services() {
     done
 }
 
+# The time zone is a location detail, so the public repo never names one:
+# installs run UTC (provision-seed, install-on-metal), and a private, untracked
+# ~/.config/dotfiles/timezone holding one IANA name says where this machine
+# lives. Real machines restore it from the encrypted archive; the VMware
+# harness writes the host's zone into its guest. No file, no change. $2 = the
+# zoneinfo directory names are checked against (a test points it elsewhere).
+reconcile_timezone() {
+    local mode=${1:-} zoneinfo=${2:-/usr/share/zoneinfo}
+    local file="$HOME/.config/dotfiles/timezone" zone="" current
+    [[ $mode == check || $mode == apply ]] \
+        || die "timezone mode must be check or apply"
+    if [[ ! -f "$file" ]]; then
+        echo "  no $file — time zone left as it is"
+        return 0
+    fi
+    read -r zone <"$file" || true
+    [[ $zone =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ && -f "$zoneinfo/$zone" ]] \
+        || die "$file names '$zone', which is not a zone under $zoneinfo"
+    current=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
+    if [[ $current == "$zone" ]]; then
+        echo "  time zone already $zone"
+    elif [[ $mode == check ]]; then
+        echo "  would: timedatectl set-timezone $zone   (now ${current:-unknown})"
+    else
+        sudo timedatectl set-timezone "$zone"
+        echo "  time zone set: $zone (was ${current:-unknown})"
+    fi
+}
+
 # Step 6e's body (Story 2.59). $2 prefixes /etc and /proc/cmdline so a test can
 # point both at a scratch tree, as the NAS automount seam does.
 reconcile_initramfs_hooks() {
@@ -609,6 +638,11 @@ if [[ "${1:-}" == "--skel-files" ]]; then
     reconcile_skel_files "${2:-}" "${3:-}"
     exit 0
 fi
+if [[ "${1:-}" == "--timezone" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "timezone seam is test-only"
+    reconcile_timezone "${2:-}" "${3:-}"
+    exit 0
+fi
 if [[ "${1:-}" == "--user-services" ]]; then
     [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "user-services seam is test-only"
     reconcile_user_services "${2:-}" "${3:-}"
@@ -718,6 +752,15 @@ if [[ $CHECK -eq 1 ]]; then
     reconcile_skel_files check
 else
     reconcile_skel_files apply
+fi
+
+# --- 2b. time zone ------------------------------------------------------------
+# See reconcile_timezone: the zone comes from a private file, never the repo.
+say "Time zone"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_timezone check
+else
+    reconcile_timezone apply
 fi
 
 # --- 3. machine-local group (untracked, never published) ----------------------

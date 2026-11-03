@@ -9,3 +9,6 @@
 # OpenViking memory server and OpenBao addresses (setup/openviking-memory). The
 # mechanism and plugin.json are public; only these hosts stay out of the repo.
 .config/dotfiles/openviking/server.env
+# This machine's time zone, one IANA name (bootstrap step 2b). Installs run
+# UTC and the repo never names a zone; only this file says where it lives.
+.config/dotfiles/timezone
