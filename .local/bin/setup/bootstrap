@@ -1580,9 +1580,10 @@ done
 
 # --- 8h. Firefox defaults (Story 5.7, extended) --------------------------------
 # tools/firefox-policy composes the system policy: the tracked default
-# extensions and preferences everywhere, plus the VMware WebRender fragment in
+# extensions and preferences everywhere, plus the VMware WebRender fragments in
 # VMware guests (Mesa's SVGA driver reports its Gallium "accelerated" bit false,
-# so Firefox blocklists hardware WebRender that SVGA3D can run). It refuses to
+# so Firefox blocklists hardware WebRender that SVGA3D can run on x86_64; aarch64
+# guests lock Software WebRender instead, Story 5.8). It refuses to
 # overwrite a policy it did not write. tools/firefox-userchrome then links the
 # tracked tab-strip stylesheet into every profile, creating Firefox's default
 # profile headless when it has never run.

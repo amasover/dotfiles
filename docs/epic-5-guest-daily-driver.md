@@ -316,6 +316,24 @@ Fusion, driven by the harness on macOS: `bootstrap done rc=0`, `check done rc=0`
 The Arch Linux Ports (drzee) repos lack `xf86-video-vmware`, so Xorg runs
 modesetting on vmwgfx.
 
+**Firefox on aarch64 (2026-11-02):** Fusion 26H1 gives the guest the same
+SVGA3D/OpenGL 4.3 that Story 5.7 found under Workstation, and Xorg GLAMOR runs
+on it. Story 5.7's VMware policy (hardware WebRender forced through GLX) draws
+black rectangles over page content in Firefox 159, for example Gmail's landing
+hero. Turning off DMA-BUF and hardware video, partial present
+(`gfx.webrender.max-partial-present-rects=0`), or accelerated canvas did not
+help. Allowing EGL avoids the glitch only because Firefox then fails to create
+the hardware WebRender context and falls back to software, as in Story 5.7. So
+the VMware fragment is now per architecture: x86_64 keeps Story 5.7's policy
+byte for byte, and aarch64 drops `gfx.webrender.all` for a locked
+`gfx.webrender.software`, still selecting GLX and forcing layer acceleration.
+The tradeoff is CPU compositing on aarch64; WebGL 2 keeps hardware, and
+`about:support` reports its renderer as `VMware, Inc. -- SVGA3D`.
+
+**Known limitation:** aarch64 guests composite Firefox in software. When Mesa's
+svga driver or Fusion updates, retry hardware WebRender by swapping
+`gfx.webrender.software` for `gfx.webrender.all` in `policies-vmware-aarch64.json`.
+
 **Acceptance criteria:**
 
 - `vm-harness-vmware.ps1` runs under PowerShell 7 on macOS (`$IsMacOS`) against

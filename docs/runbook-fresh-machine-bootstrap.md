@@ -306,12 +306,13 @@ What it does, in order:
     default preferences the user can still change. The exception is the stylesheet switch
     `userChrome.css` needs: Firefox reads it before policy defaults apply, so the policy
     sets it as a user value at every start. VMware guests also get the WebRender
-    fragment, `policies-vmware.json`. The composed file sits in `~/.local/state/dotfiles/
-    firefox/` and `/etc` links to it, so a tracked change needs no root after the first
-    link. A policy the tool did not write is fatal and left alone. It then links the
-    tracked `userChrome.css`, which lets tabs shrink instead of scrolling, into every
-    profile. When Firefox has never run, it first creates Firefox's default profile with
-    one headless run.
+    fragments, `policies-vmware.json` plus `policies-vmware-<arch>.json`: hardware
+    WebRender on x86_64, Software WebRender on aarch64. The composed file sits in
+    `~/.local/state/dotfiles/firefox/` and `/etc` links to it, so a tracked change needs
+    no root after the first link. A policy the tool did not write is fatal and left
+    alone. It then links the tracked `userChrome.css`, which lets tabs shrink instead
+    of scrolling, into every profile. When Firefox has never run, it first creates
+    Firefox's default profile with one headless run.
 20. **Login shell** — `sudo chsh -s /usr/bin/zsh $USER` unless the account's shell is
     already zsh. Reboot when done.
 

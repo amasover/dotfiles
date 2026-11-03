@@ -1,0 +1,10 @@
+{
+  "policies": {
+    "Preferences": {
+      "gfx.webrender.all": {
+        "Value": true,
+        "Status": "locked"
+      }
+    }
+  }
+}
