@@ -1,5 +1,10 @@
 """pytest suite for vm-harness-vmx (Story 2.36, #119). No VMware needed."""
 
+import io
+import json
+
+import pytest
+
 from conftest import load_tool
 
 vmx = load_tool("vm_harness_vmx", "vm-harness-vmx")
@@ -216,3 +221,55 @@ class TestCli:
         vmx.main(["generate", "--out", str(out), "--disk", "d", "--iso", "a",
                   "--seed-iso", "s", "--serial-log", "l"])
         assert vmx.main(["mac", "--vmx", str(out)]) == 1
+
+
+ISO = "archlinux-2026.08.03-aarch64.iso"
+SHA = "ab" * 32
+
+
+def _release(body, *names):
+    return {"tag_name": "v1", "name": "Aug release", "body": body,
+            "assets": [{"name": n, "browser_download_url": f"https://dl.example/{n}"}
+                       for n in names]}
+
+
+class TestPortsIso:
+    def test_hash_next_to_exact_asset_name(self):
+        body = f"Checksums:\n{'cd' * 32}  archlinux-2026.08.02-aarch64.iso\n{SHA}  {ISO}\n"
+        assert vmx.ports_iso(_release(body, ISO, "README.txt")) == (
+            ISO, f"https://dl.example/{ISO}", SHA)
+
+    def test_hash_for_another_name_does_not_pass(self):
+        # The 2026-08-03 notes listed other build dates than their assets.
+        body = f"{SHA}  archlinux-2026.08.02-aarch64.iso\n"
+        with pytest.raises(ValueError, match=f"release v1 publishes no sha256 for {ISO}"):
+            vmx.ports_iso(_release(body, ISO))
+
+    def test_missing_hash(self):
+        with pytest.raises(ValueError, match="publishes no sha256"):
+            vmx.ports_iso(_release(f"short abcd  {ISO}\n", ISO))
+        with pytest.raises(ValueError, match="publishes no sha256"):
+            vmx.ports_iso({"tag_name": "v1", "body": None,
+                           "assets": [{"name": ISO}]})
+
+    def test_two_iso_assets_refused(self):
+        body = f"{SHA}  {ISO}\n"
+        with pytest.raises(ValueError, match="expected one archlinux-<date>-aarch64.iso asset, found 2"):
+            vmx.ports_iso(_release(body, ISO, "archlinux-2026.08.04-aarch64.iso"))
+
+    def test_no_iso_asset(self):
+        with pytest.raises(ValueError, match="found 0"):
+            vmx.ports_iso(_release(f"{SHA}  {ISO}\n", "archlinux-x86_64.iso.sig"))
+
+    def test_cli_prints_one_field_per_line(self, monkeypatch, capsys):
+        rel = _release(f"{SHA}  {ISO}\n", ISO)
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(json.dumps(rel).encode())))
+        assert vmx.main(["ports-iso"]) == 0
+        assert capsys.readouterr().out.splitlines() == [
+            ISO, "Aug release", f"https://dl.example/{ISO}", SHA]
+
+    def test_cli_error_on_stderr(self, monkeypatch, capsys):
+        rel = _release("no hashes", ISO)
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(json.dumps(rel).encode())))
+        assert vmx.main(["ports-iso"]) == 1
+        assert capsys.readouterr().err.strip() == f"release v1 publishes no sha256 for {ISO}"

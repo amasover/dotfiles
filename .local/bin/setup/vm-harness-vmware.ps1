@@ -133,7 +133,7 @@ $SeedTarget = if ($OnMac) { 'vmware-aarch64' } else { 'vmware' }
 $Iso = Join-Path $CacheDir "archlinux-$GuestArch.iso"
 $Mirror = 'https://geo.mirror.pkgbuild.com/iso/latest'
 # archiso-aarch64 publishes through Codeberg releases (ISO hosted off-site,
-# sha256 in the release notes) — see Get-PortsIsoSource.
+# sha256 in the release notes) — see Get-PortsIso.
 $PortsReleases = 'https://codeberg.org/api/v1/repos/ironrobin/archiso-aarch64/releases/latest'
 $DiskGib = if ($env:VM_HARNESS_DISK) { [int]$env:VM_HARNESS_DISK } else { 80 }
 $RamMib = if ($env:VM_HARNESS_RAM) { [int]$env:VM_HARNESS_RAM } else { 12288 }
@@ -514,23 +514,18 @@ function Get-GuestIp {
 }
 
 # archiso-aarch64 ships one ISO per Codeberg release, hosted off-site, with no
-# checksum asset: the sha256 sits in the release notes as `<hex>  <name>`.
-# Match it to the exact asset name — the 2026-08-03 notes listed other build
-# dates than their assets, so a near-match must not pass. Both come from the
-# same release, so this catches a bad download or a swapped bucket object, not
-# a compromised release. Returns the expected hash; the ISO lands at $Iso.new.
+# checksum asset: the sha256 sits in the release notes. vm-harness-vmx
+# ports-iso picks the asset and its hash from the raw release JSON (pytest
+# covers the matching); the driver only downloads. Returns the expected hash;
+# the ISO lands at $Iso.new.
 function Get-PortsIso {
-    $rel = Invoke-RestMethod -Uri $PortsReleases
-    $asset = @($rel.assets | Where-Object { $_.name -match '^archlinux-\d{4}\.\d{2}\.\d{2}-aarch64\.iso$' })
-    if ($asset.Count -ne 1) {
-        throw "release $($rel.tag_name): expected one archlinux-<date>-aarch64.iso asset, found $($asset.Count)"
-    }
-    $name = $asset[0].name
-    $m = [regex]::Match("$($rel.body)", "([0-9a-fA-F]{64})\s+$([regex]::Escape($name))")
-    if (-not $m.Success) { throw "release $($rel.tag_name) publishes no sha256 for $name" }
-    Say "Fetching $name ($($rel.name)) from $($asset[0].browser_download_url)"
-    Invoke-WebRequest -Uri $asset[0].browser_download_url -OutFile "$Iso.new"
-    $m.Groups[1].Value
+    $json = (Invoke-WebRequest -Uri $PortsReleases).Content
+    $pick = @($json | & $Python $VmxTool ports-iso 2>&1)
+    if ($LASTEXITCODE -ne 0) { throw ($pick -join "`n") }
+    $name, $release, $url, $sha = $pick
+    Say "Fetching $name ($release) from $url"
+    Invoke-WebRequest -Uri $url -OutFile "$Iso.new"
+    $sha
 }
 
 function Cmd-Fetch {

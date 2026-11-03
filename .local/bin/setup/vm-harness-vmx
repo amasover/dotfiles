@@ -21,11 +21,16 @@ installed system — the Workstation equivalent of the bash harness's
 answers where `up` starts — or refuses (dead-install / install-running),
 because `up` never destroys and never re-runs a died install unasked.
 
+`ports-iso` picks the archiso-aarch64 ISO and its published sha256 out of a
+Codeberg release (JSON on stdin) for the macOS driver's `fetch`, which keeps
+the download and the hash check against the file.
+
 Logic is pure (text in/text out); only main() touches files. Tests:
 tests/test_vm_harness_vmx.py.
 """
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -186,6 +191,34 @@ def generated_mac(vmx_text: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
+# archiso-aarch64 ships one ISO per Codeberg release, hosted off-site, with no
+# checksum asset: the sha256 sits in the release notes as `<hex>  <name>`.
+PORTS_ISO_NAME = re.compile(r"^archlinux-\d{4}\.\d{2}\.\d{2}-aarch64\.iso$",
+                            re.IGNORECASE)
+
+
+def ports_iso(release: dict) -> tuple[str, str, str]:
+    """Pick the ISO asset out of a Codeberg release (the API's JSON object)
+    and the sha256 its notes publish for it: (name, url, sha256). Raises
+    ValueError naming the gap. The hash must sit next to the exact asset
+    name — the 2026-08-03 notes listed other build dates than their assets,
+    so a near-match must not pass. Both come from the same release, so this
+    catches a bad download or a swapped bucket object, not a compromised
+    release."""
+    tag = release.get("tag_name") or ""
+    assets = [a for a in release.get("assets") or []
+              if PORTS_ISO_NAME.search(a.get("name") or "")]
+    if len(assets) != 1:
+        raise ValueError(f"release {tag}: expected one "
+                         f"archlinux-<date>-aarch64.iso asset, found {len(assets)}")
+    name = assets[0]["name"]
+    m = re.search(rf"([0-9a-fA-F]{{64}})\s+{re.escape(name)}",
+                  release.get("body") or "")
+    if not m:
+        raise ValueError(f"release {tag} publishes no sha256 for {name}")
+    return name, assets[0].get("browser_download_url") or "", m.group(1)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="vm-harness-vmx", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -217,6 +250,9 @@ def main(argv: list[str] | None = None) -> int:
     mac = sub.add_parser("mac", help="print the generated nic MAC")
     mac.add_argument("--vmx", required=True)
 
+    sub.add_parser("ports-iso", help="read a Codeberg release (JSON) on stdin; "
+                   "print the ISO's name, release name, url and sha256, one per line")
+
     args = ap.parse_args(argv)
     if args.cmd == "generate":
         text = build_vmx(
@@ -244,6 +280,14 @@ def main(argv: list[str] | None = None) -> int:
             print("no generatedAddress yet (VM never powered on?)", file=sys.stderr)
             return 1
         print(m)
+    elif args.cmd == "ports-iso":
+        try:
+            release = json.load(sys.stdin.buffer)
+            name, url, sha256 = ports_iso(release)
+        except ValueError as e:  # json.JSONDecodeError is one too
+            print(e, file=sys.stderr)
+            return 1
+        print(name, release.get("name") or "", url, sha256, sep="\n")
     return 0
 
 
