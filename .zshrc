@@ -417,5 +417,8 @@ if [[ $OSTYPE == darwin* ]]; then
     fi
 fi
 
-# machine-local shell config (untracked; machine/site-specific aliases live there)
-[[ -r ~/.zshrc.local ]] && source ~/.zshrc.local
+# machine-local shell config (untracked; machine/site-specific aliases live there).
+# An `if`, not `&&`: without the file, `&&` left the rc file's status at 1.
+if [[ -r ~/.zshrc.local ]]; then
+    source ~/.zshrc.local
+fi
