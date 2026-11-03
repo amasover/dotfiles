@@ -794,7 +794,10 @@ function Cmd-Destroy {
     if (-not (Test-Path $VmDir)) { Say 'Nothing to destroy (no VM dir)'; return }
     if ((Test-Path $Vmx) -and (Test-VmRunning)) {
         Say "Stopping $VmName"
-        & $VmRun -T $VmRunType stop $Vmx hard 2>&1 | Out-Null
+        $stopOut = & $VmRun -T $VmRunType stop $Vmx hard 2>&1
+        # Deleting the files under a still-running VM orphans its process at
+        # this path, and the next install dies on "already running".
+        if (Test-VmRunning) { Die "could not stop $VmName (vmrun: $stopOut) — nothing deleted" }
     }
     # Delete through the hypervisor before touching the files: a Fusion or
     # Workstation window that still holds the VM otherwise keeps a stale handle,
