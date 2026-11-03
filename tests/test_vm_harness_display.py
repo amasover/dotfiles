@@ -146,6 +146,12 @@ class TestStepFor:
             idx = display.step_for(text)
             assert display.BOOTSTRAP_STEPS[idx][0] == "connect"
 
+    def test_vmware_guest_dns_sits_between_local_group_and_mirrors(self):
+        names = [name for name, _ in display.BOOTSTRAP_STEPS]
+        dns = display.step_for("VMware guest DNS")
+        assert names[dns] == "guest-dns"
+        assert display.step_for("Machine-local group") < dns < display.step_for("Pacman mirrors")
+
     def test_every_current_post_reconcile_stage_is_mapped_in_order(self):
         cases = [
             ("Normalizing install reasons", "retag"),

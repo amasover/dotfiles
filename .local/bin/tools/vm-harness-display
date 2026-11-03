@@ -156,6 +156,7 @@ BOOTSTRAP_STEPS = [
     ("secrets", ("Secrets",)),
     ("profile", ("Profile guard",)),
     ("local-group", ("Machine-local group",)),
+    ("guest-dns", ("VMware guest DNS",)),
     ("mirrors", ("Pacman mirrors",)),
     ("sync", ("System sync",)),
     ("pins", ("Provider pins",)),

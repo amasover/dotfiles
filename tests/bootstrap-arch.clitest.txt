@@ -75,3 +75,27 @@ $ grep -L -E "^arch=\(.*'(any|aarch64)'" .config/dotfiles/pkgbuilds/*/PKGBUILD |
 $ for f in .config/dotfiles/pkgbuilds/*/PKGBUILD; do for a in x86_64 aarch64; do grep -q "^source_$a=" "$f" && { grep -qE "^sha256sums_$a=\('[0-9a-f]{64}'\)$" "$f" || echo "unpinned: $f $a"; }; done; done; echo checked
 checked
 $
+
+VMware guests resolve through systemd-resolved, because the NAT forwarder
+mangles every EDNS0 reply; every other machine keeps its resolv.conf. A stub
+systemctl answers the readiness probes and traces what apply runs:
+
+$ export BOOTSTRAP_TEST_MODE=1; D=$(mktemp -d); mkdir -p "$D/bin"; printf '%s\n' '#!/bin/sh' 'echo "systemctl $*" >> "$DNS_TRACE"' 'case "$1" in is-enabled|is-active) case "$*" in *systemd-resolved*) [ -n "${RESOLVED_ON:-}" ] ;; *NetworkManager*) [ -n "${NM_ON:-}" ] ;; *) exit 1 ;; esac ;; *) exit 0 ;; esac' > "$D/bin/systemctl"; printf '%s\n' '#!/bin/sh' 'exec "$@"' > "$D/bin/sudo"; chmod +x "$D/bin/systemctl" "$D/bin/sudo"; DNS() { : > "$D/trace"; PATH="$D/bin:$PATH" DNS_TRACE="$D/trace" RESOLV_CONF="$D/resolv.conf" .local/bin/setup/bootstrap --vmware-dns "$@" | sed "s|$D|D|"; grep -v ' is-' "$D/trace"; }; echo ready
+ready
+$ DNS apply none
+  skipped: not a VMware guest
+$ DNS check vmware
+  would: systemctl enable --now systemd-resolved
+  would: symlink D/resolv.conf -> /run/systemd/resolve/stub-resolv.conf, then restart NetworkManager
+$ NM_ON=1 DNS apply vmware; readlink "$D/resolv.conf"
+  systemd-resolved stub in use
+systemctl enable --now systemd-resolved
+systemctl restart NetworkManager
+/run/systemd/resolve/stub-resolv.conf
+$ RESOLVED_ON=1 DNS apply vmware
+  systemd-resolved stub in use
+$ BOOTSTRAP_TEST_MODE=0 DNS check vmware 2>&1 | grep FATAL
+bootstrap: FATAL: vmware-dns seam is test-only
+$ rm -rf "$D"; echo done
+done
+$

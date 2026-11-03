@@ -80,6 +80,41 @@ reconcile_network_services() {
     fi
 }
 
+# VMware's NAT DNS forwarder (Fusion 26H1 on Apple silicon, seen 2026-11-02)
+# answers every EDNS0 query with a malformed packet. glibc sends none and
+# copes; Go's resolver always sends EDNS0, so each Go AUR build died on
+# "lookup proxy.golang.org: no such host". systemd-resolved as the local stub
+# notices the broken replies and drops to plain UDP, so VMware guests resolve
+# through it. Metal and other hypervisors keep their resolv.conf untouched.
+reconcile_vmware_dns() {
+    local mode=$1 virt=$2
+    local stub=/run/systemd/resolve/stub-resolv.conf conf=/etc/resolv.conf
+    [[ $mode == check || $mode == apply ]] \
+        || die "vmware-dns mode must be check or apply"
+    if [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 && -n ${RESOLV_CONF:-} ]]; then
+        conf=$RESOLV_CONF
+    fi
+    if [[ $virt != vmware ]]; then
+        echo "  skipped: not a VMware guest"
+        return 0
+    fi
+    if systemctl is-enabled --quiet systemd-resolved \
+        && systemctl is-active --quiet systemd-resolved \
+        && [[ $(readlink "$conf") == "$stub" ]]; then
+        echo "  systemd-resolved stub in use"
+    elif [[ $mode == check ]]; then
+        echo "  would: systemctl enable --now systemd-resolved"
+        echo "  would: symlink $conf -> $stub, then restart NetworkManager"
+    else
+        sudo systemctl enable --now systemd-resolved
+        sudo ln -sfT "$stub" "$conf"
+        if systemctl is-active --quiet NetworkManager; then
+            sudo systemctl restart NetworkManager
+        fi
+        echo "  systemd-resolved stub in use"
+    fi
+}
+
 reconcile_refind_config() {
     local mode=${1:-} class=${2:-}
     local tool="$HOME/.local/bin/setup/refind-config"
@@ -387,6 +422,7 @@ failed_aur_builds() {
 #   --failed-builds                print the AUR builds a sync log reports failed (stdin)
 #   --provider-pins MODE           exercise provider pin installation (test-only)
 #   --network-services MODE        exercise NetworkManager convergence (test-only)
+#   --vmware-dns MODE VIRT         exercise the VMware guest DNS stub (test-only)
 #   --refind-config MODE CLASS      exercise class-gated rEFInd reconciliation (test-only)
 #   --initramfs-hooks MODE ROOT     exercise the HOOKS drop-in link (test-only)
 #   --yay-mflags MODE ARCH CONFIG   exercise the saved yay --ignorearch flag (test-only)
@@ -430,6 +466,11 @@ fi
 if [[ "${1:-}" == "--network-services" ]]; then
     [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "network-services seam is test-only"
     reconcile_network_services "${2:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--vmware-dns" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "vmware-dns seam is test-only"
+    reconcile_vmware_dns "${2:-}" "${3:-}"
     exit 0
 fi
 if [[ "${1:-}" == "--refind-config" ]]; then
@@ -563,6 +604,15 @@ else
     mkdir -p "$(dirname "$ml")"
     printf '# machine-local metapac group — untracked, never published\n[arch]\npackages = [\n]\n' >"$ml"
     echo "  created empty: $ml"
+fi
+
+# --- 3a. VMware guest DNS ------------------------------------------------------
+# Before anything network-heavy: see reconcile_vmware_dns for the NAT DNS bug.
+say "VMware guest DNS"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_vmware_dns check "$virt"
+else
+    reconcile_vmware_dns apply "$virt"
 fi
 
 # --- 3b. pacman mirrors (reflector) --------------------------------------------
