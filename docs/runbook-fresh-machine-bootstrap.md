@@ -310,6 +310,27 @@ What it does, in order:
     bootstrap goes on. `setup/openviking-memory --help` gives the `server.env` format;
     after writing it on one machine, `yadm encrypt` carries it to the rest. Rerun the
     tool when the server's version changes, so the clients match it.
+
+    **Local mode (macOS).** yadm links the tracked `.config/dotfiles/openviking/local.env`
+    on macOS only; it selects a server on this machine at `http://127.0.0.1:1933` and
+    wins over `server.env`, so OpenBao is never asked. `mise bootstrap` applies
+    `.config/mise/conf.d/openviking.toml` (also macOS only): Homebrew `ollama` and `uv`,
+    the LaunchAgents `dev.mise.ollama` and `dev.mise.openviking`, and a final hook that
+    runs `setup/openviking-local-server`, then `setup/openviking-memory --no-login`.
+    `setup/openviking-local-server [--check]` (named so it never shadows the
+    `openviking-server` binary uv installs in `~/.local/bin`) converges the server: the
+    openviking release and Python pinned in `local.env`, installed with `uv tool`; the
+    Ollama models `.config/dotfiles/openviking/ov.conf.json` names; `~/.openviking/ov.conf`
+    (mode 600) from that file, with a root key generated on the first run only; `/health`
+    and `/ready`; and a user key minted through the Admin API for the account and user in
+    `local.env`, stored in `~/.openviking/user.key` (mode 600) for the clients. The store
+    starts empty under `~/.openviking/data`. The agent runs `setup/openviking-launchd`,
+    which stays idle until `ov.conf` exists, removes a stale `.openviking.pid` left by
+    an unclean shutdown (upstream #4210), and restarts only on failure, at most every
+    30 s. Logs: `~/Library/Logs/openviking.log` and `~/Library/Logs/ollama.log`; restart
+    with `launchctl kickstart -k gui/$(id -u)/dev.mise.openviking`. In testing, the 4B
+    model wrapped its answer in a function that the default Python extraction protocol
+    rejects, so `ov.conf.json` sets `memory.extraction_output_format` to `json`.
 17. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
     reconciles active `Plug` declarations; `--check` is read-only.
 18. **User services** — enables tracked user units; services awaiting attended auth may

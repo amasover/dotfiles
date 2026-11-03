@@ -1,0 +1,39 @@
+{
+  "server": {
+    "auth_mode": "api_key",
+    "workers": 1
+  },
+  "embedding": {
+    "dense": {
+      "provider": "ollama",
+      "model": "qwen3-embedding:0.6b",
+      "api_base": "http://127.0.0.1:11434/v1",
+      "dimension": 1024,
+      "input": "text"
+    },
+    "max_concurrent": 2
+  },
+  "vlm": {
+    "provider": "litellm",
+    "model": "ollama/qwen3.5:4b",
+    "api_key": "no-key",
+    "api_base": "http://127.0.0.1:11434",
+    "temperature": 0.0,
+    "max_retries": 2,
+    "max_concurrent": 1,
+    "extra_request_body": {
+      "num_ctx": 16384,
+      "think": false
+    }
+  },
+  "memory": {
+    "extraction_output_format": "json"
+  },
+  "queue_workers": {
+    "external_parse": { "max_concurrent": 1 },
+    "add_resource": { "max_concurrent": 1 },
+    "reindex": { "max_concurrent": 1 },
+    "session_commit": { "max_concurrent": 1 },
+    "external_task": { "max_concurrent": 2 }
+  }
+}
