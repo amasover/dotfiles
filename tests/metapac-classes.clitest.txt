@@ -6,7 +6,7 @@
 
 $ ROOT=$PWD; CLITMP=$(mktemp -d); H=$CLITMP/home; C=$CLITMP/config; D=$CLITMP/data; mkdir -p "$H/.config" "$H/.local/share/metapac"; cp -R .config/metapac "$H/.config/"; printf '# fixture machine-local group\n[arch]\npackages = []\n' > "$H/.local/share/metapac/machine-local.toml"; echo ready
 ready
-$ YADM() { HOME="$H" XDG_CONFIG_HOME="$C" XDG_DATA_HOME="$D" yadm "$@"; }; YADM init >/dev/null 2>&1; YADM add '.config/metapac/config.toml##template' .config/metapac/profiles/common.groups; echo initialized
+$ YADM() { HOME="$H" XDG_CONFIG_HOME="$C" XDG_DATA_HOME="$D" yadm "$@"; }; YADM init >/dev/null 2>&1; YADM config local.os Linux; YADM add '.config/metapac/config.toml##template,os.Linux' .config/metapac/profiles/common.groups; echo initialized
 initialized
 $ RENDER() { YADM config --unset-all local.class >/dev/null 2>&1 || true; YADM config --add local.class "$1"; YADM config local.arch "${2:-x86_64}"; rm -f "$H/.config/metapac/config.toml"; YADM alt >/dev/null; }; DECLARED() { HOME="$H" "$ROOT/.local/bin/tools/metapac-declared" --config-dir "$H/.config/metapac"; }
 $ COMMON=$(tr -d ' ",' < .config/metapac/profiles/common.groups); RENDERED() { sed -n '/ = \[$/,/^\]$/s/^  "\(.*\)",$/\1/p' "$H/.config/metapac/config.toml"; }; ADDED() { RENDERED | grep -vxF "$COMMON" | sed "s|^$H/|~/|" | paste -sd' ' -; }; echo helpers

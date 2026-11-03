@@ -49,7 +49,7 @@ Supporting choices, decided together:
   carried full secrets on hardware not fully controlled.
 - **Architecture adapters, not forked purpose groups.** x86-only packages move
   from the shared purpose groups into `arch-x86_64`; aarch64 substitutes go in
-  `arch-aarch64`. `config.toml##template` includes the adapter matching
+  `arch-aarch64`. `config.toml##template,os.Linux` includes the adapter matching
   `yadm.arch` (`uname -m`) for every class. Shared groups stay
   architecture-neutral. Per-class package lists would duplicate the purpose set
   per architecture. A skip-missing bootstrap mode would hide packages that are

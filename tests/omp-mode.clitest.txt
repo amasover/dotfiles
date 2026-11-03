@@ -1,0 +1,37 @@
+# tools/omp-mode — the mode overlay and which omp binary it runs.
+# Host-independent: OMP_MODE_CANDIDATES points at stub binaries under a scratch
+# dir, so a real /usr/bin/omp or ~/.local/bin/omp is never run.
+#
+# Run from the repo root: clitest tests/omp-mode.clitest.txt
+
+$ saved_env=$(for v in HOME PI_CONFIG_FILES; do if eval "[ -n \"\${$v+x}\" ]"; then eval "printf 'export %s=%q\n' $v \"\$$v\""; else printf 'unset %s\n' $v; fi; done); OM=$PWD/.local/bin/tools/omp-mode; T=$(mktemp -d); mkdir -p "$T/a" "$T/b"; printf '%s\n' '#!/bin/sh' 'echo "$0 $* | $PI_CONFIG_FILES"' > "$T/b/omp"; chmod +x "$T/b/omp"; export HOME=$T; unset PI_CONFIG_FILES; echo ok
+ok
+$
+# the first executable candidate runs, with the mode overlay last
+$ OMP_MODE_CANDIDATES="$T/a/omp:$T/b/omp" "$OM" claude --print hi | sed "s|$T|T|g"
+T/b/omp --print hi | T/.omp/agent/modes/claude.yml
+$ PI_CONFIG_FILES=/x/claude.yml OMP_MODE_CANDIDATES="$T/b/omp" "$OM" openai | sed "s|$T|T|g"
+T/b/omp  | /x/claude.yml:T/.omp/agent/modes/openai.yml
+$
+# a candidate that is omp-mode itself is skipped: by symlink, and by copy
+$ ln -s "$OM" "$T/a/omp"; OMP_MODE_CANDIDATES="$T/a/omp:$T/b/omp" "$OM" claude | sed "s|$T|T|g"
+T/b/omp  | T/.omp/agent/modes/claude.yml
+$ rm "$T/a/omp"; cp "$OM" "$T/a/omp"; OMP_MODE_CANDIDATES="$T/a/omp:$T/b/omp" "$OM" claude | sed "s|$T|T|g"
+T/b/omp  | T/.omp/agent/modes/claude.yml
+$
+# an earlier real omp wins over a later one
+$ cp "$T/b/omp" "$T/a/omp"; OMP_MODE_CANDIDATES="$T/a/omp:$T/b/omp" "$OM" claude | sed "s|$T|T|g"
+T/a/omp  | T/.omp/agent/modes/claude.yml
+$
+# no omp anywhere: a clear error, never a PATH lookup
+$ OMP_MODE_CANDIDATES="$T/none/omp" "$OM" claude 2>&1 | sed "s|$T|T|g"; echo "rc=${PIPESTATUS[0]}"
+omp-mode: no omp binary at T/none/omp
+rc=1
+$
+# unknown mode fails before any lookup
+$ "$OM" frobnicate 2>&1; echo "rc=$?"
+omp-mode: unknown mode: frobnicate (try: omp-mode --help)
+rc=2
+$ rm -rf "$T"; eval "$saved_env"; unset saved_env; echo done
+done
+$

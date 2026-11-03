@@ -185,6 +185,20 @@ cmd_status() {
     done < <(cmd_list)
 }
 
+# The read-only API token (~/.config/dotfiles/github-token, from the encrypted
+# archive) as a curl header line; nothing without it, so the request stays
+# anonymous. curl reads it with `-H @-` from stdin, never from argv. A subshell
+# body, so `set +x` keeps the value out of a `bash -x` trace without changing
+# the caller's tracing.
+github_auth_header() (
+    set +x
+    token=
+    [[ -r $HOME/.config/dotfiles/github-token ]] \
+        && { IFS= read -r token || true; } <"$HOME/.config/dotfiles/github-token"
+    token=${token%$'\r'}
+    [[ -z $token ]] || printf 'Authorization: Bearer %s\n' "$token"
+)
+
 cmd_outdated() { # network: GitHub latest release + age per watchable package
     local name pb pinned repo resp latest published age rc=0 now
     now=$(date +%s)
@@ -193,7 +207,7 @@ cmd_outdated() { # network: GitHub latest release + age per watchable package
         [[ "$(cmd_watchable "$pb")" == watch ]] || continue
         pinned=$(pkgbuild_field "$pb" pkgver)
         repo=$(cmd_upstream "$pb")
-        resp=$(curl -fsSL --max-time 15 "https://api.github.com/repos/$repo/releases/latest") \
+        resp=$(curl -fsSL --max-time 15 -H @- "https://api.github.com/repos/$repo/releases/latest" < <(github_auth_header)) \
             || {
                 echo "custom-pkgs: $name: upstream check failed ($repo)" >&2
                 rc=2

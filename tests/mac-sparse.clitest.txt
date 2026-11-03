@@ -1,0 +1,42 @@
+# The Mac's yadm sparse-checkout rules (.config/yadm/sparse/work-mac): which
+# tracked files land in $HOME on class work-mac. Git itself evaluates the rules
+# in a scratch repo holding an empty file per tracked (and new, unignored) path,
+# so this runs on Linux CI and needs no yadm or $HOME.
+#
+# G runs git without the user's or the system's config, scoped to each call
+# (clitest shares one shell across test files, so nothing is exported). That
+# also drops a global safe.directory, which CI needs because its checkout
+# belongs to another uid, so the one call into this repo passes it on the
+# command line, one of the places git reads safe.directory from.
+#
+# Run from the repo root: clitest tests/mac-sparse.clitest.txt
+
+$ R=$PWD/.config/yadm/sparse/work-mac; T=$(mktemp -d); G() { GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git "$@"; }; G -c safe.directory="$PWD" ls-files -z --cached --others --exclude-standard | (cd "$T" && while IFS= read -r -d '' f; do mkdir -p "./$(dirname "$f")"; : > "./$f"; done); G -C "$T" init -q && G -C "$T" add -A && G -C "$T" -c user.name=t -c user.email=t@example.invalid commit -qm all && G -C "$T" sparse-checkout set --no-cone --stdin < "$R" 2>/dev/null; G -C "$T" ls-files -t | sed -n 's/^H //p' > "$T/landed"; test -s "$T/landed" && echo ready
+ready
+$
+# the contract with conf.d/openviking.toml's owner: these patterns stay listed
+$ grep -Fx -e '/.config/mise/**' -e '/.local/bin/setup/openviking-*' -e '/.config/dotfiles/openviking/**' -e '/Library/LaunchAgents/**' "$R"
+/.config/mise/**
+/Library/LaunchAgents/**
+/.config/dotfiles/openviking/**
+/.local/bin/setup/openviking-*
+$
+# what the Mac needs lands
+$ for f in .zshrc .zprofile .profile .gitconfig '.gitconfig-os##os.Darwin' '.config/mise/config.toml##os.Darwin' '.config/yadm/bootstrap##os.Darwin' .config/yadm/encrypt .config/yadm/hooks/pre_push .local/share/yadm/archive .omp/agent/models.yml .omp/agent/modes/claude.yml .local/bin/tools/omp-mode .local/bin/tools/brew-drift-report .local/bin/setup/agent-skills .local/bin/setup/openviking-memory .config/dotfiles/openviking/plugin.json .config/dotfiles/oh-my-zsh-custom/themes/agnoster.zsh-theme; do grep -Fxq -- "$f" "$T/landed" || echo "missing: $f"; done; echo checked
+checked
+$
+# every Darwin alternate lands; nothing conditioned on Linux does
+$ G -C "$T" ls-files -t -- '*##*os.Darwin*' | grep -vc '^H ' || true
+0
+$ grep -c 'os\.Linux' "$T/landed" || true
+0
+$
+# no Linux desktop, service, or package-manager file, and none of the repo's
+# docs, tests or agent notes
+$ grep -E '(^|/)(\.xinitrc|\.Xresources|\.xbindkeysrc|\.gtkrc-2\.0|\.screenlayout|\.fonts|\.icons|i3|i3blocks|polybar|rofi|dunst|autorandr|systemd|pacman|pacman-hooks|metapac|yay|refind|mkinitcpio|hibernate|fonts|docs|tests|knowledge|\.github)(/|$)' "$T/landed" || echo none
+none
+$ grep -cE '^\.local/bin/(setup/(bootstrap|update|vm-harness.*|install-on-metal|metal-rehearsal|provision-seed)|tools/(metapac-.*|aur-quarantine|chaotic-quarantine-gate|volume-.*|idle-lock|lock))$' "$T/landed" || true
+0
+$ rm -rf "$T"; unset -f G; echo done
+done
+$

@@ -1,0 +1,93 @@
+# setup/shell-caches — the per-user files .zshrc sources but the repo can't
+# track. Host-independent: a scratch HOME and stub tools on PATH; nothing is
+# cloned or installed.
+#
+# Run from the repo root: clitest tests/shell-caches.clitest.txt
+
+$ saved_env=$(for v in HOME; do if eval "[ -n \"\${$v+x}\" ]"; then eval "printf 'export %s=%q\n' $v \"\$$v\""; else printf 'unset %s\n' $v; fi; done); T=$(mktemp -d); mkdir -p "$T/bin" "$T/tools" "$T/home"; for t in bash sh sed cat mkdir mv rm tr wc touch chmod mktemp; do ln -s "$(command -v $t)" "$T/tools/$t"; done; printf '%s\n' '#!/bin/sh' "PATH=$T/bin:$T/tools exec $PWD/.local/bin/setup/shell-caches \"\$@\"" > "$T/sc"; chmod +x "$T/sc"; SC=$T/sc; export HOME=$T/home; echo ok
+ok
+$
+# no tool installed: every part is skipped and nothing is missing
+$ "$SC" --check; echo "rc=$?"
+  antibody: not installed; skipped
+  broot: not installed; skipped
+  tenv: not installed; skipped
+rc=0
+$
+# antibody: the stub "clones" by creating a cache file and prints the bundle
+# line naming it, as `antibody bundle` does; $HOME/bad makes it name a file
+# that does not exist
+$ printf '%s\n' '#!/bin/sh' 'cat > /dev/null' 'echo clone >> "$HOME/antibody.log"' '[ -f "$HOME/offline" ] && exit 1' 'p=$HOME/.cache/antibody/zsh-syntax-highlighting/plugin.zsh' '[ -f "$HOME/bad" ] && p=/nonexistent/plugin.zsh' 'mkdir -p "$HOME/.cache/antibody/zsh-syntax-highlighting"' ': > "$HOME/.cache/antibody/zsh-syntax-highlighting/plugin.zsh"' 'echo "source $p"' > "$T/bin/antibody"; chmod +x "$T/bin/antibody"; echo zsh-users/zsh-syntax-highlighting > "$HOME/.zsh_plugins.txt"; touch -t 200001010000 "$HOME/.zsh_plugins.txt"; echo stub
+stub
+$ "$SC" --check; echo "rc=$?"; ls -A "$HOME"
+  antibody: would run: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
+  broot: not installed; skipped
+  tenv: not installed; skipped
+rc=1
+.zsh_plugins.txt
+$
+# offline: apply warns, leaves no bundle or temp file, and still exits 0
+$ touch "$HOME/offline"; "$SC" 2>&1; echo "rc=$?"; rm "$HOME/offline"; ls -A "$HOME" | grep zsh_plugins
+  antibody: bundle failed (offline?); re-run shell-caches later
+  broot: not installed; skipped
+  tenv: not installed; skipped
+rc=0
+.zsh_plugins.txt
+$
+# apply writes this machine's bundle; a second run is a no-op
+$ "$SC" | grep antibody; "$SC" | grep antibody; "$SC" --check >/dev/null; echo "rc=$?"; sed "s|$T|T|g" "$HOME/.zsh_plugins.sh"; wc -l < "$HOME/antibody.log" | tr -d ' '
+  antibody: wrote ~/.zsh_plugins.sh
+  antibody: plugin bundle in place
+rc=0
+source T/home/.cache/antibody/zsh-syntax-highlighting/plugin.zsh
+2
+$
+# a bundle copied from another machine (paths that do not exist here) is replaced
+$ echo "source /home/someone-else/plugin.zsh" > "$HOME/.zsh_plugins.sh"; "$SC" --check | grep antibody; "$SC" | grep antibody; sed "s|$T|T|g" "$HOME/.zsh_plugins.sh"
+  antibody: would run: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
+  antibody: wrote ~/.zsh_plugins.sh
+source T/home/.cache/antibody/zsh-syntax-highlighting/plugin.zsh
+$
+# an edited plugin list makes the bundle stale
+$ touch -t 200001010000 "$HOME/.zsh_plugins.sh"; touch "$HOME/.zsh_plugins.txt"; "$SC" | grep antibody; "$SC" | grep antibody
+  antibody: wrote ~/.zsh_plugins.sh
+  antibody: plugin bundle in place
+$
+# a bundle naming missing files is never installed; the old one stays
+$ touch -t 200001010000 "$HOME/.zsh_plugins.sh"; touch "$HOME/bad"; "$SC" 2>&1 | grep antibody; rm "$HOME/bad"; sed "s|$T|T|g" "$HOME/.zsh_plugins.sh"; ls -A "$HOME" | grep zsh_plugins
+  antibody: antibody bundle named plugin files that do not exist; ~/.zsh_plugins.sh left as it was
+source T/home/.cache/antibody/zsh-syntax-highlighting/plugin.zsh
+.zsh_plugins.sh
+.zsh_plugins.txt
+$
+# broot: write the launcher from --print-shell-function, never `broot --install`
+$ printf '%s\n' '#!/bin/sh' 'echo "broot $*" >> "$HOME/broot.log"' '[ "$1" = --print-shell-function ] && echo "br() { :; }"' 'exit 0' > "$T/bin/broot"; chmod +x "$T/bin/broot"; "$SC" --check | grep broot; echo "rc=$?"
+  broot: would write the br launcher to ~/.config/broot/launcher/bash/br
+rc=0
+$ "$SC" 2>/dev/null | grep broot; "$SC" 2>/dev/null | grep broot; cat "$HOME/broot.log"; cat "$HOME/.config/broot/launcher/bash/br"; ls -A "$HOME/.config/broot/launcher/bash"
+  broot: wrote the br launcher
+  broot: br launcher in place
+broot --print-shell-function bash
+broot --set-install-state installed
+br() { :; }
+br
+$
+# tenv: the zsh completion comes from `tenv completion zsh`, which needs no network
+$ printf '%s\n' '#!/bin/sh' 'echo "tenv $*" >> "$HOME/tenv.log"' '[ -f "$HOME/tenv-broken" ] && exit 1' '[ "$1 $2" = "completion zsh" ] && echo "#compdef tenv"' 'exit 0' > "$T/bin/tenv"; chmod +x "$T/bin/tenv"; "$SC" --check 2>/dev/null | grep tenv
+  tenv: would write ~/.tenv.completion.zsh
+$ touch "$HOME/tenv-broken"; "$SC" 2>&1 >/dev/null | grep tenv; ls -A "$HOME" | grep -c '^\.tenv' ; rm "$HOME/tenv-broken" "$HOME/tenv.log"
+  tenv: could not write the zsh completion; re-run shell-caches later
+0
+$ "$SC" 2>/dev/null | grep tenv; "$SC" 2>/dev/null | grep tenv; cat "$HOME/.tenv.completion.zsh" "$HOME/tenv.log"
+  tenv: wrote the zsh completion
+  tenv: zsh completion in place
+#compdef tenv
+tenv completion zsh
+$
+# unknown argument fails loudly
+$ "$SC" frobnicate 2>&1; echo "rc=$?"
+shell-caches: unknown argument: frobnicate   (try: shell-caches -h)
+rc=2
+$ rm -rf "$T"; eval "$saved_env"; unset saved_env; echo done
+done
+$

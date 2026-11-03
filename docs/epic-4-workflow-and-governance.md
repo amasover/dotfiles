@@ -396,6 +396,10 @@ port and repo path stay out of tracked files: they come from a machine-local or
 yadm-encrypted setting, and a machine without that setting skips the step the same way
 an off-LAN machine does.
 
+The Mac slice lives in `.local/bin/setup/agent-skills` (Story 2.61,
+[#284](https://github.com/amasover/dotfiles/issues/284)); wiring it into the Linux
+`bootstrap` and `update` is still open.
+
 **Acceptance criteria:**
 
 - Given the host is reachable and the clone is authorized, when bootstrap or `update` runs, then the repo is cloned (or fast-forward pulled) into a fixed path and linked with `omp plugin link`; a second run changes nothing

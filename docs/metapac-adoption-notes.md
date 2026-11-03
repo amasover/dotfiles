@@ -15,7 +15,7 @@ declared-but-not-installed entries), then by the live `metapac unmanaged` run.
 
 ## Artifacts
 
-- **`.config/metapac/config.toml##template`** — yadm template. `yadm.class` (set live
+- **`.config/metapac/config.toml##template,os.Linux`** — yadm template. `yadm.class` (set live
   at adoption: `yadm config local.class workstation`, a class retired 2026-11-02)
   selects the group list; `{{ yadm.hostname }}` and `{{ env.HOME }}` render at
   checkout. No hostname or username reaches the repo.

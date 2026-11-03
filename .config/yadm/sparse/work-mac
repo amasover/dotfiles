@@ -1,0 +1,40 @@
+# yadm sparse-checkout rules for the Mac (class work-mac). Only these paths
+# land in $HOME; every other tracked file stays a skip-worktree entry, so the
+# Linux desktop (X11, i3, polybar, rofi, systemd units, pacman, metapac, fonts),
+# the repo's docs and tests never reach the Mac. An allowlist on purpose: a
+# new Linux file stays off the Mac until someone lists it here.
+#
+# Git non-cone patterns, gitignore syntax. .config/yadm/bootstrap##os.Darwin
+# applies them; tests/mac-sparse.clitest.txt checks what lands.
+
+# Shell: one shared .zshrc, its Linux-only lines behind OS checks.
+/.zshrc
+/.zprofile
+/.profile
+
+# Git, with the Darwin credential helpers as a yadm alternate.
+/.gitconfig
+/.gitconfig-os##os.Darwin
+
+# yadm itself: encrypt manifest, hooks, these rules, the Mac bootstrap, and the
+# encrypted archive the Mac decrypts in full.
+/.config/yadm/
+/.local/share/yadm/archive
+
+# mise: config.toml##os.Darwin plus conf.d/, LaunchAgents, OpenViking.
+/.config/mise/**
+/Library/LaunchAgents/**
+/.config/dotfiles/openviking/**
+/.local/bin/setup/openviking-*
+
+# omp: config, provider routing, modes, reviewed extensions.
+/.omp/agent/
+
+# The patched agnoster theme that oh-my-zsh links in.
+/.config/dotfiles/oh-my-zsh-custom/
+
+# Setup scripts and tools that run on both Linux and macOS.
+/.local/bin/setup/agent-skills
+/.local/bin/tools/brew-drift-report
+/.local/bin/tools/omp-mode
+/.local/bin/tools/quick-git-check-in

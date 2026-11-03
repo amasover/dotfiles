@@ -1,0 +1,133 @@
+# yadm bootstrap##os.Darwin, the Mac's entry point (Story 2.61), run end to end
+# against a scratch HOME and a scratch repo with real yadm and git.
+# MAC_BOOTSTRAP_TEST=1 passes the Darwin guard and lets a pipe answer the
+# decrypt prompt; `yadm config local.os Darwin` makes yadm link the Darwin
+# alternates on Linux CI. A yadm wrapper fakes only `yadm decrypt`, since the
+# real one needs the archive passphrase. `mise bootstrap` (step 6) installs
+# system-wide packages, so every run passes --no-mise; the manual evidence for
+# it is `mise bootstrap --dry-run` in the runbook.
+#
+# clitest runs every test file in one shell, so this file saves the variables
+# it exports and restores them at the end.
+#
+# Run from the repo root: clitest tests/mac-bootstrap.clitest.txt
+
+$ mb_env=$(for v in HOME PATH T XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do if eval "[ -n \"\${$v+x}\" ]"; then eval "printf 'export %s=%q\n' $v \"\$$v\""; else printf 'unset %s\n' $v; fi; done); echo saved
+saved
+$ B=$PWD/.config/yadm/bootstrap##os.Darwin; RULES=$PWD/.config/yadm/sparse/work-mac; T=$(mktemp -d); export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid; echo ok
+ok
+$ S=$T/src; mkdir -p "$S/.config/i3" "$S/.config/mise" "$S/.config/yadm/sparse" "$S/.local/share/yadm" && echo 'repo zshrc' > "$S/.zshrc" && echo linux > "$S/.config/i3/config" && echo 'darwin mise' > "$S/.config/mise/config.toml##os.Darwin" && echo '[credential]' > "$S/.gitconfig-os##os.Darwin" && cp "$RULES" "$S/.config/yadm/sparse/work-mac" && echo ciphertext > "$S/.local/share/yadm/archive" && git init -q -b main "$S" && git -C "$S" add -A && git -C "$S" commit -qm seed && echo seeded
+seeded
+$ export HOME=$T/home XDG_CONFIG_HOME=$T/home/.config XDG_DATA_HOME=$T/home/.local/share XDG_STATE_HOME=$T/home/.local/state; mkdir -p "$HOME/.config/mise" "$HOME/.ssh" && echo mine > "$HOME/.zshrc" && echo 'live mise' > "$HOME/.config/mise/config.toml" && echo 'my ssh' > "$HOME/.ssh/config" && echo home
+home
+$ REAL=$(command -v yadm); mkdir "$T/bin" && printf '%s\n' '#!/bin/sh' 'if [ "$1" = decrypt ]; then' '  if [ "$2" = -l ]; then printf "%s\n" .ssh/config .zshenv; exit 0; fi' '  echo run >> "$T/decrypted"; echo "from archive" > "$HOME/.ssh/config"; exit 0' 'fi' "exec $REAL \"\$@\"" > "$T/bin/yadm" && chmod +x "$T/bin/yadm"; export PATH="$T/bin:$PATH" T; echo wrapper
+wrapper
+$ cd "$HOME" && yadm config yadm.auto-alt false && yadm clone -q --no-checkout --no-bootstrap "$S" >/dev/null 2>&1 && yadm config local.os Darwin && echo cloned
+cloned
+$ snap() { (cd "$HOME" && find . -path ./.local/share/yadm -prune -o -print | LC_ALL=C sort | while IFS= read -r p; do if [ -L "$p" ]; then echo "$p -> $(readlink "$p")"; elif [ -f "$p" ]; then echo "$p $(cksum < "$p")"; else echo "$p/"; fi; done; git --git-dir="$XDG_DATA_HOME/yadm/repo.git" config --get-regexp 'local\.class|core\.sparsecheckout'); }; snap > "$T/before"; echo snapped
+snapped
+$
+# Without its own switch, Linux stops at the guard: uname is faked so macOS
+# proves it too, and setup/bootstrap's switch, which earlier suites export into
+# clitest's shared shell, does not open it
+$ printf '%s\n' '#!/bin/sh' 'echo Linux' > "$T/bin/uname"; chmod +x "$T/bin/uname"; env -u MAC_BOOTSTRAP_TEST BOOTSTRAP_TEST_MODE=1 bash "$B" --check 2>&1; echo "rc=$?"; rm "$T/bin/uname"
+bootstrap: FATAL: this bootstrap is for macOS; Linux uses .local/bin/setup/bootstrap
+rc=1
+$
+# --check reports every step and changes nothing. Of all the files not yet
+# checked out, only .zshrc, present with other content, is listed as left alone
+$ MAC_BOOTSTRAP_TEST=1 bash "$B" --check --no-mise | sed "s|$T|T|g"
+==> machine class
+  would: yadm config local.class work-mac
+==> sparse checkout (.config/yadm/sparse/work-mac)
+  would: yadm sparse-checkout set --no-cone (rules from HEAD)
+==> tracked files
+  would check out what the rules select and $HOME lacks
+  left alone (already in $HOME with other content):
+    .zshrc
+  review each with 'yadm diff -- ~/<path>'; keep yours or take the
+  repo's with 'yadm checkout -- ~/<path>'
+==> alternates
+  would back up .config/mise/config.toml to .config/mise/config.toml.pre-yadm before linking
+  would: yadm alt
+==> encrypted archive
+  no archive at T/home/.local/share/yadm/archive
+==> mise bootstrap
+  skipped (--no-mise)
+$ snap | diff "$T/before" - && echo unchanged
+unchanged
+$
+# First run: class, sparse rules, missing files, a backup before the alternate
+# replaces the live mise config, then the decrypt, answered yes
+$ echo y | MAC_BOOTSTRAP_TEST=1 bash "$B" --no-mise | sed -e "s|$T|T|g" -e 's/pre-decrypt-[0-9-]*\.tar/pre-decrypt-STAMP.tar/'
+==> machine class
+  set to work-mac
+==> sparse checkout (.config/yadm/sparse/work-mac)
+  applied
+==> tracked files
+  checked out 4 missing file(s)
+  left alone (already in $HOME with other content):
+    .zshrc
+  review each with 'yadm diff -- ~/<path>'; keep yours or take the
+  repo's with 'yadm checkout -- ~/<path>'
+==> alternates
+  backed up .config/mise/config.toml to .config/mise/config.toml.pre-yadm
+Linking T/home/.config/mise/config.toml##os.Darwin to T/home/.config/mise/config.toml
+Linking T/home/.gitconfig-os##os.Darwin to T/home/.gitconfig-os
+  linked (1 backup(s))
+  turned yadm.auto-alt back on
+==> encrypted archive
+  listing the archive (passphrase 1 of 2)
+  saved 1 existing file(s) to ~/.local/state/dotfiles/pre-decrypt-STAMP.tar
+  decrypting (passphrase 2 of 2)
+  decrypted; later runs skip this until the archive changes
+==> mise bootstrap
+  skipped (--no-mise)
+$
+# the Linux-only file stayed out, the live files were kept or saved
+$ test -e "$HOME/.config/i3/config" || echo "no i3 config"; cat "$HOME/.zshrc" "$HOME/.config/mise/config.toml.pre-yadm"; readlink "$HOME/.config/mise/config.toml"
+no i3 config
+mine
+live mise
+config.toml##os.Darwin
+$ tar -xOf "$XDG_STATE_HOME"/dotfiles/pre-decrypt-*.tar .ssh/config; cat "$HOME/.ssh/config"
+my ssh
+from archive
+$ snap > "$T/after1"; echo snapped
+snapped
+$
+# Second run: every step is already converged and the decrypt is not offered
+$ MAC_BOOTSTRAP_TEST=1 bash "$B" --no-mise < /dev/null | sed "s|$T|T|g"
+==> machine class
+  already work-mac
+==> sparse checkout (.config/yadm/sparse/work-mac)
+  already applied
+==> tracked files
+  checked out 0 missing file(s)
+  left alone (already in $HOME with other content):
+    .zshrc
+  review each with 'yadm diff -- ~/<path>'; keep yours or take the
+  repo's with 'yadm checkout -- ~/<path>'
+==> alternates
+Linking T/home/.config/mise/config.toml##os.Darwin to T/home/.config/mise/config.toml
+Linking T/home/.gitconfig-os##os.Darwin to T/home/.gitconfig-os
+  linked (0 backup(s))
+==> encrypted archive
+  already decrypted (archive unchanged); --decrypt offers it again
+==> mise bootstrap
+  skipped (--no-mise)
+$ snap | diff "$T/after1" - && wc -l < "$T/decrypted" | tr -d ' '
+1
+$
+# --decrypt offers it again; a changed archive is offered without the flag
+$ echo n | MAC_BOOTSTRAP_TEST=1 bash "$B" --decrypt --no-mise | sed -n '/encrypted archive/,/mise bootstrap/p'
+==> encrypted archive
+  skipped; run 'yadm bootstrap' again to decrypt later
+==> mise bootstrap
+$ echo 0000 > "$XDG_STATE_HOME/dotfiles/yadm-decrypted"; echo n | MAC_BOOTSTRAP_TEST=1 bash "$B" --check --no-mise | grep -A1 'encrypted archive'
+==> encrypted archive
+  would offer: yadm decrypt (the full archive)
+$
+$ cd /; rm -rf "$T"; eval "$mb_env"; unset mb_env; echo done
+done
+$

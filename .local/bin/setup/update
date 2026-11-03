@@ -1,6 +1,4 @@
 #!/usr/bin/env zsh
-source ~/.zsh_plugins.sh
-
 # --- options ---
 # AUR upgrades are quarantined by default (see .local/bin/tools/aur-quarantine).
 #   --aur-now   bypass the quarantine: upgrade ALL AUR packages now, incl. -git/--devel.
@@ -151,6 +149,8 @@ git stash pop
 
 echo $'\n\nUpdating all custom zsh packages...'
 antibody update
+# The plugin bundle is per machine now (untracked); write it if it is missing.
+"$HOME/.local/bin/setup/shell-caches" apply
 
 [[ -r /usr/share/nvm/init-nvm.sh ]] || { print 'update: packaged nvm init missing' >&2; exit 1; }
 source /usr/share/nvm/init-nvm.sh

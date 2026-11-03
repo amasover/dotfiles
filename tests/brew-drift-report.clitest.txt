@@ -1,0 +1,57 @@
+# tools/brew-drift-report — the Mac's read-only drift report (class work-mac).
+# Host-independent: brew and mise are stubs printing canned output, so it runs
+# on the Arch CI image too. The mise stub answers the way
+# `mise bootstrap packages status --json` does after merging config.toml and
+# conf.d/*.toml (ollama and uv come from conf.d/openviking.toml).
+#
+# Run from the repo root: clitest tests/brew-drift-report.clitest.txt
+
+$ saved_env=$(for v in PATH MISE_JSON; do if eval "[ -n \"\${$v+x}\" ]"; then eval "printf 'export %s=%q\n' $v \"\$$v\""; else printf 'unset %s\n' $v; fi; done); BD=$PWD/.local/bin/tools/brew-drift-report; T=$(mktemp -d); mkdir "$T/bin"; echo ok
+ok
+$ printf '%s\n' '#!/bin/sh' 'case "$*" in' '  leaves) printf "%s\n" gh ollama uv yadm wget ;;' '  "list --cask -1") printf "%s\n" font-hack-nerd-font orca stray-app ;;' 'esac' > "$T/bin/brew"; printf '%s\n' '#!/bin/sh' '[ "$*" = "bootstrap packages status --json" ] || exit 9' '[ "$PWD" = "$HOME" ] || exit 8' 'exec cat "$MISE_JSON" 2>/dev/null' > "$T/bin/mise"; chmod +x "$T/bin"/*; export PATH="$T/bin:$PATH"; echo stubs
+stubs
+$ printf '%s\n' '{"brew":{"available":true,"packages":[' '{"package":"uv","state":"installed"},{"package":"ollama","state":"installed"},' '{"package":"gh","state":"installed"},{"package":"yadm","state":"installed"},' '{"package":"shfmt","state":"missing"}]},' '"brew-cask":{"available":true,"packages":[' '{"package":"font-hack-nerd-font","state":"installed"},' '{"package":"stablyai/orca/orca","state":"installed"},' '{"package":"firefox","state":"missing"}]}}' > "$T/status.json"; export MISE_JSON=$T/status.json; echo json
+json
+$
+# undeclared formulae and casks are listed; conf.d declarations (ollama, uv)
+# and a tap-qualified cask (orca) count as declared; missing ones are listed
+$ "$BD" | sed '/drift report (/s/(.*)/(DATE)/'
+
+==============================================================
+ brew drift report (DATE) — read-only
+==============================================================
+
+ [!] formulae installed but declared in no mise config:
+     wget
+
+ [!] casks installed but declared in no mise config:
+     stray-app
+
+ [!] declared but not installed:
+     shfmt
+     firefox
+     apply:  mise bootstrap packages apply   (prompts before acting)
+$
+# a converged machine reports ok in every section
+$ printf '%s\n' '{"brew":{"packages":[{"package":"gh","state":"installed"},{"package":"ollama","state":"installed"},{"package":"uv","state":"installed"},{"package":"yadm","state":"installed"},{"package":"wget","state":"installed"}]},' '"brew-cask":{"packages":[{"package":"font-hack-nerd-font","state":"installed"},{"package":"stablyai/orca/orca","state":"installed"},{"package":"stray-app","state":"installed"}]}}' > "$T/clean.json"; MISE_JSON=$T/clean.json "$BD" | sed -n '/^ \[/p'
+ [ok] undeclared formulae: none
+ [ok] undeclared casks: none
+ [ok] declared-but-missing: none
+$
+# mise failing to read its config is an error, not an empty declaration list
+$ MISE_JSON=$T/absent.json "$BD" 2>&1 >/dev/null; echo "rc=$?"
+brew-drift-report: could not read mise's package declarations
+rc=1
+$
+# no Homebrew: skip quietly
+$ rm "$T/bin/brew"; PATH="$T/bin:/usr/bin:/bin" "$BD"; echo "rc=$?"
+brew-drift-report: no Homebrew on this machine — skipping.
+rc=0
+$
+# unknown argument fails loudly
+$ "$BD" --frobnicate 2>&1; echo "rc=$?"
+brew-drift-report: unknown argument: --frobnicate   (try: brew-drift-report -h)
+rc=2
+$ rm -rf "$T"; eval "$saved_env"; unset saved_env; echo done
+done
+$
