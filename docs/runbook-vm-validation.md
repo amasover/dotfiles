@@ -371,17 +371,21 @@ Prerequisites: the work dir has the cached ISO (`fetch`) and a Python with `pycd
 (`<work dir>/venv`), as for disposable runs; your ssh key is in `~/.ssh/id_*.pub`. A
 disposable VM can keep running: the two VMs share nothing but the cached ISO.
 
-Run it in a terminal you can leave open for hours:
+Run it from the repo checkout that has this change (from its root), in a terminal you
+can leave open; `pwsh ~/.local/bin/setup/vm-harness-vmware.ps1 …` works the same once
+the change is in your home directory's yadm checkout:
 
 ```sh
 unset VM_HARNESS_SSH_KEY VM_HARNESS_BUNDLE VM_HARNESS_BRANCH VM_HARNESS_REPO VM_HARNESS_GUI
 export VM_HARNESS_DIR=~/vmh-scratch/work   # the work dir holding cache/ and venv/
 export VM_HARNESS_TARGET=work-vm
 export VM_HARNESS_SHARES='vmshare=~/vmshare;Downloads=~/Downloads'
-pwsh ~/.local/bin/setup/vm-harness-vmware.ps1 up
+pwsh .local/bin/setup/vm-harness-vmware.ps1 up
 ```
 
-The VM clones and bootstraps GitHub `main` as class `work-vm`. What you type, and when:
+The VM clones and bootstraps GitHub `main` as class `work-vm`. You type everything in
+the first few minutes; after that the run needs nobody for hours. What you type, and
+when:
 
 1. **create** (under a minute): in the terminal, your VM user password twice, then the
    disk (LUKS) password twice. Input is hidden; a mismatch asks again. They reach
@@ -391,24 +395,32 @@ The VM clones and bootstraps GitHub `main` as class `work-vm`. What you type, an
    deleted; the terminal says so.
 3. **boot** (seconds, then you): type the disk password in the VMware window. The
    terminal waits up to 30 minutes for ssh. Every later boot asks for it there too.
-4. **bootstrap** (hours; the disposable run took about 45 minutes unattended): in the
-   terminal, your VM user password once for `sudo`; then the archive passphrase for
-   `yadm decrypt`; then bootstrap's own confirmations (pacman, yay, the quarantine
-   gates) as they come. The `sudo` password puts a temporary password-free drop-in at
-   `/etc/sudoers.d/89-first-bootstrap`, so the run never stops at a sudo prompt; it is
-   deleted when bootstrap ends, also on failure or Ctrl-C. Before it starts, the Mac's
-   AUR trust baseline, time zone and GitHub token are copied in.
-5. **check** (a minute): nothing. It fails if the sudo drop-in is still there.
+4. **bootstrap**, at its start: in the terminal, your VM user password once for
+   `sudo`, then the archive passphrase for `yadm decrypt` (three attempts; a third
+   wrong one stops the run before the long part). The `sudo` password puts a temporary
+   password-free drop-in at `/etc/sudoers.d/89-first-bootstrap`; it is deleted when
+   bootstrap ends, also on failure or Ctrl-C. Before the prompts, the Mac's AUR trust
+   baseline, time zone and GitHub token are copied in.
+5. **bootstrap**, the long part (hours; the disposable run took about 45 minutes):
+   nothing. It is the same `bootstrap --unattended` as a disposable run, so its
+   quarantine pre-flight guards the sync; its decrypt step reports the secrets as
+   already decrypted.
+6. **bootstrap**, at its end: it lists the follow-ups `--unattended` skipped, each with
+   its command, to run later in a terminal on the VM: the OpenViking memory sign-in
+   (`~/.local/bin/setup/openviking-memory`, a passkey sign-in to OpenBao) and, if
+   bootstrap reported packages the quarantine held, a later
+   `~/.local/bin/setup/bootstrap --unattended`.
+7. **check** (a minute): nothing. It fails if the sudo drop-in is still there.
 
 A failed phase stops `up` and leaves the VM as it is. Re-run `up` with the same
 environment: it resumes from what the VM's state proves done. Or run one phase:
 
 ```sh
-pwsh ~/.local/bin/setup/vm-harness-vmware.ps1 install     # asks both passwords again
-pwsh ~/.local/bin/setup/vm-harness-vmware.ps1 boot
-pwsh ~/.local/bin/setup/vm-harness-vmware.ps1 bootstrap   # sudo password again; decrypt is skipped once done
-pwsh ~/.local/bin/setup/vm-harness-vmware.ps1 check
-pwsh ~/.local/bin/setup/vm-harness-vmware.ps1 tail bootstrap
+pwsh .local/bin/setup/vm-harness-vmware.ps1 install     # asks both passwords again
+pwsh .local/bin/setup/vm-harness-vmware.ps1 boot
+pwsh .local/bin/setup/vm-harness-vmware.ps1 bootstrap   # sudo password again; decrypt is skipped once done
+pwsh .local/bin/setup/vm-harness-vmware.ps1 check
+pwsh .local/bin/setup/vm-harness-vmware.ps1 tail bootstrap
 ```
 
 Logs are in `~/vms/work-vm/logs`. If `check` reports the sudo drop-in (a run cut off

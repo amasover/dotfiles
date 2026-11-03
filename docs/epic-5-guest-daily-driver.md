@@ -387,10 +387,12 @@ harness build the real VM: seed target `work-vm` (LUKS root, no harness sudo or 
 getty), VM `work-vm` in `~/vms/work-vm`, 300 GiB, 10 vcpus, 12 GiB, the two shares, and
 the window always open for the disk password. The user and disk passwords are typed
 twice at `create` and reach `provision-seed` only through its environment; the seed is
-deleted when the install ends. Bootstrap runs from GitHub `main` without
-`--unattended` over `ssh -t`, so `yadm decrypt` prompts, behind a temporary
-password-free sudo drop-in the guest glue deletes on exit or signal; `check` fails
-while it exists. `destroy` needs the VM name typed. Steps: [Create the real work
+deleted when the install ends. Bootstrap runs from GitHub `main` over `ssh -t`: the
+user types the sudo password (a temporary password-free drop-in the guest glue
+deletes on exit or signal) and the archive passphrase for `yadm decrypt` at the
+start, then the usual `bootstrap --unattended` runs for hours with nobody needed and
+ends by listing the follow-ups it skipped; `check` fails while the drop-in exists.
+`destroy` needs the VM name typed. Steps: [Create the real work
 VM](./runbook-vm-validation.md#create-the-real-work-vm-attended-macos). Proven
 against stubs and with a scratch `seed` + `create`; the real VM's creation record is
 still pending.
