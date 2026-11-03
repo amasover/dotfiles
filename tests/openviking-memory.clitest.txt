@@ -105,6 +105,22 @@ rc=2
 no conf=0
 $
 
+Without GNU timeout the sign-in runs under coreutils' gtimeout, and without that
+under perl's alarm. A PATH of stubs and only the tools the script needs, with no
+timeout, picks each branch:
+
+$ B=$OVT/bin; G=$OVT/gt; mkdir -p "$B" "$G"; for x in bash cat chmod cp grep mkdir mktemp mv node rm sed stat tr; do ln -s "$(command -v "$x")" "$B/$x"; done; printf '%s\n' '#!/bin/sh' 'echo "gtimeout $*" >> "$TRACE"' 'shift' 'exec "$@"' > "$G/gtimeout"; printf '%s\n' '#!/bin/sh' 'echo "perl alarm" >> "$TRACE"' "exec $(command -v perl) \"\$@\"" > "$B/perl"; chmod +x "$G/gtimeout" "$B/perl"; echo "$KEY" > "$OVT/bao-key"; echo restricted
+restricted
+$ : > "$TRACE"; PATH="$S:$G:$B" $t > /dev/null; echo "rc=$?"; grep -E '^(gtimeout|perl|bao login)' "$TRACE"
+rc=0
+gtimeout 300 bao login -method=oidc -token-only role=admin
+bao login -method=oidc -token-only role=admin
+$ rm "$HOME/.openviking/ovcli.conf"; : > "$TRACE"; PATH="$S:$B" $t > /dev/null; echo "rc=$?"; grep -E '^(gtimeout|perl|bao login)' "$TRACE"
+rc=0
+perl alarm
+bao login -method=oidc -token-only role=admin
+$
+
 Local mode: local.env selects it even beside server.env. Only the loopback URL
 is accepted, the key is the one setup/openviking-local-server stored, and OpenBao is
 never asked:

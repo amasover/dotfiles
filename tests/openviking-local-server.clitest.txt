@@ -10,7 +10,7 @@ $ t=$PWD/.local/bin/setup/openviking-local-server; OVT=$(mktemp -d); S=$OVT/stub
 ready
 $ printf '%s\n' '#!/bin/sh' 'echo "curl $*" >> "$TRACE"' 'hdr=; case " $* " in *" -H @- "*) hdr=$(cat) ;; esac' 'out=; w=; m=GET; p=' 'for a; do case $p in -o) out=$a ;; -X) m=$a ;; -w) w=1 ;; esac; p=$a; done' 'root=$(sed -n "s/.*\"root_api_key\": \"\(.*\)\".*/\1/p" "$HOME/.openviking/ov.conf" 2>/dev/null)' 'mint() { n=$(($(cat "$OVT/n" 2>/dev/null || echo 0) + 1)); echo "$n" > "$OVT/n"; printf "ov-user-%s" "$n" > "$OVT/user-key"; touch "$OVT/user"; body="{\"status\":\"ok\",\"result\":{\"user_key\":\"ov-user-$n\"}}"; }' 'code=200; body=' 'case $a in' '  */api/version) [ -f "$OVT/ollama-down" ] && exit 7; body="{\"version\":\"0.40.13\"}" ;;' '  */api/tags) body="{\"models\":["; sep=; while read -r name; do body="$body$sep{\"name\":\"$name\"}"; sep=,; done < "$OVT/models"; body="$body]}" ;;' '  */health) [ -f "$OVT/up" ] || exit 7; body="{\"status\":\"ok\",\"healthy\":true,\"version\":\"0.5.3\"}" ;;' '  */ready) [ -f "$OVT/up" ] || exit 7; body="{\"status\":\"ready\"}" ;;' '  */api/v1/stats/memories) [ "$hdr" = "X-API-Key: $(cat "$OVT/user-key" 2>/dev/null)" ] || exit 22 ;;' '  */api/v1/admin/*)' '    if [ -z "$root" ] || [ "$hdr" != "X-API-Key: $root" ]; then code=401; else case "$m $a" in' '      "GET "*/accounts/default) [ -f "$OVT/account" ] || code=404 ;;' '      "POST "*/accounts) touch "$OVT/account"; mint ;;' '      "GET "*/users/agent) [ -f "$OVT/user" ] || code=404 ;;' '      "POST "*/users/agent/key | "POST "*/users) mint ;;' '    esac; fi ;;' 'esac' 'if [ -n "$out" ]; then printf "%s" "$body" > "$out"; else printf "%s" "$body"; fi' '[ -z "$w" ] || printf "%s" "$code"' > "$S/curl"; touch "$OVT/models"
 $ printf '%s\n' '#!/bin/sh' 'echo "uv $*" >> "$TRACE"' 'case "$1 $2" in' '  "tool list") [ ! -f "$OVT/uv-installed" ] || echo "openviking v$(cat "$OVT/uv-installed") [CPython 3.13.18]" ;;' '  "tool install") for a; do case $a in openviking==*) echo "${a#openviking==}" > "$OVT/uv-installed" ;; esac; done ;;' 'esac' > "$S/uv"; printf '%s\n' '#!/bin/sh' 'echo "ollama $*" >> "$TRACE"' '[ "$1" != pull ] || echo "$2" >> "$OVT/models"' > "$S/ollama"
-$ printf '%s\n' '#!/bin/sh' 'echo "launchctl $*" >> "$TRACE"' 'case $1 in' '  print) [ -f "$OVT/loaded" ] ;;' '  kickstart) touch "$OVT/up" ;;' 'esac' > "$S/launchctl"; chmod +x "$S"/*; echo stubs
+$ printf '%s\n' '#!/bin/sh' 'echo "launchctl $*" >> "$TRACE"' 'case $1 in' '  print) [ -f "$OVT/loaded" ] ;;' '  kickstart) [ -f "$OVT/stuck" ] || touch "$OVT/up" ;;' 'esac' > "$S/launchctl"; chmod +x "$S"/*; echo stubs
 stubs
 $
 
@@ -122,6 +122,28 @@ OpenViking server: ready (openviking 0.5.3 on http://127.0.0.1:1933, clients act
 /api/v1/admin/accounts/default/users/agent/key
 $ cmp -s "$OVT/user-key" "$HOME/.openviking/user.key"; echo "stored=$?"
 stored=0
+$
+
+An account the server lacks is created, with the clients' user as its admin:
+
+$ rm "$OVT/account" "$OVT/user" "$HOME/.openviking/user.key"; : > "$TRACE"; $t | tee -a "$OVT/out"; grep -o '/api/v1/admin/[^ ]*' "$TRACE"; grep -c '"account_id":"default","admin_user_id":"agent"' "$TRACE"
+OpenViking server: minted the user key for default/agent
+OpenViking server: ready (openviking 0.5.3 on http://127.0.0.1:1933, clients act as default/agent)
+/api/v1/admin/accounts/default
+/api/v1/admin/accounts
+1
+$
+
+A server that is not ready within OPENVIKING_WAIT_SECONDS of a restart is a failure:
+
+$ rm "$OVT/up"; touch "$OVT/stuck"; { OPENVIKING_WAIT_SECONDS=2 $t; echo "rc=$?"; } 2>&1; rm "$OVT/stuck"
+OpenViking server: restarted dev.mise.openviking
+openviking-local-server: FATAL: the server is not ready on http://127.0.0.1:1933 after 2s (~/Library/Logs/openviking.log)
+rc=2
+$ $t; echo "rc=$?"
+OpenViking server: restarted dev.mise.openviking
+OpenViking server: ready (openviking 0.5.3 on http://127.0.0.1:1933, clients act as default/agent)
+rc=0
 $
 
 A pin bump in local.env reinstalls the release:
