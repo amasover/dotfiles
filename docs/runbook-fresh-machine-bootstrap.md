@@ -238,6 +238,20 @@ What it does, in order:
    the class **is** the desktop-optional step: a class whose group list omits
    `desktop`/`media`/`gaming` bootstraps a headless-ish machine; nothing installs
    i3/polybar/rofi unless the class says so.
+   Two small steps follow it:
+   - **Fresh-install skel files** — `yadm clone` never overwrites an existing file, so
+     the `.bashrc`/`.bash_profile` that `useradd` copied from `/etc/skel` hide the
+     tracked ones. A tracked file still byte-identical to `/etc/skel/<same path>` gets
+     `yadm checkout -- <file>`; any other local edit is reported and left alone.
+   - **Time zone** — installs run UTC, and the public repo never names a zone. If
+     `~/.config/dotfiles/timezone` (one IANA name) exists, bootstrap checks it against
+     `/usr/share/zoneinfo` and runs `timedatectl set-timezone` when it differs; with no
+     file the zone is left alone. Where the file comes from: real machines (metal,
+     the work VM after `yadm decrypt`) restore it from the encrypted archive, since
+     it is in `.config/yadm/encrypt`. VMware harness guests get the host's zone,
+     written before bootstrap runs (`VM_HARNESS_TIMEZONE` overrides it). Libvirt
+     harness guests get no file and stay on UTC. A machine without the file yet:
+     `echo <Area/City> > ~/.config/dotfiles/timezone`, then `yadm encrypt`.
 3. **Machine-local group** — creates (empty) `~/.local/share/metapac/machine-local.toml`
    if missing: the one group file living outside the repo, and metapac hard-errors
    on missing group files (Story 2.11 owns its contents).
@@ -299,7 +313,8 @@ What it does, in order:
 17. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
     reconciles active `Plug` declarations; `--check` is read-only.
 18. **User services** — enables tracked user units; services awaiting attended auth may
-    start later through their restart policy.
+    start later through their restart policy. `mac-shares.service` (the VMware host's
+    shared folders at `~/mac`) is enabled on VMware guests only.
 19. **Firefox defaults** — composes `/etc/firefox/policies/policies.json` from
     `.config/dotfiles/firefox/policies.json`: uBlock Origin, 1Password, Multi-Account
     Containers, Don't Fuck With Paste and Bypass Paywalls Clean installed by default, plus

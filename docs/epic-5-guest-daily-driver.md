@@ -360,6 +360,28 @@ two seconds after `startx`). File drag-and-drop from the Mac did not, because
 `vmware-vmblock-fuse.service` ships disabled and vmusr then starts without
 `--blockFd`; bootstrap step "VMware guest tools" and the seed now enable it.
 
+**Live on the work VM (2026-11-03):** after a power cycle with the new vmx
+keys, the speaker and microphone (the `hdaudio` card) and the virtual camera
+work in the guest, and the clipboard works both ways. Drag-and-drop works only
+from the Mac into the guest: a file dropped from Finder arrived and opened. A
+drag out of the guest never leaves the VM window. Every drag also leaves a
+32x32 override-redirect window owned by vmware-user (`vmtoolsd -n vmusr`)
+mapped at +0+0, over polybar's top-left, which i3 cannot manage; six had piled
+up. **Decision:** drag-and-drop is off for aarch64 Fusion VMs
+(`isolation.tools.dnd.disable = "TRUE"` in the vmx; the copy and paste keys
+stay unset, so the clipboard stays on). x86_64 output is unchanged; Workstation
+was not tested.
+
+**Shared folders are the file route (2026-11-03):** Fusion shares the Mac's
+`~/vmshare` and `~/Downloads` with the guest (HGFS; VMware has no 9p). The
+attended `work-vm` create sets them with `VM_HARNESS_SHARES`, and `vmrun
+enableSharedFolders`/`addSharedFolder` add them to an existing VM. In the
+guest, the user unit `mac-shares.service` mounts every share under `~/mac` with
+`vmhgfs-fuse` (bootstrap enables it on VMware guests only), so files move both
+ways through `~/mac/vmshare` and `~/mac/Downloads`. Proven live: the unit
+mounted both, a file written in the guest appeared on the Mac, and stop and
+start unmounted and remounted `~/mac`.
+
 **Acceptance criteria:**
 
 - `vm-harness-vmware.ps1` runs under PowerShell 7 on macOS (`$IsMacOS`) against
@@ -387,7 +409,8 @@ two seconds after `startx`). File drag-and-drop from the Mac did not, because
   sized on both the Retina panel and the 4K.
 - Slack huddles: speaker and microphone through the `hdaudio` card, and the Mac
   camera as `/dev/video0` in the guest, shown by a test call from the guest.
-  Clipboard works both ways, and files dragged from Finder land in the guest.
+  Clipboard works both ways. Files move both ways through the shared folders
+  under `~/mac`; drag-and-drop is off by decision.
 
 **Evidence artifact:** the disposable harness log set, the `work-vm` metapac
 render and check output, and `xrandr --listactivemonitors` plus a screenshot

@@ -261,6 +261,25 @@ export VM_HARNESS_SSH_KEY=~/.ssh/<key>   # optional: key to seed + log in with
 pwsh ~/.local/bin/setup/vm-harness-vmware.ps1 up      # or fetch/create/install/boot
 ```
 
+Disposable runs share no host folders. The attended `work-vm` creation shares two,
+set before `create` (or `up`):
+
+```sh
+export VM_HARNESS_SHARES='vmshare=~/vmshare;Downloads=~/Downloads'
+```
+
+`NAME=HOSTPATH` pairs separated by `;`; a leading `~` is the Mac home, a missing host
+folder is created, and an existing one (Downloads) is used as it is. `create` passes
+them to `vm-harness-vmx --share`. To add shares to a VM that already exists (it may
+be running), use Fusion's two `vmrun` commands, which write the same vmx keys:
+
+```sh
+vmrun=/Applications/VMware\ Fusion.app/Contents/Library/vmrun
+"$vmrun" -T fusion enableSharedFolders <vm>.vmx
+"$vmrun" -T fusion addSharedFolder <vm>.vmx vmshare ~/vmshare
+"$vmrun" -T fusion addSharedFolder <vm>.vmx Downloads ~/Downloads
+```
+
 Host prerequisites (no sudo): PowerShell 7 (`~/.local/bin/pwsh`, unpacked from the
 official `osx-arm64` tarball into `~/.local/opt/powershell`); a Python >= 3.10 with
 `pycdlib` — the driver prefers `<work dir>/venv`, then Homebrew `python3.14`, then
@@ -293,6 +312,21 @@ Fusion-specific facts, verified live on Fusion 26H1 (26.0.1), 2026-11-02:
   AVCapture camera; Fusion still adds its own HID on port 4 and hubs on 6 and 7.
   Both need macOS's camera and microphone permission for VMware Fusion (System
   Settings > Privacy & Security).
+- **Shared folders (2026-11-03):** the host's shared folders (HGFS) are the file
+  route between the Mac and the guest, both ways. `--share` writes
+  `isolation.tools.hgfs.disable = "FALSE"`, then per share `sharedFolderN.present`,
+  `.enabled`, `.readAccess`, `.writeAccess`, `.hostPath`, `.guestName` and
+  `.expiration = "never"`, then `sharedFolder.maxNum`: the keys `vmrun` wrote on a
+  running VM. In the guest, `mac-shares.service` (a user unit; no root, no fstab)
+  mounts `.host:/` with `vmhgfs-fuse` at `~/mac`, so the shares appear as
+  `~/mac/vmshare` and `~/mac/Downloads`. `vmware-hgfsclient` lists the share names.
+  VMware has no 9p; HGFS is its equivalent.
+- **Drag-and-drop off, clipboard on:** aarch64 vmx output sets
+  `isolation.tools.dnd.disable = "TRUE"` and leaves the copy/paste keys alone. See
+  Story 5.8 for the live findings behind it.
+- **Time zone:** the guest installs on UTC; `bootstrap` writes the Mac's IANA zone into
+  the guest's private `~/.config/dotfiles/timezone` before running the repo bootstrap,
+  which sets it (`VM_HARNESS_TIMEZONE` overrides the zone).
 - **Serial console:** ACPI SPCR puts the kernel console on `ttyS0` (16550 MMIO), the
   VMware serial port; no `ttyAMA0`. The live ISO therefore spawns
   `serial-getty@ttyS0`, which the install driver stops before writing the line.
