@@ -181,7 +181,7 @@ reconcile_initramfs_hooks() {
     local -a images=()
     mapfile -d '' -t images < <(
         sudo find "$root/boot" -maxdepth 1 \( -type f -o -type l \) \
-            -name 'initramfs-*.img' -print0 2>/dev/null | LC_ALL=C.UTF-8 sort -z
+            -name 'initramfs-*.img' -print0 | LC_ALL=C.UTF-8 sort -z
     )
     local image
     ((${#images[@]})) || die "no initramfs images found in $root/boot (is /boot mounted?)"
