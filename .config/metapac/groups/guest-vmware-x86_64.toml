@@ -1,0 +1,7 @@
+# metapac hardware adapter: x86_64 VMware guest (daily-vm only). The dedicated
+# DDX is x86_64-only; aarch64 guests (work-vm) run Xorg's built-in modesetting
+# on vmwgfx instead.
+[arch]
+packages = [
+  "xf86-video-vmware",
+]

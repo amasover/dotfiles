@@ -1,10 +1,60 @@
-# 4K docked setup: virtual-monitor split layout (historical reference)
+# 4K split layout: virtual monitors carved with xrandr --setmonitor
 
 Captured 2026-08-22, when the untracked pre-5.5 autorandr hooks were archived
-so the laptop could converge to main (the 5.5 postswitch). This is the record
-of how the 4K docking setups were built, for the [Story 3.17](../../docs/epic-3-shell-editor-desktop-cleanup.md#story-317-migrate-monitor-names-after-the-modesetting-driver-switch)
-([#129](https://github.com/amasover/dotfiles/issues/129)) rebuild. Do not
-extend these hooks as-is — see "Rebuild guidance" below.
+so the laptop could converge to main (the 5.5 postswitch). The history below
+records how the 4K docking setups were built, for the [Story 3.17](../../docs/epic-3-shell-editor-desktop-cleanup.md#story-317-migrate-monitor-names-after-the-modesetting-driver-switch-)
+([#129](https://github.com/amasover/dotfiles/issues/129)) rebuild. That story
+closed 2026-11-02 when the laptop retired. Since then the home split lives on
+as the work VM's layout ([Story 5.8](../../docs/epic-5-guest-daily-driver.md#story-58-the-mac-work-vm-is-the-daily-driver)):
+see "Current mechanism" first.
+
+## Current mechanism (Story 5.8)
+
+One 3840x2160 canvas is cut into the home areas: left 1920x2160 main, right
+1920x1080 top, right 1920x1080 bottom. Workspaces: 1 → main, 2 → bottom,
+3 and 5 → top, then `workspace number 3; workspace number 1`.
+
+- **The one definition:** `.config/monitor-split/home.layout` (`canvas`,
+  `area NAME WxH+X+Y ROLE`, `workspaces AREA N...`, `focus N...`).
+- **The one helper:** `.local/bin/tools/monitor-split`. `apply LAYOUT
+  OUTPUT...` carves the layout across outputs whose bounding box is the
+  canvas. An area that exactly covers an output stays that output. Every
+  other area becomes `OUTPUT~N`, numbered per output in layout order; the
+  first carved monitor owns the output, the rest take `none`. Stale `~`
+  monitors are deleted first, as `preswitch.d/10-clear-virtual-monitors`
+  does. An identical split already in place is a no-op, so the workspace
+  map only replays when the monitors are (re)created.
+- **Work VM (one cable):** Fusion's "Use All Displays in Full Screen"
+  presents the 4K as one `Virtual-1` at 3840x2160 next to the Mac panel
+  `Virtual-2`. `tools/vm-autofit` places the outputs from vmwgfx's
+  `suggested X/Y`, then runs `monitor-split auto`. That splits the first
+  output matched by `~/.config/monitor-split/policy` whose size equals the
+  canvas, into `Virtual-1~1` (main), `~2` (top) and `~3` (bottom). Any other
+  topology (windowed, undocked) clears the split. The split names are part
+  of vm-autofit's topology key, so polybar relaunches when the split appears
+  or goes away.
+- **Opt-in:** the policy is the yadm alternate
+  `.config/monitor-split/policy##class.work-vm`, so only class `work-vm`
+  gets `~/.config/monitor-split/policy`. Without that file, `auto` and
+  `roles` exit before querying anything, and every other machine behaves as
+  before. Another machine opts in by adding its own
+  `policy##class.<name>` (lines are `LAYOUT OUTPUT-GLOB`).
+- **Polybar:** `monitor-roles resolve` takes `monitor-split roles` as pinned
+  roles (MAIN, SPLIT_TOP, SPLIT_BOTTOM from the layout's role column, only
+  while the split is in place). The heuristic fills the remaining roles
+  around the pinned MAIN, so the panel left of the 4K becomes LEFT and a
+  later second 4K becomes EXTRA. No autorandr profile or `.env` is involved.
+- **Two-cable home (future personal laptop):**
+  `.config/autorandr/home/postswitch.d/10-split-monitor` runs
+  `monitor-split apply home DP-1-2 DP-1-1`. DP-1-2 stays whole as main;
+  DP-1-1 becomes `DP-1-1~1`/`~2`. Polybar roles still come from
+  `layouts/home.env`.
+- **Physical size:** a carved area gets the output's millimetres in
+  proportion (600x340mm per 1920x2160 input gives the historical
+  `1920/600x1080/170`). VMware outputs report 0mm x 0mm, so their areas get
+  96-DPI sizes (`px * 25.4 / 96`, e.g. `1920/508x1080/286`). That is what
+  Xorg lists for the unsplit 0mm output, so anything deriving DPI from the
+  monitor size sees no change. Polybar and i3 do not read it.
 
 ## The idea
 
@@ -22,7 +72,7 @@ Two profiles used it:
 - **`home`**: same shape mirrored — DP1-1 was the split one (`DP1-1~1`/`~2`),
   main on DP1-2. (Old pre-3.16 names; this profile predates the rename.)
 
-## Current-name recipe (already dashed, post-3.16)
+## Current-name recipe (pre-5.8, two cables)
 
 `~/.screenlayout/4k.sh` — the one asset that already survived the rename:
 

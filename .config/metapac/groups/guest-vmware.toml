@@ -1,7 +1,10 @@
-# metapac hardware adapter: VMware daily-driver guest (Story 2.30, #96).
+# metapac hardware adapter: VMware guests, any architecture (Story 2.30, #96).
+# The x86_64-only xf86-video-vmware DDX lives in guest-vmware-x86_64 (daily-vm).
+# gtkmm3 is open-vm-tools' optional dependency for the vmusr clipboard and
+# drag-and-drop plugin (libdndcp.so); it pulls in libxtst, the plugin's other one.
 [arch]
 packages = [
+  "gtkmm3",
   "open-vm-tools",
-  "xf86-video-vmware",
   "zram-generator",
 ]

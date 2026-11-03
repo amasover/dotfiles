@@ -207,15 +207,15 @@ YADM are already present. Clone and select the concrete class before bootstrap:
 ```bash
 nmtui                                # Wi-Fi only; wired comes up on its own
 yadm clone https://github.com/amasover/dotfiles.git
-yadm config local.class workstation  # or portable: see the class table
+yadm config local.class portable    # or another class from the class table
 yadm alt
 ```
 
 The class must match the machine. A fixed install takes the class of its hardware;
-the only fixed physical adapter tracked is `workstation`/`hardware-intel-laptop`, so
-add another class before provisioning different hardware. A portable drive takes
-`portable` whatever machine it is first booted on. Resolve any checkout conflict
-before continuing.
+no fixed physical adapter is tracked since the `workstation` class retired with
+its laptop, so add a class and adapter before provisioning a fixed machine. A
+portable drive takes `portable` whatever machine it is first booted on. Resolve
+any checkout conflict before continuing.
 
 ## Run
 
@@ -238,6 +238,20 @@ What it does, in order:
    the class **is** the desktop-optional step: a class whose group list omits
    `desktop`/`media`/`gaming` bootstraps a headless-ish machine; nothing installs
    i3/polybar/rofi unless the class says so.
+   Two small steps follow it:
+   - **Fresh-install skel files** — `yadm clone` never overwrites an existing file, so
+     the `.bashrc`/`.bash_profile` that `useradd` copied from `/etc/skel` hide the
+     tracked ones. A tracked file still byte-identical to `/etc/skel/<same path>` gets
+     `yadm checkout -- <file>`; any other local edit is reported and left alone.
+   - **Time zone** — installs run UTC, and the public repo never names a zone. If
+     `~/.config/dotfiles/timezone` (one IANA name) exists, bootstrap checks it against
+     `/usr/share/zoneinfo` and runs `timedatectl set-timezone` when it differs; with no
+     file the zone is left alone. Where the file comes from: real machines (metal,
+     the work VM after `yadm decrypt`) restore it from the encrypted archive, since
+     it is in `.config/yadm/encrypt`. VMware harness guests get the host's zone,
+     written before bootstrap runs (`VM_HARNESS_TIMEZONE` overrides it). Libvirt
+     harness guests get no file and stay on UTC. A machine without the file yet:
+     `echo <Area/City> > ~/.config/dotfiles/timezone`, then `yadm encrypt`.
 3. **Machine-local group** — creates (empty) `~/.local/share/metapac/machine-local.toml`
    if missing: the one group file living outside the repo, and metapac hard-errors
    on missing group files (Story 2.11 owns its contents).
@@ -266,7 +280,7 @@ What it does, in order:
    images whose embedded merged configuration differs from the post-link configuration.
    A machine whose running command line still carries `cryptdevice=` is reported and
    skipped; see [systemd initramfs migration](#systemd-initramfs-migration).
-10. **rEFInd boot configuration** — `workstation` and `portable` only. Reconciles tracked portable policy,
+10. **rEFInd boot configuration** — `portable` only. Reconciles tracked portable policy,
    generated machine scan/kernel entries, and package-owned Nord assets. Production access
    gets a separate `pkexec` approval; existing files are backed up outside the ESP before
    any write. Unmanaged files stop normal apply rather than being replaced.
@@ -299,19 +313,21 @@ What it does, in order:
 17. **Vim fallback plugins** — after metapac installs the manager and packaged plugins,
     reconciles active `Plug` declarations; `--check` is read-only.
 18. **User services** — enables tracked user units; services awaiting attended auth may
-    start later through their restart policy.
+    start later through their restart policy. `mac-shares.service` (the VMware host's
+    shared folders at `~/mac`) is enabled on VMware guests only.
 19. **Firefox defaults** — composes `/etc/firefox/policies/policies.json` from
     `.config/dotfiles/firefox/policies.json`: uBlock Origin, 1Password, Multi-Account
     Containers, Don't Fuck With Paste and Bypass Paywalls Clean installed by default, plus
     default preferences the user can still change. The exception is the stylesheet switch
     `userChrome.css` needs: Firefox reads it before policy defaults apply, so the policy
     sets it as a user value at every start. VMware guests also get the WebRender
-    fragment, `policies-vmware.json`. The composed file sits in `~/.local/state/dotfiles/
-    firefox/` and `/etc` links to it, so a tracked change needs no root after the first
-    link. A policy the tool did not write is fatal and left alone. It then links the
-    tracked `userChrome.css`, which lets tabs shrink instead of scrolling, into every
-    profile. When Firefox has never run, it first creates Firefox's default profile with
-    one headless run.
+    fragments, `policies-vmware.json` plus `policies-vmware-<arch>.json`: hardware
+    WebRender on x86_64, Software WebRender on aarch64. The composed file sits in
+    `~/.local/state/dotfiles/firefox/` and `/etc` links to it, so a tracked change needs
+    no root after the first link. A policy the tool did not write is fatal and left
+    alone. It then links the tracked `userChrome.css`, which lets tabs shrink instead
+    of scrolling, into every profile. When Firefox has never run, it first creates
+    Firefox's default profile with one headless run.
 20. **Login shell** — `sudo chsh -s /usr/bin/zsh $USER` unless the account's shell is
     already zsh. Reboot when done.
 
@@ -335,19 +351,26 @@ All classes include the same 15 purpose groups from
 
 | Class | Intended machine | Added groups |
 | --- | --- | --- |
-| `workstation` | Managed physical Intel laptop | `work`, `hardware-intel-laptop`, `inbox-workstation` |
-| `daily-vm` | Windows-hosted VMware daily driver | `guest-vmware`, `inbox-daily-vm` |
-| `qemu-harness` | Disposable libvirt validation guest | `guest-qemu`, `inbox-qemu-harness` |
-| `portable` | Portable drive booting any x86_64 UEFI machine | `hardware-portable`, `inbox-portable` |
+| `work-vm` | Mac-hosted VMware Fusion aarch64 work VM | `guest-vmware`, `work`, `inbox-work-vm`, `arch-aarch64` |
+| `daily-vm` | Windows-hosted VMware daily driver | `guest-vmware`, `guest-vmware-x86_64`, `inbox-daily-vm`, `arch-x86_64` |
+| `qemu-harness` | Disposable libvirt validation guest | `guest-qemu`, `inbox-qemu-harness`, `arch-x86_64` |
+| `portable` | Portable drive booting any x86_64 UEFI machine | `hardware-portable`, `inbox-portable`, `arch-x86_64` |
 
-Each concrete class selects exactly one hardware adapter and one inbox. To add a
+The `arch-*` adapter is not chosen per class: the template includes the one
+matching `yadm.arch` (`uname -m`) for every class. Shared purpose groups stay
+architecture-neutral; x86-only packages live in `arch-x86_64` and their aarch64
+substitutes in `arch-aarch64`. The `workstation` class and `inbox-workstation` were
+retired with the old work laptop; `hardware-intel-laptop` stays for a planned personal
+Intel laptop, and `work-vm` carries the `work` group now.
+
+Each concrete class selects exactly one hardware or guest adapter and one inbox. To add a
 machine profile, add its guarded template branch, adapter, and inbox; set
 `yadm config local.class <class>`, then run `yadm alt`. Bootstrap enables
 NetworkManager for every class after package reconcile.
 
 `portable` leaves out `work`. Its adapter carries microcode, firmware, and GPU
 userspace for Intel, AMD, and NVIDIA (nouveau/NVK), because the drive meets
-chassis it was never installed on. Its inbox started as a copy of
+chassis it was never installed on. Its inbox started as a copy of the retired
 `inbox-workstation`'s untriaged set, since the drive succeeded that laptop.
 
 ## Bare-metal hibernation storage

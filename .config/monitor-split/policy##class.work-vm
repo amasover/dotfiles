@@ -1,0 +1,12 @@
+# Automatic split policy for class work-vm, read by `monitor-split auto`
+# (vm-autofit runs it after every layout change). This file is a yadm
+# alternate: only a machine whose `yadm config local.class` is work-vm gets
+# ~/.config/monitor-split/policy, and without that file monitor-split auto
+# changes nothing. Another machine opts in with its own policy##class.<name>.
+#
+#   LAYOUT OUTPUT-GLOB
+#
+# The first connected output matching the glob whose size equals the layout's
+# canvas is split; every other output stays whole. Fusion's "Use All Displays
+# in Full Screen" presents the external 4K as one 3840x2160 Virtual-N output.
+home Virtual-*

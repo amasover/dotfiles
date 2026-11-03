@@ -1,0 +1,43 @@
+polybar launch.sh — the MONITOR_OVERFLOW block (Story 5.8). Monitors beyond
+the three heuristic roles each get one more set of the theme's EXTRA-gated
+bars, with MONITOR_EXTRA retargeted to that monitor for the launch.
+
+Everything launch.sh calls is stubbed: monitor-roles, theme-manifest and
+hw-junctions under a scratch $HOME, and polybar, flock, killall and pgrep on
+PATH (the real killall would take down the bars of whoever runs the tests).
+The polybar stub records "<bar> MONITOR_EXTRA=<value>". Bars start in the
+background, so WAIT_BARS waits for the expected count; output is sorted.
+
+$ P=$(mktemp -d); mkdir -p "$P/bin" "$P/home/.local/bin/tools" "$P/theme" "$P/run"; printf 'stub\n' > "$P/theme/config.ini"; printf 'bar main\n' > "$P/theme/bars"; for s in flock killall; do printf '#!/bin/sh\nexit 0\n' > "$P/bin/$s"; done; printf '#!/bin/sh\nexit 1\n' > "$P/bin/pgrep"; printf '%s\n' '#!/bin/sh' 'for a; do bar=$a; done' 'printf "%s MONITOR_EXTRA=%s\n" "$bar" "${MONITOR_EXTRA-}" >> "$BAR_LOG"' > "$P/bin/polybar"; printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$FAKE_ROLES"' > "$P/home/.local/bin/tools/monitor-roles"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$P/home/.local/bin/tools/hw-junctions"; printf '%s\n' '#!/bin/sh' 'case $1 in' '  has-manifest) exit 0 ;;' '  gap-top) echo 0 ;;' '  launchable) printf "main\nextra\n" ;;' '  bars) printf "main\t-\nleft\tMONITOR_LEFT\nextra\tMONITOR_EXTRA\nextra-bottom\tMONITOR_EXTRA\nwide\tMONITOR_EXTRA_WIDE\n" ;;' 'esac' > "$P/home/.local/bin/tools/theme-manifest"; chmod +x "$P"/bin/* "$P"/home/.local/bin/tools/*; echo ready
+ready
+$ LAUNCH() { : > "$P/bars"; PATH="$P/bin:$PATH" HOME="$P/home" XDG_RUNTIME_DIR="$P/run" XDG_CACHE_HOME="$P/cache" XDG_STATE_HOME="$P/state" AUTORANDR_CURRENT_PROFILE= polybar_theme="$P/theme/config.ini" BAR_LOG="$P/bars" FAKE_ROLES="$1" bash .config/polybar/launch.sh; }; WAIT_BARS() { for _ in $(seq 50); do [ "$(wc -l < "$P/bars")" -ge "$1" ] && break; sleep 0.1; done; sort "$P/bars"; }; echo ready
+ready
+$
+
+Two overflow monitors: the manifest's two MONITOR_EXTRA bars launch once per
+overflow monitor (four launches), on top of the regular launchable set. A role
+that only starts with MONITOR_EXTRA (wide) is not one of them:
+
+$ LAUNCH "$(printf '%s\n' MONITOR_MAIN=Virtual-1 MONITOR_EXTRA=Virtual-2 "MONITOR_OVERFLOW='Virtual-3 Virtual-4'")"
+Bars launched (auto: Virtual-1 extra=Virtual-2 overflow=Virtual-3 Virtual-4)
+$ WAIT_BARS 6
+extra MONITOR_EXTRA=Virtual-2
+extra MONITOR_EXTRA=Virtual-3
+extra MONITOR_EXTRA=Virtual-4
+extra-bottom MONITOR_EXTRA=Virtual-3
+extra-bottom MONITOR_EXTRA=Virtual-4
+main MONITOR_EXTRA=Virtual-2
+$
+
+No overflow: only the launchable set starts.
+
+$ LAUNCH "$(printf '%s\n' MONITOR_MAIN=Virtual-1 MONITOR_EXTRA=Virtual-2)"
+Bars launched (auto: Virtual-1 extra=Virtual-2)
+$ sleep 0.5; WAIT_BARS 2
+extra MONITOR_EXTRA=Virtual-2
+main MONITOR_EXTRA=Virtual-2
+$
+
+$ rm -rf "$P"; echo done
+done
+$

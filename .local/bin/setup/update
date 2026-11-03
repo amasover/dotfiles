@@ -16,8 +16,14 @@ done
 sudo -v
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 
-# first update mirrorlist
-update_pacman_mirrorlist
+# first update mirrorlist (x86_64 only: Arch Linux Ports' pacman.conf names its
+# servers directly and never reads the archlinux.org mirrorlist reflector ranks;
+# its AUR builds get --ignorearch from yay's saved mflags, set by bootstrap 5)
+if [[ $(uname -m) == x86_64 ]]; then
+    update_pacman_mirrorlist
+else
+    print "Skipping mirrorlist re-rank on $(uname -m): Arch Linux Ports pacman.conf names its servers directly"
+fi
 
 # --- vendored packages (Story 2.46): pins, upstream watch, convergence ---
 # The steady-state applier (bootstrap 6d only covers fresh machines):

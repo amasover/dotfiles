@@ -21,7 +21,7 @@ The repo is managed with YADM, so many tracked paths map directly into the live 
 | --- | --- | --- |
 | Shell config | `.zshrc`, `.bashrc`, `.profile`, `.zprofile` | Interactive shell behavior, aliases, environment setup |
 | Editor config | `.vimrc`, `.spacemacs`, `.config/nvim/`, `.config/Code/` | Editor defaults and plugin configuration |
-| Desktop config | `.xinitrc`, `.Xresources`, `.config/i3/`, `.config/polybar/`, `.config/rofi/`, `.config/dunst/`, `.screenlayout/` | Linux desktop/session behavior |
+| Desktop config | `.xinitrc`, `.Xresources`, `.config/i3/`, `.config/polybar/`, `.config/rofi/`, `.config/dunst/`, `.config/autorandr/`, `.screenlayout/` | Linux desktop/session behavior |
 | Bootstrap scripts | `.local/bin/setup/`, `.local/bin/tools/`, `install.md` | Install, update, helper, and migration scripts |
 | Package lists | `.config/dotfiles/arch-packages/` | Historical Arch package manifests and future curated install inputs |
 | Local package inventory | live package manager output from `$HOME`'s machine | Evidence for deciding which packages are still needed, optional, stale, or missing from bootstrap |

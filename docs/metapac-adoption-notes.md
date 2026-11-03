@@ -15,12 +15,13 @@ declared-but-not-installed entries), then by the live `metapac unmanaged` run.
 
 ## Artifacts
 
-- **`.config/metapac/config.toml##template`** — yadm template. `yadm.class` (set live:
-  `yadm config local.class workstation`) selects the group list; `{{ yadm.hostname }}`
-  and `{{ env.HOME }}` render at checkout. No hostname or username reaches the repo.
+- **`.config/metapac/config.toml##template`** — yadm template. `yadm.class` (set live
+  at adoption: `yadm config local.class workstation`, a class retired 2026-11-02)
+  selects the group list; `{{ yadm.hostname }}` and `{{ env.HOME }}` render at
+  checkout. No hostname or username reaches the repo.
 - **`.config/metapac/groups/*.toml`** — 16 purpose groups (2.2 taxonomy, normative:
   core-system→`base`, cloud-infra→`work`) + `inbox-workstation.toml` (empty at
-  adoption; Story 2.9's hook appends to it).
+  adoption; Story 2.9's hook appends to it; retired with the class).
 - **`~/.local/share/metapac/machine-local.toml`** — untracked, absolute-path group
   holding the three never-publish org-internal package names (Story 2.11 reviews them).
   Not durable across a wipe — accepted in the 2.5 decision.

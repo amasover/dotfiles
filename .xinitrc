@@ -35,7 +35,11 @@ fi
 #xrandr --setmonitor 'DP-3~1' 1920/600x1080/170+1920+0 DP-3
 #xrandr --setmonitor 'DP-3~2' 1920/600x1080/170+1920+1080 none
 #xrandr --output eDP-1 --primary --mode 1920x1080 --pos 1080x1080 --rotate normal --output DP-1 --mode 1920x1080 --pos 0x0 --rotate left --output HDMI-1 --off --output DP-2 --mode 1920x1080 --pos 1080x0 --rotate normal --output HDMI-2 --off --output DP-3 --off --output HDMI-3 --off
-xrandr --output eDP-1 --primary --mode 1920x1080 --pos 1080x1080 --rotate normal --output DP-1 --off --output HDMI-1 --off --output DP-2 --off --output HDMI-2 --off --output DP-3 --off --output HDMI-3 --off
+# Laptop panel layout: only where eDP-1 exists (a VM has Virtual-N outputs,
+# which tools/vm-autofit lays out from the host's display topology).
+if xrandr -q | grep -q '^eDP-1 '; then
+    xrandr --output eDP-1 --primary --mode 1920x1080 --pos 1080x1080 --rotate normal --output DP-1 --off --output HDMI-1 --off --output DP-2 --off --output HDMI-2 --off --output DP-3 --off --output HDMI-3 --off
+fi
 
 # Idle policy: blank after 3 minutes and power the display off after 15.
 # tools/idle-lock independently locks after 5 minutes.

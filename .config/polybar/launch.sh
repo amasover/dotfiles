@@ -6,7 +6,10 @@
 # split-4K MONITOR_SPLIT_TOP/BOTTOM) tell the theme's bars where to sit.
 # Role resolution:
 #   1. the positional heuristic in tools/monitor-roles: primary → MAIN, the
-#      leftmost monitor left of MAIN → LEFT, the next remaining → EXTRA;
+#      leftmost monitor left of MAIN → LEFT, the next remaining → EXTRA —
+#      after the roles tools/monitor-split pins for a split it carved by
+#      policy (the work VM's home 4K split: MAIN + SPLIT_TOP/BOTTOM, so the
+#      Mac panel left of it becomes LEFT);
 #   2. a per-autorandr-profile override, ~/.config/polybar/layouts/<profile>.env
 #      (profile from $AUTORANDR_CURRENT_PROFILE inside autorandr hooks, else
 #      `autorandr --current`), merged ON TOP of the heuristic — it overrides or
@@ -14,7 +17,9 @@
 #      one for any setup the heuristic can't infer, the virtual-split docking
 #      layouts above all.
 # Bars launch only when their role is assigned; a bare guest (Virtual-1)
-# gets the MAIN bars with zero configuration.
+# gets the MAIN bars with zero configuration. Without an override, monitors
+# beyond the three heuristic roles (MONITOR_OVERFLOW, e.g. a VM spanning
+# three host displays with MAIN leftmost) each get the theme's EXTRA bars.
 #
 # Theme: $polybar_theme env if set (one-shot override), else the choice
 # persisted by polybar-theme-selector.sh, else the nord-arrow default. A
@@ -69,7 +74,7 @@ if [[ -z $profile ]] && compgen -G "$layout_dir/*.env" >/dev/null; then
 fi
 layout_env="$layout_dir/${profile}.env"
 
-unset MONITOR_MAIN MONITOR_LEFT MONITOR_EXTRA MONITOR_SPLIT_TOP MONITOR_SPLIT_BOTTOM
+unset MONITOR_MAIN MONITOR_LEFT MONITOR_EXTRA MONITOR_SPLIT_TOP MONITOR_SPLIT_BOTTOM MONITOR_OVERFLOW
 roles_err=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/polybar-roles-err.XXXXXX")
 role_args=(resolve)
 [[ -n $profile && -f $layout_env ]] && role_args+=("$layout_env")
@@ -82,7 +87,7 @@ rm -f "$roles_err"
 if [[ -n $profile && -f $layout_env ]]; then
     mode="profile ${profile}"
 else
-    mode="auto: ${MONITOR_MAIN}${MONITOR_LEFT:+ left=${MONITOR_LEFT}}${MONITOR_EXTRA:+ extra=${MONITOR_EXTRA}}"
+    mode="auto: ${MONITOR_MAIN}${MONITOR_LEFT:+ left=${MONITOR_LEFT}}${MONITOR_EXTRA:+ extra=${MONITOR_EXTRA}}${MONITOR_SPLIT_TOP:+ top=${MONITOR_SPLIT_TOP}}${MONITOR_SPLIT_BOTTOM:+ bottom=${MONITOR_SPLIT_BOTTOM}}${MONITOR_OVERFLOW:+ overflow=${MONITOR_OVERFLOW}}"
 fi
 
 if [[ -z ${MONITOR_MAIN:-} ]]; then
@@ -162,6 +167,18 @@ launch() {
 while IFS= read -r bar_name; do
     launch "$bar_name"
 done < <("$tools/theme-manifest" launchable "$theme_dir" 2>>"$log")
+
+# One more set of the EXTRA-gated bars per overflow monitor; the prefix
+# assignment retargets MONITOR_EXTRA for that launch only.
+if [[ -n ${MONITOR_OVERFLOW:-} ]]; then
+    mapfile -t extra_bars < <("$tools/theme-manifest" bars "$theme_dir" 2>>"$log" \
+        | awk -F'\t' '$2 == "MONITOR_EXTRA" { print $1 }')
+    for monitor in $MONITOR_OVERFLOW; do
+        for bar_name in "${extra_bars[@]}"; do
+            MONITOR_EXTRA=$monitor launch "$bar_name"
+        done
+    done
+fi
 
 if command -v notify-send >/dev/null 2>&1; then
     notify-send "Polybar" "Bars up (${mode})" 9>&- &

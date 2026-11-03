@@ -84,14 +84,16 @@ archinstall's TUI errors show on the virt-manager console.
 ## How the pieces fit
 
 - **Unattended install:** both disposable VM harnesses call the shared
-  `setup/provision-seed create` interface with the `qemu` or `vmware` target;
-  no inline Archinstall recipe remains. Recent official archisos consume its
+  `setup/provision-seed create` interface with the `qemu`, `vmware` or (Fusion on
+  the Mac) `vmware-aarch64` target; no inline Archinstall recipe remains. Recent
+  official archisos and archiso-aarch64 consume its
   NoCloud seed, which writes `user_configuration.json`/`user_credentials.json`
   and runs `archinstall --silent` through a transient `systemd-run` unit.
   Cloud-init finishes in seconds, so its spinner does not occupy the serial
-  stream for the whole install, and the driver powers off only afterward. Both
+  stream for the whole install, and the driver powers off only afterward. All
   disposable targets keep Systemd-boot, zram, unencrypted ext4 root, sshd, and
-  git/base-devel/yadm. The `daily-vm` target shares VMware hardware defaults but
+  git/base-devel/yadm. The `daily-vm` target (and its aarch64 twin `work-vm`)
+  shares VMware hardware defaults but
   emits the LUKS-encrypted root required by Story 2.29 and omits harness-only
   passwordless sudo and serial policy. Its real VMware creation run remains the
   story's primary evidence. The `metal` target is deliberately attended,
@@ -163,6 +165,17 @@ On an ISO refresh (`vm-harness fetch`), expect this section to need re-verificat
 against the new release's `examples/config-sample.json` **at its git tag** — never
 master.
 
+**aarch64 (archiso-aarch64, 2026-11-02):** the ISO bundles its own archinstall, and
+its version is not the package repo's. archiso-aarch64 2026.09.01 ships
+`archinstall-aarch64 4.4-4` (`arch/pkglist.aarch64.txt`; the installed
+`archinstall-4.4.dist-info`), while ironrobin's package repo already carries 4.5-1 —
+so the seed keeps the 4.4 / `"2.8.6"` dialect on both architectures. The bundled
+package was checked against upstream tag 4.4 by extracting it from the ISO's
+`airootfs.sfs` (`unsquashfs`, Homebrew `squashfs`) and diffing: only three files
+differ — GRUB/Limine EFI target names for aarch64 and a `Forge` repository enum —
+none of them touching the config schema. On an aarch64 ISO refresh, repeat that
+extraction and diff; do not read the version off the package repo.
+
 ## Expectations / known wrinkles
 
 - **Host prerequisite: the `default` libvirt network must actually work.** A wedged
@@ -205,8 +218,9 @@ master.
   picture until the next linear output. Inherent to serial consoles — wait it
   out or don't resize mid-TUI.
 - **Class profile**: the libvirt harness defaults to `qemu-harness`; the VMware harness
-  defaults to `daily-vm`. `VM_HARNESS_CLASS` can select another concrete profile when
-  deliberately testing it, e.g. `VM_HARNESS_CLASS=workstation vm-harness bootstrap`.
+  defaults to `daily-vm` on Windows and `work-vm` on macOS. `VM_HARNESS_CLASS` can select
+  another concrete profile when deliberately testing it, e.g.
+  `VM_HARNESS_CLASS=daily-vm vm-harness bootstrap`.
 
 - `vm-harness bootstrap` runs `bootstrap --unattended` in the guest (no prompts),
   but the AUR set (dotnet, storageexplorer, etc.) builds for **hours** in the VM.
@@ -234,6 +248,105 @@ master.
   colorpicker attempt) plus corrupt `.pkg.tar.zst` archives. The retry loop purges
   corrupt archives and bootstrap normalizes install reasons; anything else → the
   clean answer is `destroy` + a fresh single-pass run.
+
+## VMware harness on macOS (Fusion, aarch64)
+
+`vm-harness-vmware.ps1` drives Workstation on Windows and Fusion Pro on an
+Apple-silicon Mac; `$IsMacOS` picks the host. Fusion runs arm64 guests only, so the
+Mac guest is aarch64 Arch Linux Ports installed from the latest
+[archiso-aarch64](https://codeberg.org/ironrobin/archiso-aarch64/releases) release.
+
+```sh
+export VM_HARNESS_SSH_KEY=~/.ssh/<key>   # optional: key to seed + log in with
+pwsh ~/.local/bin/setup/vm-harness-vmware.ps1 up      # or fetch/create/install/boot
+```
+
+Disposable runs share no host folders. The attended `work-vm` creation shares two,
+set before `create` (or `up`):
+
+```sh
+export VM_HARNESS_SHARES='vmshare=~/vmshare;Downloads=~/Downloads'
+```
+
+`NAME=HOSTPATH` pairs separated by `;`; a leading `~` is the Mac home, a missing host
+folder is created, and an existing one (Downloads) is used as it is. `create` passes
+them to `vm-harness-vmx --share`. To add shares to a VM that already exists (it may
+be running), use Fusion's two `vmrun` commands, which write the same vmx keys:
+
+```sh
+vmrun=/Applications/VMware\ Fusion.app/Contents/Library/vmrun
+"$vmrun" -T fusion enableSharedFolders <vm>.vmx
+"$vmrun" -T fusion addSharedFolder <vm>.vmx vmshare ~/vmshare
+"$vmrun" -T fusion addSharedFolder <vm>.vmx Downloads ~/Downloads
+```
+
+Host prerequisites (no sudo): PowerShell 7 (`~/.local/bin/pwsh`, unpacked from the
+official `osx-arm64` tarball into `~/.local/opt/powershell`); a Python >= 3.10 with
+`pycdlib` — the driver prefers `<work dir>/venv`, then Homebrew `python3.14`, then
+PATH `python3` (macOS's own 3.9 is too old). Work dir:
+`~/.local/share/bootstrap-harness-vmware` (`VM_HARNESS_DIR` overrides). The Mac
+defaults to class `work-vm`, seed target `vmware-aarch64`, 8 vcpus.
+
+Fusion-specific facts, verified live on Fusion 26H1 (26.0.1), 2026-11-02:
+
+- **ISO + checksum:** releases carry one off-site ISO asset and no checksum file; the
+  sha256 is in the release notes as `<hex>  <name>`. `fetch` matches it against the
+  exact asset name and verifies before renaming into place.
+- **Hardware:** `guestOS = "arm-other7xlinux-64"` (Fusion's guest table: "Other Linux
+  7.x and later kernel 64-bit Arm"; the Ports kernel is 7.2) and
+  `virtualHW.version = "22"` (what `vmcli VM Create` writes). USB input on XHCI
+  (`usb.present`, `usb_xhci.present`) per
+  [KB 315602](https://knowledge.broadcom.com/external/article/315602) — the guest sees
+  a VMware USB keyboard and mouse. UEFI, NVMe, vmxnet3, SATA CDs and `mks.enable3d`
+  as on Workstation.
+- **Multiple displays:** `svga.autodetect` stays on and no `svga.maxWidth`/
+  `numDisplays`/`vramSize` caps are set: at power-on Fusion sizes display memory
+  from the host topology (`SVGA-GFB: Max wh(6688, 5016), number of displays: 10`)
+  and vmwgfx exposes `Virtual-1..8`. `svga.graphicsMemoryKB` raises 3D memory from
+  the 256 MiB default to 2 GiB. "Use All Displays in Full Screen" itself needs the
+  Fusion GUI and running Tools — not exercised headless.
+- **Sound and camera (2026-11-03):** `sound.present` with `sound.virtualDev =
+  "hdaudio"`; Fusion's default `es1371` stops an arm power-on with
+  `msg.devicePowerOn.invalidDT`. The Mac's camera is the virtual UVC device
+  `usb_xhci:5.deviceType = "video"` (vid:pid `0e0f:000b`), fed by the host's default
+  AVCapture camera; Fusion still adds its own HID on port 4 and hubs on 6 and 7.
+  Both need macOS's camera and microphone permission for VMware Fusion (System
+  Settings > Privacy & Security).
+- **Shared folders (2026-11-03):** the host's shared folders (HGFS) are the file
+  route between the Mac and the guest, both ways. `--share` writes
+  `isolation.tools.hgfs.disable = "FALSE"`, then per share `sharedFolderN.present`,
+  `.enabled`, `.readAccess`, `.writeAccess`, `.hostPath`, `.guestName` and
+  `.expiration = "never"`, then `sharedFolder.maxNum`: the keys `vmrun` wrote on a
+  running VM. In the guest, `mac-shares.service` (a user unit; no root, no fstab)
+  mounts `.host:/` with `vmhgfs-fuse` at `~/mac`, so the shares appear as
+  `~/mac/vmshare` and `~/mac/Downloads`. `vmware-hgfsclient` lists the share names.
+  VMware has no 9p; HGFS is its equivalent.
+- **Drag-and-drop off, clipboard on:** aarch64 vmx output sets
+  `isolation.tools.dnd.disable = "TRUE"` and leaves the copy/paste keys alone. See
+  Story 5.8 for the live findings behind it.
+- **Time zone:** the guest installs on UTC; `bootstrap` writes the Mac's IANA zone into
+  the guest's private `~/.config/dotfiles/timezone` before running the repo bootstrap,
+  which sets it (`VM_HARNESS_TIMEZONE` overrides the zone).
+- **Serial console:** ACPI SPCR puts the kernel console on `ttyS0` (16550 MMIO), the
+  VMware serial port; no `ttyAMA0`. The live ISO therefore spawns
+  `serial-getty@ttyS0`, which the install driver stops before writing the line.
+  The installed system needs no extra kernel parameters (the ISO's
+  `clk_ignore_unused pd_ignore_unused arm64.nopauth` are for Snapdragon laptops).
+- **Live-ISO root ssh:** archiso-aarch64's `cloud.cfg` has `disable_root: true`;
+  the seed sets `disable_root: false` so `exec` reaches root.
+- **Mirrors:** the ISO's `pacman.conf` names drzee with literal `Server` lines plus
+  the builder's `[ironrobin-aarch64]` repo, and its mirrorlist is the stock x86_64
+  list. The aarch64 targets rewrite the installed system to `Include =
+  /etc/pacman.d/mirrorlist` (drzee) for `[forge]`/`[core]`/`[extra]`, drop
+  `[ironrobin-aarch64]`, and install `archports-keyring`.
+- **Leases:** `/var/db/vmware/vmnet-dhcpd-vmnet8.leases` (world-readable).
+- **vmrun start:** `vmware-vmx` inherits vmrun's stdout and process group, so the
+  driver starts it in its own session with output in a temp file; a plain captured
+  call never returns while the VM runs, and a Ctrl-C would kill the VM.
+- **Tools:** `vmrun checkToolsState` reports `installed`, not `running`, though the
+  VMX log shows open-vm-tools 13.1 heartbeating; `getGuestIPAddress` answers only
+  with `-wait`. The driver's lease fallback covers it.
+- **Timing:** unattended install ~5 minutes, boot to ssh ~15 s.
 
 ## Resetting
 

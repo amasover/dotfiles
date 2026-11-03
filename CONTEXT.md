@@ -144,14 +144,13 @@ _Avoid_: separate editor configuration
 
 **Cleanup era**:
 The bounded project phase this repo is currently in. Done when the daily-driver
-rebuild succeeds AND the work machine has completed its history-rewrite recovery
-steps; everything after is steady state.
+rebuild succeeds; everything after is steady state.
 _Avoid_: the project (open-ended), migration
 
 **Daily-driver rebuild**:
 The cleanup era's exit milestone: bootstrapping, from nothing but this repo and
 the encrypted archive, a machine that then gets used daily. The first target is
-a VM on the Windows personal machine; bare metal is a later, optional variant.
+a VM on the work Mac; the Windows VM and bare metal are later, optional variants.
 _Avoid_: metal rebuild (first target is a VM), fresh install (any machine, incl.
 disposable harness VMs)
 

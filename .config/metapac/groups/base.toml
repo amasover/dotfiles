@@ -1,8 +1,9 @@
 # metapac group: base — kernel/boot/fs/toolchain/core userland (Story 2.2 "core-system")
 # Membership source: docs/package-inventory.md; adopted in Story 2.8.
 # base/base-devel/mkinitcpio: archinstall marks these explicit on fresh machines
-# (2.7 VM finding). NOTE: the workstation predates the 2019 `base` meta-package and
-# lacks it — expect one declared-but-missing drift line until a sync adopts it.
+# (2.7 VM finding).
+# AUR source builds whose arch=() omits aarch64 (bootinfoscript, mokutil-git)
+# stay here: aarch64 builds them with makepkg --ignorearch.
 [arch]
 packages = [
   "7zip",
@@ -18,11 +19,6 @@ packages = [
   "btrfs-progs",
   "bzip2",
   "cabextract",
-  # chaotic-aur infrastructure: bootstrap's enable step (2.28) installs these;
-  # declared here so the unmanaged check stays exactly empty (2.35). Until the
-  # host adopts chaotic they drift as declared-but-missing, like `base` above.
-  "chaotic-keyring",
-  "chaotic-mirrorlist",
   "cifs-utils",
   "coreutils",
   "cryfs",

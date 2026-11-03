@@ -15,6 +15,5 @@ packages = [
   "lsdesktopf",
   "screenfetch",
   "sl",
-  "teensy-loader",
   "yaycache-hook",
 ]

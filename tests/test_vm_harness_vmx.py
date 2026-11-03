@@ -1,5 +1,10 @@
 """pytest suite for vm-harness-vmx (Story 2.36, #119). No VMware needed."""
 
+import io
+import json
+
+import pytest
+
 from conftest import load_tool
 
 vmx = load_tool("vm_harness_vmx", "vm-harness-vmx")
@@ -58,6 +63,179 @@ class TestBuildVmx:
         text = _build()
         assert 'pciBridge4.virtualDev = "pcieRootPort"' in text
         assert text.count('virtualDev = "pcieRootPort"') == 4
+
+    def test_x86_64_keeps_workstation_hardware(self):
+        # The Windows/Workstation VM is validated as-is; the arm table must
+        # not leak into it.
+        text = _build()
+        assert 'guestOS = "other6xlinux-64"' in text
+        assert 'virtualHW.version = "21"' in text
+        assert 'usb.present = "FALSE"' in text
+        assert "usb_xhci" not in text
+        assert "svga." not in text
+
+    def test_x86_64_sound_uses_workstation_default_card(self):
+        text = _build()
+        assert 'sound.present = "TRUE"' in text
+        assert "sound.virtualDev" not in text
+
+
+class TestBuildVmxAarch64:
+    # Fusion on Apple silicon: ids read off Fusion 26H1's own `vmcli VM Create`.
+    def test_arm_guest_id_and_hardware_version(self):
+        text = _build(arch="aarch64")
+        assert 'guestOS = "arm-other7xlinux-64"' in text
+        assert 'virtualHW.version = "22"' in text
+
+    def test_xhci_usb_input(self):
+        # KB 315602: arm guests get keyboard/mouse via the XHCI controller.
+        text = _build(arch="aarch64")
+        assert 'usb.present = "TRUE"' in text
+        assert 'usb_xhci.present = "TRUE"' in text
+        assert 'usb.present = "FALSE"' not in text
+
+    def test_shared_shape_kept(self):
+        text = _build(arch="aarch64")
+        for line in ('firmware = "efi"', 'mks.enable3d = "TRUE"',
+                     'nvme0:0.present = "TRUE"', 'ethernet0.virtualDev = "vmxnet3"',
+                     'serial0.fileType = "file"', 'floppy0.present = "FALSE"'):
+            assert line in text
+        assert text.count('deviceType = "cdrom-image"') == 2
+
+    def test_multimonitor_display_left_to_autodetect(self):
+        text = _build(arch="aarch64")
+        assert 'svga.autodetect = "TRUE"' in text
+        assert 'svga.graphicsMemoryKB = "2097152"' in text
+        for capped in ("svga.maxWidth", "svga.maxHeight", "svga.numDisplays",
+                       "svga.vramSize"):
+            assert capped not in text
+
+    def test_sound_card_is_hdaudio(self):
+        # Fusion's es1371 default fails arm power-on; hdaudio is the one that runs.
+        text = _build(arch="aarch64")
+        assert 'sound.present = "TRUE"' in text
+        assert 'sound.virtualDev = "hdaudio"' in text
+
+    def test_drag_and_drop_off_clipboard_on(self):
+        text = _build(arch="aarch64")
+        assert 'isolation.tools.dnd.disable = "TRUE"' in text
+        assert "isolation.tools.copy" not in text
+        assert "isolation.tools.paste" not in text
+        assert "isolation.tools.dnd" not in _build(arch="x86_64")
+
+    def test_virtual_camera_on_free_xhci_port(self):
+        text = _build(arch="aarch64")
+        assert 'usb_xhci:5.deviceType = "video"' in text
+        assert 'usb_xhci:5.port = "5"' in text
+        assert 'usb_xhci:5.parent = "-1"' in text
+        # Fusion adds its own HID (port 4) and hubs (6, 7) at power-on.
+        for taken in ("usb_xhci:4.", "usb_xhci:6.", "usb_xhci:7."):
+            assert taken not in text
+
+    def test_each_key_written_once(self):
+        keys = [l.split(" = ")[0] for l in _build(arch="aarch64").splitlines()]
+        assert len(keys) == len(set(keys))
+
+
+SHARED_KEYS = [
+    ".encoding", "config.version", "virtualHW.version", "displayName", "guestOS",
+    "firmware", "mks.enable3d", "memsize", "numvcpus",
+    "pciBridge0.present", "pciBridge4.present", "pciBridge4.virtualDev",
+    "pciBridge4.functions", "pciBridge5.present", "pciBridge5.virtualDev",
+    "pciBridge5.functions", "pciBridge6.present", "pciBridge6.virtualDev",
+    "pciBridge6.functions", "pciBridge7.present", "pciBridge7.virtualDev",
+    "pciBridge7.functions", "nvme0.present", "nvme0:0.present", "nvme0:0.fileName",
+    "sata0.present", "sata0:0.present", "sata0:0.deviceType", "sata0:0.fileName",
+    "sata0:1.present", "sata0:1.deviceType", "sata0:1.fileName",
+    "ethernet0.present", "ethernet0.connectionType", "ethernet0.virtualDev",
+    "ethernet0.addressType", "serial0.present", "serial0.fileType",
+    "serial0.fileName", "serial0.tryNoRxLoss", "rtc.diffFromUTC",
+    "tools.syncTime", "msg.autoAnswer", "sound.present", "usb.present",
+    "floppy0.present", "vmci0.present",
+]
+
+
+class TestFullKeySets:
+    # Every key each architecture writes, in order: one table (ARCH_HW) owns
+    # the difference, and x86_64 gains nothing from it.
+    def _keys(self, arch):
+        return [l.split(" = ")[0] for l in _build(arch=arch).splitlines()]
+
+    def test_x86_64(self):
+        assert self._keys("x86_64") == SHARED_KEYS
+
+    def test_aarch64(self):
+        assert self._keys("aarch64") == SHARED_KEYS + [
+            "usb_xhci.present", "svga.autodetect", "svga.graphicsMemoryKB",
+            "sound.virtualDev", "usb_xhci:5.present", "usb_xhci:5.deviceType",
+            "usb_xhci:5.port", "usb_xhci:5.parent", "isolation.tools.dnd.disable"]
+
+
+SHARES = [("vmshare", "/Users/someone/vmshare"), ("Downloads", "/Users/someone/Downloads")]
+
+# What `vmrun enableSharedFolders` + two `addSharedFolder` calls wrote (Fusion 26H1).
+SHARE_LINES = """\
+isolation.tools.hgfs.disable = "FALSE"
+sharedFolder0.present = "TRUE"
+sharedFolder0.enabled = "TRUE"
+sharedFolder0.readAccess = "TRUE"
+sharedFolder0.writeAccess = "TRUE"
+sharedFolder0.hostPath = "/Users/someone/vmshare"
+sharedFolder0.guestName = "vmshare"
+sharedFolder0.expiration = "never"
+sharedFolder1.present = "TRUE"
+sharedFolder1.enabled = "TRUE"
+sharedFolder1.readAccess = "TRUE"
+sharedFolder1.writeAccess = "TRUE"
+sharedFolder1.hostPath = "/Users/someone/Downloads"
+sharedFolder1.guestName = "Downloads"
+sharedFolder1.expiration = "never"
+sharedFolder.maxNum = "2"
+"""
+
+
+class TestShares:
+    @pytest.mark.parametrize("arch", ["x86_64", "aarch64"])
+    def test_shares_append_vmrun_keys_after_hardware(self, arch):
+        assert _build(arch=arch, shares=SHARES) == _build(arch=arch) + SHARE_LINES
+
+    @pytest.mark.parametrize("arch", ["x86_64", "aarch64"])
+    def test_no_shares_leaves_hgfs_untouched(self, arch):
+        text = _build(arch=arch, shares=[])
+        assert text == _build(arch=arch)
+        assert "hgfs" not in text and "sharedFolder" not in text
+
+    def test_parse_splits_at_first_equals(self):
+        assert vmx.parse_shares(["a=/x=y", "Downloads=/d"]) == [
+            ("a", "/x=y"), ("Downloads", "/d")]
+
+    @pytest.mark.parametrize("spec, why", [
+        (["vmshare"], "expected NAME=HOSTPATH"),
+        (["=/Users/someone/vmshare"], "empty name"),
+        (["vmshare="], "empty host path"),
+        (["vmshare=/a", "vmshare=/b"], "name 'vmshare' given twice"),
+    ])
+    def test_bad_specs_name_the_problem(self, spec, why):
+        with pytest.raises(ValueError, match=why):
+            vmx.parse_shares(spec)
+
+    def test_cli_repeatable_share(self, tmp_path):
+        out = tmp_path / "t.vmx"
+        argv = ["generate", "--out", str(out), "--disk", "d", "--iso", "a",
+                "--seed-iso", "s", "--serial-log", "l", "--arch", "aarch64"]
+        for name, path in SHARES:
+            argv += ["--share", f"{name}={path}"]
+        assert vmx.main(argv) == 0
+        assert out.read_text().endswith(SHARE_LINES)
+
+    def test_cli_bad_share_fails_without_writing(self, tmp_path, capsys):
+        out = tmp_path / "t.vmx"
+        rc = vmx.main(["generate", "--out", str(out), "--disk", "d", "--iso", "a",
+                       "--seed-iso", "s", "--serial-log", "l",
+                       "--share", "a=/x", "--share", "a=/y"])
+        assert rc == 2 and not out.exists()
+        assert capsys.readouterr().err.strip() == (
+            "vm-harness-vmx: share 'a=/y': name 'a' given twice")
 
 
 class TestEjectMedia:
@@ -159,8 +337,67 @@ class TestCli:
         assert rc == 0
         assert capsys.readouterr().out.splitlines()[-1] == "ejected"
 
+    def test_generate_arch_flag(self, tmp_path):
+        out = tmp_path / "t.vmx"
+        rc = vmx.main(["generate", "--out", str(out), "--disk", "d", "--iso", "a",
+                       "--seed-iso", "s", "--serial-log", "l", "--arch", "aarch64"])
+        assert rc == 0
+        assert 'guestOS = "arm-other7xlinux-64"' in out.read_text()
+
     def test_mac_missing_is_an_error(self, tmp_path):
         out = tmp_path / "t.vmx"
         vmx.main(["generate", "--out", str(out), "--disk", "d", "--iso", "a",
                   "--seed-iso", "s", "--serial-log", "l"])
         assert vmx.main(["mac", "--vmx", str(out)]) == 1
+
+
+ISO = "archlinux-2026.08.03-aarch64.iso"
+SHA = "ab" * 32
+
+
+def _release(body, *names):
+    return {"tag_name": "v1", "name": "Aug release", "body": body,
+            "assets": [{"name": n, "browser_download_url": f"https://dl.example/{n}"}
+                       for n in names]}
+
+
+class TestPortsIso:
+    def test_hash_next_to_exact_asset_name(self):
+        body = f"Checksums:\n{'cd' * 32}  archlinux-2026.08.02-aarch64.iso\n{SHA}  {ISO}\n"
+        assert vmx.ports_iso(_release(body, ISO, "README.txt")) == (
+            ISO, f"https://dl.example/{ISO}", SHA)
+
+    def test_hash_for_another_name_does_not_pass(self):
+        # The 2026-08-03 notes listed other build dates than their assets.
+        body = f"{SHA}  archlinux-2026.08.02-aarch64.iso\n"
+        with pytest.raises(ValueError, match=f"release v1 publishes no sha256 for {ISO}"):
+            vmx.ports_iso(_release(body, ISO))
+
+    def test_missing_hash(self):
+        with pytest.raises(ValueError, match="publishes no sha256"):
+            vmx.ports_iso(_release(f"short abcd  {ISO}\n", ISO))
+        with pytest.raises(ValueError, match="publishes no sha256"):
+            vmx.ports_iso({"tag_name": "v1", "body": None,
+                           "assets": [{"name": ISO}]})
+
+    def test_two_iso_assets_refused(self):
+        body = f"{SHA}  {ISO}\n"
+        with pytest.raises(ValueError, match="expected one archlinux-<date>-aarch64.iso asset, found 2"):
+            vmx.ports_iso(_release(body, ISO, "archlinux-2026.08.04-aarch64.iso"))
+
+    def test_no_iso_asset(self):
+        with pytest.raises(ValueError, match="found 0"):
+            vmx.ports_iso(_release(f"{SHA}  {ISO}\n", "archlinux-x86_64.iso.sig"))
+
+    def test_cli_prints_one_field_per_line(self, monkeypatch, capsys):
+        rel = _release(f"{SHA}  {ISO}\n", ISO)
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(json.dumps(rel).encode())))
+        assert vmx.main(["ports-iso"]) == 0
+        assert capsys.readouterr().out.splitlines() == [
+            ISO, "Aug release", f"https://dl.example/{ISO}", SHA]
+
+    def test_cli_error_on_stderr(self, monkeypatch, capsys):
+        rel = _release("no hashes", ISO)
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(json.dumps(rel).encode())))
+        assert vmx.main(["ports-iso"]) == 1
+        assert capsys.readouterr().err.strip() == f"release v1 publishes no sha256 for {ISO}"

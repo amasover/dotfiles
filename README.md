@@ -73,7 +73,7 @@ reconciles what's installed against what's declared here.
 - **Groups** — [.config/metapac/groups/](.config/metapac/groups/) lists packages by
   purpose (base, desktop, work, ...). Add a package: edit a group, run `metapac sync`.
 - **Machine profile** — each machine declares a *class* once
-  (`yadm config local.class workstation`); yadm renders
+  (`yadm config local.class work-vm`); yadm renders
   [config.toml##template](.config/metapac/config.toml%23%23template) into an untracked
   machine-local `config.toml` mapping this hostname to its group list — so no
   hostname ever reaches the repo.

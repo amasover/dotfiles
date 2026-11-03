@@ -80,6 +80,91 @@ reconcile_network_services() {
     fi
 }
 
+# VMware's NAT DNS forwarder (Fusion 26H1 on Apple silicon, seen 2026-11-02)
+# answers every EDNS0 query with a malformed packet. glibc sends none and
+# copes; Go's resolver always sends EDNS0, so each Go AUR build died on
+# "lookup proxy.golang.org: no such host". systemd-resolved as the local stub
+# notices the broken replies and drops to plain UDP, so VMware guests resolve
+# through it. Metal and other hypervisors keep their resolv.conf untouched.
+reconcile_vmware_dns() {
+    local mode=$1 virt=$2
+    local stub=/run/systemd/resolve/stub-resolv.conf conf=/etc/resolv.conf
+    [[ $mode == check || $mode == apply ]] \
+        || die "vmware-dns mode must be check or apply"
+    if [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 && -n ${RESOLV_CONF:-} ]]; then
+        conf=$RESOLV_CONF
+    fi
+    if [[ $virt != vmware ]]; then
+        echo "  skipped: not a VMware guest"
+        return 0
+    fi
+    if systemctl is-enabled --quiet systemd-resolved \
+        && systemctl is-active --quiet systemd-resolved \
+        && [[ $(readlink "$conf") == "$stub" ]]; then
+        echo "  systemd-resolved stub in use"
+    elif [[ $mode == check ]]; then
+        echo "  would: systemctl enable --now systemd-resolved"
+        echo "  would: symlink $conf -> $stub, then restart NetworkManager"
+    else
+        sudo systemctl enable --now systemd-resolved
+        sudo ln -sfT "$stub" "$conf"
+        if systemctl is-active --quiet NetworkManager; then
+            sudo systemctl restart NetworkManager
+        fi
+        echo "  systemd-resolved stub in use"
+    fi
+}
+
+# VMware guest tools. Every VMware guest runs vmware-vmblock-fuse, which
+# open-vm-tools ships disabled: the session agent (vmusr, started from
+# .xinitrc by vmware-user-suid-wrapper) only receives the --blockFd that
+# host-to-guest file drag-and-drop needs when /run/vmblock-fuse is mounted
+# before it starts. A guest without the vmware X driver (aarch64:
+# xf86-video-vmware does not exist for Arch Linux Ports) can also only resize
+# through resolutionKMS, which open-vm-tools leaves off unless tools.conf
+# enables it; the tracked file is linked into /etc like the reflector policy.
+# Guests with the X driver (the x86 Workstation daily-vm) keep their tools.conf
+# and non-VMware machines are left alone.
+reconcile_vmware_tools() {
+    local mode=$1 virt=$2
+    local src="$HOME/.config/dotfiles/vmware-tools/tools.conf" dst=/etc/vmware-tools/tools.conf
+    [[ $mode == check || $mode == apply ]] \
+        || die "vmware-tools mode must be check or apply"
+    if [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 && -n ${TOOLS_CONF:-} ]]; then
+        dst=$TOOLS_CONF
+    fi
+    if [[ $virt != vmware ]]; then
+        echo "  skipped: not a VMware guest"
+        return 0
+    fi
+    if systemctl is-enabled --quiet vmware-vmblock-fuse \
+        && systemctl is-active --quiet vmware-vmblock-fuse; then
+        echo "  vmware-vmblock-fuse enabled and active"
+    elif [[ $mode == check ]]; then
+        echo "  would: systemctl enable --now vmware-vmblock-fuse"
+    else
+        sudo systemctl enable --now vmware-vmblock-fuse
+        echo "  vmware-vmblock-fuse enabled and active"
+        echo "  a vmusr agent started before this gets file drag-and-drop at its next start (X login)"
+    fi
+    if pacman -Q xf86-video-vmware >/dev/null 2>&1; then
+        echo "  resolutionKMS skipped: the vmware X driver applies display layouts"
+        return 0
+    fi
+    [[ -f "$src" ]] || die "tracked tools.conf missing ($src) — yadm checkout incomplete?"
+    if [[ "$(readlink "$dst" 2>/dev/null)" == "$src" ]]; then
+        echo "  resolutionKMS already enabled: $dst"
+    elif [[ $mode == check ]]; then
+        echo "  would: symlink $dst -> $src, then restart vmtoolsd"
+    else
+        sudo mkdir -p "${dst%/*}"
+        sudo ln -sfT "$src" "$dst"
+        sudo systemctl restart vmtoolsd
+        echo "  resolutionKMS enabled: $dst -> $src"
+        echo "  a vmusr agent started before this backs off at its next start (X login)"
+    fi
+}
+
 reconcile_refind_config() {
     local mode=${1:-} class=${2:-}
     local tool="$HOME/.local/bin/setup/refind-config"
@@ -87,7 +172,7 @@ reconcile_refind_config() {
         || die "refind-config mode must be check or apply"
     [[ -n $class ]] || die "refind-config class is required"
     case $class in
-        workstation | portable) ;;
+        portable) ;;
         *)
             echo "  not applicable to class $class"
             return 0
@@ -97,6 +182,135 @@ reconcile_refind_config() {
         "$tool" --check || [[ $? -eq 1 ]]
     else
         "$tool" apply
+    fi
+}
+
+# Arch Linux Ports (aarch64 — the work VM) carries only core, extra and forge:
+# no [multilib], no chaotic-aur, and its pacman.conf names the Ports server on
+# each repo instead of including the archlinux.org mirrorlist. A step built on
+# that x86_64-only infrastructure asks here first: silent on x86_64, one skip
+# line anywhere else. $1 = machine arch (uname -m, the same value as yadm.arch),
+# $2 = what is skipped and why.
+x86_64_only() {
+    [[ $1 == x86_64 ]] && return 0
+    echo "  skipped on $1: $2"
+    return 1
+}
+
+yay_saved_mflags() { # $1 = yay config.json; empty when unset or unreadable
+    local out
+    out=$(jq -r '.mflags // ""' "$1" 2>/dev/null) || out=""
+    printf '%s' "$out"
+}
+
+# AUR arch arrays often omit aarch64 even for plain source builds (metapac's
+# does), and makepkg refuses those without --ignorearch. yay 13 passes it to
+# its build step after a default-yes prompt, but its source pre-download runs
+# makepkg --verifysource without it, which fails on every such package first.
+# Saved once in yay's own config (yay -Y --save), the flag reaches every yay
+# run — this bootstrap, metapac sync, update's -Syu — without per-call flags.
+# Silent on x86_64. Other saved makepkg flags are kept. $3 = yay config.json.
+reconcile_yay_mflags() {
+    local mode=${1:-} arch=${2:-} config=${3:-} current
+    [[ $mode == check || $mode == apply ]] \
+        || die "yay-mflags mode must be check or apply"
+    [[ -n $config ]] || die "yay-mflags config path is required"
+    [[ $arch == x86_64 ]] && return 0
+    current=$(yay_saved_mflags "$config")
+    if [[ " $current " == *" --ignorearch "* ]]; then
+        echo "  yay makepkg flags already carry --ignorearch on $arch"
+    elif [[ $mode == check ]]; then
+        echo "  would: yay -Y --save --mflags='${current:+$current }--ignorearch'   ($arch)"
+    else
+        yay -Y --save --mflags="${current:+$current }--ignorearch"
+        current=$(yay_saved_mflags "$config")
+        [[ " $current " == *" --ignorearch "* ]] \
+            || die "yay did not save --ignorearch into $config"
+        echo "  yay makepkg flags saved on $arch: $current"
+    fi
+}
+
+# yadm clone leaves a file alone when $HOME already has one, so on a fresh
+# install the tracked .bashrc and .bash_profile never land: archinstall's
+# useradd copied /etc/skel's first and they stay "modified" in yadm status.
+# A tracked file still byte-identical to /etc/skel/<same path> is that copy and
+# gets the tracked version; any other local edit is reported, never
+# overwritten. $2 = the skel directory (a test points it at a scratch tree).
+reconcile_skel_files() {
+    local mode=${1:-} skel=${2:-/etc/skel} f
+    local restore=()
+    [[ $mode == check || $mode == apply ]] \
+        || die "skel-files mode must be check or apply"
+    while IFS= read -r f; do
+        [[ -f "$skel/$f" ]] || continue
+        if cmp -s -- "$HOME/$f" "$skel/$f"; then
+            restore+=("$f")
+        else
+            echo "  left alone: $f differs from both the tracked file and $skel/$f (yadm diff -- $f)"
+        fi
+    done < <(yadm diff --name-only --diff-filter=M)
+    if ((${#restore[@]} == 0)); then
+        echo "  no tracked file is still its $skel copy"
+    elif [[ $mode == check ]]; then
+        echo "  would: yadm checkout -- ${restore[*]}   (still the $skel copies)"
+    else
+        yadm checkout -- "${restore[@]}"
+        echo "  restored tracked ${restore[*]} (were the $skel copies)"
+    fi
+}
+
+# Step 8g's body (Story 3.24): tracked systemd user units, enabled
+# idempotently. meridian.service is useless until `claude login`, a
+# first-session step, so a failed start is tolerated (Restart=on-failure picks
+# it up later). mac-shares.service mounts the VMware host's shared folders, so
+# only VMware guests enable it. $2 = systemd-detect-virt's answer.
+reconcile_user_services() {
+    local mode=${1:-} virt=${2:-} unit
+    [[ $mode == check || $mode == apply ]] \
+        || die "user-services mode must be check or apply"
+    for unit in meridian.service mac-shares.service; do
+        if [[ $unit == mac-shares.service && $virt != vmware ]]; then
+            echo "  $unit skipped: not a VMware guest"
+        elif [[ ! -f "$HOME/.config/systemd/user/$unit" ]]; then
+            echo "  $unit not tracked on this checkout — skipping"
+        elif systemctl --user is-enabled "$unit" >/dev/null 2>&1; then
+            echo "  $unit already enabled"
+        elif [[ $mode == check ]]; then
+            echo "  would: systemctl --user enable --now $unit"
+        else
+            systemctl --user daemon-reload
+            systemctl --user enable --now "$unit" \
+                || echo "  $unit enabled but not started (meridian: claude login pending?)"
+        fi
+    done
+}
+
+# The time zone is a location detail, so the public repo never names one:
+# installs run UTC (provision-seed, install-on-metal), and a private, untracked
+# ~/.config/dotfiles/timezone holding one IANA name says where this machine
+# lives. Real machines restore it from the encrypted archive; the VMware
+# harness writes the host's zone into its guest. No file, no change. $2 = the
+# zoneinfo directory names are checked against (a test points it elsewhere).
+reconcile_timezone() {
+    local mode=${1:-} zoneinfo=${2:-/usr/share/zoneinfo}
+    local file="$HOME/.config/dotfiles/timezone" zone="" current
+    [[ $mode == check || $mode == apply ]] \
+        || die "timezone mode must be check or apply"
+    if [[ ! -f "$file" ]]; then
+        echo "  no $file — time zone left as it is"
+        return 0
+    fi
+    read -r zone <"$file" || true
+    [[ $zone =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ && -f "$zoneinfo/$zone" ]] \
+        || die "$file names '$zone', which is not a zone under $zoneinfo"
+    current=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
+    if [[ $current == "$zone" ]]; then
+        echo "  time zone already $zone"
+    elif [[ $mode == check ]]; then
+        echo "  would: timedatectl set-timezone $zone   (now ${current:-unknown})"
+    else
+        sudo timedatectl set-timezone "$zone"
+        echo "  time zone set: $zone (was ${current:-unknown})"
     fi
 }
 
@@ -130,17 +344,16 @@ reconcile_initramfs_hooks() {
     local main="$root/etc/mkinitcpio.conf"
     local config_dir="$root/etc/mkinitcpio.conf.d"
     [[ -f "$main" ]] || die "mkinitcpio base configuration missing ($main)"
-    local -a images=("$root"/boot/initramfs-*.img)
-    local image has_image=0
-    for image in "${images[@]}"; do
-        if [[ -e "$image" || -L "$image" ]]; then
-            has_image=1
-            break
-        fi
-    done
-    if ((! has_image)); then
-        die "no initramfs images found in $root/boot (is /boot mounted?)"
-    fi
+    # List the images as root: archinstall mounts a systemd-boot ESP at /boot
+    # with fmask/dmask=0077, so an unprivileged glob sees nothing there (the
+    # aarch64 work-vm died here on 2026-11-02 with both images present).
+    local -a images=()
+    mapfile -d '' -t images < <(
+        sudo find "$root/boot" -maxdepth 1 \( -type f -o -type l \) \
+            -name 'initramfs-*.img' -print0 | LC_ALL=C.UTF-8 sort -z
+    )
+    local image
+    ((${#images[@]})) || die "no initramfs images found in $root/boot (is /boot mounted?)"
 
     # buildconfig stores this exact concatenation, not just the final HOOKS array.
     local -a dropins=()
@@ -336,14 +549,18 @@ failed_aur_builds() {
 #   --probe-provider PKG...        print "<declared>\t<provider>" per substitution
 #                                  (needs only pacman)
 #   --verdict-bucket CLASS REPO    print the pre-flight bucket for one verdict
+#   --x86-64-only ARCH WHAT        print "run", or the skip line a non-x86_64 step logs
 #   --step-outcome INSTALLED       classify one stepping attempt (note on stdin)
 #   --syu-hold-action CODE INSTALLED  classify a hold that aborted the 3c upgrade
 #   --sync-fatal                   print the deterministic-fatal line from a sync log (stdin)
 #   --failed-builds                print the AUR builds a sync log reports failed (stdin)
 #   --provider-pins MODE           exercise provider pin installation (test-only)
 #   --network-services MODE        exercise NetworkManager convergence (test-only)
+#   --vmware-dns MODE VIRT         exercise the VMware guest DNS stub (test-only)
+#   --vmware-tools MODE VIRT       exercise the VMware guest tools services and tools.conf (test-only)
 #   --refind-config MODE CLASS      exercise class-gated rEFInd reconciliation (test-only)
 #   --initramfs-hooks MODE ROOT     exercise the HOOKS drop-in link (test-only)
+#   --yay-mflags MODE ARCH CONFIG   exercise the saved yay --ignorearch flag (test-only)
 if [[ "${1:-}" == "--probe-provider" ]]; then
     shift
     for p in "$@"; do
@@ -354,6 +571,10 @@ if [[ "${1:-}" == "--probe-provider" ]]; then
 fi
 if [[ "${1:-}" == "--verdict-bucket" ]]; then
     verdict_bucket "${2:-}" "${3:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--x86-64-only" ]]; then
+    if x86_64_only "${2:-}" "${3:-}"; then echo run; fi
     exit 0
 fi
 if [[ "${1:-}" == "--step-outcome" ]]; then
@@ -382,6 +603,16 @@ if [[ "${1:-}" == "--network-services" ]]; then
     reconcile_network_services "${2:-}"
     exit 0
 fi
+if [[ "${1:-}" == "--vmware-dns" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "vmware-dns seam is test-only"
+    reconcile_vmware_dns "${2:-}" "${3:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--vmware-tools" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "vmware-tools seam is test-only"
+    reconcile_vmware_tools "${2:-}" "${3:-}"
+    exit 0
+fi
 if [[ "${1:-}" == "--refind-config" ]]; then
     [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "refind-config seam is test-only"
     reconcile_refind_config "${2:-}" "${3:-}"
@@ -395,6 +626,26 @@ fi
 if [[ "${1:-}" == "--nas-automounts" ]]; then
     [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "nas-automounts seam is test-only"
     reconcile_nas_automounts "${2:-}" "${3:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--yay-mflags" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "yay-mflags seam is test-only"
+    reconcile_yay_mflags "${2:-}" "${3:-}" "${4:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--skel-files" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "skel-files seam is test-only"
+    reconcile_skel_files "${2:-}" "${3:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--timezone" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "timezone seam is test-only"
+    reconcile_timezone "${2:-}" "${3:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--user-services" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "user-services seam is test-only"
+    reconcile_user_services "${2:-}" "${3:-}"
     exit 0
 fi
 
@@ -415,6 +666,7 @@ for arg in "$@"; do
 done
 NC=()
 [[ $UNATTENDED -eq 1 ]] && NC=(--noconfirm)
+machine_arch=$(uname -m)
 
 [[ $EUID -ne 0 ]] || die "run as your normal user, not root (sudo is invoked where needed)"
 command -v pacman >/dev/null || die "pacman not found — this bootstrap is Arch-only"
@@ -455,7 +707,7 @@ else
 fi
 
 # --- 2. profile guard ----------------------------------------------------------
-# A class is this machine's profile: one word (e.g. workstation) that decides
+# A class is this machine's profile: one word (e.g. daily-vm) that decides
 # which package groups — and someday maybe which dotfiles — this machine gets.
 # It lives in yadm's local, untracked config: the repo carries every profile,
 # and each machine just declares which one applies to it.
@@ -475,7 +727,7 @@ fi
 say "Profile guard"
 class=$(yadm config local.class 2>/dev/null || true)
 [[ -n "$class" ]] || die "yadm.class is unset. Pick this machine's profile, then re-run:
-    yadm config local.class <class>    # e.g. workstation (see runbook class table)
+    yadm config local.class <class>    # e.g. daily-vm (see runbook class table)
     yadm alt"
 echo "  class: $class"
 if [[ $CHECK -eq 0 ]]; then
@@ -491,6 +743,25 @@ grep -q "^\"$(uname -n)\" = \[" "$cfg" \
     The template only renders known classes — check the class ('$class') against
     config.toml##template's branches, then: yadm alt   and re-run"
 echo "  hostname entry: present"
+
+# --- 2a. fresh-install skel files ---------------------------------------------
+# Early and cheap: puts the tracked shell files over archinstall's /etc/skel
+# copies on a fresh install; see reconcile_skel_files.
+say "Fresh-install skel files"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_skel_files check
+else
+    reconcile_skel_files apply
+fi
+
+# --- 2b. time zone ------------------------------------------------------------
+# See reconcile_timezone: the zone comes from a private file, never the repo.
+say "Time zone"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_timezone check
+else
+    reconcile_timezone apply
+fi
 
 # --- 3. machine-local group (untracked, never published) ----------------------
 # The one group file living outside the repo; hostname_groups references it by
@@ -509,6 +780,15 @@ else
     echo "  created empty: $ml"
 fi
 
+# --- 3a. VMware guest DNS ------------------------------------------------------
+# Before anything network-heavy: see reconcile_vmware_dns for the NAT DNS bug.
+say "VMware guest DNS"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_vmware_dns check "$virt"
+else
+    reconcile_vmware_dns apply "$virt"
+fi
+
 # --- 3b. pacman mirrors (reflector) --------------------------------------------
 # One slow mirror can stretch the first sync from minutes into hours. The
 # ranking policy lives in one tracked file symlinked into /etc/xdg, so all
@@ -521,11 +801,16 @@ fi
 # link. Worse, the timer's weekly rewrite kept the file young enough that the
 # 7-day re-rank below never fired. Fresh installs usually skip it for real -
 # the archiso ranks mirrors at live-boot and pacstrap copies that list in.
+# Arch Linux Ports skips the step: its pacman.conf gives every repo a fixed
+# Server line and never includes the mirrorlist, which pacman-mirrorlist still
+# fills with archlinux.org's x86_64 mirrors (drzee core, 2026-11-02).
 say "Pacman mirrors"
 mirrorlist=/etc/pacman.d/mirrorlist
 rfl_src="$HOME/.config/dotfiles/reflector.conf"
 rfl_dst=/etc/xdg/reflector/reflector.conf
-if [[ $CHECK -eq 1 ]]; then
+if ! x86_64_only "$machine_arch" "reflector ranks archlinux.org's x86_64 mirrors; the Ports pacman.conf names its servers directly"; then
+    :
+elif [[ $CHECK -eq 1 ]]; then
     echo "  would: pacman -S reflector, symlink $rfl_dst -> tracked policy,"
     echo "         enable reflector.timer, re-rank a mirrorlist older than 7 days"
 else
@@ -774,7 +1059,14 @@ fi
 # --- 5. metapac (itself an AUR package) --------------------------------------
 # Gated like every AUR install (Story 2.10), but exempt from the age delay via
 # the 4b seed, so it passes on baseline-less machines (fresh VMs) too.
+# Off x86_64, yay's saved makepkg flags gain --ignorearch first: this is the
+# first AUR build, and AUR metapac's arch array omits aarch64.
 say "metapac"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_yay_mflags check "$machine_arch" "${XDG_CONFIG_HOME:-$HOME/.config}/yay/config.json"
+else
+    reconcile_yay_mflags apply "$machine_arch" "${XDG_CONFIG_HOME:-$HOME/.config}/yay/config.json"
+fi
 if command -v metapac >/dev/null; then
     echo "  already installed"
 elif [[ $CHECK -eq 1 ]]; then
@@ -785,7 +1077,9 @@ fi
 
 # --- 5a. multilib (lib32-* packages in the desktop group need it) -------------
 say "multilib repo"
-if grep -q '^\[multilib\]' /etc/pacman.conf; then
+if ! x86_64_only "$machine_arch" "Arch Linux Ports has no [multilib] (lib32-* packages live in group arch-x86_64)"; then
+    :
+elif grep -q '^\[multilib\]' /etc/pacman.conf; then
     echo "  already enabled"
 elif [[ $CHECK -eq 1 ]]; then
     echo "  would: enable [multilib] in /etc/pacman.conf + pacman -Sy"
@@ -807,7 +1101,9 @@ say "chaotic-aur repo"
 gate_src="$HOME/.config/dotfiles/pacman-hooks/00-chaotic-quarantine-gate.hook"
 gate_dst="/etc/pacman.d/hooks/00-chaotic-quarantine-gate.hook"
 gate_old="/etc/pacman.d/hooks/chaotic-quarantine-gate.hook"
-if [[ $CHECK -eq 1 ]]; then
+if ! x86_64_only "$machine_arch" "chaotic-aur publishes x86_64 binaries only (its keyring and mirrorlist live in group arch-x86_64)"; then
+    :
+elif [[ $CHECK -eq 1 ]]; then
     echo "  would: remove the obsolete unprefixed gate hook, symlink its 00-prefixed"
     echo "         replacement, lsign key 3056513887B78AEB, install chaotic-keyring +"
     echo "         chaotic-mirrorlist, append [chaotic-aur] to /etc/pacman.conf, pacman -Sy"
@@ -1227,6 +1523,16 @@ else
     reconcile_network_services apply
 fi
 
+# --- 6a2. VMware guest tools --------------------------------------------------
+# After the reconcile, so open-vm-tools and a guest's vmware X driver (or its
+# absence) are known; see reconcile_vmware_tools for drag-and-drop and resizing.
+say "VMware guest tools"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_vmware_tools check "$virt"
+else
+    reconcile_vmware_tools apply "$virt"
+fi
+
 # --- 6b. normalize install reasons ---------------------------------------------
 # pacman tags each package "explicit" (a human asked for it) or "dependency",
 # and `metapac unmanaged` trusts that tag: explicit + undeclared = reported
@@ -1301,7 +1607,7 @@ else
 fi
 
 # --- 6f. rEFInd boot configuration (Story 2.52) -------------------------------
-# Physical Intel-laptop profiles get repository-owned portable policy plus
+# The portable class gets repository-owned portable policy plus
 # machine-derived kernel entries. The helper uses a separate pkexec approval,
 # backs up existing destinations outside the ESP, never edits firmware/NVRAM,
 # and refuses unmanaged files unless a human runs its explicit adopt command.
@@ -1437,30 +1743,20 @@ else
 fi
 
 # --- 8g. user services (Story 3.24) --------------------------------------------
-# systemd user units tracked in yadm (currently meridian.service — the Claude
-# subscription proxy for oh-my-pi). Enable is idempotent; the unit is useless
-# until `claude login` has run, which is a first-session step, so failures to
-# start are tolerated — systemd's Restart=on-failure picks it up post-login.
+# See reconcile_user_services: meridian everywhere, mac-shares on VMware guests.
 say "User services"
-# shellcheck disable=SC2043  # single-element today; the list grows per story
-for unit in meridian.service; do
-    if [[ ! -f "$HOME/.config/systemd/user/$unit" ]]; then
-        echo "  $unit not tracked on this checkout — skipping"
-    elif systemctl --user is-enabled "$unit" >/dev/null 2>&1; then
-        echo "  $unit already enabled"
-    elif [[ $CHECK -eq 1 ]]; then
-        echo "  would: systemctl --user enable --now $unit"
-    else
-        systemctl --user daemon-reload
-        systemctl --user enable --now "$unit" || echo "  $unit enabled but not started (claude login pending?)"
-    fi
-done
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_user_services check "$virt"
+else
+    reconcile_user_services apply "$virt"
+fi
 
 # --- 8h. Firefox defaults (Story 5.7, extended) --------------------------------
 # tools/firefox-policy composes the system policy: the tracked default
-# extensions and preferences everywhere, plus the VMware WebRender fragment in
+# extensions and preferences everywhere, plus the VMware WebRender fragments in
 # VMware guests (Mesa's SVGA driver reports its Gallium "accelerated" bit false,
-# so Firefox blocklists hardware WebRender that SVGA3D can run). It refuses to
+# so Firefox blocklists hardware WebRender that SVGA3D can run on x86_64; aarch64
+# guests lock Software WebRender instead, Story 5.8). It refuses to
 # overwrite a policy it did not write. tools/firefox-userchrome then links the
 # tracked tab-strip stylesheet into every profile, creating Firefox's default
 # profile headless when it has never run.

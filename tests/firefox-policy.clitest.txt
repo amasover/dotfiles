@@ -1,46 +1,59 @@
 # tools/firefox-policy — compose and link Firefox's system policy (Story 5.7,
-# extended with default extensions and preferences). Host-independent: fixture
-# roots never invoke sudo.
+# extended with default extensions and preferences, and per-architecture VMware
+# WebRender in Story 5.8). Host-independent: fixture roots never invoke sudo.
 #
 # Run from the repo root: clitest tests/firefox-policy.clitest.txt
 
-$ t=.local/bin/tools/firefox-policy; CLITMP=$(mktemp -d); export FIREFOX_POLICY_SOURCE_DIR="$CLITMP/src" FIREFOX_POLICY_STATE="$CLITMP/state/policies.json"; mkdir "$CLITMP/src"; printf '%s\n' '{"policies":{"Preferences":{"base.pref":{"Value":1}},"ExtensionSettings":{"x@y":{"installation_mode":"normal_installed"}}}}' > "$CLITMP/src/policies.json"; printf '%s\n' '{"policies":{"Preferences":{"vm.pref":{"Value":true}}}}' > "$CLITMP/src/policies-vmware.json"; prefs() { jq -c '.policies.Preferences | keys' "$FIREFOX_POLICY_STATE"; }; echo ready
+$ t=.local/bin/tools/firefox-policy; CLITMP=$(mktemp -d); export FIREFOX_POLICY_SOURCE_DIR="$CLITMP/src" FIREFOX_POLICY_STATE="$CLITMP/state/policies.json"; mkdir "$CLITMP/src"; printf '%s\n' '{"policies":{"Preferences":{"base.pref":{"Value":1}},"ExtensionSettings":{"x@y":{"installation_mode":"normal_installed"}}}}' > "$CLITMP/src/policies.json"; printf '%s\n' '{"policies":{"Preferences":{"vm.pref":{"Value":true}}}}' > "$CLITMP/src/policies-vmware.json"; printf '%s\n' '{"policies":{"Preferences":{"vm.x86.pref":{"Value":true}}}}' > "$CLITMP/src/policies-vmware-x86_64.json"; printf '%s\n' '{"policies":{"Preferences":{"vm.arm.pref":{"Value":true}}}}' > "$CLITMP/src/policies-vmware-aarch64.json"; prefs() { jq -c '.policies.Preferences | keys' "$FIREFOX_POLICY_STATE"; }; echo ready
 ready
 $
 
 Every machine gets the base policy; check mode reports drift and writes nothing:
 
 $ $t reconcile --check --root "$CLITMP/m" --virt kvm | sed "s|$CLITMP|<tmp>|g"; echo "rc=${PIPESTATUS[0]}"
-Firefox policy: would compose <tmp>/state/policies.json without the VMware fragment
+Firefox policy: would compose <tmp>/state/policies.json without the VMware fragments
 Firefox policy: would link <tmp>/m/etc/firefox/policies/policies.json -> <tmp>/state/policies.json
 rc=1
 $ test ! -e "$CLITMP/state/policies.json" && test ! -e "$CLITMP/m/etc"; echo "rc=$?"
 rc=0
-$ $t reconcile --root "$CLITMP/m" --virt kvm | sed "s|$CLITMP|<tmp>|g"
-Firefox policy: composed <tmp>/state/policies.json without the VMware fragment
+$ $t reconcile --root "$CLITMP/m" --virt kvm --arch aarch64 | sed "s|$CLITMP|<tmp>|g"
+Firefox policy: composed <tmp>/state/policies.json without the VMware fragments
 Firefox policy: linked <tmp>/m/etc/firefox/policies/policies.json -> <tmp>/state/policies.json
 $ prefs
 ["base.pref"]
 $ $t reconcile --root "$CLITMP/m" --virt kvm | sed "s|$CLITMP|<tmp>|g"; echo "rc=${PIPESTATUS[0]}"
-Firefox policy: composed without the VMware fragment, unchanged
+Firefox policy: composed without the VMware fragments, unchanged
 Firefox policy: <tmp>/m/etc/firefox/policies/policies.json already linked
 rc=0
 $
 
-A VMware guest adds the WebRender fragment on top, keeping the base:
+A VMware guest adds the shared fragment and its architecture's fragment on top,
+keeping the base:
 
-$ $t reconcile --root "$CLITMP/m" --virt vmware | sed "s|$CLITMP|<tmp>|g" | head -1
-Firefox policy: composed <tmp>/state/policies.json with the VMware fragment
+$ $t reconcile --root "$CLITMP/m" --virt vmware --arch x86_64 | sed "s|$CLITMP|<tmp>|g" | head -1
+Firefox policy: composed <tmp>/state/policies.json with the VMware x86_64 fragments
 $ prefs; jq -c '.policies.ExtensionSettings | keys' "$FIREFOX_POLICY_STATE"
-["base.pref","vm.pref"]
+["base.pref","vm.pref","vm.x86.pref"]
 ["x@y"]
+$ $t reconcile --root "$CLITMP/m" --virt vmware --arch aarch64 | sed "s|$CLITMP|<tmp>|g" | head -1
+Firefox policy: composed <tmp>/state/policies.json with the VMware aarch64 fragments
+$ prefs
+["base.pref","vm.arm.pref","vm.pref"]
+$
+
+A VMware architecture without a tracked fragment is fatal and composes nothing:
+
+$ $t reconcile --root "$CLITMP/m" --virt vmware --arch riscv64 2>"$CLITMP/err"; echo "rc=$?"; sed -e 's/^firefox-policy: FATAL: //' -e "s|$CLITMP|<tmp>|g" "$CLITMP/err"; prefs
+rc=1
+tracked policy missing: <tmp>/src/policies-vmware-riscv64.json
+["base.pref","vm.arm.pref","vm.pref"]
 $
 
 A tracked change reaches Firefox through the existing link, without relinking:
 
 $ printf '%s\n' '{"policies":{"Preferences":{"base.pref":{"Value":2}}}}' > "$CLITMP/src/policies.json"
 $ $t reconcile --root "$CLITMP/m" --virt kvm | sed "s|$CLITMP|<tmp>|g"
-Firefox policy: composed <tmp>/state/policies.json without the VMware fragment
+Firefox policy: composed <tmp>/state/policies.json without the VMware fragments
 Firefox policy: <tmp>/m/etc/firefox/policies/policies.json already linked
 $ jq -c '.policies.Preferences' "$CLITMP/m/etc/firefox/policies/policies.json"
 {"base.pref":{"Value":2}}
@@ -49,7 +62,7 @@ $
 Story 5.7's direct link to the VMware file is this tool's own, so it moves:
 
 $ mkdir -p "$CLITMP/legacy/etc/firefox/policies"; ln -s "$CLITMP/src/policies-vmware.json" "$CLITMP/legacy/etc/firefox/policies/policies.json"
-$ $t reconcile --root "$CLITMP/legacy" --virt vmware | sed "s|$CLITMP|<tmp>|g" | tail -1
+$ $t reconcile --root "$CLITMP/legacy" --virt vmware --arch x86_64 | sed "s|$CLITMP|<tmp>|g" | tail -1
 Firefox policy: linked <tmp>/legacy/etc/firefox/policies/policies.json -> <tmp>/state/policies.json
 $
 
@@ -64,13 +77,35 @@ mine
 rc=0
 $
 
-The tracked policies compose: five default extensions everywhere, WebRender only in VMware:
+The tracked policies compose: five default extensions everywhere, WebRender only
+in VMware:
 
-$ export FIREFOX_POLICY_SOURCE_DIR=.config/dotfiles/firefox; $t reconcile --root "$CLITMP/real" --virt kvm >/dev/null; jq -r '.policies.ExtensionSettings | length' "$FIREFOX_POLICY_STATE"; jq -r '.policies.Preferences | has("gfx.webrender.all")' "$FIREFOX_POLICY_STATE"
+$ export FIREFOX_POLICY_SOURCE_DIR=.config/dotfiles/firefox; gfx() { jq -c '.policies.Preferences | with_entries(select(.key | test("^(gfx|layers)\\."))) | map_values(.Value)' "$FIREFOX_POLICY_STATE"; }
+$ $t reconcile --root "$CLITMP/real" --virt kvm --arch aarch64 >/dev/null; jq -r '.policies.ExtensionSettings | length' "$FIREFOX_POLICY_STATE"; gfx
 5
-false
-$ $t reconcile --root "$CLITMP/real" --virt vmware >/dev/null; jq -r '.policies.Preferences | has("gfx.webrender.all") and has("browser.startup.page")' "$FIREFOX_POLICY_STATE"
+{}
+$ jq -r '.policies.Preferences | has("browser.startup.page")' "$FIREFOX_POLICY_STATE"
 true
+$
+
+An x86_64 VMware guest (Workstation) composes exactly Story 5.7's policy: the
+base plus its single VMware fragment, byte for byte:
+
+$ printf '%s\n' '{"policies":{"Preferences":{"gfx.webrender.all":{"Value":true,"Status":"locked"},"gfx.x11-egl.force-disabled":{"Value":true,"Status":"locked"},"layers.acceleration.force-enabled":{"Value":true,"Status":"locked"}}}}' > "$CLITMP/story-5.7-vmware.json"
+$ jq -S -s 'reduce .[] as $part ({}; . * $part)' "$FIREFOX_POLICY_SOURCE_DIR/policies.json" "$CLITMP/story-5.7-vmware.json" > "$CLITMP/story-5.7.json"
+$ $t reconcile --root "$CLITMP/real" --virt vmware --arch x86_64 >/dev/null; cmp "$CLITMP/story-5.7.json" "$FIREFOX_POLICY_STATE" && echo identical
+identical
+$ gfx
+{"gfx.webrender.all":true,"gfx.x11-egl.force-disabled":true,"layers.acceleration.force-enabled":true}
+$
+
+An aarch64 VMware guest (Fusion) locks Software WebRender instead, keeping GLX
+and forced layer acceleration:
+
+$ $t reconcile --root "$CLITMP/real" --virt vmware --arch aarch64 >/dev/null; gfx
+{"gfx.webrender.software":true,"gfx.x11-egl.force-disabled":true,"layers.acceleration.force-enabled":true}
+$ jq -r '.policies.Preferences["gfx.webrender.software"].Status' "$FIREFOX_POLICY_STATE"
+locked
 $ rm -rf "$CLITMP"; echo done
 done
 $

@@ -57,26 +57,32 @@ migrate_legacy_machine_local() {
 
 expected_profile() {
     case $1 in
-        workstation) printf '%s\t%s\n' hardware-intel-laptop inbox-workstation ;;
         daily-vm) printf '%s\t%s\n' guest-vmware inbox-daily-vm ;;
+        work-vm) printf '%s\t%s\n' guest-vmware inbox-work-vm ;;
         qemu-harness) printf '%s\t%s\n' guest-qemu inbox-qemu-harness ;;
         *) die "unsupported machine class '$1'" ;;
     esac
 }
 
 assert_class_profile() {
-    local expected=$1 actual adapter inbox files file name
+    local expected=$1 actual profile adapter inbox files file name
     local active_adapter='' active_inbox='' adapter_count=0 inbox_count=0
     actual=$(yadm config local.class 2>/dev/null || true)
     [[ $actual == "$expected" ]] \
         || die "expected yadm class '$expected', found '${actual:-unset}'"
-    IFS=$'\t' read -r adapter inbox < <(expected_profile "$expected")
+    # A command substitution, not `< <(...)`: expected_profile's die must
+    # end the run with its own rc 2, not as a silent EOF for read.
+    profile=$(expected_profile "$expected")
+    IFS=$'\t' read -r adapter inbox <<<"$profile"
     files=$("$tools_dir/metapac-declared" --group-files) \
         || die 'could not resolve active metapac groups'
     while IFS= read -r file; do
         name=${file##*/}
         name=${name%.toml}
         case $name in
+            # A group named for an architecture (guest-vmware-x86_64,
+            # arch-aarch64) adds to the class's adapter; it is not a second one.
+            *-x86_64 | *-aarch64) ;;
             hardware-* | guest-*)
                 active_adapter=$name
                 adapter_count=$((adapter_count + 1))
@@ -130,8 +136,16 @@ cmd_bootstrap() {
     # changes pre-merge, and a refresh arm that only fast-forwarded whatever
     # was cloned first would keep testing the old branch — the same stale
     # checkout bug one level up. Fetch, switch if asked, then fast-forward.
+    #
+    # The same goes for a CHANGED --repo: a guest first cloned from GitHub
+    # and later handed a VM_HARNESS_BUNDLE path must fetch from the bundle,
+    # or the unpushed branch it carries is never seen.
     if yadm rev-parse --git-dir >/dev/null 2>&1; then
         echo "==> Refreshing the existing yadm checkout"
+        if [[ $(yadm remote get-url origin 2>/dev/null || true) != "$repo" ]]; then
+            echo "==> Pointing origin at '$repo'"
+            yadm remote set-url origin "$repo"
+        fi
         yadm fetch --prune origin
         current_branch=$(yadm rev-parse --abbrev-ref HEAD)
         if [[ -n "$branch" && "$current_branch" != "$branch" ]]; then

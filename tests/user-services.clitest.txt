@@ -1,0 +1,44 @@
+# User services: bootstrap enables the tracked systemd user units, and
+# mac-shares.service (the VMware host's shared folders at ~/mac) only on
+# VMware guests. Host-independent: a stub systemctl answers is-enabled from
+# $ENABLED and traces the rest; the home is a scratch tree.
+#
+# Run from the repo root: clitest tests/user-services.clitest.txt
+
+$ export BOOTSTRAP_TEST_MODE=1; D=$(mktemp -d); mkdir -p "$D/bin" "$D/home/.config/systemd/user"; cp .config/systemd/user/meridian.service .config/systemd/user/mac-shares.service "$D/home/.config/systemd/user/"; printf '%s\n' '#!/bin/sh' 'if [ "$2" = is-enabled ]; then case " $ENABLED " in *" $3 "*) exit 0 ;; *) exit 1 ;; esac; fi' 'echo "systemctl $*" >> "$UNIT_TRACE"' > "$D/bin/systemctl"; chmod +x "$D/bin/systemctl"; US() { : > "$D/trace"; HOME="$D/home" PATH="$D/bin:$PATH" UNIT_TRACE="$D/trace" .local/bin/setup/bootstrap --user-services "$@" 2>&1; cat "$D/trace"; }; echo ready
+ready
+$ US check none
+  would: systemctl --user enable --now meridian.service
+  mac-shares.service skipped: not a VMware guest
+$ US check vmware
+  would: systemctl --user enable --now meridian.service
+  would: systemctl --user enable --now mac-shares.service
+$ ENABLED=meridian.service US apply vmware
+  meridian.service already enabled
+systemctl --user daemon-reload
+systemctl --user enable --now mac-shares.service
+$ ENABLED="meridian.service mac-shares.service" US apply vmware
+  meridian.service already enabled
+  mac-shares.service already enabled
+$ US apply kvm
+  mac-shares.service skipped: not a VMware guest
+systemctl --user daemon-reload
+systemctl --user enable --now meridian.service
+$
+
+The unit itself: skipped off VMware, a clean no-op when the host shares
+nothing, mounted in the foreground at ~/mac and unmounted on stop:
+
+$ grep -E '^(Condition|ExecCondition|ExecStart|ExecStop|WantedBy)' .config/systemd/user/mac-shares.service
+ConditionVirtualization=vmware
+ExecCondition=/bin/sh -c 'test -n "$$(vmware-hgfsclient)"'
+ExecStartPre=-/usr/bin/fusermount3 -uqz %h/mac
+ExecStartPre=/usr/bin/mkdir -p %h/mac
+ExecStart=/usr/bin/vmhgfs-fuse .host:/ %h/mac -f -o subtype=vmhgfs-fuse
+ExecStop=/usr/bin/fusermount3 -u %h/mac
+WantedBy=default.target
+$ BOOTSTRAP_TEST_MODE=0 US check vmware | grep FATAL
+bootstrap: FATAL: user-services seam is test-only
+$ rm -rf "$D"; echo done
+done
+$

@@ -142,12 +142,28 @@ class TestStepFor:
     def test_connect_aliases(self):
         for text in ("Waiting for ssh (up to ~2 min)",
                      "Trust baseline: injecting",
+                     "Host time zone: writing it into the VM (~/.config/dotfiles/timezone)",
                      "Running repo bootstrap inside the VM"):
             idx = display.step_for(text)
             assert display.BOOTSTRAP_STEPS[idx][0] == "connect"
 
+    def test_vmware_guest_dns_sits_between_local_group_and_mirrors(self):
+        names = [name for name, _ in display.BOOTSTRAP_STEPS]
+        dns = display.step_for("VMware guest DNS")
+        assert names[dns] == "guest-dns"
+        assert display.step_for("Machine-local group") < dns < display.step_for("Pacman mirrors")
+
+    def test_skel_and_timezone_sit_between_profile_and_local_group(self):
+        names = [name for name, _ in display.BOOTSTRAP_STEPS]
+        skel = display.step_for("Fresh-install skel files")
+        tz = display.step_for("Time zone")
+        assert (names[skel], names[tz]) == ("skel", "timezone")
+        assert (display.step_for("Profile guard") < skel < tz
+                < display.step_for("Machine-local group"))
+
     def test_every_current_post_reconcile_stage_is_mapped_in_order(self):
         cases = [
+            ("VMware guest tools", "guest-tools"),
             ("Normalizing install reasons", "retag"),
             ("Package-removal hook", "removal-hook"),
             ("Vendored packages", "vendored"),
@@ -213,9 +229,20 @@ class TestRenderFallback:
         monkeypatch.setitem(sys.modules, "rich.console", None)
         _, row2, _ = display.make_render()
         n = len(display.BOOTSTRAP_STEPS)
-        line = row2(4, 40)
-        assert f"5/{n}" in line
-        assert "▶" in line
+        line = row2(4, n + 30)
+        assert f"●●●●▶{'○' * (n - 5)} 5/{n}" in line
+        assert len(line) <= n + 29
+
+    def test_meter_wider_than_terminal_keeps_counter_and_name(self, monkeypatch):
+        # 32 steps of dots plus the counter outgrow a 40-column terminal, which
+        # once cut the counter mid-number ("5/3"); the dots go first.
+        monkeypatch.setitem(sys.modules, "rich.console", None)
+        _, row2, _ = display.make_render()
+        n = len(display.BOOTSTRAP_STEPS)
+        name = display.BOOTSTRAP_STEPS[4][0].upper()
+        line = row2(4, n + 2)
+        assert line.strip().startswith(f"▶ 5/{n}")
+        assert name in line
 
 
 class TestLogLegFailure:

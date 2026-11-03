@@ -1,29 +1,28 @@
 # metapac group: work — cloud/k8s/Azure stack (opt-in per class; Story 2.2 decision D2)
 # Membership source: docs/package-inventory.md; adopted in Story 2.8.
 # openconnect accompanies globalprotect-openconnect (D2). openconnect-service is
-# dead upstream (AUR-removed) but live infrastructure on the workstation — it lives
-# in that machine's machine-local group, not here (2.7 VM validation finding).
+# dead upstream (AUR-removed) and was machine-local on the retired workstation.
+# Only work-vm (aarch64) includes this group, so every entry must build there:
+# terraform-ls is the source build (terraform-ls-bin is x86_64-only).
+# Dropped with the move: astro-cli and databricks-cli-bin (no longer used);
+# azure-functions-core-tools-bin, kube-capacity and storageexplorer have no
+# aarch64 package (kube-capacity: `kubectl krew install resource-capacity`).
 [arch]
 packages = [
-  "astro-cli",
   "azcopy",
   "azure-cli",
-  "azure-functions-core-tools-bin",
-  "databricks-cli-bin",
   "globalprotect-openconnect",
   "helm",
   "istio",
   "k9s",
   "kind",
   "krew",
-  "kube-capacity",
   "kubectl",
   "kustomize",
   "ngrok",
   "openconnect",
-  "storageexplorer",
   "tenv-bin",
-  "terraform-ls-bin",
+  "terraform-ls",
   "wstunnel-bin",
   "yor-bin",
 ]

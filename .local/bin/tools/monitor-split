@@ -1,0 +1,280 @@
+#!/usr/bin/env bash
+# monitor-split — carve a tracked split layout into xrandr virtual monitors.
+#
+# The home 4K layout (knowledge/reference/4k-split-monitor-layout.md) is one
+# 3840x2160 canvas cut into a full-height main area and a right half split
+# top/bottom. Its single definition is ~/.config/monitor-split/<LAYOUT>.layout
+# (format in home.layout). Two callers share it:
+#   - autorandr's home profile hook names the outputs (two 1920x2160 inputs);
+#   - tools/vm-autofit runs `auto` after it places the Virtual-N outputs, and
+#     the per-class ~/.config/monitor-split/policy decides what gets split.
+#
+#   monitor-split apply LAYOUT OUTPUT...  carve LAYOUT across OUTPUT(s); their
+#                                         bounding box must be the canvas
+#   monitor-split auto                    apply the policy: split the first
+#                                         connected output the policy matches,
+#                                         else clear stale split monitors; no
+#                                         policy file = touch nothing
+#   monitor-split roles                   MONITOR_<ROLE>=<monitor> lines for the
+#                                         policy split, only while it is in place
+# apply and auto print the carved monitor names (one line, space-separated).
+#
+# An area exactly covering an output stays that output. Every other area
+# becomes OUTPUT~N (N counts per output, in layout order); the first carved
+# monitor owns the output and the rest take `none`. Physical size: an output
+# reporting millimetres has them split in proportion; a VM output reports
+# 0mm x 0mm, so its areas get 96-DPI sizes (px * 25.4 / 96), what Xorg lists
+# for the unsplit 0mm output, and anything deriving DPI from the monitor
+# size sees no change.
+#
+# Re-applying an identical split is a no-op: the i3 workspace map is replayed
+# only when the virtual monitors were (re)created, so a later event never
+# yanks workspaces the user moved by hand.
+
+set -u
+
+conf_dir="$HOME/.config/monitor-split"
+
+usage() {
+    echo "usage: monitor-split apply LAYOUT OUTPUT... | auto | roles" >&2
+    exit 2
+}
+
+# Connected outputs holding a mode, one per line: NAME W H X Y MMW MMH.
+outputs() {
+    xrandr -q | awk '
+        $2 == "connected" {
+            for (i = 3; i <= NF; i++)
+                if ($i ~ /^[0-9]+x[0-9]+\+-?[0-9]+\+-?[0-9]+$/) {
+                    split($i, g, /[x+]/)
+                    mmw = $(NF - 2)
+                    mmh = $NF
+                    if (sub(/mm$/, "", mmw) != 1 || sub(/mm$/, "", mmh) != 1 \
+                        || mmw !~ /^[0-9]+$/ || mmh !~ /^[0-9]+$/) mmw = mmh = 0
+                    print $1, g[1], g[2], g[3], g[4], mmw, mmh
+                    break
+                }
+        }'
+}
+
+# Virtual monitors present now (every name containing ~), as "NAME GEOM".
+split_monitors() {
+    xrandr --listmonitors | awk 'NR > 1 {
+        name = $2
+        sub(/^[+*]+/, "", name)
+        if (name ~ /~/) print name, $3
+    }'
+}
+
+# plan LAYOUT_FILE OUTPUTS_TEXT OUTPUT... — the layout resolved against the
+# given outputs, one directive per line:
+#   mon NAME GEOM OWNER    virtual monitor to create (--setmonitor arguments)
+#   role ROLE NAME         polybar role of an area (NAME: monitor or output)
+#   ws REGEX NAME          i3 workspace criteria and its target
+#   focus N...             workspaces to show last
+plan() {
+    local layout=$1 outs=$2
+    shift 2
+    printf '%s\n' "$outs" | awk -v layout="$layout" -v sel=" $* " '
+        function fail(msg) { print "monitor-split: " msg > "/dev/stderr"; bad = 1; exit 1 }
+        FILENAME == layout {
+            if ($0 ~ /^[[:space:]]*(#|$)/) next
+            where = layout ":" FNR ": "
+            if ($1 == "canvas" && NF == 2 && $2 ~ /^[0-9]+x[0-9]+$/) {
+                split($2, c, "x"); cw = c[1]; ch = c[2]; next
+            }
+            if ($1 == "area" && NF == 4 && $2 ~ /^[A-Za-z0-9_-]+$/ \
+                && $3 ~ /^[0-9]+x[0-9]+\+[0-9]+\+[0-9]+$/ \
+                && $4 ~ /^(MAIN|LEFT|EXTRA|SPLIT_TOP|SPLIT_BOTTOM|-)$/) {
+                if ($2 in aidx) fail(where "duplicate area " $2)
+                na++; aidx[$2] = na; aname[na] = $2; arole[na] = $4
+                split($3, g, /[x+]/)
+                aw[na] = g[1]; ah[na] = g[2]; ax[na] = g[3]; ay[na] = g[4]
+                next
+            }
+            if ($1 == "workspaces" && NF >= 3 && ($2 in aidx)) {
+                set = ""
+                for (i = 3; i <= NF; i++) {
+                    if ($i !~ /^[0-9]$/) fail(where "workspace numbers are single digits")
+                    set = set $i
+                }
+                nw++; wsarea[nw] = $2
+                wsre[nw] = length(set) == 1 ? "^" set ":" : "^[" set "]:"
+                next
+            }
+            if ($1 == "focus" && NF >= 2) { focus = $0; next }
+            fail(where "cannot parse: " $0)
+        }
+        index(sel, " " $1 " ") {
+            if ($1 in oidx) next
+            no++; oidx[$1] = no; oname[no] = $1
+            ow[no] = $2; oh[no] = $3; ox[no] = $4; oy[no] = $5; omw[no] = $6; omh[no] = $7
+        }
+        END {
+            if (bad) exit 1
+            if (!cw || !na) fail(layout ": needs a canvas and at least one area")
+            nsel = split(sel, want, " ")
+            for (i = 1; i <= nsel; i++)
+                if (!(want[i] in oidx)) fail("output " want[i] " is not connected with a mode")
+            bx = ox[1]; by = oy[1]; ex = ox[1] + ow[1]; ey = oy[1] + oh[1]
+            for (o = 2; o <= no; o++) {
+                if (ox[o] < bx) bx = ox[o]
+                if (oy[o] < by) by = oy[o]
+                if (ox[o] + ow[o] > ex) ex = ox[o] + ow[o]
+                if (oy[o] + oh[o] > ey) ey = oy[o] + oh[o]
+            }
+            if (ex - bx != cw || ey - by != ch)
+                fail("outputs span " (ex - bx) "x" (ey - by) ", layout canvas is " cw "x" ch)
+            for (a = 1; a <= na; a++) {
+                x = bx + ax[a]; y = by + ay[a]
+                hit = 0
+                for (o = 1; o <= no && !hit; o++)
+                    if (x >= ox[o] && y >= oy[o] && x + aw[a] <= ox[o] + ow[o] && y + ah[a] <= oy[o] + oh[o]) hit = o
+                if (!hit) fail("area " aname[a] " does not fit inside one output")
+                o = hit
+                if (aw[a] == ow[o] && ah[a] == oh[o]) {
+                    mon[a] = oname[o]
+                } else {
+                    mon[a] = oname[o] "~" ++carved[o]
+                    if (omw[o] > 0 && omh[o] > 0) {
+                        mw = int(omw[o] * aw[a] / ow[o] + 0.5)
+                        mh = int(omh[o] * ah[a] / oh[o] + 0.5)
+                    } else {
+                        mw = int(aw[a] * 254 / 960 + 0.5)
+                        mh = int(ah[a] * 254 / 960 + 0.5)
+                    }
+                    print "mon", mon[a], aw[a] "/" mw "x" ah[a] "/" mh "+" x "+" y, (carved[o] == 1 ? oname[o] : "none")
+                }
+                if (arole[a] != "-") print "role", arole[a], mon[a]
+            }
+            for (w = 1; w <= nw; w++) print "ws", wsre[w], mon[aidx[wsarea[w]]]
+            if (focus != "") print focus
+        }
+    ' "$layout" -
+}
+
+# clear_split SPLIT_MONITORS_TEXT — delete every listed virtual monitor.
+clear_split() {
+    local name _
+    while read -r name _; do
+        [[ -z $name ]] || xrandr --delmonitor "$name" || rc=1
+    done <<<"$1"
+}
+
+# Wait (bounded) for i3 to adopt the new monitors as outputs, so the
+# workspace moves below do not race its RandR event handling.
+i3_sees() {
+    local json n missing
+    for _ in $(seq 30); do
+        json=$(i3-msg -t get_outputs 2>/dev/null) || return 1
+        missing=0
+        for n; do
+            [[ $json == *"\"name\":\"$n\",\"active\":true"* ]] || missing=1
+        done
+        ((missing)) || return 0
+        sleep 0.1
+    done
+    return 1
+}
+
+# The old home hook's i3 map, in layout order. A criteria move fails when the
+# workspace does not exist yet (i3: "No output matched"); that is expected,
+# so those failures are not errors.
+map_workspaces() {
+    local names=$1 verb a b
+    command -v i3-msg >/dev/null 2>&1 || return 0
+    # shellcheck disable=SC2086  # names is a space-separated list
+    i3_sees $names || echo "monitor-split: i3 has not adopted $names; moving workspaces anyway" >&2
+    while read -r verb a b; do
+        case $verb in
+            ws) i3-msg "[workspace=\"$a\"] move workspace to output \"$b\"" >/dev/null 2>&1 ;;
+            focus)
+                local cmd="" n
+                for n in $a $b; do cmd="${cmd:+$cmd; }workspace number $n"; done
+                i3-msg "$cmd" >/dev/null || rc=1
+                ;;
+        esac
+    done <<<"$planned"
+}
+
+# carve LAYOUT OUTPUT... — make the virtual monitors match the plan against
+# the queried $outs.
+carve() {
+    local layout=$1
+    shift
+    local file="$conf_dir/$layout.layout"
+    [[ -r $file ]] || {
+        echo "monitor-split: no layout $file" >&2
+        return 1
+    }
+    planned=$(plan "$file" "$outs" "$@") || return 1
+    local want present names
+    want=$(awk '$1 == "mon" { print $2, $3 }' <<<"$planned" | sort)
+    present=$(split_monitors)
+    names=$(awk '$1 == "mon" { printf "%s%s", sep, $2; sep = " " }' <<<"$planned")
+    if [[ $want != "$(sort <<<"$present")" ]]; then
+        clear_split "$present"
+        while read -r _ name geom owner; do
+            # xrandr chatters about the outputs it looked up on stdout
+            xrandr --setmonitor "$name" "$geom" "$owner" >/dev/null || rc=1
+        done < <(grep '^mon ' <<<"$planned")
+        [[ -z $names ]] || map_workspaces "$names"
+    fi
+    [[ -z $names ]] || printf '%s\n' "$names"
+}
+
+# policy_match OUTPUTS_TEXT — "LAYOUT OUTPUT" for the first policy line whose
+# glob matches a connected output of the layout's canvas size.
+policy_match() {
+    local outs=$1 layout glob canvas name w h _
+    while read -r layout glob _; do
+        [[ -z $layout || $layout == \#* ]] && continue
+        canvas=$(awk '$1 == "canvas" { print $2; exit }' "$conf_dir/$layout.layout" 2>/dev/null)
+        [[ -n $canvas ]] || {
+            echo "monitor-split: policy names unknown layout '$layout'" >&2
+            continue
+        }
+        while read -r name w h _; do
+            # shellcheck disable=SC2053  # glob match is the point
+            [[ $name == $glob && ${w}x$h == "$canvas" ]] || continue
+            printf '%s %s\n' "$layout" "$name"
+            return 0
+        done <<<"$outs"
+    done <"$conf_dir/policy"
+    return 1
+}
+
+rc=0
+planned=
+case "${1-}" in
+    apply)
+        [[ $# -ge 3 ]] || usage
+        shift
+        outs=$(outputs)
+        carve "$@" || rc=1
+        ;;
+    auto)
+        [[ $# -eq 1 ]] || usage
+        [[ -r $conf_dir/policy ]] || exit 0
+        outs=$(outputs)
+        if match=$(policy_match "$outs"); then
+            # shellcheck disable=SC2086  # "LAYOUT OUTPUT"
+            carve $match || rc=1
+        else
+            clear_split "$(split_monitors)"
+        fi
+        ;;
+    roles)
+        [[ $# -eq 1 ]] || usage
+        [[ -r $conf_dir/policy ]] || exit 0
+        outs=$(outputs)
+        match=$(policy_match "$outs") || exit 0
+        # shellcheck disable=SC2086  # "LAYOUT OUTPUT"
+        planned=$(plan "$conf_dir/${match%% *}.layout" "$outs" ${match#* }) || exit 1
+        want=$(awk '$1 == "mon" { print $2, $3 }' <<<"$planned" | sort)
+        [[ -n $want && $want == "$(split_monitors | sort)" ]] || exit 0
+        awk '$1 == "role" { print "MONITOR_" $2 "=" $3 }' <<<"$planned"
+        ;;
+    *) usage ;;
+esac
+exit "$rc"
