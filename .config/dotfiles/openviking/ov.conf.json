@@ -15,16 +15,11 @@
   },
   "vlm": {
     "provider": "litellm",
-    "model": "ollama/qwen3.5:4b",
-    "api_key": "no-key",
-    "api_base": "http://127.0.0.1:11434",
-    "temperature": 0.0,
+    "model": "anthropic/claude-haiku-5-5",
+    "api_key": "x",
+    "api_base": "http://127.0.0.1:3456",
     "max_retries": 2,
-    "max_concurrent": 1,
-    "extra_request_body": {
-      "num_ctx": 16384,
-      "think": false
-    }
+    "max_concurrent": 1
   },
   "memory": {
     "extraction_output_format": "json"

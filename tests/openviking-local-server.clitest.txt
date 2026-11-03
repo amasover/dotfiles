@@ -43,7 +43,6 @@ rc=2
 $ $t --check | sed "s|$HOME|~|"; test ! -e "$HOME/.openviking"; echo "untouched=$?"
 OpenViking server: would install openviking 0.5.3 on Python 3.13 (now: not installed)
 OpenViking server: would pull the Ollama model qwen3-embedding:0.6b
-OpenViking server: would pull the Ollama model qwen3.5:4b
 OpenViking server: would generate a root key and render ~/.openviking/ov.conf
 OpenViking server: would start the server on http://127.0.0.1:1933
 OpenViking server: would mint the user key for default/agent
@@ -55,14 +54,12 @@ Apply installs, pulls and renders, but needs the LaunchAgent to start the server
 $ { $t; echo "rc=$?"; } 2>&1 | sed "s|$HOME|~|" | tee -a "$OVT/out"
 OpenViking server: installed openviking 0.5.3 on Python 3.13
 OpenViking server: pulling the Ollama model qwen3-embedding:0.6b
-OpenViking server: pulling the Ollama model qwen3.5:4b
 OpenViking server: rendered ~/.openviking/ov.conf
 openviking-local-server: FATAL: the LaunchAgent dev.mise.openviking is not loaded (mise bootstrap)
 rc=2
 $ grep -E '^(uv tool install|ollama)' "$TRACE"
 uv tool install --quiet --reinstall --python 3.13 openviking==0.5.3
 ollama pull qwen3-embedding:0.6b
-ollama pull qwen3.5:4b
 $
 
 With the agent loaded it starts the server and registers the clients' user:
@@ -80,8 +77,8 @@ $ ls -l "$HOME/.openviking/ov.conf" "$HOME/.openviking/user.key" | cut -c1-10; l
 -rw-------
 -rw-------
 drwx------
-$ node -p 'const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); [c.server.host, c.server.port, c.server.auth_mode, c.storage.workspace === process.argv[2], c.server.root_api_key.length >= 40, c.vlm.extra_request_body.num_ctx, c.vlm.extra_request_body.think].join(" ")' "$HOME/.openviking/ov.conf" "$HOME/.openviking/data"
-127.0.0.1 1933 api_key true true 16384 false
+$ node -p 'const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); [c.server.host, c.server.port, c.server.auth_mode, c.storage.workspace === process.argv[2], c.server.root_api_key.length >= 40].join(" ")' "$HOME/.openviking/ov.conf" "$HOME/.openviking/data"
+127.0.0.1 1933 api_key true true
 $
 
 A second run changes nothing:
@@ -98,6 +95,15 @@ OPENVIKING_SETTINGS_DIR moves the tracked settings; one without local.env skips:
 $ mkdir "$OVT/elsewhere"; OPENVIKING_SETTINGS_DIR=$OVT/elsewhere $t; echo "rc=$?"
 OpenViking server: no local.env on this machine - skipping (local server not selected)
 rc=0
+$
+
+The tracked VLM goes through Meridian, so only the embedding model is pulled;
+a VLM on an Ollama route is pulled like the embedding model:
+
+$ cp "$D/ov.conf.json" "$OVT/settings"; node -e 'const fs = require("fs"); const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); c.vlm.model = "ollama_chat/qwen3.5:4b"; fs.writeFileSync(process.argv[1], JSON.stringify(c))' "$D/ov.conf.json"; $t --check | sed "s|$HOME|~|"; cp "$OVT/settings" "$D/ov.conf.json"
+OpenViking server: would pull the Ollama model qwen3.5:4b
+OpenViking server: would render ~/.openviking/ov.conf
+OpenViking server: would restart the server on http://127.0.0.1:1933
 $
 
 A changed tracked setting re-renders ov.conf with the same root key and restarts the server:
