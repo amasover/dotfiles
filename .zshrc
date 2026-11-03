@@ -99,10 +99,10 @@ else
     if [[ -r /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then
         source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
     fi
-    # antibody's static bundle sources plugins from antibody's cache, which
-    # bootstrap's shell-caches step fills. Source it only when every file it
-    # names exists, so a shell started before that (or under another HOME)
-    # starts quietly. $(<file) reads without forking.
+    # ~/.zsh_plugins.sh is antibody's bundle of ~/.zsh_plugins.txt, generated
+    # per machine by bootstrap's shell-caches step (it names absolute paths in
+    # antibody's cache). Source it only when every file it names exists, so a
+    # shell started before that starts quietly. $(<file) reads without forking.
     if [[ -r ~/.zsh_plugins.sh ]]; then
         zsh_bundle_ok=1
         for zsh_plugin in ${${(M)${(f)"$(<~/.zsh_plugins.sh)"}:#source *}#source }; do

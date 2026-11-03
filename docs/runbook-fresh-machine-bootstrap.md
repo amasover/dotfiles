@@ -276,8 +276,9 @@ What it does, in order:
     then symlinks the tracked patched agnoster theme into its custom theme directory.
     No custom plugin clone supplies autosuggestions or NVM.
     Then `setup/shell-caches apply` builds the per-user files `.zshrc` sources but the
-    repo can't track: antibody's plugin clones (needs GitHub; a failure only warns),
-    broot's `br` launcher and tenv's zsh completion.
+    repo can't track: `~/.zsh_plugins.sh`, antibody's bundle of the tracked
+    `~/.zsh_plugins.txt`, with its plugin clones (needs GitHub; a failure only warns),
+    broot's `br` launcher and tenv's zsh completion. `update` rewrites a missing bundle.
 13. **Spacemacs checkout** — `setup/spacemacs-checkout apply` clones upstream `develop`
     when `~/.emacs.d` is absent. An existing wrong/dirty/ahead checkout stops with manual
     repair instructions; bootstrap never overwrites it. Tracked `~/.spacemacs` owns user

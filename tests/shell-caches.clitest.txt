@@ -14,44 +14,51 @@ $ "$SC" --check; echo "rc=$?"
   tenv: not installed; skipped
 rc=0
 $
-# antibody: the stub "clones" by creating the cache file the bundle sources
-$ printf '%s\n' '#!/bin/sh' 'cat > /dev/null' 'echo clone >> "$HOME/antibody.log"' '[ -f "$HOME/offline" ] && exit 1' 'mkdir -p "$HOME/.cache/antibody/zsh-syntax-highlighting"' ': > "$HOME/.cache/antibody/zsh-syntax-highlighting/plugin.zsh"' 'echo "source $HOME/.cache/antibody/zsh-syntax-highlighting/plugin.zsh"' > "$T/bin/antibody"; chmod +x "$T/bin/antibody"; echo zsh-users/zsh-syntax-highlighting > "$HOME/.zsh_plugins.txt"; echo "source $HOME/.cache/antibody/zsh-syntax-highlighting/plugin.zsh" > "$HOME/.zsh_plugins.sh"; echo stub
+# antibody: the stub "clones" by creating a cache file and prints the bundle
+# line naming it, as `antibody bundle` does; $HOME/bad makes it name a file
+# that does not exist
+$ printf '%s\n' '#!/bin/sh' 'cat > /dev/null' 'echo clone >> "$HOME/antibody.log"' '[ -f "$HOME/offline" ] && exit 1' 'p=$HOME/.cache/antibody/zsh-syntax-highlighting/plugin.zsh' '[ -f "$HOME/bad" ] && p=/nonexistent/plugin.zsh' 'mkdir -p "$HOME/.cache/antibody/zsh-syntax-highlighting"' ': > "$HOME/.cache/antibody/zsh-syntax-highlighting/plugin.zsh"' 'echo "source $p"' > "$T/bin/antibody"; chmod +x "$T/bin/antibody"; echo zsh-users/zsh-syntax-highlighting > "$HOME/.zsh_plugins.txt"; touch -t 200001010000 "$HOME/.zsh_plugins.txt"; echo stub
 stub
-$ "$SC" --check | sed "s|$T|T|g"; echo "rc=${PIPESTATUS[0]}"; test -e "$HOME/antibody.log" || echo "nothing cloned"
-  antibody: would run: antibody bundle < ~/.zsh_plugins.txt
+$ "$SC" --check; echo "rc=$?"; ls -A "$HOME"
+  antibody: would run: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
   broot: not installed; skipped
   tenv: not installed; skipped
 rc=1
-nothing cloned
+.zsh_plugins.txt
 $
-# offline: apply warns and still exits 0, so bootstrap goes on
-$ touch "$HOME/offline"; "$SC" 2>&1; echo "rc=$?"; rm "$HOME/offline"
+# offline: apply warns, leaves no bundle or temp file, and still exits 0
+$ touch "$HOME/offline"; "$SC" 2>&1; echo "rc=$?"; rm "$HOME/offline"; ls -A "$HOME" | grep zsh_plugins
   antibody: bundle failed (offline?); re-run shell-caches later
   broot: not installed; skipped
   tenv: not installed; skipped
 rc=0
+.zsh_plugins.txt
 $
-# apply clones, keeps the tracked bundle as it is, and a second run is a no-op
-$ "$SC"; "$SC"; "$SC" --check; echo "rc=$?"; wc -l < "$HOME/antibody.log" | tr -d ' '; sed "s|$T|T|g" "$HOME/.zsh_plugins.sh"
-  antibody: cloned the plugins
-  broot: not installed; skipped
-  tenv: not installed; skipped
-  antibody: plugins in place
-  broot: not installed; skipped
-  tenv: not installed; skipped
-  antibody: plugins in place
-  broot: not installed; skipped
-  tenv: not installed; skipped
+# apply writes this machine's bundle; a second run is a no-op
+$ "$SC" | grep antibody; "$SC" | grep antibody; "$SC" --check >/dev/null; echo "rc=$?"; sed "s|$T|T|g" "$HOME/.zsh_plugins.sh"; wc -l < "$HOME/antibody.log" | tr -d ' '
+  antibody: wrote ~/.zsh_plugins.sh
+  antibody: plugin bundle in place
 rc=0
+source T/home/.cache/antibody/zsh-syntax-highlighting/plugin.zsh
 2
+$
+# a bundle copied from another machine (paths that do not exist here) is replaced
+$ echo "source /home/someone-else/plugin.zsh" > "$HOME/.zsh_plugins.sh"; "$SC" --check | grep antibody; "$SC" | grep antibody; sed "s|$T|T|g" "$HOME/.zsh_plugins.sh"
+  antibody: would run: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
+  antibody: wrote ~/.zsh_plugins.sh
 source T/home/.cache/antibody/zsh-syntax-highlighting/plugin.zsh
 $
-# a bundle naming paths antibody did not create (another user's HOME) is reported
-$ echo "source /nonexistent/plugin.zsh" > "$HOME/.zsh_plugins.sh"; "$SC" 2>&1; echo "rc=$?"
-  antibody: bundled, but ~/.zsh_plugins.sh names paths still missing; regenerate it: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
-  broot: not installed; skipped
-  tenv: not installed; skipped
-rc=0
+# an edited plugin list makes the bundle stale
+$ touch -t 200001010000 "$HOME/.zsh_plugins.sh"; touch "$HOME/.zsh_plugins.txt"; "$SC" | grep antibody; "$SC" | grep antibody
+  antibody: wrote ~/.zsh_plugins.sh
+  antibody: plugin bundle in place
+$
+# a bundle naming missing files is never installed; the old one stays
+$ touch -t 200001010000 "$HOME/.zsh_plugins.sh"; touch "$HOME/bad"; "$SC" 2>&1 | grep antibody; rm "$HOME/bad"; sed "s|$T|T|g" "$HOME/.zsh_plugins.sh"; ls -A "$HOME" | grep zsh_plugins
+  antibody: antibody bundle named plugin files that do not exist; ~/.zsh_plugins.sh left as it was
+source T/home/.cache/antibody/zsh-syntax-highlighting/plugin.zsh
+.zsh_plugins.sh
+.zsh_plugins.txt
 $
 # broot: write the launcher from --print-shell-function, never `broot --install`
 $ printf '%s\n' '#!/bin/sh' 'echo "broot $*" >> "$HOME/broot.log"' '[ "$1" = --print-shell-function ] && echo "br() { :; }"' 'exit 0' > "$T/bin/broot"; chmod +x "$T/bin/broot"; "$SC" --check | grep broot; echo "rc=$?"

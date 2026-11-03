@@ -2,9 +2,11 @@
 # shell-caches — build the per-user files .zshrc sources but the repo can't
 # track, so a fresh Linux machine's first shell starts quietly.
 #
-#   antibody  ~/.zsh_plugins.sh (tracked) sources plugins from antibody's
-#             cache; `antibody bundle < ~/.zsh_plugins.txt` clones them there.
-#             Needs the network (GitHub).
+#   antibody  ~/.zsh_plugins.sh, generated here from the tracked
+#             ~/.zsh_plugins.txt with `antibody bundle`. The bundle names
+#             absolute paths in this user's antibody cache, so it is per machine
+#             and untracked. Cloning needs the network (GitHub); sourcing it at
+#             shell startup does not.
 #   broot     ~/.config/broot/launcher/bash/br, the `br` shell function.
 #             `broot --install` would also edit the tracked .zshrc, so this
 #             writes the same function with `broot --print-shell-function` and
@@ -42,34 +44,37 @@ esac
 drift=0
 
 # --- antibody -----------------------------------------------------------------
-# Converged when every file the static bundle sources exists.
+# Converged when the bundle is no older than the plugin list and every file it
+# sources exists.
 bundle=$HOME/.zsh_plugins.sh
 plugins=$HOME/.zsh_plugins.txt
-bundle_missing() {
+bundle_ok() { # $1 = bundle file
     local path
+    [[ -s $1 && ! $plugins -nt $1 ]] || return 1
     while IFS= read -r path; do
-        [[ -e $path ]] || return 0
-    done < <(sed -n 's/^source //p' "$bundle")
-    return 1
+        [[ -e $path ]] || return 1
+    done < <(sed -n 's/^source //p' "$1")
 }
 if ! command -v antibody >/dev/null; then
     echo "  antibody: not installed; skipped"
-elif [[ ! -r $bundle || ! -r $plugins ]]; then
-    echo "  antibody: no ~/.zsh_plugins.sh or ~/.zsh_plugins.txt; skipped"
-elif ! bundle_missing; then
-    echo "  antibody: plugins in place"
+elif [[ ! -r $plugins ]]; then
+    echo "  antibody: no ~/.zsh_plugins.txt; skipped"
+elif bundle_ok "$bundle"; then
+    echo "  antibody: plugin bundle in place"
 elif ((check)); then
-    echo "  antibody: would run: antibody bundle < ~/.zsh_plugins.txt"
+    echo "  antibody: would run: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh"
     drift=1
 else
-    # The tracked bundle is the static output; only the clones are wanted here.
-    if ! antibody bundle <"$plugins" >/dev/null; then
+    tmp=$(mktemp "$HOME/.zsh_plugins.XXXXXX")
+    if ! antibody bundle <"$plugins" >"$tmp"; then
+        rm -f "$tmp"
         echo "  antibody: bundle failed (offline?); re-run shell-caches later" >&2
-    elif bundle_missing; then
-        echo "  antibody: bundled, but ~/.zsh_plugins.sh names paths still missing;" \
-            "regenerate it: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh" >&2
+    elif ! bundle_ok "$tmp"; then
+        rm -f "$tmp"
+        echo "  antibody: antibody bundle named plugin files that do not exist; ~/.zsh_plugins.sh left as it was" >&2
     else
-        echo "  antibody: cloned the plugins"
+        mv "$tmp" "$bundle"
+        echo "  antibody: wrote ~/.zsh_plugins.sh"
     fi
 fi
 

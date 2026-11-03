@@ -12,3 +12,7 @@ docs/private/
 
 # OMP's project-scoped /model selection; user-local, never portable.
 /.omp/config.yml
+
+# antibody's bundle of .zsh_plugins.txt; absolute paths into this user's cache,
+# generated per machine by .local/bin/setup/shell-caches.
+/.zsh_plugins.sh
