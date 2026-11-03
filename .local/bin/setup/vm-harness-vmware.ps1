@@ -139,9 +139,10 @@
 #   - bootstrap copies ~/.config/dotfiles/github-token (if present) into the
 #     guest at the same path, mode 0600, and runs the guest glue with
 #     --attended in the real terminal (ssh -t under script(1), which records
-#     it for the phase log): sudo password once, then yadm decrypt's archive
-#     passphrase, then bootstrap's own confirmations. No pinned display rows
-#     during that phase.
+#     it for the phase log): your sudo password once and yadm decrypt's
+#     archive passphrase at the start, then the same unattended bootstrap as
+#     a disposable run, then a list of the follow-ups it skipped. No pinned
+#     display rows during that phase.
 #   - destroy refuses unless you type the VM name, or VM_HARNESS_DESTROY_REAL
 #     names the VM. Confirmed, it deletes the VM directory, logs included.
 
@@ -624,7 +625,7 @@ function Invoke-GuestGlue([string]$Ip, [string]$RemoteCmd) {
     if ($LASTEXITCODE -ne 0) { throw "guest command failed (rc=$LASTEXITCODE): $RemoteCmd" }
 }
 
-# The attended bootstrap prompts (sudo, yadm decrypt's pinentry, pacman), and
+# The attended bootstrap prompts first (sudo, yadm decrypt's pinentry), and
 # the phase sink is a line pipe: a prompt with no newline would never show.
 # So ssh -t gets the real terminal, under script(1), which records the
 # session for Invoke-Phase to scrub into the log afterwards. Typed passwords
@@ -961,7 +962,7 @@ function Cmd-Bootstrap {
                " --repo $(ConvertTo-ShellQuoted $guestRepo)"
         if ($Branch) { $cmd += " --branch $(ConvertTo-ShellQuoted $Branch)" }
         if ($Attended) {
-            Say "Running repo bootstrap inside the VM (class: $Class, attended: your sudo password once, then the archive passphrase, then bootstrap's confirmations; AUR builds take hours)"
+            Say "Running repo bootstrap inside the VM (class: $Class): type your sudo password and the archive passphrase now, then it runs unattended for hours and ends with a list of follow-ups"
             Invoke-GuestGlueAttended $ip "$cmd --attended"
         } else {
             Say "Running repo bootstrap inside the VM (class: $Class, unattended; AUR builds take a while)"

@@ -11,13 +11,16 @@
 #              clone/refresh yadm, select the concrete machine class, ensure an
 #              empty machine-local group exists, then run bootstrap check+apply
 #              (--unattended). --attended is the first bootstrap of a real VM
-#              (Story 5.8): run it over `ssh -t`; bootstrap runs without
-#              --unattended, so it prompts (yadm decrypt asks for the archive
-#              passphrase). It first asks for the user's sudo password once
-#              (sudo -v), then installs a temporary password-free sudo drop-in
-#              (/etc/sudoers.d/89-first-bootstrap) so the hours-long run never
-#              stops at a sudo prompt; a trap deletes it when the run ends
-#              (success, failure, Ctrl-C, hangup, TERM).
+#              (Story 5.8), run over `ssh -t`: everything a person types comes
+#              first, then the long run needs nobody. It asks for the user's
+#              sudo password once (sudo -v) and installs a temporary
+#              password-free sudo drop-in (/etc/sudoers.d/89-first-bootstrap)
+#              that a trap deletes when the run ends (success, failure,
+#              Ctrl-C, hangup, TERM); then `yadm decrypt` asks for the archive
+#              passphrase (3 attempts; skipped once ~/.zshenv exists). Then it
+#              runs the same bootstrap check+apply --unattended as every
+#              disposable run, and ends by printing the follow-ups that
+#              --unattended skipped.
 #   check --class C
 #              assert the selected class/adapter/inbox, package drift, services;
 #              fails first if the temporary sudo drop-in is still there
@@ -112,6 +115,40 @@ begin_attended_sudo() {
     trap 'exit 130' INT
     trap 'exit 143' TERM
     install_sudo_dropin
+}
+
+# The archive passphrase goes to gpg-agent's pinentry on this terminal; it
+# never passes through this script, and pinentry does not echo it, so the
+# harness's script(1) recording never holds it. Same skip test as bootstrap's
+# own decrypt step (~/.zshenv), which then reports it as already decrypted.
+attended_decrypt() {
+    local archive=$HOME/.local/share/yadm/archive attempt
+    if [[ ! -f $archive ]]; then
+        say "Secrets: no encrypted archive at $archive — nothing to decrypt"
+        return 0
+    fi
+    if [[ -f $HOME/.zshenv ]]; then
+        say 'Secrets: already decrypted (~/.zshenv exists) — skipping yadm decrypt'
+        return 0
+    fi
+    # An agent started by an earlier ssh session would prompt on that one.
+    gpg-connect-agent updatestartuptty /bye >/dev/null 2>&1 || true
+    for attempt in 1 2 3; do
+        say "Secrets: type the archive passphrase (attempt $attempt of 3, input hidden)"
+        if yadm decrypt; then return 0; fi
+    done
+    die 'yadm decrypt failed 3 times — stopping before the long run'
+}
+
+# --unattended skips only the steps that need a person; name each with its
+# command. Quarantine holds print their own remedies above ("HELD this run").
+print_attended_followups() {
+    say 'Done. Follow-ups --unattended skipped (run them in a terminal on the VM):'
+    echo '  - OpenViking memory: the OpenBao passkey sign-in, when no key is stored yet:'
+    echo '      ~/.local/bin/setup/openviking-memory'
+    echo '  - Packages the quarantine held this run (bootstrap lists them above, if any)'
+    echo '    install on a later run once they age in:'
+    echo '      ~/.local/bin/setup/bootstrap --unattended'
 }
 
 expected_profile() {
@@ -236,13 +273,10 @@ cmd_bootstrap() {
     elif grep -q '^# harness-owned guest hardware set' "$ml"; then
         migrate_legacy_machine_local "$ml"
     fi
-    if ((attended)); then
-        "$HOME/.local/bin/setup/bootstrap" --check
-        "$HOME/.local/bin/setup/bootstrap"
-    else
-        "$HOME/.local/bin/setup/bootstrap" --check --unattended
-        "$HOME/.local/bin/setup/bootstrap" --unattended
-    fi
+    if ((attended)); then attended_decrypt; fi
+    "$HOME/.local/bin/setup/bootstrap" --check --unattended
+    "$HOME/.local/bin/setup/bootstrap" --unattended
+    if ((attended)); then print_attended_followups; fi
 }
 
 cmd_check() {
