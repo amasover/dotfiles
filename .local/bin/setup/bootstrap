@@ -168,17 +168,16 @@ reconcile_initramfs_hooks() {
     local main="$root/etc/mkinitcpio.conf"
     local config_dir="$root/etc/mkinitcpio.conf.d"
     [[ -f "$main" ]] || die "mkinitcpio base configuration missing ($main)"
-    local -a images=("$root"/boot/initramfs-*.img)
-    local image has_image=0
-    for image in "${images[@]}"; do
-        if [[ -e "$image" || -L "$image" ]]; then
-            has_image=1
-            break
-        fi
-    done
-    if ((! has_image)); then
-        die "no initramfs images found in $root/boot (is /boot mounted?)"
-    fi
+    # List the images as root: archinstall mounts a systemd-boot ESP at /boot
+    # with fmask/dmask=0077, so an unprivileged glob sees nothing there (the
+    # aarch64 work-vm died here on 2026-11-02 with both images present).
+    local -a images=()
+    mapfile -d '' -t images < <(
+        sudo find "$root/boot" -maxdepth 1 \( -type f -o -type l \) \
+            -name 'initramfs-*.img' -print0 2>/dev/null | LC_ALL=C.UTF-8 sort -z
+    )
+    local image
+    ((${#images[@]})) || die "no initramfs images found in $root/boot (is /boot mounted?)"
 
     # buildconfig stores this exact concatenation, not just the final HOOKS array.
     local -a dropins=()
