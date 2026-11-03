@@ -1374,6 +1374,17 @@ else
     ln -sf "$theme_src" "$theme_dst"
 fi
 
+# --- 8b2. shell caches (antibody plugin clones) ---------------------------------
+# Per-user files .zshrc sources that the repo can't track; without them a fresh
+# machine's first shell printed missing-file errors. A failed clone warns and
+# bootstrap goes on, since .zshrc skips what is missing.
+say "Shell caches"
+if [[ $CHECK -eq 1 ]]; then
+    "${BASH_SOURCE[0]%/*}/shell-caches" --check || true
+else
+    "${BASH_SOURCE[0]%/*}/shell-caches" apply
+fi
+
 # --- 8c. Spacemacs checkout (Story 2.13) --------------------------------------
 # ~/.emacs.d is a disposable upstream develop checkout; tracked ~/.spacemacs
 # owns customization. Existing divergence fails closed instead of being stashed,

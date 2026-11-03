@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# shell-caches — build the per-user files .zshrc sources but the repo can't
+# track, so a fresh Linux machine's first shell starts quietly.
+#
+#   antibody  ~/.zsh_plugins.sh (tracked) sources plugins from antibody's
+#             cache; `antibody bundle < ~/.zsh_plugins.txt` clones them there.
+#             Needs the network (GitHub).
+#
+# A part whose tool is not installed is skipped. A part that is already in
+# place is left alone. A part that fails (no network, say) warns, and apply
+# still exits 0: .zshrc skips what is missing, so the shell stays usable.
+#
+# Usage:
+#   shell-caches [apply]   build what is missing
+#   shell-caches --check   report what apply would do; change nothing.
+#                          Exit 1 when something is missing
+set -euo pipefail
+
+usage() {
+    sed -n '2,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//p;}' "$0"
+}
+
+check=0
+case "${1:-apply}" in
+    apply) ;;
+    --check) check=1 ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        echo "shell-caches: unknown argument: $1   (try: shell-caches -h)" >&2
+        exit 2
+        ;;
+esac
+
+drift=0
+
+# --- antibody -----------------------------------------------------------------
+# Converged when every file the static bundle sources exists.
+bundle=$HOME/.zsh_plugins.sh
+plugins=$HOME/.zsh_plugins.txt
+bundle_missing() {
+    local path
+    while IFS= read -r path; do
+        [[ -e $path ]] || return 0
+    done < <(sed -n 's/^source //p' "$bundle")
+    return 1
+}
+if ! command -v antibody >/dev/null; then
+    echo "  antibody: not installed; skipped"
+elif [[ ! -r $bundle || ! -r $plugins ]]; then
+    echo "  antibody: no ~/.zsh_plugins.sh or ~/.zsh_plugins.txt; skipped"
+elif ! bundle_missing; then
+    echo "  antibody: plugins in place"
+elif ((check)); then
+    echo "  antibody: would run: antibody bundle < ~/.zsh_plugins.txt"
+    drift=1
+else
+    # The tracked bundle is the static output; only the clones are wanted here.
+    if ! antibody bundle <"$plugins" >/dev/null; then
+        echo "  antibody: bundle failed (offline?); re-run shell-caches later" >&2
+    elif bundle_missing; then
+        echo "  antibody: bundled, but ~/.zsh_plugins.sh names paths still missing;" \
+            "regenerate it: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh" >&2
+    else
+        echo "  antibody: cloned the plugins"
+    fi
+fi
+
+((check)) && exit "$drift"
+exit 0

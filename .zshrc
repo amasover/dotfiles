@@ -96,8 +96,21 @@ else
         unset nvm_dir nvm_file
         source /usr/share/nvm/init-nvm.sh
     fi
-    source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-    source ~/.zsh_plugins.sh
+    if [[ -r /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then
+        source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+    fi
+    # antibody's static bundle sources plugins from antibody's cache, which
+    # bootstrap's shell-caches step fills. Source it only when every file it
+    # names exists, so a shell started before that (or under another HOME)
+    # starts quietly. $(<file) reads without forking.
+    if [[ -r ~/.zsh_plugins.sh ]]; then
+        zsh_bundle_ok=1
+        for zsh_plugin in ${${(M)${(f)"$(<~/.zsh_plugins.sh)"}:#source *}#source }; do
+            [[ -r $zsh_plugin ]] || zsh_bundle_ok=0
+        done
+        (( zsh_bundle_ok )) && source ~/.zsh_plugins.sh
+        unset zsh_bundle_ok zsh_plugin
+    fi
 fi
 
 #############################
