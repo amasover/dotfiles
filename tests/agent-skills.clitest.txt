@@ -75,6 +75,24 @@ $ git -C "$T/clone" remote set-url origin "$T/elsewhere.git"; "$AS" | sed "s|$T|
 agent-skills: refusing: T/clone has another origin than AGENT_SKILLS_URL; fix it by hand
 rc=0
 $
+# a directory that is not a git checkout is left alone
+$ mkdir "$T/plain"; echo keep > "$T/plain/file"; AGENT_SKILLS_DIR=$T/plain "$AS" | sed "s|$T|T|g"; echo "rc=${PIPESTATUS[0]}"; cat "$T/plain/file"
+agent-skills: refusing: T/plain exists but is not a git checkout; move it aside and re-run `mise bootstrap` (`update` on Linux) on the LAN
+rc=0
+keep
+$
+# a branch that tracks no upstream is not pulled; the clone is still linked
+$ git clone -q "$T/remote.git" "$T/noup" && git -C "$T/noup" checkout -qb side && AGENT_SKILLS_DIR=$T/noup "$AS" | sed "s|$T|T|g"; echo "rc=${PIPESTATUS[0]}"
+agent-skills: refusing to pull: T/noup's branch tracks no upstream
+agent-skills: linked T/noup into omp
+rc=0
+$
+# ahead of origin: nothing to pull, local commits kept
+$ git clone -q "$T/remote.git" "$T/ahead" && echo mine > "$T/ahead/mine.txt" && git -C "$T/ahead" add mine.txt && git -C "$T/ahead" commit -qm mine && AGENT_SKILLS_DIR=$T/ahead "$AS" | sed "s|$T|T|g"; git -C "$T/ahead" log --format=%s -1
+agent-skills: ahead of origin; nothing to pull (push your commits)
+agent-skills: linked T/ahead into omp
+mine
+$
 # unknown argument fails loudly
 $ "$AS" frobnicate 2>&1; echo "rc=$?"
 agent-skills: unknown argument: frobnicate   (try: agent-skills -h)
