@@ -91,11 +91,198 @@ $ rm -rf "$T"; echo done
 done
 $
 
+--attended (Story 5.8, the real VM's first bootstrap): everything a person
+types comes first. One `sudo -v`, then a visudo-checked drop-in, mode 0440,
+staged under a dotted name (sudo ignores it) and renamed into place; then
+`yadm decrypt` for the archive passphrase; then the same bootstrap
+`--check --unattended` and `--unattended` as a disposable run, and the
+follow-ups --unattended skipped. A trap deletes the drop-in on success, on a
+failed bootstrap, and on HUP/TERM/INT. The stub sudo runs its command
+unprivileged, against a temp sudoers dir; the stub yadm logs every call,
+answers `config yadm.gpg-program` with FAKE_GPG_PROGRAM (empty by default)
+and fakes decrypt (FAKE_DECRYPT=fail fails it; success writes ~/.zshenv, as
+the real archive does) unless REAL_YADM names the real one. TMPDIR is
+$A/tmp, so a leftover gpg wrapper would show there.
+
+$ G=.local/bin/setup/vm-harness-guest; A=$(mktemp -d); mkdir -p "$A/bin" "$A/sudoers" "$A/tmp" "$A/home/.local/bin/setup" "$A/home/.local/share/yadm"; : > "$A/home/.local/share/yadm/archive"; printf '%s\n' '#!/bin/sh' 'printf sudo >> "$GUEST_LOG"' 'for a; do printf " <%s>" "$a" >> "$GUEST_LOG"; done' 'printf "\n" >> "$GUEST_LOG"' '[ "$1" = -v ] && exit 0' '[ "$1" = -n ] && shift' 'exec "$@"' > "$A/bin/sudo"; printf '%s\n' '#!/bin/sh' '[ "$1" = -cf ] && grep -q " ALL=(ALL) NOPASSWD: ALL$" "$2"' > "$A/bin/visudo"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$A/bin/pacman"; printf '%s\n' '#!/bin/sh' 'printf yadm >> "$GUEST_LOG"' 'for a; do printf " <%s>" "$a" >> "$GUEST_LOG"; done' 'printf "\n" >> "$GUEST_LOG"' '[ "$1" = rev-parse ] && exit 1' '[ "$1" = config ] && [ "$2" = yadm.gpg-program ] && { printf "%s\n" "${FAKE_GPG_PROGRAM:-}"; exit 0; }' 'if [ "$1" = decrypt ]; then [ -n "${REAL_YADM:-}" ] && exec "$REAL_YADM" "$@"; [ "${FAKE_DECRYPT:-}" = fail ] && exit 1; : > "$HOME/.zshenv"; fi' 'exit 0' > "$A/bin/yadm"; printf '%s\n' '#!/bin/sh' 'printf "bootstrap <%s>\n" "$*" >> "$GUEST_LOG"' 'f=$VM_HARNESS_GUEST_SUDOERS_DIR/89-first-bootstrap' 'if [ -e "$f" ]; then printf "bootstrap <%s> drop-in %s: %s\n" "$*" "$(stat -c %a "$f")" "$(sed "s/^$(id -un) /USER /" "$f")"; else printf "bootstrap <%s> no drop-in\n" "$*"; fi' '[ "$1" = --check ] && exit 0' 'case "${FAKE_BOOTSTRAP:-}" in fail) exit 7 ;; HUP | TERM | INT) kill -s "$FAKE_BOOTSTRAP" "$PPID" ;; esac' > "$A/home/.local/bin/setup/bootstrap"; chmod +x "$A/bin/"* "$A/home/.local/bin/setup/bootstrap"; RUN_ATT() { : > "$A/log"; [ "${ZSHENV:-}" = keep ] || rm -f "$A/home/.zshenv"; PATH="$A/bin:$PATH" HOME="$A/home" TMPDIR="$A/tmp" GUEST_LOG="$A/log" VM_HARNESS_GUEST_SUDOERS_DIR="$A/sudoers" "$G" bootstrap --class work-vm --repo https://example.invalid/dotfiles.git "$@" 2>&1 | sed "s|$A|\$A|g" | grep -v '^$'; echo "rc=${PIPESTATUS[0]} left: $(ls -A "$A/sudoers")"; }; echo ready
+ready
+$ RUN_ATT --attended
+==> sudo: type your password for this VM (asked once; the run then uses a temporary drop-in)
+==> Temporary password-free sudo for this run: $A/sudoers/89-first-bootstrap (deleted when the run ends)
+==> Secrets: type the archive passphrase (attempt 1 of 3, input hidden)
+bootstrap <--check --unattended> drop-in 440: USER ALL=(ALL) NOPASSWD: ALL
+bootstrap <--unattended> drop-in 440: USER ALL=(ALL) NOPASSWD: ALL
+==> Done. Follow-ups --unattended skipped (run them in a terminal on the VM):
+  - OpenViking memory: the OpenBao passkey sign-in, when no key is stored yet:
+      ~/.local/bin/setup/openviking-memory
+  - Packages the quarantine held this run (bootstrap lists them above, if any)
+    install on a later run once they age in:
+      ~/.local/bin/setup/bootstrap --unattended
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=0 left: 
+$ grep -E '^(sudo <-v>|yadm <decrypt>|bootstrap )' "$A/log"
+sudo <-v>
+yadm <decrypt>
+bootstrap <--check --unattended>
+bootstrap <--unattended>
+$ grep '^sudo' "$A/log" | sed -E "s|$A|\$A|g; s|<[^>]*/tmp\.[A-Za-z0-9]+>|<TMP>|g"
+sudo <-v>
+sudo <visudo> <-cf> <TMP>
+sudo <install> <-m> <0440> <TMP> <$A/sudoers/.89-first-bootstrap.new>
+sudo <mv> <-f> <$A/sudoers/.89-first-bootstrap.new> <$A/sudoers/89-first-bootstrap>
+sudo <pacman> <-S> <--needed> <--noconfirm> <git> <base-devel> <yadm>
+sudo <-n> <test> <-e> <$A/sudoers/89-first-bootstrap>
+sudo <-n> <rm> <-f> <$A/sudoers/89-first-bootstrap> <$A/sudoers/.89-first-bootstrap.new>
+sudo <-n> <test> <-e> <$A/sudoers/89-first-bootstrap>
+$
+
+An existing ~/.zshenv (decrypted on an earlier run) skips the passphrase,
+the same test bootstrap's own decrypt step uses.
+
+$ touch "$A/home/.zshenv"; ZSHENV=keep RUN_ATT --attended | grep -E '^==> Secrets|^rc='; grep -c '^yadm <decrypt>' "$A/log"
+==> Secrets: already decrypted (~/.zshenv exists) — skipping yadm decrypt
+rc=0 left: 
+0
+$
+
+Three wrong passphrases stop the run before the long bootstrap starts; the
+trap still deletes the drop-in.
+
+$ FAKE_DECRYPT=fail RUN_ATT --attended; grep -c '^bootstrap' "$A/log"
+==> sudo: type your password for this VM (asked once; the run then uses a temporary drop-in)
+==> Temporary password-free sudo for this run: $A/sudoers/89-first-bootstrap (deleted when the run ends)
+==> Secrets: type the archive passphrase (attempt 1 of 3, input hidden)
+==> Secrets: type the archive passphrase (attempt 2 of 3, input hidden)
+==> Secrets: type the archive passphrase (attempt 3 of 3, input hidden)
+vm-harness-guest: FATAL: yadm decrypt failed 3 times — stopping before the long run
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=2 left: 
+0
+$
+
+The passphrase prompt is gpg's own, with echo off (--pinentry-mode loopback,
+through a gpg wrapper on yadm's PATH). Two settings would defeat that: a
+yadm.gpg-program bypasses the wrapper, and no-allow-loopback-pinentry in
+gpg-agent.conf refuses loopback. Either stops the run before anything is
+asked; there is no fallback to a pinentry that might echo.
+
+$ FAKE_GPG_PROGRAM=/usr/local/bin/gpg-custom RUN_ATT --attended | grep -E '^(==> Secrets|vm-harness-guest|==> Temporary sudo|rc=)'; grep -c '^yadm <decrypt>' "$A/log"
+vm-harness-guest: FATAL: yadm.gpg-program is set, so yadm would bypass the hidden-input gpg wrapper — unset it (yadm config --unset yadm.gpg-program) and run again; nothing was asked
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=2 left: 
+0
+$ N=$(mktemp -d); chmod 700 "$N"; echo no-allow-loopback-pinentry > "$N/gpg-agent.conf"; GNUPGHOME="$N" RUN_ATT --attended | grep -E '^(==> Secrets|vm-harness-guest|==> Temporary sudo|rc=)'; grep -c '^yadm <decrypt>' "$A/log"; rm -rf "$N"
+vm-harness-guest: FATAL: gpg-agent.conf sets no-allow-loopback-pinentry, and the hidden-input passphrase prompt needs loopback — remove that line and run again; nothing was asked
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=2 left: 
+0
+$
+
+A failed bootstrap and each signal still delete the drop-in; no follow-ups
+are printed for a run that did not finish.
+
+$ FAKE_BOOTSTRAP=fail RUN_ATT --attended | grep -E '^(bootstrap|==> (Done|Temporary sudo)|rc=)'
+bootstrap <--check --unattended> drop-in 440: USER ALL=(ALL) NOPASSWD: ALL
+bootstrap <--unattended> drop-in 440: USER ALL=(ALL) NOPASSWD: ALL
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=7 left: 
+$ for sig in HUP TERM INT; do FAKE_BOOTSTRAP=$sig RUN_ATT --attended | grep -E '^(==> (Done|Temporary sudo)|rc=)'; done
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=129 left: 
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=143 left: 
+==> Temporary sudo drop-in deleted ($A/sudoers/89-first-bootstrap)
+rc=130 left: 
+$ ls -A "$A/tmp" | wc -l
+0
+$
+
+A failed `sudo -v` (wrong password three times) stops before any drop-in is
+written or any passphrase asked; visudo rejecting the file stops before it
+is installed.
+
+$ cp "$A/bin/sudo" "$A/bin/sudo.ok"; printf '%s\n' '#!/bin/sh' '[ "$1" = -v ] && exit 1' 'exec "$(dirname "$0")/sudo.ok" "$@"' > "$A/bin/sudo"; chmod +x "$A/bin/sudo"; RUN_ATT --attended
+==> sudo: type your password for this VM (asked once; the run then uses a temporary drop-in)
+vm-harness-guest: FATAL: sudo -v failed — no drop-in installed
+rc=2 left: 
+$ mv "$A/bin/sudo.ok" "$A/bin/sudo"; cp "$A/bin/visudo" "$A/bin/visudo.ok"; printf '%s\n' '#!/bin/sh' 'exit 1' > "$A/bin/visudo"; RUN_ATT --attended; mv "$A/bin/visudo.ok" "$A/bin/visudo"
+==> sudo: type your password for this VM (asked once; the run then uses a temporary drop-in)
+vm-harness-guest: FATAL: visudo rejected the temporary sudo drop-in — nothing installed
+rc=2 left: 
+$
+
+The real decrypt: yadm, gpg and gpg-agent, on a terminal recorded byte for
+byte (tests/pty-drive.py, the bytes the harness's script(1) session log
+keeps). gpg-agent's pinentry here is a stub that behaves like the guest's
+default pinentry-curses: it draws one * per typed character, and it leaves
+a pinentry-asked file behind when gpg-agent asks it for a passphrase
+(GETPIN). First the control: a plain `gpg -d` asks that pinentry, and the
+recording shows the passphrase's length.
+
+$ P=$(mktemp -d /tmp/vmhg.XXXXXX); RY=$(command -v yadm); mkdir -m 700 "$P/gnupg"; mkdir "$P/src"; printf '%s\n' '#!/bin/sh' 'echo "OK stub pinentry"' 'tty=' 'while IFS= read -r line; do' '  case $line in' '    "OPTION ttyname="*) tty=${line#OPTION ttyname=} ;;' '    GETPIN) touch "$(dirname "$0")/pinentry-asked"; printf "Passphrase: " > "$tty"; stty -echo < "$tty"; IFS= read -r pin < "$tty"; stty echo < "$tty"; echo "$pin" | sed "s/./*/g" > "$tty"; echo "D $pin" ;;' '    BYE) echo OK; exit 0 ;;' '  esac' '  echo OK' 'done' > "$P/pinentry-stars"; chmod +x "$P/pinentry-stars"; printf 'pinentry-program %s\n' "$P/pinentry-stars" > "$P/gnupg/gpg-agent.conf"; echo 'export FAKE_ZSHENV=1' > "$P/src/.zshenv"; tar -C "$P/src" -cf - .zshenv | GNUPGHOME="$P/gnupg" gpg --batch --yes --quiet --pinentry-mode loopback --passphrase arch-PASS-fake-31 --no-symkey-cache --symmetric -o "$A/home/.local/share/yadm/archive"; rm -f "$A/home/.zshenv"; echo ready  # gitleaks:allow -- 2026-11-03: fake test passphrase
+ready
+$ GNUPGHOME="$P/gnupg" python3 tests/pty-drive.py --log "$P/control" --answer 'Passphrase:' arch-PASS-fake-31 -- sh -c 'GPG_TTY=$(tty) gpg --quiet -d "$1" >/dev/null' sh "$A/home/.local/share/yadm/archive"; echo "rc=$?"; tr -d '\r' < "$P/control" | grep -o '\*\**'; ls "$P" | grep -c pinentry-asked  # gitleaks:allow -- 2026-11-03: fake test passphrase
+rc=0
+*****************
+1
+$
+
+The attended run, against a fresh agent with that same configuration: a
+wrong passphrase, then the right one. yadm retries, the archive decrypts,
+and the recording holds neither passphrase nor any *: gpg asked on the
+terminal with echo off, and the pinentry was never asked. (After the wrong
+passphrase gpg-agent does start it, to clear its cache, with no prompt and
+no output.) The gpg home's config files are unchanged, and the gpg wrapper
+is gone.
+
+$ GNUPGHOME="$P/gnupg" gpgconf --kill gpg-agent; rm -f "$P/pinentry-asked"; find "$P/gnupg" -name '*.conf' -exec sha256sum {} + | sort > "$P/conf.before"; : > "$A/log"; PATH="$A/bin:$PATH" HOME="$A/home" TMPDIR="$A/tmp" GNUPGHOME="$P/gnupg" GUEST_LOG="$A/log" VM_HARNESS_GUEST_SUDOERS_DIR="$A/sudoers" REAL_YADM="$RY" python3 tests/pty-drive.py --log "$P/session" --answer 'Enter passphrase:' wrong-guess-7 --answer 'Enter passphrase:' arch-PASS-fake-31 -- "$G" bootstrap --class work-vm --repo https://example.invalid/dotfiles.git --attended; echo "rc=$?"  # gitleaks:allow -- 2026-11-03: fake test passphrase
+rc=0
+$ tr '\r' '\n' < "$P/session" | grep -E '^(==> Secrets|Enter passphrase|gpg: decryption failed|All files decrypted|bootstrap <)' | sed 's/ drop-in .*//; s/ *$//'
+==> Secrets: type the archive passphrase (attempt 1 of 3, input hidden)
+Enter passphrase:
+gpg: decryption failed: Bad session key
+==> Secrets: type the archive passphrase (attempt 2 of 3, input hidden)
+Enter passphrase:
+All files decrypted.
+bootstrap <--check --unattended>
+bootstrap <--unattended>
+$ grep -c -e arch-PASS-fake-31 -e wrong-guess-7 "$P/session"; grep -c '\*' "$P/session"; ls "$P" | grep -c pinentry-asked; cat "$A/home/.zshenv"  # gitleaks:allow -- 2026-11-03: fake
+0
+0
+0
+export FAKE_ZSHENV=1
+$ find "$P/gnupg" -name '*.conf' -exec sha256sum {} + | sort | diff "$P/conf.before" - && echo 'gpg config unchanged'; ls -A "$A/tmp" | wc -l
+gpg config unchanged
+0
+$ GNUPGHOME="$P/gnupg" gpgconf --kill gpg-agent; rm -rf "$P"; echo done
+done
+$
+
+Without --attended (every disposable run) nothing changes: no sudo -v, no
+drop-in, no decrypt, bootstrap gets --unattended, no follow-ups.
+
+$ RUN_ATT; grep -cE '^(sudo <(-v|visudo|install|mv)>|yadm <decrypt>)' "$A/log"
+bootstrap <--check --unattended> no drop-in
+bootstrap <--unattended> no drop-in
+rc=0 left: 
+0
+$
+
+check refuses while the drop-in is still there (a run that died without its
+trap, e.g. a power cut).
+
+$ printf 'x ALL=(ALL) NOPASSWD: ALL\n' > "$A/sudoers/89-first-bootstrap"; PATH="$A/bin:$PATH" GUEST_LOG="$A/log" VM_HARNESS_GUEST_SUDOERS_DIR="$A/sudoers" "$G" check --class work-vm 2>&1 | sed "s|$A|\$A|g"; echo "rc=${PIPESTATUS[0]}"
+vm-harness-guest: FATAL: the temporary sudo drop-in $A/sudoers/89-first-bootstrap is still there — a first bootstrap ended without deleting it. Delete it: sudo rm $A/sudoers/89-first-bootstrap
+rc=2
+$ rm -rf "$A"; echo done
+done
+$
+
 The hard gate validates class/adapter/inbox and exclusive NetworkManager
 ownership before accepting package drift. Custom-PKGBUILD packages remain the
 only unmanaged exception; metapac failures stay distinct.
 
-$ G=.local/bin/setup/vm-harness-guest; U=$(mktemp -d); mkdir -p "$U/bin" "$U/home/.config/metapac/groups" "$U/tools" "$U/pkgbuilds/vendored"; printf 'pkgname=vendored\n' > "$U/pkgbuilds/vendored/PKGBUILD"; printf '%s\n' '#!/bin/sh' '[ -z "${FAKE_METAPAC_RC:-}" ] || exit "$FAKE_METAPAC_RC"' 'printf "%s\n" "${FAKE_UNMANAGED:-}"' > "$U/bin/metapac"; printf '%s\n' '#!/bin/sh' 'if [ "$1" = config ] && [ "$2" = local.class ]; then printf "%s\n" "${FAKE_CLASS:-qemu-harness}"; fi' > "$U/bin/yadm"; printf '%s\n' '#!/bin/sh' 'unit=' 'for arg; do unit=$arg; done' 'case "$1:$unit" in' '  is-enabled:NetworkManager) exit 0 ;;' '  is-active:NetworkManager) [ "${FAKE_NM_ACTIVE:-1}" = 1 ]; exit $? ;;' '  is-enabled:systemd-networkd|is-active:systemd-networkd) [ "${FAKE_NETWORKD:-0}" = 1 ]; exit $? ;;' '  is-enabled:sshd|status:--no-pager) exit 0 ;;' 'esac' 'exit 1' > "$U/bin/systemctl"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$U/bin/pacman"; chmod +x "$U/bin/metapac" "$U/bin/yadm" "$U/bin/systemctl" "$U/bin/pacman"; printf '[hostname_groups]\n"%s" = [\n  "guest-qemu",\n  "inbox-qemu-harness",\n]\n' "$(uname -n)" > "$U/home/.config/metapac/config.toml"; for group in guest-qemu inbox-qemu-harness; do printf '[arch]\npackages = [\n]\n' > "$U/home/.config/metapac/groups/$group.toml"; done; for tool in metapac-declared metapac-unmanaged-names custom-pkgs metapac-drift-report aur-quarantine; do ln -s "$PWD/.local/bin/tools/$tool" "$U/tools/$tool"; done; RUN_CHECK() { PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" "$G" check --class qemu-harness; }; echo ready
+$ G=.local/bin/setup/vm-harness-guest; U=$(mktemp -d); mkdir -p "$U/bin" "$U/home/.config/metapac/groups" "$U/tools" "$U/pkgbuilds/vendored"; printf 'pkgname=vendored\n' > "$U/pkgbuilds/vendored/PKGBUILD"; printf '%s\n' '#!/bin/sh' '[ -z "${FAKE_METAPAC_RC:-}" ] || exit "$FAKE_METAPAC_RC"' 'printf "%s\n" "${FAKE_UNMANAGED:-}"' > "$U/bin/metapac"; printf '%s\n' '#!/bin/sh' 'if [ "$1" = config ] && [ "$2" = local.class ]; then printf "%s\n" "${FAKE_CLASS:-qemu-harness}"; fi' > "$U/bin/yadm"; printf '%s\n' '#!/bin/sh' 'unit=' 'for arg; do unit=$arg; done' 'case "$1:$unit" in' '  is-enabled:NetworkManager) exit 0 ;;' '  is-active:NetworkManager) [ "${FAKE_NM_ACTIVE:-1}" = 1 ]; exit $? ;;' '  is-enabled:systemd-networkd|is-active:systemd-networkd) [ "${FAKE_NETWORKD:-0}" = 1 ]; exit $? ;;' '  is-enabled:sshd|status:--no-pager) exit 0 ;;' 'esac' 'exit 1' > "$U/bin/systemctl"; printf '%s\n' '#!/bin/sh' 'exit 0' > "$U/bin/pacman"; printf '%s\n' '#!/bin/sh' '[ "$1" = -n ] && shift' 'exec "$@"' > "$U/bin/sudo"; chmod +x "$U/bin/metapac" "$U/bin/yadm" "$U/bin/systemctl" "$U/bin/pacman" "$U/bin/sudo"; printf '[hostname_groups]\n"%s" = [\n  "guest-qemu",\n  "inbox-qemu-harness",\n]\n' "$(uname -n)" > "$U/home/.config/metapac/config.toml"; for group in guest-qemu inbox-qemu-harness; do printf '[arch]\npackages = [\n]\n' > "$U/home/.config/metapac/groups/$group.toml"; done; for tool in metapac-declared metapac-unmanaged-names custom-pkgs metapac-drift-report aur-quarantine; do ln -s "$PWD/.local/bin/tools/$tool" "$U/tools/$tool"; done; RUN_CHECK() { PATH="$U/bin:$PATH" HOME="$U/home" VM_HARNESS_GUEST_TOOLS_DIR="$U/tools" CUSTOM_PKGS_DIR="$U/pkgbuilds" "$G" check --class qemu-harness; }; echo ready
 ready
 $ export METAPAC_TOOLS_DIR="$U/tools"; echo tools-ready
 tools-ready

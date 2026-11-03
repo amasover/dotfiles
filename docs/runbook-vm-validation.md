@@ -261,8 +261,9 @@ export VM_HARNESS_SSH_KEY=~/.ssh/<key>   # optional: key to seed + log in with
 pwsh ~/.local/bin/setup/vm-harness-vmware.ps1 up      # or fetch/create/install/boot
 ```
 
-Disposable runs share no host folders. The attended `work-vm` creation shares two,
-set before `create` (or `up`):
+Disposable runs share no host folders. The attended `work-vm` creation
+([Create the real work VM](#create-the-real-work-vm-attended-macos)) shares two, set
+before `create` (or `up`):
 
 ```sh
 export VM_HARNESS_SHARES='vmshare=~/vmshare;Downloads=~/Downloads'
@@ -347,6 +348,101 @@ Fusion-specific facts, verified live on Fusion 26H1 (26.0.1), 2026-11-02:
   VMX log shows open-vm-tools 13.1 heartbeating; `getGuestIPAddress` answers only
   with `-wait`. The driver's lease fallback covers it.
 - **Timing:** unattended install ~5 minutes, boot to ssh ~15 s.
+
+## Create the real work VM (attended, macOS)
+
+`VM_HARNESS_TARGET=work-vm` switches the same driver from a throwaway VM to the real,
+LUKS-encrypted work VM (Story 5.8). With it unset, every run stays disposable. What
+changes in attended mode:
+
+| | Disposable | Attended (`work-vm`) |
+| --- | --- | --- |
+| Seed target, VM name | `vmware-aarch64`, `arch-harness` | `work-vm`, `work-vm` (`VM_HARNESS_NAME`) |
+| VM directory | `<work dir>/vm` | `~/vms/work-vm` (`VM_HARNESS_VM_DIR`, ending in the VM name), seed and logs inside |
+| Disk, vcpus, RAM | 80 GiB, 8, 12288 MiB | 300 GiB, 10, 12288 MiB |
+| Passwords | user `vm`, password-free sudo | typed by you; LUKS root; normal sudo |
+| ssh key | `VM_HARNESS_SSH_KEY` or `~/.ssh/id_*.pub` | always yours: `~/.ssh/id_ed25519.pub`, else the first `id_*.pub` |
+| VMware window | per `VM_HARNESS_GUI` | always open |
+| Bootstrap | `--unattended` | sudo password and archive passphrase first (`ssh -t`, your terminal), then `--unattended` |
+| GitHub token | never copied | `~/.config/dotfiles/github-token` copied at 0600, if present |
+| `destroy` | no questions | type the VM name, or `VM_HARNESS_DESTROY_REAL=work-vm` |
+
+Prerequisites: the work dir has the cached ISO (`fetch`) and a Python with `pycdlib`
+(`<work dir>/venv`), as for disposable runs; your ssh key is in `~/.ssh/id_*.pub`. A
+disposable VM can keep running: the two VMs share nothing but the cached ISO.
+
+Run it from the repo checkout that has this change (from its root), in a terminal you
+can leave open; `pwsh ~/.local/bin/setup/vm-harness-vmware.ps1 …` works the same once
+the change is in your home directory's yadm checkout:
+
+```sh
+unset VM_HARNESS_SSH_KEY VM_HARNESS_BUNDLE VM_HARNESS_BRANCH VM_HARNESS_REPO VM_HARNESS_GUI
+export VM_HARNESS_DIR=~/vmh-scratch/work   # the work dir holding cache/ and venv/
+export VM_HARNESS_TARGET=work-vm
+export VM_HARNESS_SHARES='vmshare=~/vmshare;Downloads=~/Downloads'
+pwsh .local/bin/setup/vm-harness-vmware.ps1 up
+```
+
+The VM clones and bootstraps GitHub `main` as class `work-vm`. You type everything in
+the first few minutes; after that the run needs nobody for hours. What you type, and
+when:
+
+1. **create** (under a minute): in the terminal, your VM user password twice, then the
+   disk (LUKS) password twice. Input is hidden; a mismatch asks again. They reach
+   `provision-seed` only through its environment, never its command line or a log.
+2. **install** (about 5 minutes; the VMware window opens on the live ISO): nothing.
+   When it ends, failed or not, the seed (your password hash and disk password) is
+   deleted; the terminal says so.
+3. **boot** (seconds, then you): type the disk password in the VMware window. The
+   terminal waits up to 30 minutes for ssh. Every later boot asks for it there too.
+4. **bootstrap**, at its start: in the terminal, your VM user password once for
+   `sudo`, then the archive passphrase for `yadm decrypt` at a plain
+   `Enter passphrase:` line. Nothing appears as you type, not even `*`. You get three
+   attempts; a third wrong one stops the run before the long part. The run stops
+   before asking if `yadm.gpg-program` is set or `gpg-agent.conf` has
+   `no-allow-loopback-pinentry`; the message names the fix. The `sudo` password puts a temporary
+   password-free drop-in at `/etc/sudoers.d/89-first-bootstrap`; it is deleted when
+   bootstrap ends, also on failure or Ctrl-C. Before the prompts, the Mac's AUR trust
+   baseline, time zone and GitHub token are copied in.
+5. **bootstrap**, the long part (hours; the disposable run took about 45 minutes):
+   nothing. It is the same `bootstrap --unattended` as a disposable run, so its
+   quarantine pre-flight guards the sync; its decrypt step reports the secrets as
+   already decrypted.
+6. **bootstrap**, at its end: it lists the follow-ups `--unattended` skipped, each with
+   its command, to run later in a terminal on the VM: the OpenViking memory sign-in
+   (`~/.local/bin/setup/openviking-memory`, a passkey sign-in to OpenBao) and, if
+   bootstrap reported packages the quarantine held, a later
+   `~/.local/bin/setup/bootstrap --unattended`.
+7. **check** (a minute): nothing. It fails if the sudo drop-in is still there.
+
+A failed phase stops `up` and leaves the VM as it is. Re-run `up` with the same
+environment: it resumes from what the VM's state proves done. Or run one phase:
+
+```sh
+pwsh .local/bin/setup/vm-harness-vmware.ps1 install     # asks both passwords again
+pwsh .local/bin/setup/vm-harness-vmware.ps1 boot
+pwsh .local/bin/setup/vm-harness-vmware.ps1 bootstrap   # sudo password again; decrypt is skipped once done
+pwsh .local/bin/setup/vm-harness-vmware.ps1 check
+pwsh .local/bin/setup/vm-harness-vmware.ps1 tail bootstrap
+```
+
+Logs are in `~/vms/work-vm/logs`. If `check` reports the sudo drop-in (a run cut off
+by a power loss), delete it in the VM: `sudo rm /etc/sudoers.d/89-first-bootstrap`.
+
+If the VMware window stays black at boot on a VM installed before the
+`console=tty0` fix (Story 5.8), the disk password prompt went to the serial port:
+
+1. For one boot: at the systemd-boot menu press `e`, add ` console=tty0` at the end
+   of the line, then press Enter. The prompt appears in the window.
+2. To make it permanent, run inside the VM:
+   `sudo sed -i 's|^options |options console=tty0 |' /boot/loader/entries/*.conf`.
+
+`create` (and `up` resuming at it) refuses a VM directory that holds anything but its
+`logs/` and `seed/`, so it never replaces an existing disk. `destroy` on this VM asks
+you to type its name; non-interactively it needs `VM_HARNESS_DESTROY_REAL=work-vm`.
+It deletes `~/vms/work-vm`, logs included. There is no standalone `seed` in attended
+mode: `create` writes the seed, and `install` (or a failed or interrupted `create`)
+deletes it.
 
 ## Resetting
 

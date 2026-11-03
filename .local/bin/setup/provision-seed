@@ -381,6 +381,15 @@ def build_user_configuration(request: ProvisioningRequest) -> dict:
             ]
         )
 
+    if target.encrypted:
+        # On arm64, ACPI SPCR makes the serial port /dev/console, so the encrypt
+        # hook's passphrase prompt never reaches the VMware window. A command-line
+        # console= is parsed after SPCR and wins. On x86_64, tty0 is already the
+        # default and this is a no-op.
+        custom_commands.append(
+            "sed -i 's|^options |options console=tty0 |' /boot/loader/entries/*.conf"
+        )
+
     if request.pubkey:
         custom_commands.append(_authorized_keys_command(request.user, request.pubkey))
 

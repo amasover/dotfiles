@@ -66,7 +66,8 @@
 #              live ISO too)
 #   status     what exists: cache, seed, VM state, vmrun list, newest log
 #   destroy    stop the VM if running and delete the VM directory (cached ISO
-#              and logs survive — logs live outside the VM dir)
+#              and logs survive — logs live outside the VM dir). Attended VMs
+#              need an explicit confirmation (see attended mode below)
 #   tail [P]   print the newest log's tail (or phase P's newest)
 #
 # Logging: every phase writes an append-only log to  $LogDir\<stamp>-<phase>.log
@@ -116,6 +117,38 @@
 # VM_HARNESS_TIMEZONE names the IANA zone `bootstrap` writes into the guest's
 # private ~/.config/dotfiles/timezone before running the repo bootstrap,
 # which sets it; unset, the host's own zone is used (see Get-HostTimeZone).
+#
+# Attended mode (Story 5.8, macOS only): VM_HARNESS_TARGET=work-vm builds the
+# real, LUKS-encrypted work VM instead of a disposable one. Unset, every run is
+# disposable and nothing below applies. Attended runs:
+#   - seed target work-vm, VM name work-vm (VM_HARNESS_NAME overrides), VM
+#     directory ~/vms/<name> (VM_HARNESS_VM_DIR overrides; it must end in the
+#     VM name) holding the vmx, disk, seed and logs — outside the work dir;
+#     the cached ISO and the Python venv still come from the work dir.
+#     Defaults 300 GiB disk, 10 vcpus, 12288 MiB (the VM_HARNESS_DISK/CPUS/RAM
+#     overrides still apply). create refuses a VM dir holding anything but
+#     logs/ and seed/: it never deletes a disk; only destroy does.
+#   - ask for two passwords at create, hidden, each twice: the user password
+#     and the disk (LUKS) password. They reach provision-seed only as
+#     PROVISION_USER_PASSWORD/PROVISION_LUKS_PASSWORD in its own environment
+#     — never in argv or a log. The seed (password hash and disk password) is
+#     deleted as soon as the install ends, failed or not, and when create
+#     fails or is interrupted; a re-run of install asks again and regenerates
+#     it. There is no standalone `seed` subcommand in attended mode.
+#   - authorize your own ~/.ssh key (id_ed25519.pub, else the first
+#     id_*.pub); VM_HARNESS_SSH_KEY is ignored. The live ISO gets no root ssh
+#     (install needs none).
+#   - always open the VMware window: every boot stops at the disk password
+#     prompt there; boot waits up to 30 minutes for it.
+#   - bootstrap copies ~/.config/dotfiles/github-token (if present) into the
+#     guest at the same path, mode 0600, and runs the guest glue with
+#     --attended in the real terminal (ssh -t under script(1), which records
+#     it for the phase log): your sudo password once and yadm decrypt's
+#     archive passphrase at the start, then the same unattended bootstrap as
+#     a disposable run, then a list of the follow-ups it skipped. No pinned
+#     display rows during that phase.
+#   - destroy refuses unless you type the VM name, or VM_HARNESS_DESTROY_REAL
+#     names the VM. Confirmed, it deletes the VM directory, logs included.
 
 $ErrorActionPreference = 'Stop'
 
@@ -130,7 +163,9 @@ $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $Utf8NoBom
 $OutputEncoding = $Utf8NoBom
 
-$VmName = 'arch-harness'
+# Attended mode (header): validated at dispatch, where Die exists.
+$Attended = "$env:VM_HARNESS_TARGET" -ceq 'work-vm'
+$VmName = if (-not $Attended) { 'arch-harness' } elseif ($env:VM_HARNESS_NAME) { $env:VM_HARNESS_NAME } else { 'work-vm' }
 # Host switch. Windows PowerShell has no $IsMacOS (null → Windows), PowerShell 7
 # defines it everywhere.
 $OnMac = [bool]$IsMacOS
@@ -138,23 +173,32 @@ $WorkDir = if ($env:VM_HARNESS_DIR) { $env:VM_HARNESS_DIR }
            elseif ($OnMac) { Join-Path $HOME '.local/share/bootstrap-harness-vmware' }
            else { Join-Path $env:LOCALAPPDATA 'bootstrap-harness-vmware' }
 $CacheDir = Join-Path $WorkDir 'cache'
-$SeedDir = Join-Path $WorkDir 'seed'
-$VmDir = Join-Path $WorkDir 'vm'
-$LogDir = Join-Path $WorkDir 'logs'
+if ($Attended) {
+    # The real VM lives outside the work dir and owns its seed and logs.
+    $VmDir = if ($env:VM_HARNESS_VM_DIR) { $env:VM_HARNESS_VM_DIR.TrimEnd('/') } else { Join-Path $HOME "vms/$VmName" }
+    $SeedDir = Join-Path $VmDir 'seed'
+    $LogDir = Join-Path $VmDir 'logs'
+} else {
+    $SeedDir = Join-Path $WorkDir 'seed'
+    $VmDir = Join-Path $WorkDir 'vm'
+    $LogDir = Join-Path $WorkDir 'logs'
+}
 # Fusion on Apple silicon runs arm64 guests only.
 $GuestArch = if ($OnMac) { 'aarch64' } else { 'x86_64' }
-$SeedTarget = if ($OnMac) { 'vmware-aarch64' } else { 'vmware' }
+$SeedTarget = if ($Attended) { 'work-vm' } elseif ($OnMac) { 'vmware-aarch64' } else { 'vmware' }
 $Iso = Join-Path $CacheDir "archlinux-$GuestArch.iso"
 $Mirror = 'https://geo.mirror.pkgbuild.com/iso/latest'
 # archiso-aarch64 publishes through Codeberg releases (ISO hosted off-site,
 # sha256 in the release notes) — see Get-PortsIso.
 $PortsReleases = 'https://codeberg.org/api/v1/repos/ironrobin/archiso-aarch64/releases/latest'
-$DiskGib = if ($env:VM_HARNESS_DISK) { [int]$env:VM_HARNESS_DISK } else { 80 }
+$DiskGib = if ($env:VM_HARNESS_DISK) { [int]$env:VM_HARNESS_DISK } elseif ($Attended) { 300 } else { 80 }
 $RamMib = if ($env:VM_HARNESS_RAM) { [int]$env:VM_HARNESS_RAM } else { 12288 }
 # The Mac (15 cores, meetings stay on macOS) keeps half its cores for itself.
-$Cpus = if ($env:VM_HARNESS_CPUS) { [int]$env:VM_HARNESS_CPUS } elseif ($OnMac) { 8 } else { 16 }
+$Cpus = if ($env:VM_HARNESS_CPUS) { [int]$env:VM_HARNESS_CPUS } elseif ($Attended) { 10 } elseif ($OnMac) { 8 } else { 16 }
 $VmUser = 'aaron'
-$VmPass = 'vm'    # throwaway VM only; reachable only from this host's NAT
+# Throwaway VM only; reachable only from this host's NAT. The attended VM's
+# passwords are typed at seed time and never stored (Read-SeedSecrets).
+$VmPass = if ($Attended) { $null } else { 'vm' }
 $Repo = if ($env:VM_HARNESS_REPO) { $env:VM_HARNESS_REPO } else { 'https://github.com/amasover/dotfiles.git' }
 $Branch = $env:VM_HARNESS_BRANCH  # guest clones this branch (default: repo default = main);
                                   # set it to validate guest-side bootstrap changes pre-merge
@@ -162,7 +206,7 @@ $Class = if ($env:VM_HARNESS_CLASS) { $env:VM_HARNESS_CLASS } elseif ($OnMac) { 
 $SshOpts = @('-o', 'StrictHostKeyChecking=no',
              '-o', "UserKnownHostsFile=$(if ($OnMac) { '/dev/null' } else { 'NUL' })",
              '-o', 'LogLevel=ERROR')
-if ($env:VM_HARNESS_SSH_KEY) { $SshOpts += @('-i', $env:VM_HARNESS_SSH_KEY, '-o', 'IdentitiesOnly=yes') }
+if ($env:VM_HARNESS_SSH_KEY -and -not $Attended) { $SshOpts += @('-i', $env:VM_HARNESS_SSH_KEY, '-o', 'IdentitiesOnly=yes') }
 $Vmx = Join-Path $VmDir "$VmName.vmx"
 $DiskVmdk = Join-Path $VmDir 'disk.vmdk'
 $SerialLog = Join-Path $VmDir 'install-serial.log'
@@ -198,11 +242,14 @@ $script:DisplayMode = 'plain'   # resolved at dispatch: bar | compact | plain
 $script:PhasesStatus = ''       # Cmd-Up breadcrumb for the display: name:done|current|pending,...
 $script:ResumeHeader = ''       # set by a resuming up; Invoke-Phase logs it once
 $script:SinkDied = $false       # display child died mid-phase — output was lost
+$script:PhaseSession = $null    # script(1) recording of an interactive guest session
 # .local/bin/setup -> .local/share/yadm/archive, in whichever checkout runs.
 $Archive = Join-Path $PSScriptRoot '..\..\share\yadm\archive'
 if ($OnMac) {
-    # Fusion keeps its command-line tools inside the app bundle.
-    $VmwareDir = '/Applications/VMware Fusion.app/Contents/Library'
+    # Fusion keeps its command-line tools inside the app bundle
+    # (VM_HARNESS_VMWARE_DIR: another install, or the tests' stubs).
+    $VmwareDir = if ($env:VM_HARNESS_VMWARE_DIR) { $env:VM_HARNESS_VMWARE_DIR }
+                 else { '/Applications/VMware Fusion.app/Contents/Library' }
     $VmRun = Join-Path $VmwareDir 'vmrun'
     $VdiskMgr = Join-Path $VmwareDir 'vmware-vdiskmanager'
     $VmRunType = 'fusion'
@@ -318,6 +365,21 @@ function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
     if ($script:PhaseWriter) { $script:PhaseWriter.Close() }
     $script:PhaseWriter = $null
     $proc.WaitForExit()
+    # An interactive guest session (Invoke-GuestGlueAttended) wrote straight
+    # to the terminal, and script(1) recorded it. Its scrubbed copy joins the
+    # log now that the display child no longer writes there.
+    if ($script:PhaseSession) {
+        if (Test-Path -LiteralPath $script:PhaseSession) {
+            [System.IO.File]::AppendAllText($log, "--- interactive guest session (recorded by script(1)):`n")
+            & /bin/sh -c '"$1" "$2" --mode scrub < "$3" >> "$4"' sh $Python $DisplayTool $script:PhaseSession $log
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "vm-harness-vmware: could not add the session recording to $log (rc=$LASTEXITCODE)" -ForegroundColor Red
+                if ($rc -eq 0) { $rc = 1 }
+            }
+            Remove-Item -Force -LiteralPath $script:PhaseSession
+        }
+        $script:PhaseSession = $null
+    }
     # A dead sink or a nonzero child exit (rc 3 = --log leg failure, by the
     # tool's contract) means the log is untrustworthy — fail the phase even
     # when the body itself succeeded, bash-pipefail style.
@@ -340,6 +402,16 @@ function Invoke-Phase([string]$Phase, [scriptblock]$Body) {
 }
 
 function Get-HostPubkey {
+    if ($Attended) {
+        # The real VM authorizes the Mac user's own key, never a scratch one.
+        if ($env:VM_HARNESS_SSH_KEY) { Say 'VM_HARNESS_SSH_KEY ignored in attended mode — the VM gets your own ~/.ssh key' }
+        # id_ed25519 when present, else the first id_*.pub.
+        $k = Get-Item (Join-Path $HOME '.ssh/id_ed25519.pub') -ErrorAction SilentlyContinue
+        if (-not $k) { $k = Get-ChildItem (Join-Path $HOME '.ssh/id_*.pub') -ErrorAction SilentlyContinue | Select-Object -First 1 }
+        if (-not $k) { throw 'attended mode needs your ssh public key (~/.ssh/id_*.pub): bootstrap and check log in with it' }
+        Say "ssh: authorizing ~/.ssh/$($k.Name) for $VmUser"
+        return (Get-Content $k.FullName -Raw).Trim()
+    }
     $k = if ($env:VM_HARNESS_SSH_KEY) { Get-Item "$($env:VM_HARNESS_SSH_KEY).pub" -ErrorAction SilentlyContinue }
          elseif ($OnMac) { Get-ChildItem (Join-Path $HOME '.ssh/id_*.pub') -ErrorAction SilentlyContinue | Select-Object -First 1 }
          else { Get-ChildItem "$env:USERPROFILE\.ssh\id_*.pub" -ErrorAction SilentlyContinue | Select-Object -First 1 }
@@ -373,7 +445,9 @@ with tempfile.TemporaryFile() as out:
 sys.exit(rc)
 '@
 function Start-Vm {
-    $gui = if ($env:VM_HARNESS_GUI) { $env:VM_HARNESS_GUI -ne '0' }
+    # The attended VM always opens its window: the disk password is typed there.
+    $gui = if ($Attended) { $true }
+           elseif ($env:VM_HARNESS_GUI) { $env:VM_HARNESS_GUI -ne '0' }
            else { $OnMac -and $script:DisplayMode -ne 'plain' }
     $mode = if ($gui) { 'gui' } else { 'nogui' }
     if ($OnMac) { & $Python -c $DetachedStart $VmRun -T $VmRunType start $Vmx $mode 2>&1 }
@@ -430,8 +504,16 @@ $script:SshKeyAuth = $false
 function Wait-Ssh {
     $user = Get-GuestUser
     $script:SshKeyAuth = $false
-    Say 'Waiting for ssh (up to ~2 min)'
-    for ($i = 0; $i -lt 40; $i++) {
+    # The attended VM's root is LUKS: every boot stops at the disk password
+    # prompt in the VMware window, for as long as the user takes to type it.
+    if ($Attended) {
+        $tries = 600   # 3 s apart: 30 minutes
+        Say 'Waiting for ssh. If the VMware window asks for the disk password, type it there (waiting up to 30 min)'
+    } else {
+        $tries = 40
+        Say 'Waiting for ssh (up to ~2 min)'
+    }
+    for ($i = 0; $i -lt $tries; $i++) {
         $ip = Get-GuestIp
         if ($ip) {
             $out = & ssh -o BatchMode=yes -o ConnectTimeout=2 @SshOpts "$user@$ip" true 2>&1
@@ -445,9 +527,12 @@ function Wait-Ssh {
                 return $ip
             }
         }
+        if ($Attended -and $i -gt 0 -and $i % 40 -eq 0) {
+            Say 'Still waiting for ssh — is the VMware window asking for the disk password?'
+        }
         Start-Sleep -Seconds 3
     }
-    throw 'no ssh after ~2 minutes — check: status, tail install'
+    throw "no ssh after $(if ($Attended) { '30 minutes' } else { '~2 minutes' }) — check: status, tail install"
 }
 
 # Every automated ssh/scp adds BatchMode: without it a guest that refused the
@@ -546,10 +631,136 @@ function Invoke-GuestGlue([string]$Ip, [string]$RemoteCmd) {
     if ($LASTEXITCODE -ne 0) { throw "guest command failed (rc=$LASTEXITCODE): $RemoteCmd" }
 }
 
+# The attended bootstrap prompts first (sudo, yadm decrypt's pinentry), and
+# the phase sink is a line pipe: a prompt with no newline would never show.
+# So ssh -t gets the real terminal, under script(1), which records the
+# session for Invoke-Phase to scrub into the log afterwards. Typed passwords
+# are not echoed, so the recording never holds them.
+function Invoke-GuestGlueAttended([string]$Ip, [string]$RemoteCmd) {
+    & scp @BatchOpts -q $GuestTool "$VmUser@${Ip}:vm-harness-guest"
+    if ($LASTEXITCODE -ne 0) { throw "scp vm-harness-guest failed (rc=$LASTEXITCODE)" }
+    $script:PhaseSession = Join-Path $LogDir "$RunStamp-bootstrap.session"
+    $psi = [System.Diagnostics.ProcessStartInfo]::new('/usr/bin/script')
+    foreach ($a in @('-q', $script:PhaseSession, 'ssh', '-t') + $BatchOpts + @("$VmUser@$Ip", $RemoteCmd)) {
+        $psi.ArgumentList.Add($a)
+    }
+    $psi.UseShellExecute = $false
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $p.WaitForExit()
+    if ($p.ExitCode -ne 0) { throw "guest command failed (rc=$($p.ExitCode)): $RemoteCmd" }
+}
+
+# Attended only: the Mac's GitHub token goes to the same path in the guest,
+# created empty at 0600 before the copy so it is never readable by others.
+# Disposable guests never get it.
+function Send-GitHubToken([string]$Ip) {
+    $src = Join-Path $HOME '.config/dotfiles/github-token'
+    if (-not (Test-Path -LiteralPath $src)) {
+        Say 'GitHub token: none on the host (~/.config/dotfiles/github-token) — skipped'
+        return
+    }
+    & ssh @BatchOpts "$VmUser@$Ip" 'umask 077 && mkdir -p ~/.config/dotfiles && rm -f ~/.config/dotfiles/github-token && : > ~/.config/dotfiles/github-token'
+    if ($LASTEXITCODE -ne 0) { throw "GitHub token: guest file setup failed (rc=$LASTEXITCODE)" }
+    & scp @BatchOpts -q $src "$VmUser@${Ip}:.config/dotfiles/github-token"
+    if ($LASTEXITCODE -ne 0) { throw "GitHub token: scp failed (rc=$LASTEXITCODE)" }
+    & ssh @BatchOpts "$VmUser@$Ip" 'chmod 600 ~/.config/dotfiles/github-token'
+    if ($LASTEXITCODE -ne 0) { throw "GitHub token: chmod failed (rc=$LASTEXITCODE)" }
+    Say 'GitHub token: copied into the VM (~/.config/dotfiles/github-token, mode 0600)'
+}
+
+# Attended seeds carry the user's two passwords. They are typed before the
+# phase starts (no display child owns the console then), hidden, each twice,
+# and held as SecureStrings until provision-seed has run. Redirected stdin
+# (tests, the scripted proof) gives one line per entry: Read-Host
+# -AsSecureString silently ends the script on redirected input (pwsh 7.6).
+$script:SeedSecrets = $null
+function Read-Secret([string]$Prompt) {
+    if ([Console]::IsInputRedirected) {
+        Write-Host "${Prompt}: " -NoNewline
+        $line = [Console]::In.ReadLine()
+        Write-Host ''
+        if ($null -eq $line) { Die "stdin closed before: $Prompt" }
+        $secret = [securestring]::new()
+        foreach ($c in $line.ToCharArray()) { $secret.AppendChar($c) }
+        $secret.MakeReadOnly()
+        return $secret
+    }
+    Read-Host -Prompt $Prompt -AsSecureString
+}
+
+function ConvertFrom-Secret([securestring]$Secret) {
+    [System.Net.NetworkCredential]::new('', $Secret).Password
+}
+
+function Read-ConfirmedSecret([string]$What) {
+    while ($true) {
+        $first = Read-Secret $What
+        $again = Read-Secret "$What (again)"
+        $empty = (ConvertFrom-Secret $first).Length -eq 0
+        $same = (ConvertFrom-Secret $first) -ceq (ConvertFrom-Secret $again)
+        $again.Dispose()
+        if (-not $empty -and $same) { return $first }
+        $first.Dispose()
+        Write-Host $(if ($empty) { '  empty — try again' } else { '  the two entries differ — try again' })
+    }
+}
+
+function Read-SeedSecrets {
+    Say "Attended seed for '$VmName': choose two passwords (input hidden, each asked twice)"
+    Write-Host '  1. your user password on the VM (login and sudo)'
+    Write-Host '  2. the disk (LUKS) password, typed in the VMware window at every boot'
+    $user = Read-ConfirmedSecret 'VM user password'
+    $luks = Read-ConfirmedSecret 'Disk (LUKS) password'
+    $script:SeedSecrets = @{ User = $user; Luks = $luks }
+}
+
+# provision-seed reads the two secrets from its environment. They go into
+# this one child's environment block only — the driver's own environment,
+# argv and logs never hold them — and are dropped once it has run.
+function New-AttendedSeed([string]$Pubkey) {
+    if (-not $script:SeedSecrets) { throw 'attended seed without passwords (Read-SeedSecrets did not run)' }
+    # No --live-ssh: the install needs no ssh (the serial log carries it).
+    $seedArgs = @('create', '--out', $SeedDir, '--target', $SeedTarget,
+                  '--disk-size', "$DiskGib", '--user', $VmUser, '--pubkey', $Pubkey)
+    $psi = [System.Diagnostics.ProcessStartInfo]::new($Python)
+    $psi.ArgumentList.Add($SeedTool)
+    foreach ($a in $seedArgs) { $psi.ArgumentList.Add($a) }
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    try {
+        $psi.Environment['PROVISION_USER_PASSWORD'] = ConvertFrom-Secret $script:SeedSecrets.User
+        $psi.Environment['PROVISION_LUKS_PASSWORD'] = ConvertFrom-Secret $script:SeedSecrets.Luks
+        $p = [System.Diagnostics.Process]::Start($psi)
+        $psi.Environment.Remove('PROVISION_USER_PASSWORD') | Out-Null
+        $psi.Environment.Remove('PROVISION_LUKS_PASSWORD') | Out-Null
+        $err = $p.StandardError.ReadToEndAsync()
+        $out = $p.StandardOutput.ReadToEnd()
+        $p.WaitForExit()
+    } finally {
+        $psi.Environment.Remove('PROVISION_USER_PASSWORD') | Out-Null
+        $psi.Environment.Remove('PROVISION_LUKS_PASSWORD') | Out-Null
+        $script:SeedSecrets.User.Dispose()
+        $script:SeedSecrets.Luks.Dispose()
+        $script:SeedSecrets = $null
+    }
+    if ($out) { $out.TrimEnd() }
+    if ($err.Result) { $err.Result.TrimEnd() }
+    if ($p.ExitCode -ne 0) { throw "provision-seed failed (rc=$($p.ExitCode))" }
+    Say 'The seed holds your password hash and disk password until the install ends; then it is deleted'
+}
+
+function Remove-AttendedSeed {
+    if (-not (Test-Path -LiteralPath $SeedDir)) { return }
+    Remove-Item -Recurse -Force -LiteralPath $SeedDir
+    Say "Seed deleted ($SeedDir): it held your password hash and disk password. Re-running install asks for both again and regenerates it."
+}
+
 function New-Seed {
     Say 'Generating cloud-init seed (fresh answers each time)'
     if (Test-Path $SeedDir) { Remove-Item -Recurse -Force $SeedDir }
     $pk = Get-HostPubkey
+    if ($Attended) { New-AttendedSeed $pk; return }
     $seedArgs = @('create', '--out', $SeedDir, '--target', $SeedTarget,
                   '--disk-size', $DiskGib, '--password', $VmPass, '--user', $VmUser)
     if ($pk) { $seedArgs += @('--pubkey', $pk, '--live-ssh') }
@@ -608,7 +819,12 @@ function Cmd-Fetch {
     }
 }
 
-function Cmd-Seed { Invoke-Phase 'seed' { New-Seed } }
+function Cmd-Seed {
+    # create writes the attended seed and install deletes it; a standalone
+    # seed would leave the password hash and disk password on disk.
+    if ($Attended) { Die 'attended mode has no standalone seed: create (or up) writes it, install deletes it' }
+    Invoke-Phase 'seed' { New-Seed }
+}
 
 # VM_HARNESS_SHARES -> vm-harness-vmx --share arguments (it rejects empty and
 # duplicate names). Expands a leading ~ and creates a missing host folder; an
@@ -630,57 +846,101 @@ function Get-ShareArgs {
     $out
 }
 
+# The attended VM dir's entries besides the harness's own logs/ and seed/
+# (regenerated by every create): any of them may be the real VM, or part of
+# it. create never deletes them; only a confirmed destroy does.
+function Get-AttendedVmEntries {
+    @(Get-ChildItem -LiteralPath $VmDir -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notin @('logs', 'seed') } | ForEach-Object Name)
+}
+
 function Cmd-Create {
+    if ($Attended) {
+        # Ask for the passwords only when create can go ahead (the phase
+        # repeats these guards for disposable runs).
+        if (-not (Test-Path $Iso)) { Die 'no cached ISO — run: fetch' }
+        $held = Get-AttendedVmEntries
+        if ($held) {
+            Die "$VmDir already holds a VM ($($held -join ', ')) — create never overwrites it. To start over: destroy (it asks for the VM name)"
+        }
+        Read-SeedSecrets
+    }
     Invoke-Phase 'create' {
         if (-not (Test-Path $Iso)) { throw 'no cached ISO — run: fetch' }
         if (Test-Path $Vmx) { throw "VM '$VmName' exists — run: destroy first" }
         New-Item -ItemType Directory -Force $VmDir | Out-Null
         $shareArgs = @(Get-ShareArgs)
-        New-Seed
-        Say "Creating VM (disk ${DiskGib}G, ram ${RamMib}M, $Cpus vcpus)"
-        # No vmx (checked above), so a disk here is a failed create's debris.
-        if (Test-Path $DiskVmdk) { Remove-Item -Force $DiskVmdk }
-        & $VdiskMgr -c -s "${DiskGib}GB" -a lsilogic -t 0 $DiskVmdk 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "vdiskmanager failed (rc=$LASTEXITCODE)" }
-        & $Python $VmxTool generate --out $Vmx --name $VmName --disk $DiskVmdk `
-            --iso $Iso --seed-iso (Join-Path $SeedDir 'seed.iso') `
-            --serial-log $SerialLog --ram $RamMib --cpus $Cpus --arch $GuestArch @shareArgs
-        if ($LASTEXITCODE -ne 0) { throw "vm-harness-vmx failed (rc=$LASTEXITCODE)" }
+        $ok = $false
+        try {
+            New-Seed
+            Say "Creating VM (disk ${DiskGib}G, ram ${RamMib}M, $Cpus vcpus)"
+            # No vmx (checked above), so a disk here is a failed create's
+            # debris — except in attended mode, where it may be the real disk.
+            if (Test-Path $DiskVmdk) {
+                if ($Attended) { throw "$DiskVmdk exists — create never deletes a disk here. To start over: destroy" }
+                Remove-Item -Force $DiskVmdk
+            }
+            & $VdiskMgr -c -s "${DiskGib}GB" -a lsilogic -t 0 $DiskVmdk 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "vdiskmanager failed (rc=$LASTEXITCODE)" }
+            & $Python $VmxTool generate --out $Vmx --name $VmName --disk $DiskVmdk `
+                --iso $Iso --seed-iso (Join-Path $SeedDir 'seed.iso') `
+                --serial-log $SerialLog --ram $RamMib --cpus $Cpus --arch $GuestArch @shareArgs
+            if ($LASTEXITCODE -ne 0) { throw "vm-harness-vmx failed (rc=$LASTEXITCODE)" }
+            $ok = $true
+        } finally {
+            # A failed or interrupted (Ctrl-C skips catch, not finally)
+            # attended create must not leave the credentials behind.
+            if ($Attended -and -not $ok) { Remove-AttendedSeed }
+        }
         if ($shareArgs) { Say "Shared folders: $(($shareArgs | Where-Object { $_ -ne '--share' }) -join ', ')" }
         Say 'Ready. Next: install'
     }
 }
 
 function Cmd-Install {
+    if ($Attended) {
+        if (-not (Test-Path $Vmx)) { Die 'run: create first' }
+        if ((Get-MediaState) -eq 'ejected') { Die 'media already ejected — installed. Next: boot' }
+        if (Test-VmRunning) { Die 'VM already running — stop it in the VMware window first' }
+        # Every install ends by deleting the seed; a re-run regenerates it at
+        # the path the vmx names, so it asks for the passwords again.
+        if (-not (Test-Path (Join-Path $SeedDir 'seed.iso'))) { Read-SeedSecrets }
+    }
     Invoke-Phase 'install' {
         if (-not (Test-Path $Vmx)) { throw 'run: create first' }
         if ((Get-MediaState) -eq 'ejected') {
             throw 'media already ejected — installed. Next: boot (or destroy for a fresh install)'
         }
         if (Test-VmRunning) { throw 'VM already running — vmrun stop it (or destroy) first' }
-        # A dead run's log could satisfy the exit-marker check below.
-        if (Test-Path $SerialLog) { Remove-Item -Force $SerialLog }
-        Say 'Unattended install — serial console streams below (also: tail install)'
-        Start-Vm
-        $offset = [long]0
-        $deadline = (Get-Date).AddMinutes($InstallTimeoutMin)
-        do {
-            Start-Sleep -Seconds 5
+        try {
+            if ($script:SeedSecrets) { New-Seed }
+            # A dead run's log could satisfy the exit-marker check below.
+            if (Test-Path $SerialLog) { Remove-Item -Force $SerialLog }
+            Say 'Unattended install — serial console streams below (also: tail install)'
+            Start-Vm
+            $offset = [long]0
+            $deadline = (Get-Date).AddMinutes($InstallTimeoutMin)
+            do {
+                Start-Sleep -Seconds 5
+                Write-Serial (Read-NewSerial ([ref]$offset))
+                if ((Get-Date) -gt $deadline) {
+                    throw "install still running after $InstallTimeoutMin min — inspect: tail install, or vmrun stop + destroy"
+                }
+            } while (Test-VmRunning)
             Write-Serial (Read-NewSerial ([ref]$offset))
-            if ((Get-Date) -gt $deadline) {
-                throw "install still running after $InstallTimeoutMin min — inspect: tail install, or vmrun stop + destroy"
+            $serial = if (Test-Path $SerialLog) { Get-Content $SerialLog -Raw } else { '' }
+            if ($serial -notmatch 'HARNESS-ARCHINSTALL-EXIT:0') {
+                throw 'VM powered off without a clean archinstall exit — read the serial output above'
             }
-        } while (Test-VmRunning)
-        Write-Serial (Read-NewSerial ([ref]$offset))
-        $serial = if (Test-Path $SerialLog) { Get-Content $SerialLog -Raw } else { '' }
-        if ($serial -notmatch 'HARNESS-ARCHINSTALL-EXIT:0') {
-            throw 'VM powered off without a clean archinstall exit — read the serial output above'
+            Say 'Install done — ejecting media so later boots hit the disk'
+            & $Python $VmxTool eject --vmx $Vmx
+            if ($LASTEXITCODE -ne 0) { throw "media eject failed (rc=$LASTEXITCODE)" }
+            if ((Get-MediaState) -ne 'ejected') { throw 'eject did not take — inspect the vmx' }
+            Say 'Next: boot'
+        } finally {
+            # The seed's credentials outlive the install by no more than this.
+            if ($Attended) { Remove-AttendedSeed }
         }
-        Say 'Install done — ejecting media so later boots hit the disk'
-        & $Python $VmxTool eject --vmx $Vmx
-        if ($LASTEXITCODE -ne 0) { throw "media eject failed (rc=$LASTEXITCODE)" }
-        if ((Get-MediaState) -ne 'ejected') { throw 'eject did not take — inspect the vmx' }
-        Say 'Next: boot'
     }
 }
 
@@ -693,13 +953,18 @@ function Cmd-Boot {
         if (Test-VmRunning) { Say 'Already running' }
         else {
             Start-Vm
+            if ($Attended) { Say "Type the disk (LUKS) password in the VMware window for '$VmName' — it waits there at every boot" }
         }
         $ip = Wait-Ssh
-        Say "Up. ssh $VmUser@$ip   (password: $VmPass, or the seeded host key)"
+        $how = if ($Attended) { 'your password, or your ~/.ssh key' } else { "password: $VmPass, or the seeded host key" }
+        Say "Up. ssh $VmUser@$ip   ($how)"
     }
 }
 
 function Cmd-Bootstrap {
+    # The attended bootstrap owns the terminal for its prompts: no pinned rows.
+    $mode = $script:DisplayMode
+    if ($Attended) { $script:DisplayMode = 'plain' }
     Invoke-Phase 'bootstrap' {
         if (-not (Test-Path $Vmx)) { throw 'run: create first' }
         if ((Get-MediaState) -ne 'ejected') { throw 'not installed yet — run: install' }
@@ -708,6 +973,7 @@ function Cmd-Bootstrap {
         Assert-KeyAuth
         Send-TrustBaseline $ip
         Send-TimeZone $ip
+        if ($Attended) { Send-GitHubToken $ip }
         $guestRepo = $Repo
         if ($env:VM_HARNESS_BUNDLE) {
             if (-not (Test-Path $env:VM_HARNESS_BUNDLE)) { throw "VM_HARNESS_BUNDLE not found: $($env:VM_HARNESS_BUNDLE)" }
@@ -716,13 +982,19 @@ function Cmd-Bootstrap {
             if ($LASTEXITCODE -ne 0) { throw "bundle scp failed (rc=$LASTEXITCODE)" }
             $guestRepo = "/home/$VmUser/dotfiles.bundle"
         }
-        Say "Running repo bootstrap inside the VM (class: $Class, unattended; AUR builds take a while)"
         $cmd = 'bash vm-harness-guest bootstrap' +
                " --class $(ConvertTo-ShellQuoted $Class)" +
                " --repo $(ConvertTo-ShellQuoted $guestRepo)"
         if ($Branch) { $cmd += " --branch $(ConvertTo-ShellQuoted $Branch)" }
-        Invoke-GuestGlue $ip $cmd
+        if ($Attended) {
+            Say "Running repo bootstrap inside the VM (class: $Class): type your sudo password and the archive passphrase now, then it runs unattended for hours and ends with a list of follow-ups"
+            Invoke-GuestGlueAttended $ip "$cmd --attended"
+        } else {
+            Say "Running repo bootstrap inside the VM (class: $Class, unattended; AUR builds take a while)"
+            Invoke-GuestGlue $ip $cmd
+        }
     }
+    $script:DisplayMode = $mode
 }
 
 function Cmd-Check {
@@ -763,7 +1035,7 @@ function Get-ResumePoint {
     $media = if (Test-Path $Vmx) { Get-MediaState } else { 'absent' }
     $p = & $Python $VmxTool resume --media $media `
         --disk $(if (Test-Path $DiskVmdk) { 'yes' } else { 'no' }) `
-        --seed $(if (Test-Path (Join-Path $SeedDir 'seed.iso')) { 'yes' } else { 'no' }) `
+        --seed $(if ($Attended -or (Test-Path (Join-Path $SeedDir 'seed.iso'))) { 'yes' } else { 'no' }) `
         --serial-log $(if (Test-Path $SerialLog) { 'yes' } else { 'no' }) `
         --running $(if (Test-VmRunning) { 'yes' } else { 'no' })
     if ($LASTEXITCODE -ne 0) { throw "vm-harness-vmx resume failed (rc=$LASTEXITCODE)" }
@@ -846,6 +1118,7 @@ function Cmd-Ip {
 
 function Cmd-Status {
     Say 'vm-harness-vmware status'
+    if ($Attended) { "  mode:        attended ($SeedTarget, VM '$VmName' in $VmDir)" }
     "  cached ISO:  " + $(if (Test-Path $Iso) { "yes ({0:N0} MB)" -f ((Get-Item $Iso).Length / 1MB) } else { 'no — run: fetch' })
     "  seed:        " + $(if (Test-Path (Join-Path $SeedDir 'seed.iso')) { 'yes' } else { 'no — run: seed' })
     if (Test-Path $Vmx) {
@@ -864,8 +1137,24 @@ function Cmd-Status {
     }
 }
 
+# The attended VM is the user's real machine: deleting it takes an explicit
+# yes — VM_HARNESS_DESTROY_REAL naming it, or the name typed at the prompt.
+function Confirm-DestroyReal {
+    if ($env:VM_HARNESS_DESTROY_REAL) {
+        if ($env:VM_HARNESS_DESTROY_REAL -ceq $VmName) { return }
+        Die "VM_HARNESS_DESTROY_REAL='$($env:VM_HARNESS_DESTROY_REAL)' does not name this VM ('$VmName') — nothing deleted"
+    }
+    if ([Console]::IsInputRedirected) {
+        Die "'$VmName' is your real work VM. To delete it, set VM_HARNESS_DESTROY_REAL=$VmName — nothing deleted"
+    }
+    Write-Host "'$VmName' ($VmDir) is your real work VM: destroy deletes its disk and everything on it." -ForegroundColor Yellow
+    $typed = Read-Host "Type the VM name ($VmName) to delete it, anything else keeps it"
+    if ($typed -cne $VmName) { Die 'not confirmed — nothing deleted' }
+}
+
 function Cmd-Destroy {
     if (-not (Test-Path $VmDir)) { Say 'Nothing to destroy (no VM dir)'; return }
+    if ($Attended) { Confirm-DestroyReal }
     if ((Test-Path $Vmx) -and (Test-VmRunning)) {
         Say "Stopping $VmName"
         $stopOut = & $VmRun -T $VmRunType stop $Vmx hard 2>&1
@@ -915,6 +1204,21 @@ if ($ProgressFlag) {
     $script:DisplayMode = 'compact'
 } elseif (-not $PlainFlag -and -not [Console]::IsOutputRedirected -and (Test-Path $DisplayTool)) {
     $script:DisplayMode = 'bar'
+}
+
+# Attended mode is decided by the exact value; anything else set is a typo
+# that must not silently fall back to a disposable run.
+if ($env:VM_HARNESS_TARGET -and -not $Attended) {
+    Die "VM_HARNESS_TARGET='$($env:VM_HARNESS_TARGET)': the only attended target is work-vm (unset it for a disposable run)"
+}
+if ($Attended -and -not $OnMac) { Die 'VM_HARNESS_TARGET=work-vm is the Mac work VM: run it on macOS (Fusion)' }
+if ($Attended -and $VmName -notmatch '^[A-Za-z0-9][A-Za-z0-9_.-]*$') {
+    Die "VM_HARNESS_NAME='$VmName': use letters, digits, '_', '.', '-'"
+}
+# destroy deletes the whole VM dir, so it must be the VM's own: a shared
+# parent such as ~/vms would take every sibling with it.
+if ($Attended -and (Split-Path -Leaf $VmDir) -cne $VmName) {
+    Die "VM_HARNESS_VM_DIR='$VmDir' must be the VM's own directory, ending in '$VmName' (e.g. ~/vms/$VmName)"
 }
 
 switch ($Argv[0]) {

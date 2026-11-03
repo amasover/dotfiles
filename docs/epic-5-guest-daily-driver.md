@@ -382,6 +382,51 @@ ways through `~/mac/vmshare` and `~/mac/Downloads`. Proven live: the unit
 mounted both, a file written in the guest appeared on the Mac, and stop and
 start unmounted and remounted `~/mac`.
 
+**Attended creation path (2026-11-03):** `VM_HARNESS_TARGET=work-vm` makes the macOS
+harness build the real VM: seed target `work-vm` (LUKS root, no harness sudo or serial
+getty), VM `work-vm` in `~/vms/work-vm`, 300 GiB, 10 vcpus, 12 GiB, the two shares, and
+the window always open for the disk password. The user and disk passwords are typed
+twice at `create` and reach `provision-seed` only through its environment; the seed is
+deleted when the install ends. Bootstrap runs from GitHub `main` over `ssh -t`: the
+user types the sudo password (a temporary password-free drop-in the guest glue
+deletes on exit or signal) and the archive passphrase for `yadm decrypt` at the
+start, then the usual `bootstrap --unattended` runs for hours with nobody needed and
+ends by listing the follow-ups it skipped; `check` fails while the drop-in exists.
+`destroy` needs the VM name typed. Steps: [Create the real work
+VM](./runbook-vm-validation.md#create-the-real-work-vm-attended-macos). Proven
+against stubs and with a scratch `seed` + `create`; the real VM's creation record is
+still pending.
+
+**Disk password prompt on the serial port (2026-11-03):** the first boot of the
+real `work-vm` showed a black VMware window; "Enter passphrase for
+/dev/nvme0n1p2:" appeared only in the serial log. Fusion's arm64 firmware has an
+ACPI SPCR table, and Linux on arm64 makes that serial port /dev/console unless
+the command line names a `console=`. The `work-vm` entry had none, so the
+`encrypt` hook asked on the serial port. A `console=` on the command line is
+parsed after SPCR and wins. Adding `console=tty0` at the systemd-boot editor
+put the prompt in the window, and the disk unlocked. Fix: `provision-seed` now
+adds `console=tty0` to the boot entry of every encrypted target (`daily-vm`,
+`work-vm`). On x86_64 tty0 is already the console, so nothing changes there.
+Harness targets keep `console=tty0 console=ttyS0`, serial last on purpose. A VM
+installed before the fix: [Create the real work
+VM](./runbook-vm-validation.md#create-the-real-work-vm-attended-macos).
+
+**Passphrase length in the bootstrap recording (2026-11-03):** the host's
+bootstrap session log of the real `work-vm` held `Passphrase: ` followed by one
+`*` per typed character, so it gave away the archive passphrase's length.
+`yadm decrypt` asked gpg-agent's default pinentry, which on the guest (no
+DISPLAY) is pinentry-curses, and it draws a `*` per character. The earlier test
+used pinentry-tty, which prints nothing, so it missed this. Fix: the guest
+glue's attended decrypt runs gpg with `--pinentry-mode loopback`, through a
+temporary wrapper put first on yadm's PATH for that decrypt only. gpg then asks
+on the terminal with echo off and prints nothing per character. No gpg or
+gpg-agent config is written, and the wrapper is deleted on exit or signal. A
+set `yadm.gpg-program` or `no-allow-loopback-pinentry` stops the run before
+asking, with no fallback to an echoing pinentry. A test drives a pinentry stub
+that draws `*` per character and checks that a wrong and then a right
+passphrase leave no `*` and no passphrase in the recording. The log from that
+run was redacted by hand.
+
 **Acceptance criteria:**
 
 - `vm-harness-vmware.ps1` runs under PowerShell 7 on macOS (`$IsMacOS`) against

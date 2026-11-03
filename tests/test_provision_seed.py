@@ -175,6 +175,33 @@ class TestAarch64Targets:
         assert self._cfg("vmware-aarch64")["version"] == self._cfg("vmware")["version"]
 
 
+class TestBootConsole:
+    ENCRYPTED_SED = "sed -i 's|^options |options console=tty0 |' /boot/loader/entries/*.conf"
+    HARNESS_SED = (
+        "sed -i 's|^options |options console=tty0 console=ttyS0 |' "
+        "/boot/loader/entries/*.conf"
+    )
+
+    def _console_cmds(self, target):
+        cfg = seed.build_user_configuration(make_request(target))
+        return [c for c in cfg["custom_commands"] if "console=" in c]
+
+    @pytest.mark.parametrize("target", ["daily-vm", "work-vm"])
+    def test_encrypted_targets_put_passphrase_prompt_on_tty0(self, target):
+        cmds = self._console_cmds(target)
+        assert cmds == [self.ENCRYPTED_SED]
+        assert cmds[0].count("console=") == 1
+
+    @pytest.mark.parametrize("target", ["qemu", "vmware", "vmware-aarch64"])
+    def test_harness_targets_keep_serial_last(self, target):
+        assert self._console_cmds(target) == [self.HARNESS_SED]
+
+    def test_rule_follows_encryption(self):
+        for name, target in seed.TARGETS.items():
+            has_tty0_only = self.ENCRYPTED_SED in self._console_cmds(name)
+            assert has_tty0_only == target.encrypted, name
+
+
 class TestUserData:
     def _ud(self, target="vmware", live_ssh_pubkey=None):
         request = make_request(target)
