@@ -101,6 +101,10 @@ load.
   rides the encrypted archive once someone runs `yadm encrypt` with it present), the
   hook prints one warning and moves on. The file holds one line,
   `AGENT_SKILLS_URL=<ssh URL>`.
+- **GitHub API token.** `~/.config/dotfiles/github-token` comes back with the
+  decrypt. Without it, mise's GitHub lookups run at the anonymous limit. Minting it,
+  and why it is never `GITHUB_TOKEN`: see the
+  [fresh-machine runbook](./runbook-fresh-machine-bootstrap.md#secrets-the-read-only-github-api-token).
 
 ## Undo
 

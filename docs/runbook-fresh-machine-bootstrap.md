@@ -640,6 +640,31 @@ every item passes on the rebuilt machine, executed by hand during the run:
 Anything not listed (gaming, media tuning, polybar cosmetics, screenlayout) is
 steady-state work and does not block the milestone.
 
+## Secrets: the read-only GitHub API token
+
+Anonymous GitHub API calls share a limit of 60 an hour per address, which
+`custom-pkgs outdated`, mise and tenv exhaust quickly. A token lifts that to 5000.
+
+- **What it is.** A fine-grained personal access token limited to "Public
+  repositories", with no permissions and no expiry. It can read what anyone can read
+  and nothing else. Mint one from this template, set "Public repositories", grant no
+  permissions, and generate:
+  `https://github.com/settings/personal-access-tokens/new?name=dotfiles+API+rate+limit&expires_in=none`
+- **Where it lives.** `~/.config/dotfiles/github-token`, one line, mode 0600. It is in
+  `.config/yadm/encrypt`, so `yadm decrypt` (step 1 above) restores it. After writing
+  it on a machine that holds the full decrypted set, run `yadm encrypt` and commit the
+  archive to carry it everywhere else.
+- **Who reads it.** `custom-pkgs` reads the file itself and sends it as a header
+  (curl `-H @-` from stdin, never argv). mise on the Mac reads it through
+  `github.credential_command` in `config.toml##os.Darwin`. Every interactive zsh, on
+  Linux and macOS, exports it as `TENV_GITHUB_TOKEN` and `MISE_GITHUB_TOKEN`.
+- **Why not `GITHUB_TOKEN` or `GH_TOKEN`.** gh prefers either variable over its
+  keyring login. Exporting this token under those names would make `gh pr create`,
+  and pushes through gh's credential helper, run with a token that cannot write.
+- **Without it.** Everything works anonymously, at the lower limit. Harness VMs never
+  decrypt the archive (step 1 is skipped under `--unattended`), so they always run
+  without it: no secret enters the harness.
+
 ## After first boot
 
 - `yay -Syu` is quarantine-gated from the start (holds are normal for a young
