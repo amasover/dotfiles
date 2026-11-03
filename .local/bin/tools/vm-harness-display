@@ -169,6 +169,7 @@ BOOTSTRAP_STEPS = [
     ("preflight", ("Quarantine pre-flight",)),
     ("cache-warm", ("AUR PKGBUILD cache warm",)),
     ("reconcile", ("Package reconcile",)),
+    ("guest-display", ("VMware guest display",)),
     ("retag", ("Normalizing install reasons",)),
     ("removal-hook", ("Package-removal hook",)),
     ("vendored", ("Vendored packages",)),

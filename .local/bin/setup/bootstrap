@@ -115,6 +115,41 @@ reconcile_vmware_dns() {
     fi
 }
 
+# A VMware guest without the vmware X driver (aarch64: xf86-video-vmware does
+# not exist for Arch Linux Ports) can only resize through resolutionKMS, which
+# open-vm-tools leaves off unless tools.conf enables it. The tracked file is
+# linked into /etc like the reflector policy. Guests with the X driver (the
+# x86 Workstation daily-vm) and non-VMware machines are left alone.
+reconcile_vmware_display() {
+    local mode=$1 virt=$2
+    local src="$HOME/.config/dotfiles/vmware-tools/tools.conf" dst=/etc/vmware-tools/tools.conf
+    [[ $mode == check || $mode == apply ]] \
+        || die "vmware-display mode must be check or apply"
+    if [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 && -n ${TOOLS_CONF:-} ]]; then
+        dst=$TOOLS_CONF
+    fi
+    if [[ $virt != vmware ]]; then
+        echo "  skipped: not a VMware guest"
+        return 0
+    fi
+    if pacman -Q xf86-video-vmware >/dev/null 2>&1; then
+        echo "  skipped: the vmware X driver applies display layouts"
+        return 0
+    fi
+    [[ -f "$src" ]] || die "tracked tools.conf missing ($src) — yadm checkout incomplete?"
+    if [[ "$(readlink "$dst" 2>/dev/null)" == "$src" ]]; then
+        echo "  resolutionKMS already enabled: $dst"
+    elif [[ $mode == check ]]; then
+        echo "  would: symlink $dst -> $src, then restart vmtoolsd"
+    else
+        sudo mkdir -p "${dst%/*}"
+        sudo ln -sfT "$src" "$dst"
+        sudo systemctl restart vmtoolsd
+        echo "  resolutionKMS enabled: $dst -> $src"
+        echo "  a vmusr agent started before this backs off at its next start (X login)"
+    fi
+}
+
 reconcile_refind_config() {
     local mode=${1:-} class=${2:-}
     local tool="$HOME/.local/bin/setup/refind-config"
@@ -423,6 +458,7 @@ failed_aur_builds() {
 #   --provider-pins MODE           exercise provider pin installation (test-only)
 #   --network-services MODE        exercise NetworkManager convergence (test-only)
 #   --vmware-dns MODE VIRT         exercise the VMware guest DNS stub (test-only)
+#   --vmware-display MODE VIRT     exercise the VMware guest resolutionKMS link (test-only)
 #   --refind-config MODE CLASS      exercise class-gated rEFInd reconciliation (test-only)
 #   --initramfs-hooks MODE ROOT     exercise the HOOKS drop-in link (test-only)
 #   --yay-mflags MODE ARCH CONFIG   exercise the saved yay --ignorearch flag (test-only)
@@ -471,6 +507,11 @@ fi
 if [[ "${1:-}" == "--vmware-dns" ]]; then
     [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "vmware-dns seam is test-only"
     reconcile_vmware_dns "${2:-}" "${3:-}"
+    exit 0
+fi
+if [[ "${1:-}" == "--vmware-display" ]]; then
+    [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "vmware-display seam is test-only"
+    reconcile_vmware_display "${2:-}" "${3:-}"
     exit 0
 fi
 if [[ "${1:-}" == "--refind-config" ]]; then
@@ -1347,6 +1388,16 @@ if [[ $CHECK -eq 1 ]]; then
     reconcile_network_services check
 else
     reconcile_network_services apply
+fi
+
+# --- 6a2. VMware guest display ------------------------------------------------
+# After the reconcile, so a guest's vmware X driver (or its absence) is known;
+# see reconcile_vmware_display for why full screen never resized without it.
+say "VMware guest display"
+if [[ $CHECK -eq 1 ]]; then
+    reconcile_vmware_display check "$virt"
+else
+    reconcile_vmware_display apply "$virt"
 fi
 
 # --- 6b. normalize install reasons ---------------------------------------------

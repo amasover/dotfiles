@@ -99,3 +99,30 @@ bootstrap: FATAL: vmware-dns seam is test-only
 $ rm -rf "$D"; echo done
 done
 $
+
+VMware guests without the vmware X driver (aarch64 has none) resize only
+through resolutionKMS, so bootstrap links the tracked tools.conf that enables
+it. Guests with the driver and other machines are left alone:
+
+$ export BOOTSTRAP_TEST_MODE=1; D=$(mktemp -d); mkdir -p "$D/bin" "$D/home/.config/dotfiles/vmware-tools"; : > "$D/home/.config/dotfiles/vmware-tools/tools.conf"; printf '%s\n' '#!/bin/sh' '[ -n "${XF86:-}" ]' > "$D/bin/pacman"; printf '%s\n' '#!/bin/sh' 'echo "systemctl $*" >> "$DISPLAY_TRACE"' > "$D/bin/systemctl"; printf '%s\n' '#!/bin/sh' 'exec "$@"' > "$D/bin/sudo"; chmod +x "$D/bin/"*; TOOLS() { : > "$D/trace"; HOME="$D/home" PATH="$D/bin:$PATH" DISPLAY_TRACE="$D/trace" TOOLS_CONF="$D/etc/tools.conf" .local/bin/setup/bootstrap --vmware-display "$@" 2>&1 | sed "s|$D|D|g"; cat "$D/trace"; }; echo ready
+ready
+$ TOOLS apply none
+  skipped: not a VMware guest
+$ XF86=1 TOOLS apply vmware
+  skipped: the vmware X driver applies display layouts
+$ TOOLS check vmware
+  would: symlink D/etc/tools.conf -> D/home/.config/dotfiles/vmware-tools/tools.conf, then restart vmtoolsd
+$ TOOLS apply vmware; readlink "$D/etc/tools.conf" | sed "s|$D|D|"
+  resolutionKMS enabled: D/etc/tools.conf -> D/home/.config/dotfiles/vmware-tools/tools.conf
+  a vmusr agent started before this backs off at its next start (X login)
+systemctl restart vmtoolsd
+D/home/.config/dotfiles/vmware-tools/tools.conf
+$ TOOLS apply vmware
+  resolutionKMS already enabled: D/etc/tools.conf
+$ rm "$D/home/.config/dotfiles/vmware-tools/tools.conf"; TOOLS check vmware | grep -o 'FATAL: tracked tools.conf missing'
+FATAL: tracked tools.conf missing
+$ BOOTSTRAP_TEST_MODE=0 TOOLS check vmware | grep FATAL
+bootstrap: FATAL: vmware-display seam is test-only
+$ rm -rf "$D"; echo done
+done
+$
