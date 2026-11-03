@@ -54,6 +54,10 @@ class ProvisioningRequest:
     pubkey: str
 
 
+# open-vm-tools ships both units disabled. vmblock-fuse must be mounted before
+# the X session starts vmusr, or host-to-guest file drag-and-drop never works.
+VMWARE_SERVICES = ("vmtoolsd.service", "vmware-vmblock-fuse.service")
+
 TARGETS = {
     "qemu": TargetSpec(
         name="qemu",
@@ -69,7 +73,7 @@ TARGETS = {
         name="vmware",
         device="/dev/nvme0n1",
         packages=("open-vm-tools",),
-        services=("vmtoolsd.service",),
+        services=VMWARE_SERVICES,
         bootloader="Systemd-boot",
         swap_enabled=True,
         encrypted=False,
@@ -79,7 +83,7 @@ TARGETS = {
         name="daily-vm",
         device="/dev/nvme0n1",
         packages=("open-vm-tools",),
-        services=("vmtoolsd.service",),
+        services=VMWARE_SERVICES,
         bootloader="Systemd-boot",
         swap_enabled=True,
         encrypted=True,
@@ -89,7 +93,7 @@ TARGETS = {
         name="vmware-aarch64",
         device="/dev/nvme0n1",
         packages=("open-vm-tools",),
-        services=("vmtoolsd.service",),
+        services=VMWARE_SERVICES,
         bootloader="Systemd-boot",
         swap_enabled=True,
         encrypted=False,
@@ -100,7 +104,7 @@ TARGETS = {
         name="work-vm",
         device="/dev/nvme0n1",
         packages=("open-vm-tools",),
-        services=("vmtoolsd.service",),
+        services=VMWARE_SERVICES,
         bootloader="Systemd-boot",
         swap_enabled=True,
         encrypted=True,

@@ -120,13 +120,16 @@ class TestUserConfiguration:
         cmds = "\n".join(self._cfg("vmware", pubkey="")["custom_commands"])
         assert "authorized_keys" not in cmds
 
-    def test_vmware_enables_vmtoolsd(self):
-        cmds = "\n".join(self._cfg("vmware")["custom_commands"])
+    @pytest.mark.parametrize("target", ["vmware", "daily-vm", "vmware-aarch64", "work-vm"])
+    def test_vmware_targets_enable_tools_and_vmblock(self, target):
+        cmds = "\n".join(self._cfg(target)["custom_commands"])
         assert "systemctl enable vmtoolsd.service" in cmds
+        assert "systemctl enable vmware-vmblock-fuse.service" in cmds
 
     def test_qemu_enables_no_tools_service(self):
         cmds = "\n".join(self._cfg("qemu")["custom_commands"])
         assert "vmtoolsd" not in cmds
+        assert "vmblock" not in cmds
 
 
 class TestAarch64Targets:
