@@ -219,9 +219,20 @@ class TestRenderFallback:
         monkeypatch.setitem(sys.modules, "rich.console", None)
         _, row2, _ = display.make_render()
         n = len(display.BOOTSTRAP_STEPS)
-        line = row2(4, 40)
-        assert f"5/{n}" in line
-        assert "▶" in line
+        line = row2(4, n + 30)
+        assert f"●●●●▶{'○' * (n - 5)} 5/{n}" in line
+        assert len(line) <= n + 29
+
+    def test_meter_wider_than_terminal_keeps_counter_and_name(self, monkeypatch):
+        # 32 steps of dots plus the counter outgrow a 40-column terminal, which
+        # once cut the counter mid-number ("5/3"); the dots go first.
+        monkeypatch.setitem(sys.modules, "rich.console", None)
+        _, row2, _ = display.make_render()
+        n = len(display.BOOTSTRAP_STEPS)
+        name = display.BOOTSTRAP_STEPS[4][0].upper()
+        line = row2(4, n + 2)
+        assert line.strip().startswith(f"▶ 5/{n}")
+        assert name in line
 
 
 class TestLogLegFailure:
