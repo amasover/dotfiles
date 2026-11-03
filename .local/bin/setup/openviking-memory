@@ -127,8 +127,18 @@ for tool in git node npm curl; do
     fi
 done
 
+# Local mode needs setup/openviking-local-server to have run: drift in --check,
+# a failure in apply.
+local_unready() {
+    if ((check)); then
+        say "$1 - would install the clients after setup/openviking-local-server"
+        exit 1
+    fi
+    die "$1 (setup/openviking-local-server)"
+}
+
 if ! health=$(curl -q -fsS --max-time 10 "$url/health" 2>/dev/null); then
-    ((! local_mode)) || die "the local server is not answering on $url (setup/openviking-local-server)"
+    ((! local_mode)) || local_unready "the local server is not answering on $url"
     say "server unreachable (off the LAN?) - skipping"
     exit 0
 fi
@@ -177,9 +187,9 @@ with_timeout() {
 
 key=
 if ((local_mode)); then
-    [[ -s $keyfile ]] || die "no user key in $keyfile (setup/openviking-local-server mints it)"
+    [[ -s $keyfile ]] || local_unready "no user key in $keyfile"
     key=$(tr -d '\r\n' <"$keyfile")
-    key_accepted "$key" || die "the server refuses the key in $keyfile (setup/openviking-local-server mints a new one)"
+    key_accepted "$key" || local_unready "the server refuses the key in $keyfile"
 elif [[ -f $conf ]]; then
     key=$(node -e '
       try { process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).api_key || ""); } catch {}
