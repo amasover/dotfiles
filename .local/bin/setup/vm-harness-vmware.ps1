@@ -8,7 +8,8 @@
 # design — logic lives in Python (provision-seed, vm-harness-vmx/-leases),
 # guest-side bash is shared with the libvirt harness.
 #
-# Hosts ($IsMacOS picks; everything past the host switch is host-neutral):
+# Hosts ($IsMacOS picks; the host settings sit near the top, and Get-HostPubkey,
+# Get-TrustDir, Start-Vm and Cmd-Fetch still branch on the host as well):
 #   Windows  Workstation, x86_64 guest from the official archiso, seed target
 #            vmware, default class daily-vm, work dir %LOCALAPPDATA%.
 #   macOS    Fusion (runs arm64 guests only), aarch64 guest from the latest
@@ -39,11 +40,12 @@
 #   create     VM directory: fresh seed, growable NVMe disk (vdiskmanager),
 #              .vmx via vm-harness-vmx (UEFI, serial-to-file, NAT). Dies if the
 #              VM already exists — destroy is always explicit
-#   install    power on headless; archinstall runs via cloud-init and streams
-#              to the serial log, mirrored here live; VM powers itself off;
-#              media is then ejected so later boots hit the disk
-#   boot       start the installed VM headless; wait for an authenticated ssh
-#              login, then print the IP
+#   install    power on (window or headless: VM_HARNESS_GUI below);
+#              archinstall runs via cloud-init and streams to the serial log,
+#              mirrored here live; VM powers itself off; media is then
+#              ejected so later boots hit the disk
+#   boot       start the installed VM (same window rule); wait for an
+#              authenticated ssh login, then print the IP
 #   up         everything to a green check: create → install → boot →
 #              bootstrap → check, resuming past phases live state proves done
 #              (vm-harness-vmx resume). Never destroys; a died install stops
@@ -95,9 +97,12 @@
 # VM_HARNESS_SSH_KEY names a private key to seed and log in with (its .pub is
 # the seeded key; ssh gets -i + IdentitiesOnly) — for hosts whose keys live in
 # an agent with no ~/.ssh/id_*.pub on disk, and for throwaway-key runs.
-# VM_HARNESS_GUI=1 powers the VM on with its console window open (vmrun's
-# `gui` mode) instead of headless, so an attended run can be watched; logging
-# and every phase gate are the same either way.
+# VM_HARNESS_GUI picks whether the VM powers on with its console window open
+# (vmrun's `gui` mode) or headless. On macOS the window is the default for an
+# attended run (display mode bar or compact, i.e. an interactive console), so
+# it can be watched; VM_HARNESS_GUI=0 forces headless. On Windows the default
+# stays headless and VM_HARNESS_GUI=1 opens the window. Logging and every
+# phase gate are the same either way.
 # VM_HARNESS_BUNDLE names a host `git bundle` (e.g. `git bundle create
 # b.bundle my-branch`): bootstrap copies it into the guest and clones from it
 # instead of VM_HARNESS_REPO, so an unpushed branch can be validated; pair it
@@ -336,7 +341,8 @@ function Test-VmRunning {
     ((& $VmRun -T $VmRunType list) -join "`n") -match [regex]::Escape($Vmx)
 }
 
-# Power the VM on headless. On macOS, vmrun's vmware-vmx child inherits
+# Power the VM on, headless or with its window (see VM_HARNESS_GUI in the
+# header). On macOS, vmrun's vmware-vmx child inherits
 # vmrun's stdout/stderr and the driver's process group: a captured `2>&1`
 # never reaches EOF while the VM runs (the boot phase hung on it, 2026-11-02),
 # and a Ctrl-C or killed driver takes the VM down with it (vmware.log:
@@ -353,7 +359,9 @@ with tempfile.TemporaryFile() as out:
 sys.exit(rc)
 '@
 function Start-Vm {
-    $mode = if ($env:VM_HARNESS_GUI) { 'gui' } else { 'nogui' }
+    $gui = if ($env:VM_HARNESS_GUI) { $env:VM_HARNESS_GUI -ne '0' }
+           else { $OnMac -and $script:DisplayMode -ne 'plain' }
+    $mode = if ($gui) { 'gui' } else { 'nogui' }
     if ($OnMac) { & $Python -c $DetachedStart $VmRun -T $VmRunType start $Vmx $mode 2>&1 }
     else { & $VmRun -T $VmRunType start $Vmx $mode 2>&1 }
     if ($LASTEXITCODE -ne 0) { throw "vmrun start failed (rc=$LASTEXITCODE)" }
