@@ -48,8 +48,8 @@ Supporting choices, decided together:
   layers its mode on top through `PI_CONFIG_FILES`, which outranks `config.yml`.
 - **Never declare employer-managed apps.** Jamf installs and updates Zoom, Slack,
   1Password, Cisco Secure Client, Duo, the EDR agent, Jamf Protect, the employer's Self
-  Service app, and the App Store's Pages, Numbers, Keynote, iMovie and GarageBand.
-  Declaring them would fight the MDM. The user's own apps are declared where a
+  Service app, ClickShare, and the App Store's Pages, Numbers, Keynote, iMovie and
+  GarageBand. Declaring them would fight the MDM. The user's own apps are declared where a
   trustworthy cask exists (Firefox; Orca from its own tap), with `adopt = true` so mise
   takes over the existing bundles instead of replacing them. VMware Fusion and Meridian
   Desktop have no cask, and Feishin's only cask is a community tap with no checksum

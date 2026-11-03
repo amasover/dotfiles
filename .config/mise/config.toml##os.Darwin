@@ -8,8 +8,8 @@
 #
 # Never declare the employer-managed apps here: Jamf installs and updates them
 # (Zoom, Slack, 1Password, Cisco Secure Client, Duo, CrowdStrike Falcon, Jamf
-# Protect, the Self Service app, and the App Store's Pages, Numbers, Keynote,
-# iMovie and GarageBand).
+# Protect, the Self Service app, ClickShare, and the App Store's Pages, Numbers,
+# Keynote, iMovie and GarageBand).
 
 # The tracked ~/.zshrc and ~/.zprofile activate mise in their Darwin branches.
 # Left on, mise would write its marker blocks into those yadm-tracked files,
