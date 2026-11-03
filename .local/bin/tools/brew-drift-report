@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# brew-drift-report — read-only Homebrew drift summary for the Mac (class
+# work-mac); the counterpart of metapac-drift-report on Arch.
+#
+# Two sections:
+#   1. undeclared           — installed formulae (`brew leaves`) and casks
+#                             that no mise config declares
+#   2. declared-but-missing — declared for this machine, not installed
+#
+# Declarations come from `mise bootstrap packages status --json`, run from
+# $HOME so no project config joins in. mise merges every global config file
+# for us: config.toml, conf.d/*.toml and any config.<env>.toml in use, after
+# applying each entry's os and env filters. Names compare without their tap,
+# so "brew-cask:stablyai/orca/orca" matches the installed cask "orca".
+#
+# Never mutates: apply with `mise bootstrap packages apply`, remove with
+# `mise bootstrap packages prune --dry-run` first.
+# shellcheck disable=SC2001  # `sed 's/^/     /'` is this file's indent idiom
+set -euo pipefail
+
+case "${1:-}" in
+    "") ;;
+    -h | --help)
+        sed -n '2,/^# shellcheck/{/^# shellcheck/d; s/^# \{0,1\}//p;}' "$0"
+        exit 0
+        ;;
+    *)
+        echo "brew-drift-report: unknown argument: $1   (try: brew-drift-report -h)" >&2
+        exit 2
+        ;;
+esac
+
+if ! command -v brew >/dev/null; then
+    echo "brew-drift-report: no Homebrew on this machine — skipping."
+    exit 0
+fi
+
+status=$(cd "$HOME" && mise bootstrap packages status --json) || {
+    echo "brew-drift-report: could not read mise's package declarations" >&2
+    exit 1
+}
+
+# stdin: package names, possibly tap-qualified; stdout: bare names, sorted.
+bare() {
+    sed -e 's|.*/||' -e '/^$/d' | LC_ALL=C sort -u
+}
+
+# $1 = mise manager (brew | brew-cask)
+declared() {
+    jq -r --arg m "$1" '.[$m].packages[]?.package' <<<"$status" | bare
+}
+
+# $1 = label; $2 = installed names; $3 = declared names.
+undeclared_section() {
+    local extra
+    extra=$(LC_ALL=C comm -23 <(printf '%s\n' "$2" | bare) <(printf '%s\n' "$3"))
+    if [[ -n $extra ]]; then
+        echo
+        echo " [!] $1 installed but declared in no mise config:"
+        sed 's/^/     /' <<<"$extra"
+    else
+        echo " [ok] undeclared $1: none"
+    fi
+}
+
+echo
+echo "=============================================================="
+echo " brew drift report ($(date +%F\ %H:%M)) — read-only"
+echo "=============================================================="
+
+undeclared_section formulae "$(brew leaves)" "$(declared brew)"
+undeclared_section casks "$(brew list --cask -1)" "$(declared brew-cask)"
+
+missing=$(jq -r '(.brew.packages[]?, ."brew-cask".packages[]?)
+    | select(.state == "missing") | .package' <<<"$status")
+if [[ -n $missing ]]; then
+    echo
+    echo " [!] declared but not installed:"
+    sed 's/^/     /' <<<"$missing"
+    echo "     apply:  mise bootstrap packages apply   (prompts before acting)"
+else
+    echo " [ok] declared-but-missing: none"
+fi

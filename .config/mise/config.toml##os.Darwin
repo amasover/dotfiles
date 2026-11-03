@@ -1,0 +1,100 @@
+# Global mise config for the Mac (machine class work-mac). yadm links it to
+# ~/.config/mise/config.toml on Darwin only; `mise bootstrap` applies it.
+# See docs/decision-mac-host.md and docs/runbook-mac-host-adoption.md.
+#
+# Other files in conf.d/ add their own declarations (conf.d/openviking.toml
+# owns ollama, uv and the OpenViking LaunchAgents). brew-drift-report reads
+# every one of them through `mise bootstrap packages status`.
+#
+# Never declare the employer-managed apps here: Jamf installs and updates them
+# (Zoom, Slack, 1Password, Cisco Secure Client, Duo, CrowdStrike Falcon, Jamf
+# Protect, the Self Service app, and the App Store's Pages, Numbers, Keynote,
+# iMovie and GarageBand).
+
+# The tracked ~/.zshrc and ~/.zprofile activate mise in their Darwin branches.
+# Left on, mise would write its marker blocks into those yadm-tracked files,
+# which Linux shares, and dirty them on every machine.
+[bootstrap.mise_shell_activate]
+zsh = false
+
+# The apps below were installed by hand before mise managed them. Adopt them
+# instead of replacing the bundles, which would drop their macOS privacy grants.
+# Self-updating apps (Firefox, Orca) are adopted as they are.
+[bootstrap.brew]
+adopt = true
+
+[bootstrap.packages]
+# Formulae installed on request before adoption (`brew leaves`).
+"brew:actionlint" = "latest"
+"brew:bash" = "latest"
+"brew:betterleaks" = "latest"
+"brew:clitest" = "latest"
+"brew:coreutils" = "latest"
+"brew:findutils" = "latest"
+"brew:gawk" = "latest"
+"brew:gh" = "latest"
+"brew:gnu-sed" = "latest"
+"brew:gnupg" = "latest"
+"brew:grep" = "latest"
+"brew:luajit" = "latest"
+"brew:python@3.14" = "latest"
+"brew:shellcheck" = "latest"
+"brew:shfmt" = "latest"
+"brew:squashfs" = "latest"
+"brew:yadm" = "latest"
+# What the shared .zshrc gets from pacman on Linux: the two zsh plugins, and
+# bat and eza behind its cat/ls/ll aliases.
+"brew:bat" = "latest"
+"brew:eza" = "latest"
+"brew:zsh-autosuggestions" = "latest"
+"brew:zsh-syntax-highlighting" = "latest"
+# The agnoster prompt's glyphs.
+"brew-cask:font-hack-nerd-font" = "latest"
+# The user's own apps. VMware Fusion and Meridian Desktop have no cask:
+# Homebrew dropped vmware-fusion when Broadcom put the download behind a login,
+# and Meridian ships only a GitHub release DMG.
+"brew-cask:firefox" = "latest"
+# Orca's own tap, generated from the Orca repository.
+"brew-cask:stablyai/orca/orca" = "latest"
+# Community tap kept by a long-time Feishin contributor. Its cask has no
+# checksum (`sha256 :no_check`) and strips the quarantine flag after install,
+# because upstream does not notarize the app.
+"brew-cask:kgarner7/feishin/feishin" = "latest"
+
+# oh-my-zsh, which .zshrc sources. The official installer only clones this
+# repository when told to keep .zshrc and skip chsh, so a declared checkout
+# replaces it. omz updates itself in place; `mise bootstrap --update` also
+# fast-forwards it.
+[bootstrap.repos]
+"~/.oh-my-zsh" = { url = "https://github.com/ohmyzsh/ohmyzsh.git" }
+
+# Preferences set by hand on this Mac before adoption, read back with
+# `defaults read`. Only values that differ from macOS's own defaults are here.
+[bootstrap.macos.finder]
+preferred_view_style = "list"
+
+[bootstrap.macos.defaults]
+NSGlobalDomain = { AppleInterfaceStyle = "Dark", "com.apple.swipescrolldirection" = false }
+"com.apple.screencapture" = { location = "~/screenshots" }
+
+# The patched agnoster theme (Story 2.20) shadows omz's bundled one from
+# custom/, which omz ignores, so updates never touch the link.
+[bootstrap.hooks.post-repos]
+description = "Link the tracked agnoster theme into oh-my-zsh"
+run = '''
+mkdir -p "$HOME/.oh-my-zsh/custom/themes"
+ln -sfn "$HOME/.config/dotfiles/oh-my-zsh-custom/themes/agnoster.zsh-theme" "$HOME/.oh-my-zsh/custom/themes/agnoster.zsh-theme"
+'''
+
+# Story 4.13: personal agent skills from the LAN Forgejo. Off the LAN, or with
+# no setting on this machine, it warns once and the run carries on.
+[bootstrap.hooks.final]
+description = "Clone or update agent-skills and link it into omp"
+run = '"$HOME/.local/bin/setup/agent-skills" apply'
+
+[tools]
+node = "lts"
+# mise reads the two tap casks above from their Ruby definitions, so `status`,
+# `plan`, `--dry-run` and brew-drift-report need a Ruby 3. A real apply
+# fetches one itself on the first run.
+ruby = "3"
