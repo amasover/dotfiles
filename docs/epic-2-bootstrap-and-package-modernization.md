@@ -2041,6 +2041,51 @@ ntpd crashing on glibc 2.44.
 
 ---
 
+### Story 2.61: The work Mac reconciles through `mise bootstrap` and yadm
+
+As the repo owner,
+I want the employer-issued Mac declared in this repo under machine class `work-mac`,
+So that its packages, apps, preferences and dotfiles converge the same way the Arch
+machines' do, and the shell feels the same on both.
+
+Issue: [#284](https://github.com/amasover/dotfiles/issues/284) · Origin: 2026-11-02, Mac host adoption. Design:
+[decision-mac-host.md](./decision-mac-host.md); operator steps:
+[runbook-mac-host-adoption.md](./runbook-mac-host-adoption.md). Independent of the
+daily-VM work: it changes no Linux behavior.
+
+**Acceptance criteria:**
+
+- Given `.config/yadm/sparse/work-mac`, when a Mac adopts the repo, then only shared
+  shell, git, yadm, mise, omp, OpenViking and cross-platform tool files land, every
+  `##os.Darwin` alternate is linked, and no Linux desktop, service, package-manager,
+  docs or test file reaches `$HOME`
+- Given a Mac clone made without a checkout, when `.config/yadm/bootstrap##os.Darwin`
+  runs, then it sets the class, applies the sparse rules, checks out only missing
+  files, backs up any regular file an alternate replaces, offers a full-archive
+  decrypt that saves overwritten files first, and runs `mise bootstrap`; `--check`
+  changes nothing and a second run changes nothing
+- Given `.config/mise/config.toml##os.Darwin`, when `mise bootstrap --dry-run` runs,
+  then every declared formula and cask resolves, and no Jamf-managed app is declared
+- Given the shared `.zshrc`, `.zprofile`, `.profile`, `.bashrc` and `.gitconfig`, then
+  Linux behavior is unchanged and an interactive zsh on Darwin starts with nothing on
+  stderr
+- Given a plain `omp` on the Mac, then it runs `omp-mode claude`'s roles, and
+  `omp-mode <other>` still overrides them
+- Given `brew-drift-report`, then it lists installed formulae and casks that no mise
+  config file (conf.d included) declares, and declared ones that are missing, without
+  changing anything
+- Given Story 4.13's agent-skills step, then `setup/agent-skills` runs as the Mac
+  bootstrap's final hook and meets 4.13's reachable, unreachable, missing-setting and
+  dirty/diverged-clone criteria; wiring it into the Linux `bootstrap` and `update`
+  (and `vm-harness-display`'s step map) stays with Story 4.13
+
+**Evidence artifact:** `tests/mac-sparse.clitest.txt`,
+`tests/brew-drift-report.clitest.txt` and `tests/agent-skills.clitest.txt`; a
+throwaway-`HOME` adoption transcript showing what lands and what links; a clean
+`zsh -i -c exit`; `mise bootstrap --dry-run` resolving every package.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
