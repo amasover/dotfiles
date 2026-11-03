@@ -110,19 +110,32 @@ remove_sudo_dropin() {
 begin_attended_sudo() {
     say 'sudo: type your password for this VM (asked once; the run then uses a temporary drop-in)'
     sudo -v || die 'sudo -v failed — no drop-in installed'
-    trap remove_sudo_dropin EXIT
+    trap end_attended EXIT
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
     install_sudo_dropin
 }
 
-# The archive passphrase goes to gpg-agent's pinentry on this terminal; it
-# never passes through this script, and pinentry does not echo it, so the
-# harness's script(1) recording never holds it. Same skip test as bootstrap's
-# own decrypt step (~/.zshenv), which then reports it as already decrypted.
+end_attended() {
+    [[ -z $loopback_dir ]] || rm -rf "$loopback_dir"
+    remove_sudo_dropin
+}
+
+# yadm decrypt runs `gpg -d`, and gpg asks gpg-agent's pinentry for the
+# passphrase. With no DISPLAY the guest's default is pinentry-curses, which
+# draws one * per typed character: on 2026-11-03 the harness's script(1)
+# recording kept the passphrase's length. So this decrypt alone runs gpg with
+# --pinentry-mode loopback, through a wrapper first on yadm's PATH: gpg reads
+# the passphrase itself, with terminal echo off, and prints nothing per
+# character. The passphrase never passes through this script, no gpg or
+# gpg-agent config is written, and end_attended deletes the wrapper. If
+# loopback cannot be used, the run stops before asking: there is no fallback
+# to a pinentry that may echo. Same skip test as bootstrap's own decrypt step
+# (~/.zshenv), which then reports it as already decrypted.
+loopback_dir=''
 attended_decrypt() {
-    local archive=$HOME/.local/share/yadm/archive attempt
+    local archive=$HOME/.local/share/yadm/archive attempt gpg
     if [[ ! -f $archive ]]; then
         say "Secrets: no encrypted archive at $archive — nothing to decrypt"
         return 0
@@ -131,11 +144,19 @@ attended_decrypt() {
         say 'Secrets: already decrypted (~/.zshenv exists) — skipping yadm decrypt'
         return 0
     fi
-    # An agent started by an earlier ssh session would prompt on that one.
-    gpg-connect-agent updatestartuptty /bye >/dev/null 2>&1 || true
+    gpg=$(command -v gpg) || die 'gpg is not installed — cannot decrypt the archive'
+    [[ -z $(yadm config yadm.gpg-program) ]] \
+        || die 'yadm.gpg-program is set, so yadm would bypass the hidden-input gpg wrapper — unset it (yadm config --unset yadm.gpg-program) and run again; nothing was asked'
+    if gpgconf --list-options gpg-agent 2>/dev/null \
+        | awk -F: '$1 == "no-allow-loopback-pinentry" && $10 != "" { found = 1 } END { exit !found }'; then
+        die 'gpg-agent.conf sets no-allow-loopback-pinentry, and the hidden-input passphrase prompt needs loopback — remove that line and run again; nothing was asked'
+    fi
+    loopback_dir=$(mktemp -d)
+    printf '#!/bin/sh\nexec %q --pinentry-mode loopback "$@"\n' "$gpg" >"$loopback_dir/gpg"
+    chmod +x "$loopback_dir/gpg"
     for attempt in 1 2 3; do
         say "Secrets: type the archive passphrase (attempt $attempt of 3, input hidden)"
-        if yadm decrypt; then return 0; fi
+        if PATH=$loopback_dir:$PATH yadm decrypt; then return 0; fi
     done
     die 'yadm decrypt failed 3 times — stopping before the long run'
 }
@@ -224,11 +245,7 @@ cmd_bootstrap() {
     done
     [[ -n "$class" && -n "$repo" ]] \
         || die 'bootstrap needs --class and --repo'
-    if ((attended)); then
-        begin_attended_sudo
-        # gpg's pinentry (yadm decrypt) prompts on the terminal it is told about.
-        if tty -s; then GPG_TTY=$(tty) && export GPG_TTY; fi
-    fi
+    if ((attended)); then begin_attended_sudo; fi
     sudo pacman -S --needed --noconfirm git base-devel yadm
     # Clone, or refresh an existing checkout. A resumed guest cannot rely on
     # `yadm clone || true`: that silently keeps converging the first branch.
