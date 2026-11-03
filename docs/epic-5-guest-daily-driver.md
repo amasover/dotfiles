@@ -310,8 +310,9 @@ Issue: [#281](https://github.com/amasover/dotfiles/issues/281) · Origin: [decis
 work-laptop replacement).
 
 **Current state (2026-11-02):** a disposable `vmware-aarch64` guest installs
-unattended from archiso-aarch64 and boots to an authenticated ssh login under
-Fusion, driven by the harness on macOS; the first repo bootstrap run is in progress.
+unattended from archiso-aarch64, boots, and converges as class `work-vm` under
+Fusion, driven by the harness on macOS: `bootstrap done rc=0`, `check done rc=0`
+(unmanaged none, declared-but-missing none). The LUKS `work-vm` install is next.
 The Arch Linux Ports (drzee) repos lack `xf86-video-vmware`, so Xorg runs
 modesetting on vmwgfx.
 
