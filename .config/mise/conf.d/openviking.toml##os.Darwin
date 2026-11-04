@@ -1,5 +1,6 @@
 # OpenViking agent memory on macOS: a local server on 127.0.0.1:1933 with
-# Ollama models, and the omp and Claude Code clients wired to it. mise reads
+# Ollama embeddings and Claude through Meridian Desktop as its VLM, and the
+# omp and Claude Code clients wired to it. mise reads
 # every ~/.config/mise/conf.d/*.toml as global config, so `mise bootstrap`
 # applies this file beside config.toml. yadm links it on macOS only.
 #
@@ -11,8 +12,8 @@
 "brew:ollama" = "latest"
 "brew:uv" = "latest"
 
-# The model server, loopback only. One request at a time and two resident
-# models (embedding + VLM) keep memory flat; idle models unload after 5 min.
+# The model server, loopback only. One request at a time; the embedding model
+# (and an Ollama VLM, if ov.conf.json names one) stays resident until 5 min idle.
 [bootstrap.macos.launchd.agents.ollama]
 program = "/opt/homebrew/opt/ollama/bin/ollama"
 args = ["serve"]

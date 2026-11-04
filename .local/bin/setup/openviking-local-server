@@ -2,7 +2,8 @@
 # openviking-local-server — converge the local OpenViking memory server.
 #
 # In local mode the memory server runs on this machine, on loopback, with
-# Ollama models, and starts with an empty store. Two tracked files in
+# Ollama embeddings and a VLM that is either an Ollama model or Claude through
+# the local Meridian proxy, and starts with an empty store. Two tracked files in
 # ~/.config/dotfiles/openviking set it up:
 #   local.env      selects local mode: URL, pinned release and Python, and the
 #                  account and user the clients act as (yadm links it on macOS)
@@ -12,8 +13,8 @@
 #
 # Apply, in order:
 #   1. installs the pinned openviking with uv on the pinned Python;
-#   2. checks that Ollama answers on 127.0.0.1:11434 and pulls the models
-#      ov.conf.json names;
+#   2. checks that Ollama answers on 127.0.0.1:11434 and pulls the Ollama
+#      models ov.conf.json names (a non-Ollama VLM is not pulled);
 #   3. renders ~/.openviking/ov.conf (mode 600) on 127.0.0.1:1933 with the
 #      workspace ~/.openviking/data and a root key generated on the first run
 #      only, then restarts the LaunchAgent dev.mise.openviking after a change;
@@ -138,13 +139,14 @@ if [[ $installed != "$version on Python $python" ]]; then
     fi
 fi
 
-# 2. Ollama and the models the configuration names.
+# 2. Ollama and the Ollama models the configuration names.
 curl -q -fsS --max-time 5 -o /dev/null "$ollama/api/version" 2>/dev/null \
     || die "Ollama is not answering on $ollama (LaunchAgent dev.mise.ollama)"
 models=$(node -e '
   const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
   console.log(c.embedding.dense.model);
-  console.log(c.vlm.model.replace(/^ollama(_chat)?\//, ""));
+  const vlm = c.vlm.model.match(/^ollama(?:_chat)?\/(.+)$/);
+  if (vlm) console.log(vlm[1]);
 ' "$settings/ov.conf.json")
 have=$(curl -q -fsS --max-time 10 "$ollama/api/tags" | node -e '
   const t = JSON.parse(require("fs").readFileSync(0, "utf8"));
