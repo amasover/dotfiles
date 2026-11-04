@@ -155,6 +155,40 @@ rc=0
 0
 $
 
+Host mode (Story 5.9): in the work VM, host.env selects the Mac's server, which
+the Mac's ssh tunnel forwards to the guest's loopback. It wins over server.env
+(still in place here), takes only the loopback URL, and uses the Mac's key
+copied into user.key; OpenBao is never asked. Its messages point at the Mac
+host setup instead of setup/openviking-local-server:
+
+$ mv "$L" "$OVT/local.env"; H=$HOME/.config/dotfiles/openviking/host.env; printf '%s\n' 'OPENVIKING_URL=http://192.0.2.1:1933' > "$H"; $t; echo "rc=$?"
+openviking-memory: FATAL: host.env: OPENVIKING_URL must be http://127.0.0.1:1933
+rc=2
+$ cp '.config/dotfiles/openviking/host.env##class.work-vm' "$H"; touch "$OVT/down"; $t; echo "rc=$?"; $t --check; echo "rc=$?"; rm "$OVT/down"
+openviking-memory: FATAL: the Mac's server is not answering on http://127.0.0.1:1933 (the Mac host setup in docs/runbook-vm-validation.md)
+rc=2
+OpenViking memory: the Mac's server is not answering on http://127.0.0.1:1933 - would install the clients after the Mac host setup in docs/runbook-vm-validation.md
+rc=1
+$ mv "$HOME/.openviking/user.key" "$OVT/user.key"; { $t; echo "rc=$?"; } 2>&1 | sed "s|$HOME|~|"
+openviking-memory: FATAL: no user key in ~/.openviking/user.key (the Mac host setup in docs/runbook-vm-validation.md)
+rc=2
+$ mv "$OVT/user.key" "$HOME/.openviking/user.key"; rm "$HOME/.openviking/ovcli.conf"; : > "$TRACE"; $t | tee -a "$OVT/out"; grep -c '^bao' "$TRACE"; node -p 'const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); [c.url, c.api_key === process.argv[2]].join(" ")' "$HOME/.openviking/ovcli.conf" "$LKEY"
+OpenViking memory: omp extension 0.4.13 (OpenViking v0.5.1)
+OpenViking memory: Claude Code openviking-memory 0.7.6 (OpenViking v0.5.1)
+0
+http://127.0.0.1:1933 true
+$ $t --no-login; echo "rc=$?"
+OpenViking memory: up to date (OpenViking v0.5.1)
+rc=0
+$
+
+local.env wins over host.env, so a Mac never waits on a tunnel:
+
+$ cp "$OVT/local.env" "$L"; touch "$OVT/down"; $t --check; echo "rc=$?"; rm "$OVT/down" "$H"
+OpenViking memory: the local server is not answering on http://127.0.0.1:1933 - would install the clients after setup/openviking-local-server
+rc=1
+$
+
 Neither key reached an argument list, the trace, or the output:
 
 $ cat "$OVT/out" "$TRACE" | grep -c -e "$KEY" -e "$LKEY"

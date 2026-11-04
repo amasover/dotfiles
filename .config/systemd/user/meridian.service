@@ -8,7 +8,8 @@
 # documented placeholder clients must echo — meridian authenticates through
 # the Claude Code SDK, not this value; it is not a secret. Keep HOST on
 # loopback: exposing meridian beyond localhost needs a real key + TLS
-# (that's the 3.25 home-server story).
+# (that's the 3.25 home-server story). The work VM leaves this unit disabled
+# and uses the Mac's Meridian through the Mac's ssh tunnel (Story 5.9).
 [Unit]
 Description=Meridian proxy (Claude subscription via the Agent SDK)
 Documentation=https://github.com/rynfar/meridian

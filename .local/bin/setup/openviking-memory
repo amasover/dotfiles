@@ -9,7 +9,7 @@
 # The clients come from the release the server reports on /health, so they never
 # speak a newer API than the server does.
 #
-# Optional and per machine, in one of two modes:
+# Optional and per machine, in one of three modes:
 #   LAN    ~/.config/dotfiles/openviking/server.env names the server and the
 #          OpenBao that holds its key. It rides the yadm-encrypted archive, so
 #          neither host is in the public repository. A machine without it, or
@@ -18,7 +18,13 @@
 #          macOS) selects the server setup/openviking-local-server runs on
 #          http://127.0.0.1:1933. The key is the user key that script stores
 #          in ~/.openviking/user.key; OpenBao is never asked. local.env wins
-#          over server.env.
+#          over host.env and server.env.
+#   host   ~/.config/dotfiles/openviking/host.env (tracked; yadm links it for
+#          class work-vm) selects the Mac host's local server, which the Mac's
+#          ssh tunnel forwards to the guest's http://127.0.0.1:1933. The key is
+#          the Mac's user key, copied into the guest's ~/.openviking/user.key.
+#          It runs as local mode does; only the setup it waits for differs.
+#          host.env wins over server.env.
 #
 # The key never lands in a tracked file, an argument list or the output. On a
 # machine that already has an accepted key in ovcli.conf, it is reused.
@@ -78,9 +84,15 @@ keyfile=$root/user.key
 ext=$HOME/.omp/agent/extensions/openviking
 repo=${OPENVIKING_REPO:-https://github.com/volcengine/OpenViking.git}
 
+# Local and host mode differ only in the file that selects them, how the
+# messages name the server, and the setup that makes it answer.
 local_mode=0
 if [[ -f $settings/local.env ]]; then
-    local_mode=1
+    local_mode=1 env_file=local.env server='the local server'
+    ready_by=setup/openviking-local-server
+elif [[ -f $settings/host.env ]]; then
+    local_mode=1 env_file=host.env server="the Mac's server"
+    ready_by='the Mac host setup in docs/runbook-vm-validation.md'
 elif [[ ! -f $settings/server.env ]]; then
     say "no server.env on this machine - skipping (optional feature)"
     exit 0
@@ -92,15 +104,15 @@ if ((local_mode)); then
     while IFS= read -r line || [[ -n $line ]]; do
         [[ -z $line || $line == \#* ]] && continue
         [[ $line =~ ^([A-Z_]+)=([A-Za-z0-9:/._-]+)$ ]] \
-            || die "local.env: unsupported line (KEY=value, no quotes or spaces)"
+            || die "$env_file: unsupported line (KEY=value, no quotes or spaces)"
         case ${BASH_REMATCH[1]} in
             OPENVIKING_URL) url=${BASH_REMATCH[2]%/} ;;
             # setup/openviking-local-server's settings.
             OPENVIKING_VERSION | OPENVIKING_PYTHON | OPENVIKING_ACCOUNT | OPENVIKING_USER) ;;
-            *) die "local.env: unknown key ${BASH_REMATCH[1]}" ;;
+            *) die "$env_file: unknown key ${BASH_REMATCH[1]}" ;;
         esac
-    done <"$settings/local.env"
-    [[ $url == http://127.0.0.1:1933 ]] || die "local.env: OPENVIKING_URL must be http://127.0.0.1:1933"
+    done <"$settings/$env_file"
+    [[ $url == http://127.0.0.1:1933 ]] || die "$env_file: OPENVIKING_URL must be http://127.0.0.1:1933"
 else
     while IFS= read -r line || [[ -n $line ]]; do
         [[ -z $line || $line == \#* ]] && continue
@@ -127,18 +139,18 @@ for tool in git node npm curl; do
     fi
 done
 
-# Local mode needs setup/openviking-local-server to have run: drift in --check,
-# a failure in apply.
+# Local and host mode need their setup ($ready_by) to have run: drift in
+# --check, a failure in apply.
 local_unready() {
     if ((check)); then
-        say "$1 - would install the clients after setup/openviking-local-server"
+        say "$1 - would install the clients after $ready_by"
         exit 1
     fi
-    die "$1 (setup/openviking-local-server)"
+    die "$1 ($ready_by)"
 }
 
 if ! health=$(curl -q -fsS --max-time 10 "$url/health" 2>/dev/null); then
-    ((! local_mode)) || local_unready "the local server is not answering on $url"
+    ((! local_mode)) || local_unready "$server is not answering on $url"
     say "server unreachable (off the LAN?) - skipping"
     exit 0
 fi

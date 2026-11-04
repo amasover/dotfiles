@@ -3,7 +3,9 @@
 # OAuth — omp's config apiKey deliberately beats stored OAuth, so no upstream
 # token is ever forwarded. On Linux meridian is the systemd user unit
 # meridian.service; on the Mac it runs inside Meridian Desktop.app. Both
-# serve 127.0.0.1:3456. The literal "x" matches MERIDIAN_API_KEY in the unit
+# serve 127.0.0.1:3456. The work VM runs no meridian: the Mac's ssh tunnel
+# forwards the Mac's to the guest's 127.0.0.1:3456 (Story 5.9), so this file
+# needs no change there. The literal "x" matches MERIDIAN_API_KEY in the unit
 # (placeholder, not a secret); the header tells meridian to use its Pi adapter.
 #
 # NOTE: ~/.omp/agent/ also holds agent.db (the credential store) plus

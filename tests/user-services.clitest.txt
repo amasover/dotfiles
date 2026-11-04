@@ -26,6 +26,25 @@ systemctl --user daemon-reload
 systemctl --user enable --now meridian.service
 $
 
+The work VM runs no meridian (Story 5.9): the Mac's ssh tunnel puts the Mac's
+Meridian on the guest's port 3456. An enabled unit is disabled and stopped; an
+off one is left alone:
+
+$ US check vmware work-vm
+  meridian.service off: the work VM uses the Mac's Meridian
+  would: systemctl --user enable --now mac-shares.service
+$ ENABLED=meridian.service US check vmware work-vm
+  would: systemctl --user disable --now meridian.service   (the work VM uses the Mac's Meridian)
+  would: systemctl --user enable --now mac-shares.service
+$ ENABLED="meridian.service mac-shares.service" US apply vmware work-vm
+  meridian.service disabled: the work VM uses the Mac's Meridian
+  mac-shares.service already enabled
+systemctl --user disable --now meridian.service
+$ ENABLED=mac-shares.service US apply vmware work-vm
+  meridian.service off: the work VM uses the Mac's Meridian
+  mac-shares.service already enabled
+$
+
 The unit itself: skipped off VMware, a clean no-op when the host shares
 nothing, mounted in the foreground at ~/mac and unmounted on stop:
 

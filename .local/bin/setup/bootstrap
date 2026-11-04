@@ -262,14 +262,26 @@ reconcile_skel_files() {
 # Step 8g's body (Story 3.24): tracked systemd user units, enabled
 # idempotently. meridian.service is useless until `claude login`, a
 # first-session step, so a failed start is tolerated (Restart=on-failure picks
-# it up later). mac-shares.service mounts the VMware host's shared folders, so
-# only VMware guests enable it. $2 = systemd-detect-virt's answer.
+# it up later). The work VM runs none (Story 5.9): the Mac's ssh tunnel puts
+# the Mac's Meridian on the guest's 127.0.0.1:3456, where a guest unit would
+# hold the port, so an enabled one is disabled. mac-shares.service mounts the
+# VMware host's shared folders, so only VMware guests enable it.
+# $2 = systemd-detect-virt's answer, $3 = the machine class.
 reconcile_user_services() {
-    local mode=${1:-} virt=${2:-} unit
+    local mode=${1:-} virt=${2:-} class=${3:-} unit
     [[ $mode == check || $mode == apply ]] \
         || die "user-services mode must be check or apply"
     for unit in meridian.service mac-shares.service; do
-        if [[ $unit == mac-shares.service && $virt != vmware ]]; then
+        if [[ $unit == meridian.service && $class == work-vm ]]; then
+            if ! systemctl --user is-enabled "$unit" >/dev/null 2>&1; then
+                echo "  $unit off: the work VM uses the Mac's Meridian"
+            elif [[ $mode == check ]]; then
+                echo "  would: systemctl --user disable --now $unit   (the work VM uses the Mac's Meridian)"
+            else
+                systemctl --user disable --now "$unit"
+                echo "  $unit disabled: the work VM uses the Mac's Meridian"
+            fi
+        elif [[ $unit == mac-shares.service && $virt != vmware ]]; then
             echo "  $unit skipped: not a VMware guest"
         elif [[ ! -f "$HOME/.config/systemd/user/$unit" ]]; then
             echo "  $unit not tracked on this checkout — skipping"
@@ -645,7 +657,7 @@ if [[ "${1:-}" == "--timezone" ]]; then
 fi
 if [[ "${1:-}" == "--user-services" ]]; then
     [[ ${BOOTSTRAP_TEST_MODE:-0} == 1 ]] || die "user-services seam is test-only"
-    reconcile_user_services "${2:-}" "${3:-}"
+    reconcile_user_services "${2:-}" "${3:-}" "${4:-}"
     exit 0
 fi
 
@@ -1731,8 +1743,9 @@ fi
 # Code plugin from the release the server runs. The hosts come from the
 # yadm-encrypted server.env, so a machine without it, or off the LAN, skips.
 # A missing key means a passkey sign-in to OpenBao, which an unattended run
-# skips. A failure leaves the agents without memory, not the machine broken,
-# so bootstrap goes on.
+# skips. The work VM's tracked host.env selects the Mac's server instead, with
+# the Mac's key and no sign-in (Story 5.9). A failure leaves the agents without
+# memory, not the machine broken, so bootstrap goes on.
 say "OpenViking memory (optional)"
 openviking_args=()
 [[ $UNATTENDED -eq 1 ]] && openviking_args=(--no-login)
@@ -1754,12 +1767,13 @@ else
 fi
 
 # --- 8g. user services (Story 3.24) --------------------------------------------
-# See reconcile_user_services: meridian everywhere, mac-shares on VMware guests.
+# See reconcile_user_services: meridian everywhere but the work VM, mac-shares on
+# VMware guests.
 say "User services"
 if [[ $CHECK -eq 1 ]]; then
-    reconcile_user_services check "$virt"
+    reconcile_user_services check "$virt" "$class"
 else
-    reconcile_user_services apply "$virt"
+    reconcile_user_services apply "$virt" "$class"
 fi
 
 # --- 8h. Firefox defaults (Story 5.7, extended) --------------------------------
