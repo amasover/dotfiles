@@ -444,6 +444,66 @@ It deletes `~/vms/work-vm`, logs included. There is no standalone `seed` in atte
 mode: `create` writes the seed, and `install` (or a failed or interrupted `create`)
 deletes it.
 
+## Mac host services in the work VM
+
+The work VM runs no Meridian or OpenViking server of its own (Story 5.9). omp in the
+guest uses the Mac's Meridian Desktop and the Mac's local OpenViking server. Both stay
+on the Mac's loopback. An ssh tunnel that the Mac opens into the guest forwards them to
+the same addresses inside the guest: `127.0.0.1:3456` (Meridian) and `127.0.0.1:1933`
+(OpenViking). Nothing new listens on the Mac.
+
+**The Mac half** was set up by hand on 2026-11-04 and is not yet in the repo:
+
+- `~/.ssh/work-vm-tunnel`: an ed25519 key without a passphrase, so launchd can connect
+  unattended.
+- `~/.local/bin/work-vm-tunnel PORT`: looks up the VM's current address through VMware
+  Tools on every start (the DHCP address changes between builds), then runs
+  `ssh -N -R 127.0.0.1:PORT:127.0.0.1:PORT` with keepalives.
+- One LaunchAgent per port, `local.work-vm-tunnel.openviking` (1933) and
+  `local.work-vm-tunnel.meridian` (3456), so a refused port cannot take the other
+  down. Each restarts its tunnel at most every 30 s. Logs:
+  `~/Library/Logs/work-vm-tunnel-{openviking,meridian}.log`.
+- `~/.ssh/known_hosts` holds the guest's host key under the name `work-vm`, so a new
+  address does not trip host-key checking.
+
+**The guest half:**
+
+- `~/.ssh/authorized_keys` has one line for the tunnel key that only allows the two
+  listens and gives no shell:
+  `restrict,port-forwarding,permitlisten="127.0.0.1:1933",permitlisten="127.0.0.1:3456",permitopen="127.0.0.1:1",command="/usr/bin/false" ssh-ed25519 … work-vm-tunnel`.
+- Bootstrap's "User services" step leaves `meridian.service` disabled for class
+  `work-vm`. A guest unit would hold port 3456, and the Mac's forward would then fail
+  with `remote port forwarding failed for listen port 3456`.
+- Bootstrap's "OpenViking memory" step runs `setup/openviking-memory` in host mode,
+  selected by the tracked `host.env##class.work-vm`. It needs the Mac's user key in the
+  guest. Copy it from the Mac with your normal ssh key; the tunnel key cannot run
+  commands:
+
+  ```sh
+  # on the Mac; <user>@<address> is your guest login and the VM's current address
+  ssh -o HostKeyAlias=work-vm <user>@<address> \
+    'umask 077 && mkdir -p ~/.openviking && cat > ~/.openviking/user.key' < ~/.openviking/user.key
+  ```
+
+  Then in the guest: `~/.local/bin/setup/openviking-memory`.
+
+**Check, in the guest:**
+
+```sh
+ss -ltn | grep -E ':(3456|1933) '                  # both listening on 127.0.0.1
+curl -s 127.0.0.1:3456/health                      # the Mac's Meridian; auth.loggedIn true
+curl -s 127.0.0.1:1933/health                      # the Mac's OpenViking; healthy true
+~/.local/bin/setup/openviking-memory --check       # up to date
+```
+
+**After a rebuild**, the guest has a new host key and a new `authorized_keys`, so both
+tunnels stop. Add the tunnel line back to `authorized_keys`. Compare the guest's
+fingerprint (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) with what the Mac sees
+before you replace its `work-vm` entry in `known_hosts`. Then copy the key and run
+`openviking-memory` again. The same break happens if `yadm decrypt` ever writes
+`.ssh/authorized_keys` in the guest. Declaring the Mac half and having the harness do
+these steps is a follow-up.
+
 ## Resetting
 
 `vm-harness destroy` removes the whole VM state; `create` starts pristine. The only

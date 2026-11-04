@@ -461,6 +461,50 @@ run was redacted by hand.
 render and check output, and `xrandr --listactivemonitors` plus a screenshot
 across all displays in full screen.
 
+### Story 5.9: The work VM uses the Mac's Meridian and OpenViking
+
+As the repo owner,
+I want omp in the work VM to use the Mac's Meridian and the Mac's OpenViking server,
+So that the guest needs no Claude login or memory server of its own, and shares the
+Mac's agent memory.
+
+Issue: [#288](https://github.com/amasover/dotfiles/issues/288) · Related: Story 5.8
+(#281), Story 3.24 (meridian).
+
+**Design (2026-11-04):** both services stay on the Mac's loopback. Rebinding them to
+the VMware host address was rejected: that address comes and goes with Fusion's
+network, and binding to `0.0.0.0` would put the subscription proxy on every network
+the laptop joins (`meridian.service` already says to keep it on loopback). Instead the
+Mac opens an ssh tunnel into the guest that forwards both ports to the guest's
+`127.0.0.1:3456` and `127.0.0.1:1933`. In the guest's `authorized_keys`, the tunnel's
+key may only listen on those two addresses and gets no shell. The tracked
+`models.yml` needs no change, since it already points omp at `127.0.0.1:3456`.
+
+**Live (2026-11-04):** the Mac half was set up by hand ([Mac host services in the
+work VM](./runbook-vm-validation.md#mac-host-services-in-the-work-vm)). With the
+guest's `meridian.service` disabled, the 3456 forward connected within its 30 s retry:
+the guest's `127.0.0.1:3456/health` answered as the Mac's Meridian, logged in, and an
+`omp -p` request answered through it. `127.0.0.1:1933/health` answered as the Mac's
+OpenViking server.
+
+**Acceptance criteria:**
+
+- Bootstrap's user-services step leaves `meridian.service` off for class `work-vm`
+  and disables an enabled one; other classes still enable it.
+- `setup/openviking-memory` has a host mode: the tracked `host.env##class.work-vm`
+  selects the Mac's server on the guest's `127.0.0.1:1933`, with the Mac's user key
+  in `~/.openviking/user.key` and no OpenBao sign-in. `local.env` wins over
+  `host.env`, which wins over `server.env`. Its errors point at the Mac host setup.
+- On the work VM, bootstrap's OpenViking step installs the omp extension against
+  the Mac's server.
+- Host-independent tests cover the user-services and host-mode behavior.
+- The runbook documents the Mac half, the key copy, the checks, and what a rebuild
+  breaks.
+
+**Follow-up (not this story):** declare the Mac half in the repo (tunnel script,
+LaunchAgents, key), and have the harness write the tunnel's `authorized_keys` line
+and copy the user key when it creates the VM, so a rebuilt VM needs no hand steps.
+
 ---
 
 ## Risks
