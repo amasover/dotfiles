@@ -461,15 +461,15 @@ run was redacted by hand.
 render and check output, and `xrandr --listactivemonitors` plus a screenshot
 across all displays in full screen.
 
-### Story 5.9: The work VM uses the Mac's Meridian and OpenViking
+### Story 5.9: The work VM uses the Mac's Meridian and OpenViking ✅
 
 As the repo owner,
 I want omp in the work VM to use the Mac's Meridian and the Mac's OpenViking server,
 So that the guest needs no Claude login or memory server of its own, and shares the
 Mac's agent memory.
 
-Issue: [#288](https://github.com/amasover/dotfiles/issues/288) · Related: Story 5.8
-(#281), Story 3.24 (meridian).
+Issue: [#288](https://github.com/amasover/dotfiles/issues/288) (closed, PR [#289](https://github.com/amasover/dotfiles/pull/289)) ·
+Related: Story 5.8 (#281), Story 3.24 (meridian).
 
 **Design (2026-11-04):** both services stay on the Mac's loopback. Rebinding them to
 the VMware host address was rejected: that address comes and goes with Fusion's
