@@ -487,6 +487,12 @@ the guest's `127.0.0.1:3456/health` answered as the Mac's Meridian, logged in, a
 `omp -p` request answered through it. `127.0.0.1:1933/health` answered as the Mac's
 OpenViking server.
 
+**Live (2026-11-09):** with the Mac's user key copied into the guest, host mode
+installed the omp extension (0.4.26) and the Claude Code `openviking-memory` plugin
+(0.7.20) for the Mac's OpenViking v0.5.3, with no OpenBao sign-in, and `--check` then
+reported up to date. In an `omp -p` run the extension registered the server's 24
+tools and committed the session to the Mac's server.
+
 **Acceptance criteria:**
 
 - Bootstrap's user-services step leaves `meridian.service` off for class `work-vm`

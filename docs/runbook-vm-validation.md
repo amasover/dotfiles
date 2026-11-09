@@ -492,6 +492,7 @@ the same addresses inside the guest: `127.0.0.1:3456` (Meridian) and `127.0.0.1:
 ```sh
 ss -ltn | grep -E ':(3456|1933) '                  # both listening on 127.0.0.1
 curl -s 127.0.0.1:3456/health                      # the Mac's Meridian; auth.loggedIn true
+                                                   # (prints the account email: keep it out of notes)
 curl -s 127.0.0.1:1933/health                      # the Mac's OpenViking; healthy true
 ~/.local/bin/setup/openviking-memory --check       # up to date
 ```
