@@ -1,0 +1,7 @@
+# The Mac host's OpenViking server, for the work VM (Story 5.9): its presence
+# selects host mode in setup/openviking-memory. yadm links it for class work-vm
+# only. The server stays on the Mac's loopback; the Mac's ssh tunnel forwards it
+# to the guest's 127.0.0.1:1933, and the key is the Mac's user key, copied into
+# the guest's ~/.openviking/user.key. See docs/runbook-vm-validation.md, Mac
+# host services. Nothing here is private. KEY=value lines, no quotes.
+OPENVIKING_URL=http://127.0.0.1:1933
