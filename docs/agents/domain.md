@@ -19,8 +19,8 @@ the codebase. This repo is **single-context**: one primary glossary at the root,
     and are ADRs in everything but location. They carry Status, Supersedes, Executed-by,
     and issue links. Read them; do not renumber or move them.
 
-Today that means `docs/decision-bootstrap-architecture.md`,
-`docs/decision-daily-driver-vm.md`, and `docs/decision-metal-rehearsal.md`.
+Enumerate them at read time — `ls docs/decision-*.md` — rather than trusting a list
+written here; new decisions land as new files.
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't
 suggest creating them upfront. The `domain-modeling` skill (reached via `grill-with-docs`
