@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+  # Runs Validate (macOS), which pull requests and pushes skip.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -112,6 +114,11 @@ jobs:
   macos:
     name: Validate (macOS)
     # The work Mac's release; the suites run under its /bin/bash 3.2 and BSD tools.
+    # On request only (`gh workflow run CI --ref <branch>`): hosted macOS runners
+    # are often unavailable, and a job that waits out its timeout for one is
+    # cancelled. The gate is `bash .github/scripts/ci test-macos` on the Mac
+    # before pushing.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-26
     timeout-minutes: 15
     defaults:
