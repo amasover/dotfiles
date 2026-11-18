@@ -27,7 +27,7 @@ credential_command = 'cat "$HOME/.config/dotfiles/github-token" 2>/dev/null || t
 
 # The apps below were installed by hand before mise managed them. Adopt them
 # instead of replacing the bundles, which would drop their macOS privacy grants.
-# Self-updating apps (Firefox, Orca) are adopted as they are.
+# Self-updating apps (Firefox, Ghostty, LinearMouse, Orca) are adopted as they are.
 [bootstrap.brew]
 adopt = true
 
@@ -65,6 +65,8 @@ adopt = true
 # and Meridian ships only a GitHub release DMG. Feishin stays manual too: its
 # only cask is a community tap with no checksum that strips the quarantine flag.
 "brew-cask:firefox" = "latest"
+"brew-cask:ghostty" = "latest"
+"brew-cask:linearmouse" = "latest"
 # Orca's own tap, generated from the Orca repository.
 "brew-cask:stablyai/orca/orca" = "latest"
 
