@@ -214,8 +214,13 @@ else
         # reads it.
         gpgconf --kill gpg-agent 2>/dev/null || true
         # Save what the archive would overwrite (it carries .ssh/ and the like).
+        # `yadm decrypt -l` prints tar's long listing (tar -tv), not paths, so
+        # list the archive the way yadm decrypts it: yadm.gpg-program, gpg by
+        # default, into tar -t. An archive in another cipher fails here,
+        # before anything is overwritten.
         echo "  listing the archive (passphrase 1 of 2)"
-        list=$(yadm decrypt -l)
+        gpg=$(yadm config yadm.gpg-program || true)
+        list=$("${gpg:-gpg}" -q -d "$archive" | tar -tf -)
         stamp=$(date +%Y%m%d-%H%M%S)
         backup=$state/pre-decrypt-$stamp.tar
         existing=$(printf '%s\n' "$list" | while IFS= read -r path; do
