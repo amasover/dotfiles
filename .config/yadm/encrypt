@@ -1,4 +1,6 @@
 .ssh/**
+# The Mac's key for the work VM tunnel stays on the Mac.
+!.ssh/work-vm-tunnel*
 .zshenv
 .config/Code/User/settings.json
 .local/state/aur-quarantine/maintainers.tsv
