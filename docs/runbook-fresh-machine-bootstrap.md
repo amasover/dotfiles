@@ -721,8 +721,11 @@ Anonymous GitHub API calls share a limit of 60 an hour per address, which
   baseline; `aur-quarantine accept <pkg>` after verifying).
 - `setup/update` is the update loop; it ends with the read-only drift report
   (unmanaged / declared-but-missing / inbox triage).
-- Machine-specific extras go in untracked `~/.gitconfig-local` / `~/.zshrc.local`
-  (work machines: git identity, work aliases — see Story 1.8).
+- Git identity comes back with the decrypt: `~/.gitconfig-personal`,
+  `~/.gitconfig-work` and `~/.gitconfig-work-match`, which `.gitconfig` picks by
+  remote URL. A repo that no rule matches has no email, and git refuses to commit
+  (`user.useConfigOnly`). Machine-specific extras go in untracked
+  `~/.gitconfig-local` / `~/.zshrc.local` (work aliases: see Story 1.8).
 
 ## Troubleshooting
 
