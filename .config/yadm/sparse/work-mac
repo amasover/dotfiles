@@ -16,6 +16,9 @@
 /.gitconfig
 /.gitconfig-os##os.Darwin
 
+# gpg-agent's settings: passphrases are asked in a macOS dialog.
+/.gnupg/gpg-agent.conf##os.Darwin
+
 # yadm itself: encrypt manifest, hooks, these rules, the Mac bootstrap, and the
 # encrypted archive the Mac decrypts in full.
 /.config/yadm/

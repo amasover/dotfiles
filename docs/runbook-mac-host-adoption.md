@@ -11,8 +11,10 @@ Adoption is the first reconcile of a running machine. It is done when
 ## Before you start
 
 - macOS on Apple Silicon, a local admin account, zsh as the login shell.
-- `yadm` and `git`: `brew install yadm` (Homebrew) or any other install. Apple's git
-  is enough.
+- `yadm`, `git` and gpg: `brew install yadm gnupg pinentry-mac` (Homebrew). Apple's git
+  is enough. yadm's formula does not bring gpg, which the decrypt needs. pinentry-mac
+  asks for the passphrase; without it, the bootstrap skips the decrypt until
+  `mise bootstrap` has installed it, and a second run decrypts.
 - mise in `~/.local/bin` (`curl https://mise.run | sh`) or from Homebrew.
 - The yadm archive passphrase, if you will decrypt now.
 - For agent-skills (Story 4.13): the Mac on the LAN, and its SSH key accepted by the
@@ -62,10 +64,10 @@ links the alternates, offers to decrypt the archive, and runs `mise bootstrap`.
   take the repo's with `yadm checkout -- ~/.zshrc`. Your copies are in `~/pre-yadm`.
   On the first adoption expect `.zshrc` and `.zprofile` (mise wrote its own blocks
   there) and `.omp/agent/config.yml` (see the open decisions below).
-- **Decrypt.** Answer `y` to decrypt the full archive. It asks for the passphrase
-  twice: once to list the archive, once to extract it. Every existing file the
-  archive would overwrite, `~/.ssh/config` included, is saved first to
-  `~/.local/state/dotfiles/pre-decrypt-<time>.tar`. Check that your Mac's SSH keys
+- **Decrypt.** Answer `y` to decrypt the full archive. A macOS dialog (pinentry-mac)
+  asks for the passphrase twice: once to list the archive, once to extract it. Every
+  existing file the archive would overwrite, `~/.ssh/config` included, is saved first
+  to `~/.local/state/dotfiles/pre-decrypt-<time>.tar`. Check that your Mac's SSH keys
   and config still work afterwards; restore from the tar if they don't. After a
   decrypt, later runs skip the offer until the archive changes; run
   `bash ~/.config/yadm/bootstrap --decrypt` to be asked again.

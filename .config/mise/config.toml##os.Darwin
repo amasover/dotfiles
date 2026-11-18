@@ -56,6 +56,8 @@ adopt = true
 "brew:eza" = "latest"
 "brew:zsh-autosuggestions" = "latest"
 "brew:zsh-syntax-highlighting" = "latest"
+# gpg-agent's passphrase dialog (.gnupg/gpg-agent.conf##os.Darwin).
+"brew:pinentry-mac" = "latest"
 # The agnoster prompt's glyphs.
 "brew-cask:font-hack-nerd-font" = "latest"
 # The user's own apps. VMware Fusion and Meridian Desktop have no cask:
