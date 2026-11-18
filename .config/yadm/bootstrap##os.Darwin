@@ -22,9 +22,11 @@
 #   4. alts     back up a regular file a Darwin alternate would replace
 #               (<file>.pre-yadm), run `yadm alt`, and turn auto-alt back on
 #   5. decrypt  offer `yadm decrypt` of the full archive; files it would
-#               overwrite are saved to ~/.local/state/dotfiles first. After a
-#               decrypt it records the archive's hash there, and later runs
-#               skip the offer until the archive changes
+#               overwrite are saved to ~/.local/state/dotfiles first, and
+#               gpg-agent restarts so it reads the gpg-agent.conf step 4 linked.
+#               Skipped while the pinentry that file names is missing (step 6
+#               installs it). After a decrypt it records the archive's hash
+#               there, and later runs skip the offer until the archive changes
 #   6. mise     `mise bootstrap`, which asks before it changes anything
 #
 # Usage: bootstrap [--check] [--decrypt | --no-decrypt] [--no-mise]
@@ -186,12 +188,19 @@ say "encrypted archive"
 archive=${XDG_DATA_HOME:-$HOME/.local/share}/yadm/archive
 state=${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles
 marker=$state/yadm-decrypted
+# The pinentry gpg-agent.conf names, if any: the Darwin alternate names
+# pinentry-mac, which step 6 installs.
+pinentry=$(sed -n 's/^[[:space:]]*pinentry-program[[:space:]][[:space:]]*//p' \
+    "${GNUPGHOME:-$HOME/.gnupg}/gpg-agent.conf" 2>/dev/null | tail -n 1 || true)
 if ((! decrypt)); then
     echo "  skipped (--no-decrypt)"
 elif [[ ! -s $archive ]]; then
     echo "  no archive at $archive"
 elif ((decrypt == 1)) && [[ -r $marker && $(cat "$marker") == "$(git hash-object -- "$archive")" ]]; then
     echo "  already decrypted (archive unchanged); --decrypt offers it again"
+elif [[ -n $pinentry && ! -x $pinentry ]]; then
+    echo "  skipped: gpg-agent.conf names $pinentry, which is not installed;"
+    echo "  mise bootstrap installs it, then run 'yadm bootstrap' again to decrypt"
 elif ((check)); then
     echo "  would offer: yadm decrypt (the full archive)"
 elif [[ ! -t 0 && $test_mode != 1 ]]; then
@@ -200,6 +209,10 @@ else
     answer=
     read -r -p "  Decrypt the full archive into \$HOME now? [y/N] " answer || true
     if [[ $answer == [yY]* ]]; then
+        # gpg-agent reads gpg-agent.conf only when it starts, and step 4 may
+        # have just linked it: stop any running agent, so gpg starts one that
+        # reads it.
+        gpgconf --kill gpg-agent 2>/dev/null || true
         # Save what the archive would overwrite (it carries .ssh/ and the like).
         echo "  listing the archive (passphrase 1 of 2)"
         list=$(yadm decrypt -l)

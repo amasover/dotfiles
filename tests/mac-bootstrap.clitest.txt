@@ -3,7 +3,8 @@
 # MAC_BOOTSTRAP_TEST=1 passes the Darwin guard and lets a pipe answer the
 # decrypt prompt; `yadm config local.os Darwin` makes yadm link the Darwin
 # alternates on Linux CI. A yadm wrapper fakes only `yadm decrypt`, since the
-# real one needs the archive passphrase. `mise bootstrap` (step 6) installs
+# real one needs the archive passphrase, and a gpgconf stand-in prints its
+# arguments, so no real gpg-agent is stopped. `mise bootstrap` (step 6) installs
 # system-wide packages, so every run passes --no-mise; the manual evidence for
 # it is `mise bootstrap --dry-run` in the runbook.
 #
@@ -22,6 +23,8 @@ $ export HOME=$T/home XDG_CONFIG_HOME=$T/home/.config XDG_DATA_HOME=$T/home/.loc
 home
 $ REAL=$(command -v yadm); mkdir "$T/bin" && printf '%s\n' '#!/bin/sh' 'if [ "$1" = decrypt ]; then' '  if [ "$2" = -l ]; then printf "%s\n" .ssh/config .zshenv; exit 0; fi' '  echo run >> "$T/decrypted"; echo "from archive" > "$HOME/.ssh/config"; exit 0' 'fi' "exec $REAL \"\$@\"" > "$T/bin/yadm" && chmod +x "$T/bin/yadm"; export PATH="$T/bin:$PATH" T; echo wrapper
 wrapper
+$ printf '%s\n' '#!/bin/sh' 'echo "  [gpgconf $*]"' > "$T/bin/gpgconf" && chmod +x "$T/bin/gpgconf"; echo gpgconf
+gpgconf
 $ cd "$HOME" && yadm config yadm.auto-alt false && yadm clone -q --no-checkout --no-bootstrap "$S" >/dev/null 2>&1 && yadm config local.os Darwin && echo cloned
 cloned
 $ snap() { (cd "$HOME" && find . -path ./.local/share/yadm -prune -o -print | LC_ALL=C sort | while IFS= read -r p; do if [ -L "$p" ]; then echo "$p -> $(readlink "$p")"; elif [ -f "$p" ]; then echo "$p $(cksum < "$p")"; else echo "$p/"; fi; done; git --git-dir="$XDG_DATA_HOME/yadm/repo.git" config --get-regexp 'local\.class|core\.sparsecheckout'); }; snap > "$T/before"; echo snapped
@@ -77,6 +80,7 @@ Linking T/home/.gitconfig-os##os.Darwin to T/home/.gitconfig-os
   linked (1 backup(s))
   turned yadm.auto-alt back on
 ==> encrypted archive
+  [gpgconf --kill gpg-agent]
   listing the archive (passphrase 1 of 2)
   saved 1 existing file(s) to ~/.local/state/dotfiles/pre-decrypt-STAMP.tar
   decrypting (passphrase 2 of 2)
@@ -127,6 +131,21 @@ $ echo n | MAC_BOOTSTRAP_TEST=1 bash "$B" --decrypt --no-mise | sed -n '/encrypt
 $ echo 0000 > "$XDG_STATE_HOME/dotfiles/yadm-decrypted"; echo n | MAC_BOOTSTRAP_TEST=1 bash "$B" --check --no-mise | grep -A1 'encrypted archive'
 ==> encrypted archive
   would offer: yadm decrypt (the full archive)
+$
+# a gpg-agent.conf naming a pinentry that is not installed skips the decrypt,
+# even answered yes, and carries on to mise; once the pinentry exists, the
+# decrypt is offered
+$ mkdir -p "$HOME/.gnupg" && echo "pinentry-program $T/bin/pinentry-mac" > "$HOME/.gnupg/gpg-agent.conf"; echo y | MAC_BOOTSTRAP_TEST=1 bash "$B" --decrypt --no-mise | sed -n '/encrypted archive/,$p' | sed "s|$T|T|g"; wc -l < "$T/decrypted" | tr -d ' '
+==> encrypted archive
+  skipped: gpg-agent.conf names T/bin/pinentry-mac, which is not installed;
+  mise bootstrap installs it, then run 'yadm bootstrap' again to decrypt
+==> mise bootstrap
+  skipped (--no-mise)
+1
+$ printf '#!/bin/sh\n' > "$T/bin/pinentry-mac"; chmod +x "$T/bin/pinentry-mac"; echo n | MAC_BOOTSTRAP_TEST=1 bash "$B" --decrypt --no-mise | sed -n '/encrypted archive/,/mise bootstrap/p'
+==> encrypted archive
+  skipped; run 'yadm bootstrap' again to decrypt later
+==> mise bootstrap
 $
 $ cd /; rm -rf "$T"; eval "$mb_env"; unset mb_env; echo done
 done
