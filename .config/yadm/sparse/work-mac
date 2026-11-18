@@ -12,9 +12,11 @@
 /.zprofile
 /.profile
 
-# Git, with the Darwin credential helpers as a yadm alternate.
+# Git, with the Darwin credential helpers as a yadm alternate and the helper
+# that answers with each remote's gh account.
 /.gitconfig
 /.gitconfig-os##os.Darwin
+/.local/bin/tools/git-credential-gh-account
 
 # yadm itself: encrypt manifest, hooks, these rules, the Mac bootstrap, and the
 # encrypted archive the Mac decrypts in full.

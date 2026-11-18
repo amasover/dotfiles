@@ -22,7 +22,7 @@ $ grep -Fx -e '/.config/mise/**' -e '/.local/bin/setup/openviking-*' -e '/.confi
 /.local/bin/setup/openviking-*
 $
 # what the Mac needs lands
-$ for f in .zshrc .zprofile .profile .gitconfig '.gitconfig-os##os.Darwin' '.config/mise/config.toml##os.Darwin' '.config/yadm/bootstrap##os.Darwin' .config/yadm/encrypt .config/yadm/hooks/pre_push .local/share/yadm/archive .omp/agent/models.yml .omp/agent/modes/claude.yml .local/bin/tools/omp-mode .local/bin/tools/brew-drift-report .local/bin/setup/agent-skills .local/bin/setup/openviking-memory .config/dotfiles/openviking/plugin.json .config/dotfiles/oh-my-zsh-custom/themes/agnoster.zsh-theme; do grep -Fxq -- "$f" "$T/landed" || echo "missing: $f"; done; echo checked
+$ for f in .zshrc .zprofile .profile .gitconfig '.gitconfig-os##os.Darwin' .local/bin/tools/git-credential-gh-account '.config/mise/config.toml##os.Darwin' '.config/yadm/bootstrap##os.Darwin' .config/yadm/encrypt .config/yadm/hooks/pre_push .local/share/yadm/archive .omp/agent/models.yml .omp/agent/modes/claude.yml .local/bin/tools/omp-mode .local/bin/tools/brew-drift-report .local/bin/setup/agent-skills .local/bin/setup/openviking-memory .config/dotfiles/openviking/plugin.json .config/dotfiles/oh-my-zsh-custom/themes/agnoster.zsh-theme; do grep -Fxq -- "$f" "$T/landed" || echo "missing: $f"; done; echo checked
 checked
 $
 # every Darwin alternate lands; nothing conditioned on Linux does

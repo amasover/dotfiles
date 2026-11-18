@@ -18,3 +18,9 @@
 # This machine's time zone, one IANA name (bootstrap step 2b). Installs run
 # UTC and the repo never names a zone; only this file says where it lives.
 .config/dotfiles/timezone
+# Git identity per remote: the personal and work email and GitHub account, and
+# the rules that pick the work file by remote URL. The rules name the
+# employer, so all three stay out of the public repo.
+.gitconfig-personal
+.gitconfig-work
+.gitconfig-work-match
