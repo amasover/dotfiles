@@ -3,8 +3,9 @@
 # See docs/decision-mac-host.md and docs/runbook-mac-host-adoption.md.
 #
 # Other files in conf.d/ add their own declarations (conf.d/openviking.toml
-# owns ollama, uv and the OpenViking LaunchAgents). brew-drift-report reads
-# every one of them through `mise bootstrap packages status`.
+# owns ollama, uv and the OpenViking LaunchAgents; conf.d/openconnect.toml the
+# work VPN's openconnect, openconnect-sso and vpn-slice). brew-drift-report
+# reads every one of them through `mise bootstrap packages status`.
 #
 # Never declare the employer-managed apps here: Jamf installs and updates them
 # (Zoom, Slack, 1Password, Cisco Secure Client, Duo, CrowdStrike Falcon, Jamf
