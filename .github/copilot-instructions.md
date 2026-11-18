@@ -279,7 +279,8 @@ Use a staged cleanup model.
 ## Validation expectations
 
 `.github/scripts/ci` is the local and hosted source of truth; `.github/workflows/ci.yml`
-runs it for every pull request and `main` push.
+runs its Arch job for every pull request and `main` push. Its macOS job runs only when
+started by hand, because hosted macOS runners are often unavailable.
 
 For docs-only changes:
 
@@ -305,6 +306,11 @@ For tests (see [docs/runbook-script-validation.md](../docs/runbook-script-valida
 - A new test is incomplete until `.github/scripts/ci test` executes it in the same PR.
   Existing globs/runners count only after running the aggregate command proves inclusion;
   otherwise update the CI runner and its declared workflow dependencies with the test.
+- Code that runs on the Mac (anything the `work-mac` sparse rules land, or a suite in
+  `test_macos`): run `bash .github/scripts/ci test-macos` on the Mac before pushing, and
+  name the result in the PR's validation notes. Off the Mac, start CI's macOS job with
+  `gh workflow run CI --ref <branch>`; if no runner picks it up, say in the PR that the
+  Mac suites have not run.
 - A test that genuinely requires live hardware, GUI state, credentials, network, or mutable
   `$HOME` must document why CI cannot run it and ship the closest host-independent regression
   in the same PR. Keep the live smoke command documented; never mislabel it as CI coverage.

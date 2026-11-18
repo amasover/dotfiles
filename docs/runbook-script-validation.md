@@ -10,9 +10,9 @@ same commands.
 
 ## Enforced workflow
 
-CI runs for every pull request and every push to `main`. The `Validate` job, in an
-`archlinux:latest` container, installs pacman-native validation tools, checks out full
-history with a commit-pinned `actions/checkout`, and runs these stages in order:
+CI runs for every pull request, every push to `main`, and on request. The `Validate`
+job, in an `archlinux:latest` container, installs pacman-native validation tools, checks
+out full history with a commit-pinned `actions/checkout`, and runs these stages in order:
 
 1. checksum-verified betterleaks installation from the version and SHA-256 pinned by the
    vendored [`PKGBUILD`](../.config/dotfiles/pkgbuilds/betterleaks/PKGBUILD);
@@ -27,14 +27,21 @@ protection or ruleset: checks are reported, while the documented direct-to-`main
 for small bookkeeping-only docs remains usable.
 
 A second job, `Validate (macOS)`, runs on a GitHub `macos-26` runner, the work Mac's
-release (Story 2.61). It installs clitest and yadm from Homebrew and runs
+release (Story 2.61), only when someone starts the workflow by hand:
+`gh workflow run CI --ref <branch>`. Pull requests show it as skipped. Hosted macOS
+runners are often unavailable, and a job that waits 15 minutes for one is cancelled,
+which marked pull requests failed although nothing had run.
+
+The job installs clitest and yadm from Homebrew and runs
 `bash .github/scripts/ci test-macos`: the clitest suites for code that runs on the Mac
 (the yadm bootstrap and sparse rules, agent-skills, brew-drift-report, omp-mode,
 the omp models config and the shell's GitHub token export), with `/bin` and `/usr/bin`
 ahead of Homebrew, so they meet macOS's own `/bin/bash` 3.2 and BSD tools as a fresh Mac
-would. The Arch job runs the same suites too; this job catches what only macOS breaks.
-When a new suite covers Mac code, add it to `test_macos` as well as keeping it in
-`tests/`.
+would. The Arch job runs the same suites too; this one catches what only macOS breaks.
+
+The gate for Mac code is the same command run on the Mac before pushing. Name its result
+in the pull request's validation notes. When a new suite covers Mac code, add it to
+`test_macos` as well as keeping it in `tests/`.
 
 ## Script lint contract
 
@@ -101,6 +108,7 @@ Install the same tools through the declared Arch packages, then run:
 ```bash
 bash .github/scripts/ci lint
 bash .github/scripts/ci test
+bash .github/scripts/ci test-macos   # on the Mac, for code that runs there
 ```
 
 Run `betterleaks dir . --redact --no-banner` plus a manual privacy pass before publishing.
