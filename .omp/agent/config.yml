@@ -3,10 +3,7 @@ composer:
   shape: box
 theme:
   dark: dark-nord
-setupVersion: 2
-providers:
-  webSearchOrder:
-    []
+setupVersion: 3
 modelRoleStorage: project
 modelRoles:
   default: anthropic/claude-opus-5-5:xhigh
@@ -31,3 +28,5 @@ compaction:
     - handoff
     - shake
     - soft
+update:
+  auto: true
