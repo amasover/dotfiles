@@ -12,9 +12,11 @@
 /.zprofile
 /.profile
 
-# Git, with the Darwin credential helpers as a yadm alternate.
+# Git, with the Darwin credential helpers as a yadm alternate and the helper
+# that answers with each remote's gh account.
 /.gitconfig
 /.gitconfig-os##os.Darwin
+/.local/bin/tools/git-credential-gh-account
 
 # gpg-agent's settings: passphrases are asked in a macOS dialog.
 /.gnupg/gpg-agent.conf##os.Darwin

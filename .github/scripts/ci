@@ -72,6 +72,7 @@ test_macos() {
     PATH="/bin:/usr/bin:$PATH" clitest \
         tests/agent-skills.clitest.txt \
         tests/brew-drift-report.clitest.txt \
+        tests/git-identity.clitest.txt \
         tests/github-token-env.clitest.txt \
         tests/mac-bootstrap.clitest.txt \
         tests/mac-sparse.clitest.txt \

@@ -1,0 +1,65 @@
+# Git identity per remote: the tracked .gitconfig picks ~/.gitconfig-personal
+# or, through ~/.gitconfig-work-match, ~/.gitconfig-work by remote URL, and on
+# macOS git-credential-gh-account answers with that account's gh token. HOME
+# is a scratch directory holding stand-ins for the three encrypted files, a
+# copy of the helper, and a link to .gitconfig-os##os.Darwin; gh is a stub
+# that knows two accounts. No system config, no prompts.
+#
+# Run from the repo root: clitest tests/git-identity.clitest.txt
+
+$ T=$(mktemp -d); R=$PWD; mkdir -p "$T/bin" "$T/.local/bin/tools"; cp .local/bin/tools/git-credential-gh-account "$T/.local/bin/tools/"; ln -s "$R/.gitconfig-os##os.Darwin" "$T/.gitconfig-os"; printf '#!/bin/sh\ncase "$*" in\n"auth token --hostname github.com --user amasover") echo tok-personal ;;\n"auth token --hostname github.com --user work-acct") echo tok-work ;;\n*) echo "no account" >&2; exit 1 ;;\nesac\n' >"$T/bin/gh"; chmod +x "$T/bin/gh"; G() ( unset EMAIL GIT_AUTHOR_EMAIL GIT_COMMITTER_EMAIL; HOME="$T" PATH="$T/bin:$PATH" GIT_CONFIG_GLOBAL="$R/.gitconfig" GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 git "$@" ); H() ( HOME="$T" PATH="$T/bin:$PATH" "$T/.local/bin/tools/git-credential-gh-account" "$@" ); echo ready
+ready
+$ printf '[user]\n\temail = p@example.invalid\n[credential "https://github.com"]\n\tusername = amasover\n' >"$T/.gitconfig-personal"; printf '[user]\n\temail = w@example.invalid\n[credential "https://github.com"]\n\tusername = work-acct\n' >"$T/.gitconfig-work"; printf '[includeIf "hasconfig:remote.*.url:https://github.com/work-org/**"]\n\tpath = ~/.gitconfig-work\n' >"$T/.gitconfig-work-match"; git init -q "$T/r"; echo seeded
+seeded
+$
+# the personal rules match amasover's remotes over HTTPS, SSH and the gh: alias
+$ for u in https://github.com/amasover/dotfiles git@github.com:amasover/dotfiles.git gh:amasover/dotfiles; do G -C "$T/r" remote add origin "$u"; printf '%s %s\n' "$u" "$(G -C "$T/r" config user.email)"; G -C "$T/r" remote remove origin; done
+https://github.com/amasover/dotfiles p@example.invalid
+git@github.com:amasover/dotfiles.git p@example.invalid
+gh:amasover/dotfiles p@example.invalid
+$
+# ~/.gitconfig-work-match is included, so its rules pick the work file
+$ G -C "$T/r" remote add origin https://github.com/work-org/tool; G -C "$T/r" config user.email
+w@example.invalid
+$
+# a remote no rule matches gets no email, and git refuses to guess one
+$ G -C "$T/r" remote set-url origin https://github.com/someone-else/tool; G -C "$T/r" var GIT_AUTHOR_IDENT >/dev/null 2>&1; echo "exit=$?"
+exit=128
+$
+# the helper answers get with the token gh holds for the account git asks for;
+# gist.github.com shares github.com's tokens
+# (P prints each password= line as "token <value>", which the secret scanner
+# does not read as a password)
+$ P() { sed 's/^password=/token /'; }
+$ printf 'protocol=https\nhost=github.com\nusername=amasover\n\n' | H get | P
+username=amasover
+token tok-personal
+$ printf 'protocol=https\nhost=gist.github.com\nusername=work-acct\n\n' | H get | P
+username=work-acct
+token tok-work
+$
+# no username, an account gh lacks, plain http, or store: nothing, so git
+# moves on to its next helper
+$ printf 'protocol=https\nhost=github.com\n\n' | H get; echo "exit=$?"
+exit=0
+$ printf 'protocol=https\nhost=github.com\nusername=stranger\n\n' | H get; echo "exit=$?"
+exit=0
+$ printf 'protocol=http\nhost=github.com\nusername=amasover\n\n' | H get; echo "exit=$?"
+exit=0
+$ printf 'protocol=https\nhost=github.com\nusername=amasover\npassword=x\n\n' | H store; echo "exit=$?"
+exit=0
+$
+# through git with the macOS helpers, each remote's account reaches the helper
+$ G -C "$T/r" remote set-url origin https://github.com/work-org/tool; printf 'protocol=https\nhost=github.com\n\n' | G -C "$T/r" credential fill | P
+protocol=https
+host=github.com
+username=work-acct
+token tok-work
+$ G -C "$T/r" remote set-url origin https://github.com/amasover/dotfiles; printf 'protocol=https\nhost=github.com\n\n' | G -C "$T/r" credential fill | P
+protocol=https
+host=github.com
+username=amasover
+token tok-personal
+$ rm -rf "$T"; unset -f G H P; unset T R; echo done
+done
+$

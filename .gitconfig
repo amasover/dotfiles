@@ -2,17 +2,30 @@
 	insteadOf = gh:
 [user]
 	name = Aaron Masover
+	# Never guess an email from the host name: a repo that no include below
+	# gives one fails to commit.
+	useConfigOnly = true
 [include]
-    # machine-local identity + site-specific config (untracked; create per machine,
-    # like the existing -personal/-production includes). Scoped includeIf blocks
-    # below still win for their repos. No file => git asks for identity loudly.
+    # machine-local settings (untracked; create per machine, like the
+    # -production include). The scoped includes below still win for their repos.
     path = ~/.gitconfig-local
 [includeIf "gitdir:~/code/github/"]
     path = ~/code/github/.gitconfig
 [includeIf "gitdir:~/code/production-*/"]
     path = ~/.gitconfig-production
+# Identity per remote. ~/.gitconfig-personal and ~/.gitconfig-work set the
+# email and the GitHub account git asks credential helpers for; both come
+# from the encrypted archive. So does ~/.gitconfig-work-match, which picks
+# the work file by remote URL, because its rules name the employer. git
+# skips a missing file.
 [includeIf "hasconfig:remote.*.url:https://github.com/amasover/**"]
     path = ~/.gitconfig-personal
+[includeIf "hasconfig:remote.*.url:git@github.com:amasover/**"]
+    path = ~/.gitconfig-personal
+[includeIf "hasconfig:remote.*.url:gh:amasover/**"]
+    path = ~/.gitconfig-personal
+[include]
+    path = ~/.gitconfig-work-match
 [includeIf "onbranch:production/"]
     path = ~/.gitconfig-production
 [core]

@@ -107,6 +107,12 @@ load.
   decrypt. Without it, mise's GitHub lookups run at the anonymous limit. Minting it,
   and why it is never `GITHUB_TOKEN`: see the
   [fresh-machine runbook](./runbook-fresh-machine-bootstrap.md#secrets-the-read-only-github-api-token).
+- **Git identity.** `~/.gitconfig-personal`, `~/.gitconfig-work` and
+  `~/.gitconfig-work-match` come back with the decrypt. The first two each name an
+  email and a GitHub account, and `git-credential-gh-account` answers with that
+  account's gh token, so log gh in to both accounts (`gh auth login` twice).
+  Without the files, git refuses to commit except in repos with their own
+  `user.email`.
 
 ## Undo
 
