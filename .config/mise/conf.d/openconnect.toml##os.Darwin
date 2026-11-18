@@ -1,0 +1,18 @@
+# The work VPN's client tools on macOS (Story 2.62). The VPN is a Cisco ASA
+# that signs in with SAML in an embedded browser, which plain openconnect
+# cannot show. openconnect-sso shows the sign-in in its own Qt web view, then
+# starts `sudo openconnect` with vpn-slice as the network script, so only a
+# chosen tunnel scope goes through the VPN. The command that runs them and the
+# scope live in a private work repository; this file declares the tools.
+# mise reads every ~/.config/mise/conf.d/*.toml as global config, so `mise
+# bootstrap` applies this file beside config.toml; yadm links it on macOS only.
+
+[bootstrap.packages]
+"brew:openconnect" = "latest"
+"brew:vpn-slice" = "latest"
+
+[tools]
+# openconnect-sso's last release. It pins lxml<5, whose newest wheels stop at
+# Python 3.12, so it gets a private 3.12; it imports pkg_resources, which
+# setuptools 81 removed.
+"pypi:openconnect-sso" = { version = "0.8.1", python = "3.12", with = ["setuptools<81"] }

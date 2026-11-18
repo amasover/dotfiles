@@ -2098,6 +2098,34 @@ throwaway-`HOME` adoption transcript showing what lands and what links; a clean
 
 ---
 
+### Story 2.62: The Mac declares the work VPN's client tools
+
+As the repo owner,
+I want `mise bootstrap` to install the client tools the work VPN needs on the Mac,
+So that the split-tunnel command in a private work repository runs on a reconciled
+Mac without its own install step.
+
+Origin: 2026-11-09. The VPN is a Cisco ASA that signs in with SAML in an embedded
+browser. openconnect cannot show that browser, so openconnect-sso shows it, then
+starts `sudo openconnect` with vpn-slice as its network script. The command that runs
+them, its tunnel scope and its runbook live in a private work repository shared with
+coworkers; this repo declares only the tools. Mac-only. The Linux `vpn` script that
+polybar calls (`vpn connect`, `vpn disconnect`) stays with Story 2.14.
+
+**Acceptance criteria:**
+
+- Given `.config/mise/conf.d/openconnect.toml##os.Darwin`, when `mise bootstrap` runs
+  on the Mac, then openconnect, vpn-slice and openconnect-sso 0.8.1 are installed,
+  and nothing new lands on Linux
+- Given openconnect-sso 0.8.1's pins (lxml below 5, whose wheels stop at Python 3.12,
+  and `pkg_resources`, which setuptools 81 removed), then it runs on a private Python
+  3.12 with `setuptools<81`, and `openconnect-sso --version` works from any directory
+
+**Evidence artifact:** `tests/mac-sparse.clitest.txt` under macOS's `/bin/bash` 3.2,
+and `mise bootstrap packages status` on the Mac.
+
+---
+
 ## Acceptance Criteria (Epic Level)
 
 - Setup scripts are classified by safety and currentness
